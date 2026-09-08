@@ -1,0 +1,657 @@
+# DB 테이블 정의서 정리본
+
+> 버전 1.1 · 2026-09-09 · 실제 DB 미적용. Word 검토용 파일의 페이지 모양은 미검증.
+
+DB 테이블 정의서
+
+AI 기반 국내 여행 일정 추천 서비스
+
+버전 1.0  |  작성일 2026년 9월 8일  |  SQL Server 기준
+
+본 문서는 여행 추천부터 일정 저장·평가·운영까지 핵심 14개 테이블과 가상 예약·결제용 R3 선택 확장 4개 테이블을 정의한다. 요청 조건은 recommendation_requests에 통합하며 ai_jobs와 place_rating_tags를 유지한다.
+
+기준 문서  창프2_요구분석서 3.0_관리자범위축소_최종본.docx  |  요구분석서 수정일 2026년 8월 19일
+
+적용 범위와 표기
+
+관리자는 키워드 카테고리·키워드와 회원 상태를 관리한다. 장소·숙소·음식점 직접 CRUD 및 타인 평가 관리는 제공하지 않는다. 가상 예약·결제는 R1·R2 핵심·주요 기능 구현 및 테스트가 완료된 뒤 개발 일정에 여유가 있을 경우 구현하는 R3 선택 확장 기능이다.
+
+NULL의 N은 필수, Y는 허용을 뜻한다. PK·FK·UNIQUE의 -는 해당 제약 없음이다. U1·U2·P1·UF1은 각 테이블 내부의 제약 그룹이며 여러 열에 같은 코드가 있으면 복합 제약이다. PK는 별도 UNIQUE 표시 없이 유일성을 포함한다.
+
+UTC_NOW는 SYSUTCDATETIME()이다. DEFAULT는 INSERT 시만 적용되므로 updated_at은 서비스가 갱신한다. IDENTITY 및 ROWVERSION은 DEFAULT가 아닌 SQL Server 생성 속성이다. CHECK의 열거값은 해당 열 IN (...)으로 구현하며 NULL 허용 열은 값이 존재할 때 검사한다.
+
+JSON은 ISJSON(컬럼)=1을 뜻한다. 필수 속성·스키마·값 범위는 서버 검증기로 검사한다. FK 대상은 테이블.컬럼으로 표시했다. 교차 테이블 조건·상태 전이·권한은 CHECK만으로 보장되지 않으므로 명시된 트랜잭션·서비스·트리거를 함께 구현한다.
+
+전체 테이블 목록
+
+| 번호 | 테이블명 | 한글명 | 요구사항 및 범위 |
+| --- | --- | --- | --- |
+| 1 | users | 사용자 | DAR-01 / R1·R2 |
+| 2 | keyword_categories | 여행 조건 카테고리 | DAR-07 / R1 |
+| 3 | keywords | 여행 조건 키워드 | DAR-07 / R1 |
+| 4 | recommendation_requests | 추천 요청 및 이력 | DAR-02·09 / R1·R2 |
+| 5 | recommendation_candidates | 추천 여행지 후보 | DAR-03·09 / R1·R2 |
+| 6 | ai_jobs | AI 비동기 생성 작업 | DAR-09·QUR-03 / R1 |
+| 7 | places | 검증된 장소 공통 정보 | DAR-03·04·10 / R1·R2 |
+| 8 | itineraries | 저장 여행 일정 | DAR-05 / R2 |
+| 9 | itinerary_items | 세부 일정 항목 | DAR-06·10 / R2 |
+| 10 | favorites | 장소 즐겨찾기 | DAR-14 / R2 |
+| 11 | place_ratings | 장소 별점 평가 | DAR-08 / R2 |
+| 12 | rating_tags | 평가 태그 사전 | DAR-08 / R2 |
+| 13 | place_rating_tags | 평가 태그 연결 | DAR-08 / R2 |
+| 14 | operation_logs | 운영 처리 이력 | DAR-13 / R2 및 R3 실패 기록 |
+| 15 | reservation_stock | 가상 예약 가능 수량 | DAR-11 / R3 선택 확장 |
+| 16 | virtual_reservations | 가상 예약 | DAR-11 / R3 선택 확장 |
+| 17 | virtual_payments | 가상 결제 | DAR-12 / R3 선택 확장 |
+| 18 | reservation_logs | 예약 수량 변경 이력 | DAR-11 / R3 선택 확장 |
+
+1 사용자
+
+| 테이블명 | 한글명 | 설명 |
+| --- | --- | --- |
+| users | 사용자 | 회원과 관리자를 같은 계정 구조로 관리한다. |
+
+관련 요구사항 및 구현 범위  DAR-01 / R1·R2
+
+| 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| user_id | BIGINT | N | Y | - | - | - | - | IDENTITY(1,1) 자동 증가 |
+| login_id | VARCHAR(50) | N | - | - | U1 | - | - | 사용자가 로그인할 때 사용하는 아이디 |
+| password_hash | VARCHAR(255) | N | - | - | - | - | - | 단방향 비밀번호 해시 |
+| nickname | NVARCHAR(50) | N | - | - | - | - | - | 사용자 닉네임 |
+| role | VARCHAR(20) | N | - | - | - | 'MEMBER' | MEMBER, ADMIN | - |
+| status | VARCHAR(20) | N | - | - | - | 'ACTIVE' | ACTIVE, RESTRICTED, WITHDRAWN | - |
+| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+| withdrawn_at | DATETIME2(3) | Y | - | - | - | - | - | 처리 시각 |
+
+제약과 처리 규칙
+
+U1(login_id). 로그인 아이디는 앞뒤 공백을 제거한 뒤 저장하고, 로그인·중복 검사에도 같은 정규화 기준을 적용한다. nickname은 사용자 닉네임이다. password_hash만 저장하며 비밀번호 평문 저장은 금지한다.
+
+CHECK: (status = WITHDRAWN AND withdrawn_at IS NOT NULL) OR (status <> WITHDRAWN AND withdrawn_at IS NULL). 문자열 값은 SQL에서 작은따옴표로 감싼다.
+
+관리자는 ACTIVE ↔ RESTRICTED만 변경한다. 본인 제한 및 관리자에 의한 탈퇴·계정 삭제는 거부한다. 탈퇴는 회원 본인 절차에서만 허용한다.
+
+2 여행 조건 카테고리
+
+| 테이블명 | 한글명 | 설명 |
+| --- | --- | --- |
+| keyword_categories | 여행 조건 카테고리 | 여행 조건 선택 화면의 카테고리와 표시 순서를 관리한다. |
+
+관련 요구사항 및 구현 범위  DAR-07 / R1
+
+| 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| category_id | BIGINT | N | Y | - | - | - | - | IDENTITY(1,1) 자동 증가 |
+| category_code | VARCHAR(40) | N | - | - | U1 | - | - | REGION, PERIOD 등 안정적인 코드 |
+| category_name | NVARCHAR(50) | N | - | - | U2 | - | - | - |
+| sort_order | INT | N | - | - | - | 0 | >= 0 | - |
+| is_active | BIT | N | - | - | - | 1 | - | - |
+| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+
+제약과 처리 규칙
+
+U1(category_code), U2(category_name). 관리자만 추가·수정·삭제·비활성화할 수 있다.
+
+소속 키워드가 있으면 물리 삭제를 제한하고 비활성화를 사용한다. 코드 변경은 조건 해석에 영향을 주므로 서비스에서 차단한다.
+
+3 여행 조건 키워드
+
+| 테이블명 | 한글명 | 설명 |
+| --- | --- | --- |
+| keywords | 여행 조건 키워드 | 카테고리별 선택 항목과 구조화 값을 저장한다. |
+
+관련 요구사항 및 구현 범위  DAR-07 / R1
+
+| 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| keyword_id | BIGINT | N | Y | - | - | - | - | IDENTITY(1,1) 자동 증가 |
+| category_id | BIGINT | N | - | keyword_categories.category_id | U1,U2 | - | - | 참조 식별자 |
+| keyword_code | VARCHAR(50) | N | - | - | U1 | - | - | - |
+| keyword_name | NVARCHAR(80) | N | - | - | U2 | - | - | - |
+| value_json | NVARCHAR(MAX) | N | - | - | - | - | JSON | 조건 해석 값과 단위 |
+| sort_order | INT | N | - | - | - | 0 | >= 0 | - |
+| is_active | BIT | N | - | - | - | 1 | - | - |
+| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+
+제약과 처리 규칙
+
+U1(category_id, keyword_code), U2(category_id, keyword_name). 동일 카테고리 안에서 중복을 금지한다.
+
+사용된 키워드는 비활성화를 우선한다. 과거 요청은 ID와 명칭·값 스냅샷을 함께 보존하므로 명칭 변경의 영향을 받지 않는다.
+
+4 추천 요청 및 이력
+
+| 테이블명 | 한글명 | 설명 |
+| --- | --- | --- |
+| recommendation_requests | 추천 요청 및 이력 | travel_requests를 통합한 회원의 추천 요청 단위이다. 여러 후보는 recommendation_candidates에 저장한다. |
+
+관련 요구사항 및 구현 범위  DAR-02·09 / R1·R2
+
+| 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| request_id | BIGINT | N | Y | - | - | - | - | IDENTITY(1,1) 자동 증가 |
+| user_id | BIGINT | N | - | users.user_id | - | - | - | 참조 식별자 |
+| input_mode | VARCHAR(10) | N | - | - | - | - | TEXT, KEYWORD | - |
+| original_text | NVARCHAR(2000) | Y | - | - | - | - | - | 자연어 원문 |
+| conditions_json | NVARCHAR(MAX) | N | - | - | - | - | JSON | 확정 조건과 선택 키워드 스냅샷 |
+| region | NVARCHAR(100) | Y | - | - | - | - | - | NULL이면 지역 상관없음 |
+| start_date | DATE | Y | - | - | - | - | - | - |
+| end_date | DATE | Y | - | - | - | - | - | - |
+| duration_days | SMALLINT | Y | - | - | - | - | > 0 | - |
+| budget | DECIMAL(12,2) | Y | - | - | - | - | >= 0 | 원화 총 예산 상한 |
+| accommodation_needed | BIT | Y | - | - | - | - | - | NULL 미확정, 0 불필요, 1 필요 |
+| interpretation_summary | NVARCHAR(1000) | Y | - | - | - | - | - | 조건 해석 및 보완 근거 |
+| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+
+제약과 처리 규칙
+
+CHECK: 날짜는 둘 다 NULL 또는 둘 다 존재하고 end_date >= start_date. 날짜가 있으면 duration_days = DATEDIFF(day,start_date,end_date)+1이며 NULL을 허용하지 않는다. TEXT 입력은 original_text 필수이다.
+
+conditions_json 필수 구조: schema_version, season, companion, theme[], transportation, party_size, include_nearby, selected_keywords[{keyword_id, category_code, name, value}]. 미선택은 null 또는 빈 배열로 저장하고 화면에서 상관없음으로 표시한다.
+
+기간만 입력한 경우 날짜는 NULL로 두고 duration_days를 사용한다. 구조화 열과 JSON에 같은 조건을 중복 저장하지 않는다. 회원 이력 삭제 시 저장 일정은 유지한다. 비회원 요청은 이 테이블에 영구 저장하지 않고 ai_jobs.request_json과 result_json으로 임시 관리한다.
+
+5 추천 여행지 후보
+
+| 테이블명 | 한글명 | 설명 |
+| --- | --- | --- |
+| recommendation_candidates | 추천 여행지 후보 | 회원 요청에 대한 검증된 여행지 후보와 추천 이유를 저장한다. |
+
+관련 요구사항 및 구현 범위  DAR-03·09 / R1·R2
+
+| 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| candidate_id | BIGINT | N | Y | - | - | - | - | IDENTITY(1,1) 자동 증가 |
+| request_id | BIGINT | N | - | recommendation_requests.request_id | U1,U2 | - | - | 참조 식별자 |
+| place_id | BIGINT | N | - | places.place_id | U2 | - | - | 참조 식별자 |
+| rank_no | TINYINT | N | - | - | U1 | - | BETWEEN 1 AND 5 | - |
+| recommendation_reason | NVARCHAR(2000) | N | - | - | - | - | - | - |
+| place_snapshot_json | NVARCHAR(MAX) | N | - | - | - | - | JSON | 추천 당시 이름·지역·설명·출처 |
+| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+
+제약과 처리 규칙
+
+U1(request_id, rank_no), U2(request_id, place_id). 완료 시 후보 3~5개를 서비스 트랜잭션에서 검증한다. 개별 CHECK로 행 개수는 제한할 수 없다.
+
+place_id는 DESTINATION 유형만 허용하며 서비스 또는 트리거에서 검증한다. 과거 상세는 스냅샷을 표시하고 현재 비활성 장소임을 별도로 안내한다.
+
+6 AI 비동기 생성 작업
+
+| 테이블명 | 한글명 | 설명 |
+| --- | --- | --- |
+| ai_jobs | AI 비동기 생성 작업 | 회원·비회원 추천 및 일정 생성의 jobId, 소유권, 처리 단계와 결과를 영속 관리한다. |
+
+관련 요구사항 및 구현 범위  DAR-09·QUR-03 / R1
+
+| 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| job_id | UNIQUEIDENTIFIER | N | Y | - | - | NEWID() | - | API jobId |
+| user_id | BIGINT | Y | - | users.user_id | - | - | - | 참조 식별자 |
+| guest_token_hash | BINARY(32) | Y | - | - | - | - | - | 비회원 임시 세션 토큰 해시 |
+| request_id | BIGINT | Y | - | recommendation_requests.request_id | - | - | - | 참조 식별자 |
+| job_type | VARCHAR(20) | N | - | - | - | - | RECOMMENDATION, ITINERARY | - |
+| status | VARCHAR(32) | N | - | - | - | 'QUEUED' | J1 | - |
+| attempt_count | TINYINT | N | - | - | - | 0 | BETWEEN 0 AND 3 | - |
+| request_json | NVARCHAR(MAX) | N | - | - | - | - | JSON | 작업 실행 입력과 선택 후보 스냅샷 |
+| result_json | NVARCHAR(MAX) | Y | - | - | - | - | JSON | 검증 완료 결과 및 임시 일정 |
+| validation_errors_json | NVARCHAR(MAX) | Y | - | - | - | - | JSON | 오류 코드·충돌 구간·수정 안내 |
+| error_code | VARCHAR(60) | Y | - | - | - | - | - | - |
+| message | NVARCHAR(1000) | Y | - | - | - | - | - | 안전한 사용자 안내 |
+| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+| started_at | DATETIME2(3) | Y | - | - | - | - | - | 작업 실행 시작 시각 |
+| completed_at | DATETIME2(3) | Y | - | - | - | - | - | 작업 완료 또는 실패 시각 |
+| expires_at | DATETIME2(3) | N | - | - | - | - | - | 임시 작업 입력과 결과의 보존 만료 시각 |
+| row_version | ROWVERSION | N | - | - | - | - | - | 동시 갱신 감지, 시각 아님 |
+
+제약과 처리 규칙
+
+J1: QUEUED, ANALYZING_CONDITIONS, SEARCHING_CANDIDATES, GENERATING_SCHEDULE, VALIDATING_SCHEDULE, COMPLETED, FAILED.
+
+CHECK: user_id와 guest_token_hash 중 정확히 하나만 존재. 비회원이면 request_id IS NULL. CHECK: 종료 상태는 completed_at 필수, 그 외는 NULL. COMPLETED는 result_json 필수, FAILED는 error_code 필수.
+
+회원 recommendation 작업은 request_id 필수로 생성하고 소유자가 같은지 검사한다. 일정 작업은 원 이력이 삭제되어도 request_json으로 실행할 수 있다. 비회원은 expires_at 이후 작업 입력·결과를 삭제한다.
+
+attempt_count는 최초 AI 생성 포함 최대 3회이며 재생성은 최대 2회이다. 작업 실행 제한·재시작 복구·상태 전이는 뒤의 설계 원칙을 따른다. 진행 문구는 status를 화면 문구에 매핑하고, 별도 설명은 message를 사용한다. current_step은 중복 저장하지 않는다.
+
+7 검증된 장소 공통 정보
+
+| 테이블명 | 한글명 | 설명 |
+| --- | --- | --- |
+| places | 검증된 장소 공통 정보 | 외부 관광정보·지도정보 또는 시스템 조회·동기화로 확인한 여행지·관광지·숙소·음식점을 공통 형식으로 저장·캐시한다. |
+
+관련 요구사항 및 구현 범위  DAR-03·04·10 / R1·R2
+
+| 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| place_id | BIGINT | N | Y | - | - | - | - | IDENTITY(1,1) 자동 증가 |
+| place_type | VARCHAR(20) | N | - | - | - | - | DESTINATION, ATTRACTION, ACCOMMODATION, RESTAURANT | - |
+| source_provider | VARCHAR(40) | N | - | - | U1 | - | - | 외부 제공자 또는 SYSTEM |
+| source_place_id | NVARCHAR(150) | N | - | - | U1 | - | - | 제공자 내 고유 ID |
+| place_name | NVARCHAR(200) | N | - | - | - | - | - | - |
+| region | NVARCHAR(100) | N | - | - | - | - | - | - |
+| address | NVARCHAR(300) | Y | - | - | - | - | - | - |
+| latitude | DECIMAL(9,6) | Y | - | - | - | - | BETWEEN -90 AND 90 | - |
+| longitude | DECIMAL(9,6) | Y | - | - | - | - | BETWEEN -180 AND 180 | - |
+| subtype | NVARCHAR(80) | Y | - | - | - | - | - | 문화·여가·체험·숙소 세부유형 |
+| description | NVARCHAR(2000) | Y | - | - | - | - | - | - |
+| details_json | NVARCHAR(MAX) | Y | - | - | - | - | JSON | 테마, 운영시간, 휴무, 음식명·분류, 숙소유형 등 |
+| source_url | NVARCHAR(1000) | Y | - | - | - | - | - | - |
+| map_url | NVARCHAR(1000) | Y | - | - | - | - | - | - |
+| is_active | BIT | N | - | - | - | 1 | - | - |
+| verified_at | DATETIME2(3) | N | - | - | - | - | - | 출처에서 장소 정보를 마지막으로 확인한 시각 |
+| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+
+제약과 처리 규칙
+
+U1(source_provider, source_place_id). 좌표는 둘 다 NULL 또는 둘 다 입력한다. 물리적 장소와 지역 단위 DESTINATION을 구분한다.
+
+관리자는 여행지·관광지·숙소·음식점을 직접 등록·수정·삭제하지 않으며 관리자 직접 CRUD API를 제공하지 않는다. 수집·동기화 서비스만 쓰기 권한을 가진다. 참조 중인 장소는 삭제보다 비활성화를 우선한다.
+
+details_json의 foods[]는 음식명·분류·설명·출처를 보관한다. 실제 음식점이 없으면 일정의 음식 안내 스냅샷으로 대체하고 가짜 RESTAURANT 행을 생성하지 않는다.
+
+8 저장 여행 일정
+
+| 테이블명 | 한글명 | 설명 |
+| --- | --- | --- |
+| itineraries | 저장 여행 일정 | 회원이 저장한 일정의 기본정보와 원래 생성 조건을 보관한다. |
+
+관련 요구사항 및 구현 범위  DAR-05 / R2
+
+| 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| itinerary_id | BIGINT | N | Y | - | - | - | - | IDENTITY(1,1) 자동 증가 |
+| user_id | BIGINT | N | - | users.user_id | - | - | - | 참조 식별자 |
+| request_id | BIGINT | Y | - | recommendation_requests.request_id | - | - | - | 참조 식별자 |
+| destination_place_id | BIGINT | N | - | places.place_id | - | - | - | 참조 식별자 |
+| title | NVARCHAR(150) | N | - | - | - | - | - | - |
+| start_date | DATE | N | - | - | - | - | - | - |
+| end_date | DATE | N | - | - | - | - | - | - |
+| transportation | VARCHAR(20) | N | - | - | - | - | CAR, TRANSIT, WALK, MIXED, ANY | - |
+| conditions_snapshot_json | NVARCHAR(MAX) | N | - | - | - | - | JSON | 저장 당시 조건과 지역 요약 |
+| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+| row_version | ROWVERSION | N | - | - | - | - | - | 수정 충돌 검출 |
+
+제약과 처리 규칙
+
+CHECK end_date >= start_date. destination_place_id의 유형은 DESTINATION으로 검사한다. request_id가 있으면 본인 이력인지 검증한다.
+
+날짜 미확정 생성 결과는 ai_jobs.result_json에 임시 보관한다. 날짜 확정 후 저장한다. 일정 삭제는 상세 항목을 같은 트랜잭션에서 제거한다.
+
+9 세부 일정 항목
+
+| 테이블명 | 한글명 | 설명 |
+| --- | --- | --- |
+| itinerary_items | 세부 일정 항목 | 관광·식사·이동·숙박·자유 시간을 시간 순서로 저장한다. |
+
+관련 요구사항 및 구현 범위  DAR-06·10 / R2
+
+| 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| item_id | BIGINT | N | Y | - | - | - | - | IDENTITY(1,1) 자동 증가 |
+| itinerary_id | BIGINT | N | - | itineraries.itinerary_id | U1 | - | - | 참조 식별자 |
+| day_no | SMALLINT | N | - | - | U1 | - | > 0 | - |
+| sequence_no | SMALLINT | N | - | - | U1 | - | > 0 | - |
+| item_type | VARCHAR(20) | N | - | - | - | - | VISIT, MEAL, TRANSIT, STAY, FREE | - |
+| place_id | BIGINT | Y | - | places.place_id | - | - | - | 참조 식별자 |
+| start_at | DATETIME2(3) | N | - | - | - | - | - | 방문 시작 현지 시각 KST |
+| end_at | DATETIME2(3) | N | - | - | - | - | - | 방문 종료 현지 시각 KST |
+| activity | NVARCHAR(1000) | N | - | - | - | - | - | - |
+| travel_minutes | INT | Y | - | - | - | - | >= 0 | 직전 항목에서 이동 예상 분 |
+| place_snapshot_json | NVARCHAR(MAX) | Y | - | - | - | - | JSON | 장소명·위치·추천 근거 |
+| transport_json | NVARCHAR(MAX) | Y | - | - | - | - | JSON | 이동수단·출발 및 도착 터미널·출도착 시각·소요 시간·출처·조회 기준일·참고 정보 여부 |
+| food_guide_json | NVARCHAR(MAX) | Y | - | - | - | - | JSON | 음식명·분류·설명·지도 검색 링크 |
+| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+
+제약과 처리 규칙
+
+U1(itinerary_id, day_no, sequence_no). CHECK end_at > start_at. 날짜 범위, day_no 일치, 시간 중복, 이동 가능성, 운영시간·휴무는 일정 전체 검증기로 확인한다.
+
+VISIT·STAY는 place_id 필수이다. MEAL은 실제 음식점이 확인되면 places의 RESTAURANT를 참조한다. 음식점이 없거나 지역 대표 음식·간편 음식 유형만 안내하면 food_guide_json에 스냅샷을 저장하고 임의의 음식점 행을 만들지 않는다. FREE·TRANSIT도 place_id NULL을 허용한다. 체류 시간은 시작·종료 차이로 계산한다.
+
+교통 정보는 itinerary_items.transport_json에 저장하고 예상 이동 시간은 필요 시 travel_minutes를 사용한다. 미래 일정의 시외버스 정보에는 조회 기준일, 참고 정보 여부, 출발·도착 터미널과 소요 시간을 포함한다. 종료일 다음날 00시까지의 마지막 구간은 허용한다.
+
+10 장소 즐겨찾기
+
+| 테이블명 | 한글명 | 설명 |
+| --- | --- | --- |
+| favorites | 장소 즐겨찾기 | 회원별 여행지·관광지·숙소 즐겨찾기만 저장한다. |
+
+관련 요구사항 및 구현 범위  DAR-14 / R2
+
+| 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| favorite_id | BIGINT | N | Y | - | - | - | - | IDENTITY(1,1) 자동 증가 |
+| user_id | BIGINT | N | - | users.user_id | U1 | - | - | 참조 식별자 |
+| place_id | BIGINT | N | - | places.place_id | U1 | - | - | 참조 식별자 |
+| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+
+제약과 처리 규칙
+
+U1(user_id, place_id)로 중복 등록을 차단한다.
+
+허용 유형은 DESTINATION, ATTRACTION, ACCOMMODATION이다. RESTAURANT와 일정은 등록할 수 없다. 타 테이블 유형 제한은 등록 서비스와 DB 트리거에서 검증하며 places.place_type 변경도 동일 검증한다.
+
+11 장소 별점 평가
+
+| 테이블명 | 한글명 | 설명 |
+| --- | --- | --- |
+| place_ratings | 장소 별점 평가 | 회원당 장소별 한 건의 별점 평가를 저장한다. |
+
+관련 요구사항 및 구현 범위  DAR-08 / R2
+
+| 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| rating_id | BIGINT | N | Y | - | - | - | - | IDENTITY(1,1) 자동 증가 |
+| user_id | BIGINT | N | - | users.user_id | U1 | - | - | 참조 식별자 |
+| place_id | BIGINT | N | - | places.place_id | U1 | - | - | 참조 식별자 |
+| score | TINYINT | N | - | - | - | - | BETWEEN 1 AND 5 | - |
+| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+
+제약과 처리 규칙
+
+U1(user_id, place_id). 기존 평가가 있으면 새 행 대신 갱신한다. 태그 0개도 유효하다.
+
+제목·본문·공개 상태·관리자 검수 컬럼을 두지 않는다. 회원 본인만 변경·삭제하고 관리자는 자신의 평가에만 일반 회원 권한을 사용한다.
+
+평균은 AVG(CAST(score AS DECIMAL(5,2))), 평가 수는 COUNT로 조회한다. 태그 조인 전에 별점을 집계해 중복 계산을 방지한다.
+
+12 평가 태그 사전
+
+| 테이블명 | 한글명 | 설명 |
+| --- | --- | --- |
+| rating_tags | 평가 태그 사전 | 사전 정의된 평가 태그의 허용값을 보관한다. |
+
+관련 요구사항 및 구현 범위  DAR-08 / R2
+
+| 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| tag_id | BIGINT | N | Y | - | - | - | - | IDENTITY(1,1) 자동 증가 |
+| tag_code | VARCHAR(40) | N | - | - | U1 | - | - | - |
+| tag_name | NVARCHAR(80) | N | - | - | U2 | - | - | - |
+| sort_order | INT | N | - | - | - | 0 | >= 0 | - |
+| is_active | BIT | N | - | - | - | 1 | - | - |
+| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+
+제약과 처리 규칙
+
+U1(tag_code), U2(tag_name). 시스템 초기 데이터 또는 배포로 관리하며 별도 관리자 태그 CRUD 기능을 추가하지 않는다.
+
+신규 선택은 활성 태그만 허용한다. 비활성 태그는 과거 선택 표시·집계에 남기고 참조 중인 태그의 삭제를 제한한다.
+
+13 평가 태그 연결
+
+| 테이블명 | 한글명 | 설명 |
+| --- | --- | --- |
+| place_rating_tags | 평가 태그 연결 | 장소 평가와 태그의 N 대 M 관계를 유지하며 최대 3개 선택을 제한한다. |
+
+관련 요구사항 및 구현 범위  DAR-08 / R2
+
+| 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| rating_id | BIGINT | N | P1 | place_ratings.rating_id | U1 | - | - | - |
+| tag_id | BIGINT | N | P1 | rating_tags.tag_id | - | - | - | - |
+| slot_no | TINYINT | N | - | - | U1 | - | BETWEEN 1 AND 3 | 선택 슬롯 1~3 |
+
+제약과 처리 규칙
+
+P1 복합 PK(rating_id, tag_id), U1(rating_id, slot_no). 슬롯 CHECK와 UNIQUE를 함께 적용하면 평가별 최대 3행과 중복 태그 금지가 DB에서 보장된다. 연결 생성 시각은 사용하지 않으므로 별도 created_at을 저장하지 않고 평가 변경 시각은 place_ratings.updated_at으로 관리한다.
+
+별점 갱신 및 태그 교체는 부모 평가 행을 잠그고 한 트랜잭션에서 처리한다. 태그 빈도는 해당 place_id의 평가와 연결 행을 조인하여 집계한다.
+
+14 운영 처리 이력
+
+| 테이블명 | 한글명 | 설명 |
+| --- | --- | --- |
+| operation_logs | 운영 처리 이력 | 회원 상태 변경과 예약·결제 상태 전이 실패를 1년간 기록한다. |
+
+관련 요구사항 및 구현 범위  DAR-13 / R2 및 R3 실패 기록
+
+| 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| log_id | BIGINT | N | Y | - | - | - | - | IDENTITY(1,1) 자동 증가 |
+| actor_user_id | BIGINT | Y | - | users.user_id | - | - | - | 참조 식별자 |
+| actor_kind | VARCHAR(10) | N | - | - | - | - | ADMIN, MEMBER, SYSTEM | - |
+| target_type | VARCHAR(20) | N | - | - | - | - | USER, RESERVATION, PAYMENT | - |
+| target_id | BIGINT | N | - | - | - | - | - | 논리 참조 식별자, FK 없음 |
+| action_code | VARCHAR(50) | N | - | - | - | - | - | - |
+| before_status | VARCHAR(32) | Y | - | - | - | - | - | - |
+| after_status | VARCHAR(32) | Y | - | - | - | - | - | - |
+| reason | NVARCHAR(1000) | N | - | - | - | - | - | - |
+| outcome | VARCHAR(10) | N | - | - | - | - | SUCCESS, FAILED | - |
+| correlation_id | UNIQUEIDENTIFIER | Y | - | - | - | - | - | 실패 요청 추적 ID |
+| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+
+제약과 처리 규칙
+
+대상 데이터가 탈퇴로 삭제되어도 로그는 보존해야 하므로 target_id에는 FK를 걸지 않는다. 이메일·이름·입력 원문·금융정보는 기록하지 않는다.
+
+성공한 회원 상태 변경은 원 변경과 같은 트랜잭션에 기록한다. 실패 로그는 본 트랜잭션 롤백 이후 별도 트랜잭션으로 기록한다. 시스템 실패는 actor_user_id NULL을 허용한다.
+
+관리자에게 R3 상태 변경 권한을 추가하지 않는다. R3 운영 화면은 필요한 최소 정보 조회만 제공한다.
+
+15 가상 예약 가능 수량
+
+| 테이블명 | 한글명 | 설명 |
+| --- | --- | --- |
+| reservation_stock | 가상 예약 가능 수량 | 숙소·유료 관광시설의 이용 구간별 가상 수량을 관리한다. |
+
+관련 요구사항 및 구현 범위  DAR-11 / R3 선택 확장
+
+| 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| stock_id | BIGINT | N | Y | - | - | - | - | IDENTITY(1,1) 자동 증가 |
+| place_id | BIGINT | N | - | places.place_id | U1 | - | - | 참조 식별자 |
+| usage_start_at | DATETIME2(3) | N | - | - | U1 | - | - | - |
+| usage_end_at | DATETIME2(3) | N | - | - | U1 | - | - | - |
+| total_quantity | INT | N | - | - | - | - | >= 0 | - |
+| remaining_quantity | INT | N | - | - | - | - | 0 이상 total_quantity 이하 | - |
+| unit_price | DECIMAL(12,2) | N | - | - | - | - | >= 0 | 가상 단위 가격 KRW |
+| quantity_unit | VARCHAR(10) | N | - | - | - | - | ROOM, PERSON | 숙소 객실 또는 시설 인원 |
+| is_active | BIT | N | - | - | - | 1 | - | - |
+| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+| row_version | ROWVERSION | N | - | - | - | - | - | - |
+
+제약과 처리 규칙
+
+U1(place_id, usage_start_at, usage_end_at). CHECK usage_end_at > usage_start_at. 대상 유형·유료 시설 여부는 시스템 데이터로 검증한다.
+
+시스템 시드로 수량을 설정하며 관리자 직접 장소 CRUD 또는 실제 재고 연동을 제공하지 않는다. 하나의 숙소 재고 행은 고정 숙박 패키지 구간으로 정의하고 같은 객실 풀의 겹치는 구간을 생성하지 않는다.
+
+16 가상 예약
+
+| 테이블명 | 한글명 | 설명 |
+| --- | --- | --- |
+| virtual_reservations | 가상 예약 | 회원의 가상 예약과 수량 점유 상태를 저장한다. |
+
+관련 요구사항 및 구현 범위  DAR-11 / R3 선택 확장
+
+| 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| reservation_id | BIGINT | N | Y | - | - | - | - | IDENTITY(1,1) 자동 증가 |
+| user_id | BIGINT | N | - | users.user_id | - | - | - | 참조 식별자 |
+| stock_id | BIGINT | N | - | reservation_stock.stock_id | - | - | - | 참조 식별자 |
+| itinerary_id | BIGINT | Y | - | itineraries.itinerary_id | - | - | - | 참조 식별자 |
+| request_key | UNIQUEIDENTIFIER | N | - | - | U1 | - | - | 예약 생성 중복 방지 키 |
+| quantity | INT | N | - | - | - | - | > 0 | 점유 수량 |
+| party_size | INT | N | - | - | - | - | > 0 | 이용 인원 |
+| expected_amount | DECIMAL(12,2) | N | - | - | - | - | >= 0 | - |
+| status | VARCHAR(12) | N | - | - | - | 'PENDING' | PENDING, CONFIRMED, CANCELED | - |
+| payment_required | BIT | N | - | - | - | 1 | - | - |
+| booking_snapshot_json | NVARCHAR(MAX) | N | - | - | - | - | JSON | 장소·이용일시·단위가격 스냅샷 |
+| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+| canceled_at | DATETIME2(3) | Y | - | - | - | - | - | 가상 예약 취소 시각 |
+| row_version | ROWVERSION | N | - | - | - | - | - | - |
+
+제약과 처리 규칙
+
+U1(request_key). 예약번호는 reservation_id를 사용한다. 사용자가 준 금액을 신뢰하지 않고 quantity × unit_price로 서버에서 산출한다.
+
+CHECK: CANCELED일 때만 canceled_at 존재. 날짜·시간은 stock_id와 스냅샷으로 보관한다. 변경 시 재고 참조·스냅샷·금액을 함께 갱신한다.
+
+PENDING은 이미 수량을 점유한다. 결제가 없으면 생성 트랜잭션 안에서 CONFIRMED로 확정한다. 회원·일정 소유권과 재고 단위에 맞는 인원·수량을 검증한다.
+
+17 가상 결제
+
+| 테이블명 | 한글명 | 설명 |
+| --- | --- | --- |
+| virtual_payments | 가상 결제 | 멱등 요청 단위의 가상 결제 성공·실패·환불 상태를 보관한다. |
+
+관련 요구사항 및 구현 범위  DAR-12 / R3 선택 확장
+
+| 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| payment_id | BIGINT | N | Y | - | - | - | - | IDENTITY(1,1) 자동 증가 |
+| reservation_id | BIGINT | N | - | virtual_reservations.reservation_id | UF1 | - | - | 참조 식별자 |
+| idempotency_key | UNIQUEIDENTIFIER | N | - | - | U1 | - | - | - |
+| request_hash | BINARY(32) | N | - | - | - | - | - | 예약·금액·수단 요청 내용 해시 |
+| amount | DECIMAL(12,2) | N | - | - | - | - | >= 0 | - |
+| status | VARCHAR(12) | N | - | - | - | 'READY' | READY, SUCCESS, FAILED, REFUNDED | - |
+| failure_code | VARCHAR(60) | Y | - | - | - | - | - | - |
+| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+| processed_at | DATETIME2(3) | Y | - | - | - | - | - | 결제 성공 또는 실패 처리 시각 |
+| refunded_at | DATETIME2(3) | Y | - | - | - | - | - | 가상 환불 처리 시각 |
+
+제약과 처리 규칙
+
+U1(idempotency_key). UF1은 reservation_id에 대한 필터 UNIQUE INDEX WHERE status = 'SUCCESS'이다. 다른 멱등키로 동시에 요청해도 성공 결제는 예약당 한 건만 허용한다.
+
+동일 키·동일 request_hash는 최초 결과 반환, 동일 키·다른 내용은 거부한다. FAILED 재시도는 새 키를 발급한다. 환불 예약은 CANCELED이므로 새 결제를 허용하지 않는다. 결제수단은 TEST로 고정하므로 test_method 컬럼 없이 서버 상수로 처리하며 요청 해시의 수단 값에도 같은 상수를 사용한다.
+
+CHECK: READY이면 processed_at NULL, 그 외는 필수. REFUNDED일 때만 refunded_at 존재. FAILED는 failure_code 필수. 취소는 SUCCESS → REFUNDED로 표현한다. 실제 금융정보 컬럼은 없다.
+
+18 예약 수량 변경 이력
+
+| 테이블명 | 한글명 | 설명 |
+| --- | --- | --- |
+| reservation_logs | 예약 수량 변경 이력 | 커밋된 예약 생성·변경·취소와 재고 증감을 함께 기록한다. |
+
+관련 요구사항 및 구현 범위  DAR-11 / R3 선택 확장
+
+| 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| reservation_log_id | BIGINT | N | Y | - | - | - | - | IDENTITY(1,1) 자동 증가 |
+| reservation_id | BIGINT | N | - | virtual_reservations.reservation_id | - | - | - | 참조 식별자 |
+| stock_id | BIGINT | N | - | reservation_stock.stock_id | - | - | - | 참조 식별자 |
+| operation_id | UNIQUEIDENTIFIER | N | - | - | - | - | - | 동일 변경의 로그 묶음 |
+| event_type | VARCHAR(20) | N | - | - | - | - | CREATE, CHANGE, CANCEL | - |
+| before_quantity | INT | N | - | - | - | - | >= 0 | 변경 전 잔여 수량 |
+| delta_quantity | INT | N | - | - | - | - | - | 재고 증감값, 차감은 음수 |
+| after_quantity | INT | N | - | - | - | - | >= 0 | 변경 후 잔여 수량 |
+| before_status | VARCHAR(12) | Y | - | - | - | - | - | - |
+| after_status | VARCHAR(12) | N | - | - | - | - | PENDING, CONFIRMED, CANCELED | - |
+| reason | NVARCHAR(500) | N | - | - | - | - | - | - |
+| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+
+제약과 처리 규칙
+
+CHECK after_quantity = before_quantity + delta_quantity. before_status가 존재하면 PENDING, CONFIRMED, CANCELED 중 하나이다.
+
+성공 변경과 같은 트랜잭션에서 기록한다. 날짜 변경은 구 재고 복구·신 재고 차감을 같은 operation_id의 두 행으로 기록한다. 롤백 실패 기록은 operation_logs를 사용한다.
+
+테이블 간 관계 요약
+
+| 부모 테이블 및 키 | 자식 테이블 및 FK | 관계 | 참조 성격 |
+| --- | --- | --- | --- |
+| keyword_categories.category_id | keywords.category_id | 1 : 0..N | 필수 참조 |
+| users.user_id | recommendation_requests.user_id | 1 : 0..N | 필수 참조 |
+| recommendation_requests.request_id | recommendation_candidates.request_id | 1 : 0..N | 필수 참조 |
+| places.place_id | recommendation_candidates.place_id | 1 : 0..N | 필수 참조 |
+| users.user_id | ai_jobs.user_id | 1 : 0..N | 선택 참조 |
+| recommendation_requests.request_id | ai_jobs.request_id | 1 : 0..N | 선택 참조 |
+| users.user_id | itineraries.user_id | 1 : 0..N | 필수 참조 |
+| recommendation_requests.request_id | itineraries.request_id | 1 : 0..N | 선택 참조 |
+| places.place_id | itineraries.destination_place_id | 1 : 0..N | 필수 참조 |
+| itineraries.itinerary_id | itinerary_items.itinerary_id | 1 : 0..N | 필수 참조 |
+| places.place_id | itinerary_items.place_id | 1 : 0..N | 선택 참조 |
+| users.user_id | favorites.user_id | 1 : 0..N | 필수 참조 |
+| places.place_id | favorites.place_id | 1 : 0..N | 필수 참조 |
+| users.user_id | place_ratings.user_id | 1 : 0..N | 필수 참조 |
+| places.place_id | place_ratings.place_id | 1 : 0..N | 필수 참조 |
+| place_ratings.rating_id | place_rating_tags.rating_id | 1 : 0..N | 필수 참조 |
+| rating_tags.tag_id | place_rating_tags.tag_id | 1 : 0..N | 필수 참조 |
+| users.user_id | operation_logs.actor_user_id | 1 : 0..N | 선택 참조 |
+| places.place_id | reservation_stock.place_id | 1 : 0..N | 필수 참조 |
+| users.user_id | virtual_reservations.user_id | 1 : 0..N | 필수 참조 |
+| reservation_stock.stock_id | virtual_reservations.stock_id | 1 : 0..N | 필수 참조 |
+| itineraries.itinerary_id | virtual_reservations.itinerary_id | 1 : 0..N | 선택 참조 |
+| virtual_reservations.reservation_id | virtual_payments.reservation_id | 1 : 0..N | 필수 참조 |
+| virtual_reservations.reservation_id | reservation_logs.reservation_id | 1 : 0..N | 필수 참조 |
+| reservation_stock.stock_id | reservation_logs.stock_id | 1 : 0..N | 필수 참조 |
+
+관계는 부모 한 행에 연결 가능한 자식 수를 뜻한다. place_ratings와 rating_tags는 place_rating_tags를 통해 N:M이며 평가 한 건의 연결 수는 0~3이다. virtual_reservations와 virtual_payments는 전체 시도 기준 1:N, SUCCESS 행 기준 1:0..1이다.
+
+삭제와 참조 유지
+
+FK는 기본 ON DELETE NO ACTION / ON UPDATE NO ACTION으로 생성한다. 대규모 자동 CASCADE 대신 서비스 트랜잭션에서 자식부터 삭제하여 SQL Server 다중 경로 문제와 의도하지 않은 손실을 방지한다.
+
+이력 삭제는 연결된 일정 및 작업의 request_id를 NULL로 바꾼 뒤 recommendation_candidates와 recommendation_requests를 삭제한다. 실행 중 추천 작업은 종료 또는 취소 처리를 먼저 확정하고 삭제하여 이력이 재생성되지 않게 한다. 저장 일정의 조건·장소 스냅샷은 유지한다.
+
+일정 삭제는 virtual_reservations.itinerary_id를 NULL로 바꾸고 itinerary_items → itineraries 순으로 삭제한다. 평가 삭제는 place_rating_tags → place_ratings 순으로 처리한다. 장소·태그는 참조 중이면 비활성화한다.
+
+설계 원칙
+
+요구사항과 물리 설계의 구분
+
+요구분석서의 동작과 범위는 유지한다. 컬럼 길이, JSON 스냅샷, 평가 슬롯, 인덱스, 재고 구간과 결제 완료 후 변경 제한은 본 정의서의 구현 설계 선택이다. R1은 강릉·부산·경주를 초기 데이터 범위로 사용하고 추가 지역도 같은 구조로 확장한다.
+
+정규화와 검증된 장소
+
+요청 1건과 후보 여러 건을 분리하고 사용자별 즐겨찾기·평가 중복을 UNIQUE로 차단한다. 키워드·장소의 과거 표시값은 스냅샷에 보존한다. JSON 내부 키워드 ID는 FK가 아닌 출처 식별자이며 신규 선택 시 존재·활성 여부를 검사한다. AI가 만든 미검증 장소는 places와 최종 일정에 넣지 않는다. 숙소와 음식점은 각각 places의 ACCOMMODATION과 RESTAURANT로 관리한다. 교통·음식 안내는 itinerary_items의 JSON을 사용하며 transport_info, accommodations, restaurants 같은 별도 테이블은 추가하지 않는다. recommendation_candidates.place_snapshot_json과 itinerary_items.place_snapshot_json은 당시 장소 정보를 보존한다.
+
+소유권과 권한
+
+개인 데이터 API는 모든 조회·수정·삭제마다 로그인 사용자와 소유자를 비교한다. jobId만으로 권한을 부여하지 않으며 비회원은 임시 토큰 해시도 확인한다. 관리자는 일반 회원으로서 자신의 데이터에만 접근하고 별도 운영 권한은 키워드·회원 상태 관리 및 필요한 R3 운영 조회로 한정한다. 세션·로그아웃 처리는 Spring 세션 저장소에서 수행하며 별도 세션 테이블은 본 업무 스키마에 포함하지 않는다.
+
+시간과 금액
+
+생성·수정·작업 처리 시각은 UTC로 저장하고 화면에서 KST로 변환한다. 여행·예약 이용 시각은 국내 서비스의 KST 현지 시각으로 고정한다. 모든 금액은 KRW DECIMAL이며 FLOAT를 사용하지 않는다. ROWVERSION은 동시 수정 검출용 값이며 일시로 해석하지 않는다.
+
+AI 작업 실행과 상태 전이
+
+작업 생성은 DB에 QUEUED를 커밋한 후 3초 이내 202와 jobId를 반환한다. 추천은 QUEUED → ANALYZING_CONDITIONS → SEARCHING_CANDIDATES → COMPLETED로, 일정은 후보 검색 뒤 GENERATING_SCHEDULE → VALIDATING_SCHEDULE → COMPLETED로 처리한다. 검증 실패는 최대 2회 GENERATING_SCHEDULE로 되돌아가며 총 AI 생성 시도는 3회이다. 모든 비종료 단계는 FAILED로 종료할 수 있다.
+
+AI 완료와 복구
+
+추천 완료는 후보 저장과 COMPLETED 변경을 같은 트랜잭션으로 처리한다. 일정은 검증된 임시 결과를 result_json에 저장한 뒤 완료로 바꾸고 회원이 저장할 때 itineraries로 복사한다. 실행기 전체 동시 실행은 최대 5개로 제한한다. 단일 실행기 운영을 기준으로 서버 재시작 때 미종료 실행 작업을 FAILED와 복구 안내로 정리하며 QUEUED는 다시 실행한다. 다중 실행기 도입 시 전역 실행 슬롯과 lease가 필요하다.
+
+AI 시간 제한과 비회원 데이터
+
+최초 작업의 95%는 20초 이내, 재생성 포함 전체는 최대 60초 또는 설정 시간 안에 종료한다. 상태 조회는 2초 이내 응답하며 클라이언트는 기본 2초 간격으로 조회하고 종료 상태에서 멈춘다. expires_at은 별도의 임시 데이터 보존 만료이며 작업 실행 제한시간과 구분한다. 비회원 임시 보존은 운영 설정값으로 관리하고 계정 이력으로 장기 저장하지 않는다. 오류 로그에는 원문을 남기지 않는다.
+
+탈퇴와 보존
+
+탈퇴 시 즉시 로그인·기존 세션을 차단하고 실행 중 AI 작업이 다시 저장하지 못하게 한다. 일정·즐겨찾기·이력·가상 데이터·평가와 태그 연결·회원 작업을 삭제한다. 점유 중 가상 수량은 취소 절차로 한 번 복구한 뒤 로그·결제·예약을 삭제한다. 계정 식별정보와 비밀번호 해시는 30일 이내 익명화한다. login_id는 재사용 불가능한 고유 대체 문자열, nickname은 탈퇴회원, password_hash는 로그인 불가능한 무작위 값으로 교체한다.
+
+운영 로그와 접근
+
+users의 비식별 PK 행은 로그 참조용으로 유지하며 개인정보를 남기지 않는다. operation_logs는 1년 보존 후 삭제한다. 로그의 reason에는 최소한의 사유 코드·설명만 저장한다. API 인증키·비밀번호 원문·금융정보는 어떤 JSON이나 로그에도 저장하지 않는다.
+
+R3 트랜잭션과 상태 전이
+
+예약 생성은 remaining_quantity >= 요청 수량 조건을 포함한 UPDATE로 수량을 차감한다. 영향 행이 1일 때만 예약과 수량 로그를 생성하고 함께 커밋한다. 0이면 매진 처리한다. 같은 request_key 충돌로 실패한 차감도 롤백한 뒤 기존 예약을 반환한다.
+
+예약은 PENDING → CONFIRMED, PENDING → CANCELED, CONFIRMED → CANCELED만 허용한다. 취소는 현재 상태를 조건으로 변경하고 성공한 한 요청만 수량을 복구한다. PENDING에서 결제 미사용이면 바로 CONFIRMED가 된다. CANCELED는 종료 상태이다.
+
+결제는 READY → SUCCESS 또는 FAILED, SUCCESS → REFUNDED만 허용한다. FAILED·REFUNDED는 종료 상태이다. 예약 행 잠금과 현재 PENDING 상태 확인을 먼저 수행하여 다른 멱등키의 동시 결제도 직렬화한다. SUCCESS와 예약 CONFIRMED는 같은 트랜잭션으로 확정하고 예상된 실패는 FAILED·PENDING으로 커밋한다. 예기치 않은 예외는 전체 롤백한다.
+
+결제된 예약 취소는 SUCCESS → REFUNDED, 예약 CANCELED, 재고 복구를 하나의 트랜잭션으로 처리한다. 환불 재요청은 기존 상태를 반환하고 다시 복구하지 않는다. READY만 있는 예약 취소 시 해당 시도는 FAILED와 RESERVATION_CANCELED 사유로 종료한다.
+
+일시·인원 변경은 PENDING 또는 결제 미사용 CONFIRMED만 허용한다. 성공 결제가 있는 예약은 취소·환불 후 새 예약을 생성하도록 한다. 구 재고 복구, 신 재고 차감, 금액·스냅샷·로그 갱신을 한 트랜잭션으로 처리한다. 여러 재고를 잠글 때 stock_id 순서를 통일한다.
+
+권장 인덱스와 구현 검증
+
+PK·UNIQUE 외에 모든 FK에 조회용 인덱스를 검토한다. 주요 인덱스는 recommendation_requests(user_id, created_at DESC), itineraries(user_id, updated_at DESC), ai_jobs(status, created_at), ai_jobs(expires_at), ai_jobs(user_id, created_at), place_ratings(place_id) INCLUDE(score), place_rating_tags(tag_id, rating_id), operation_logs(created_at), virtual_reservations(user_id, created_at), reservation_logs(reservation_id, created_at)이다.
+
+회원 간 접근 차단, 비회원 jobId 유출 시 접근 차단, AI 재시작·최대 3회·시간 제한, 후보 3~5개 검증, 즐겨찾기 음식점 차단, 0~3 태그 허용 및 4번째 태그 차단, 동일 장소 평가 갱신, 이력 삭제 후 일정 유지, 탈퇴와 로그 보존을 확인한다. R3 도입 시 20개 병렬 요청에서 초과 예약·중복 성공 결제·부분 저장 0건을 검증한다.
