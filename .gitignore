@@ -1,0 +1,23 @@
+# Java
+*.class
+
+# Spring Boot / Maven
+target/
+
+# Gradle
+.gradle/
+build/
+
+# IntelliJ
+.idea/
+*.iml
+
+# VS Code
+.vscode/
+
+# Secrets
+.env
+application-secret.properties
+
+# Windows
+Thumbs.db
