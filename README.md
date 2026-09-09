@@ -39,6 +39,25 @@ java -jar target/travel_recommendation-0.0.1.jar
 
 ## SQL Server 프로필
 
+### 현재 PC의 Windows 인증
+
+인스턴스는 `SQLEXPRESS`, DB 이름은 `travel_recommendation`이다. 로컬 TCP 포트 1433을 확인했으며 Windows 인증으로 접속한다. 다른 PC에서는 같은 포트라고 가정하지 말고 SQL Server 설정을 확인한다.
+
+`sqlserver-windows` 프로필은 Java를 실행한 Windows 계정을 사용한다. `sqlserver` 프로필과 동시에 활성화하지 않는다. 기본 URL은 로컬 개발용으로 `integratedSecurity=true`, `encrypt=true`, `trustServerCertificate=true`를 사용한다. 신뢰할 수 있는 인증서가 있는 서버에서는 `DB_URL`을 지정해 `trustServerCertificate=false`를 사용한다.
+
+64비트 Windows 및 현재 JDBC 13.4.0 기준 실행:
+
+```powershell
+.\mvnw.cmd dependency:get "-Dartifact=com.microsoft.sqlserver:mssql-jdbc_auth:13.4.0.x64:dll" "-Dtransitive=false"
+.\mvnw.cmd clean verify
+$jdbcAuthPath = Join-Path $env:USERPROFILE '.m2\repository\com\microsoft\sqlserver\mssql-jdbc_auth\13.4.0.x64'
+java "-Djava.library.path=$jdbcAuthPath" -jar target/travel_recommendation-0.0.1.jar --spring.profiles.active=sqlserver-windows
+```
+
+Maven 저장소 위치를 변경한 PC에서는 `jdbcAuthPath`도 실제 경로에 맞춘다. JDBC 버전이나 Java 아키텍처가 바뀌면 인증 DLL도 맞춰야 한다. DLL과 비밀번호는 Git에 저장하지 않는다. Windows 인증용 네이티브 라이브러리 설정은 [Microsoft JDBC 문서](https://learn.microsoft.com/en-us/sql/connect/jdbc/building-the-connection-url?view=sql-server-ver17)를 따른다.
+
+### SQL 로그인 또는 다른 서버
+
 접속 가능한 SQL Server와 기존 데이터베이스를 별도로 준비하고 다음 환경 변수를 설정합니다.
 
 | 환경 변수 | 용도 |

@@ -12,6 +12,8 @@
 
 현재 Spring Boot 기본 구조와 DB 없이 첫 화면을 표시하는 코드가 추가된 초기 단계이다. `HomeController`의 `GET /`, Thymeleaf `index.html`, 기본 화면 테스트 코드가 존재한다. 회원·AI 추천·일정 관리 기능은 아직 구현되지 않았다.
 
+이후 같은 날 기본 빌드·테스트와 실제 Windows 인증 DB 연결을 검증했다. 현재 SQLEXPRESS의 travel_recommendation DB는 사용자 테이블 0개이며 스키마 구현 전이다. 실행 검증은 Java 24에서 수행했으므로 기준 Java 21 환경 검증은 남아 있다. 아래 초기 문서 검토 시점의 미확인 기록과 구분하며 최신 결과는 12절을 따른다.
+
 2026-09-09에 프로젝트 파일, 설정 및 주요 설계 문서 내용을 확인했다. 코드 존재와 실행 성공은 구분한다. 이번 확인에서 빌드·애플리케이션 실행·실제 SQL Server 연결은 수행하지 않았으며, ERD와 화면 이미지 전체의 설계 일치 여부도 미확인이다. 아래 PC 설정 및 최초 push 이력은 이전 대화 기록이며 노트북 동기화 상태는 별도 확인이 필요하다.
 
 ## 2. 완료 작업
@@ -32,7 +34,8 @@
 - [x] SQL Server 프로필 및 환경변수 기반 접속 설정 확인
 - [x] 현재 Java 24 환경에서 기본 빌드·테스트·첫 화면 HTTP 응답 검증
 - [ ] 프로젝트 기준 Java 21 설치·설정 및 동일 검증
-- [ ] 실제 SQL Server 연결 및 설계 일치 검증
+- [x] SQLEXPRESS / travel_recommendation Windows 인증 JDBC 연결 검증
+- [ ] 실제 테이블 구현 및 설계 일치 검증
 - [x] 기본 코드·빌드 파일과 정리한 설계 문서를 Git 반영 대상으로 검토
 - [ ] 노트북 저장소 및 최신 코드 동기화 확인
 
@@ -264,6 +267,10 @@ git push
 - [ ] 현재 단계에 맞는 작업을 선택하고 완료 후 체크리스트와 다음 작업 갱신
 
 ## 12. 확인 결과 기록
+
+- 2026-09-09 DB 연결 완료: 사용자 지정 SQLEXPRESS와 Windows 인증을 사용하고 DB 이름은 travel_recommendation으로 정했다. 동일 이름 DB가 없어 빈 DB를 생성했다. SQL Server 버전 15.0.2000.5, TCP 1433의 인스턴스가 SQLEXPRESS임을 확인했다. 사용자 테이블 0개를 확인했으며 스키마는 생성하지 않았다.
+- sqlserver-windows 로컬 개발 프로필을 추가했다. JDBC 13.4.0에 맞는 mssql-jdbc_auth 13.4.0.x64 DLL을 개인 Maven 저장소에 내려받았다. 초기 다운로드 좌표를 수정했으며 DLL은 Git에 포함하지 않는다. 기존 프로필 그룹은 설정 우선순위 충돌로 제거하고 Windows 프로필을 독립시켰다. 기존 application.properties의 연속 주석으로 문서 구분자가 인식되지 않는 문제를 빈 줄 추가로 수정했다.
+- 최종 검증: Maven verify 성공, 테스트 2개 실패·오류 0. default/sqlserver/sqlserver-windows 모두 ddl-auto=none, SQL 초기화 never, open-in-view=false가 적용되는 회귀 테스트를 추가했다. Windows 프로필의 JDBC 연결·JPA 시작과 GET / HTTP 200 및 제목 렌더링을 확인한 뒤 테스트 서버를 종료했다. 실행 방법은 README에 기록했다. Java 21 검증, 회원 테이블 설계 확정 및 Entity/Repository 구현이 다음 작업이다.
 
 - 2026-09-09 기본 실행 검증: Windows Maven Wrapper가 일반 `.m2` 디렉터리의 비어 있는 Target을 인덱싱해 실패했다. Target 존재 여부를 먼저 확인하도록 수정했다. 현재 Java 24.0.2 / Maven 3.9.16에서 `clean verify` 성공, release 21로 소스 재컴파일 및 테스트 1개 통과(실패·오류 0)를 확인했다. 생성 Jar를 127.0.0.1:18080에서 실행해 GET / HTTP 200, 프로젝트명과 Thymeleaf 렌더링을 확인한 뒤 테스트 서버를 종료했다. Java 21 런타임 검증과 브라우저 시각 검증은 미수행이다.
 - 2026-09-09 DB 연결 준비: SQLEXPRESS·SQLEXPRESS01 서비스 실행을 확인했다. DB_URL·DB_USERNAME·DB_PASSWORD는 현재 프로세스에 미설정이다. 사용자에게 사용할 인스턴스·DB 이름·인증 방식을 요청했다. 실제 DB 접속·스키마 검증은 미수행이며 테이블 생성·변경은 실행하지 않았다. 다음 작업은 해당 정보 확인 후 DB 연결, Java 21 실행 환경 준비이다.
