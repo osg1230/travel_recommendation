@@ -4,6 +4,40 @@
 
 AI 국내 여행 일정 추천 서비스의 초기 Spring Boot 프로젝트입니다. 현재는 DB 없이 실행되는 `GET /` 확인 화면만 제공하며 실제 서비스 기능은 구현하지 않았습니다.
 
+현재 회원 테이블 `dbo.users`와 `User` / `UserRepository`까지 구현했습니다. 회원가입·로그인 화면과 Service는 다음 단계입니다. Windows 인증 SQL Server 연결과 Java 21 빌드·Repository 통합 테스트를 확인했습니다.
+
+## Java 21 선택
+
+이 PC에는 Microsoft OpenJDK 21.0.12.1을 사용자 `.jdks`에 설치했습니다. 기존 Java 24와 전역 설정은 유지하며 프로젝트 터미널에서 다음을 먼저 실행합니다.
+
+```powershell
+. ./scripts/use-java21.ps1
+# 다른 위치에 설치한 PC에서는:
+# . ./scripts/use-java21.ps1 -JdkPath 'C:\path\to\jdk-21'
+.\mvnw.cmd -version
+```
+
+다운로드는 [Microsoft 공식 OpenJDK 배포](https://learn.microsoft.com/en-us/java/openjdk/download)를 사용하고 SHA-256을 검증했습니다. PC별 JDK와 JDBC 인증 DLL은 Git으로 공유하지 않습니다.
+
+## 회원 테이블과 테스트
+
+새 DB에서 [회원 테이블 생성 SQL](docs/database/sql/001_create_users.sql)을 검토한 뒤 수동으로 실행합니다. 이미 테이블이 있으면 SQL은 중단하며 삭제·재생성하지 않습니다. Hibernate 자동 DDL은 계속 꺼져 있습니다. 현재 기준은 [DB 정의서 1절](docs/database/DB_테이블_정의서.md)입니다.
+
+기본 `clean verify`는 DB 없이 실행되며 DB 통합 테스트는 건너뜁니다. 실제 SQL Server와 인증 DLL이 준비된 PC에서 다음과 같이 별도로 실행합니다.
+
+```powershell
+. ./scripts/use-java21.ps1
+$env:RUN_SQLSERVER_TESTS = 'true'
+$jdbcAuthPath = Join-Path $env:USERPROFILE '.m2\repository\com\microsoft\sqlserver\mssql-jdbc_auth\13.4.0.x64'
+try {
+    .\mvnw.cmd test '-Dtest=UserRepositoryIntegrationTests' "-DargLine=-Djava.library.path=$jdbcAuthPath"
+} finally {
+    Remove-Item Env:RUN_SQLSERVER_TESTS
+}
+```
+
+테스트는 실제 스키마를 validate하고 한글 저장·수정, 아이디·닉네임 중복 차단, 탈퇴 회원 닉네임 제외를 확인합니다. 테스트 행은 롤백하지만 SQL Server IDENTITY 번호는 소비될 수 있습니다.
+
 ## 기술 구성
 
 - Java 21, Spring Boot 4.1.1 (정식 안정 버전), Maven Wrapper 3.3.4 / Maven 3.9.16, Jar
@@ -78,7 +112,7 @@ java -jar target/travel_recommendation-0.0.1.jar --spring.profiles.active=sqlser
 
 `SPRING_PROFILES_ACTIVE=sqlserver` 환경 변수로도 프로필을 선택할 수 있습니다. 기본 실행으로 돌아가려면 해당 설정을 해제합니다. 이 프로필은 DB 설정과 접속 가능한 서버가 필요합니다.
 
-공통 설정의 `spring.jpa.hibernate.ddl-auto=none`, `spring.sql.init.mode=never`로 자동 테이블 생성, 스키마 변경 및 SQL 초기화를 비활성화했습니다. Entity, 실제 Repository 인터페이스, 테이블, 초기 데이터는 포함하지 않습니다.
+공통 설정의 `spring.jpa.hibernate.ddl-auto=none`, `spring.sql.init.mode=never`로 자동 테이블 생성, 스키마 변경 및 SQL 초기화를 비활성화했습니다. 회원 Entity·Repository와 수동 생성 SQL을 포함하며 초기 회원 데이터는 넣지 않습니다.
 
 ## 디렉터리
 

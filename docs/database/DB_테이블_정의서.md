@@ -1,6 +1,6 @@
 # DB 테이블 정의서 정리본
 
-> 버전 1.1 · 2026-09-09 · 실제 DB 미적용. Word 검토용 파일의 페이지 모양은 미검증.
+> 버전 1.2 · 2026-09-09 · 회원 테이블 구현 기준은 아래 1절과 sql/001_create_users.sql이다. 나머지 테이블은 설계 단계이다. 기존 Word 검토용 파일은 1.1 이전 상태이며 이 변경을 포함하지 않는다.
 
 DB 테이블 정의서
 
@@ -58,7 +58,7 @@ JSON은 ISJSON(컬럼)=1을 뜻한다. 필수 속성·스키마·값 범위는 �
 | user_id | BIGINT | N | Y | - | - | - | - | IDENTITY(1,1) 자동 증가 |
 | login_id | VARCHAR(50) | N | - | - | U1 | - | - | 사용자가 로그인할 때 사용하는 아이디 |
 | password_hash | VARCHAR(255) | N | - | - | - | - | - | 단방향 비밀번호 해시 |
-| nickname | NVARCHAR(50) | N | - | - | - | - | - | 사용자 닉네임 |
+| nickname | NVARCHAR(50) | N | - | - | UF1 | - | - | 탈퇴하지 않은 회원끼리 중복 금지 |
 | role | VARCHAR(20) | N | - | - | - | 'MEMBER' | MEMBER, ADMIN | - |
 | status | VARCHAR(20) | N | - | - | - | 'ACTIVE' | ACTIVE, RESTRICTED, WITHDRAWN | - |
 | created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
@@ -68,6 +68,10 @@ JSON은 ISJSON(컬럼)=1을 뜻한다. 필수 속성·스키마·값 범위는 �
 제약과 처리 규칙
 
 U1(login_id). 로그인 아이디는 앞뒤 공백을 제거한 뒤 저장하고, 로그인·중복 검사에도 같은 정규화 기준을 적용한다. nickname은 사용자 닉네임이다. password_hash만 저장하며 비밀번호 평문 저장은 금지한다.
+
+UF1(nickname)은 `WHERE status <> 'WITHDRAWN'` 필터 UNIQUE 인덱스다. ACTIVE와 RESTRICTED 회원은 닉네임 중복을 허용하지 않는다. 탈퇴 회원은 공통 익명 닉네임을 사용할 수 있다. 이는 요구분석서의 닉네임 중복 거부와 기존 탈퇴 익명화 정책을 함께 만족시키는 구현 기준이다. 아이디와 닉네임은 앞뒤 공백을 제거하고 DB의 동일한 collation으로 조회·중복 검사를 수행한다. 대소문자 비교는 실제 DB collation을 따른다.
+
+회원 테이블 배포 SQL: [001_create_users.sql](sql/001_create_users.sql). 기존 테이블이 있으면 중단하며 DROP이나 자동 재생성을 하지 않는다. Entity는 `User`, enum은 `UserRole`과 `UserStatus`, Repository는 `UserRepository`다. 생성·수정 시각은 JPA 콜백에서 UTC로 기록하고 원시 SQL 삽입에는 DB 기본값이 적용된다. 자동 스키마 변경 설정은 계속 none으로 유지한다.
 
 CHECK: (status = WITHDRAWN AND withdrawn_at IS NOT NULL) OR (status <> WITHDRAWN AND withdrawn_at IS NULL). 문자열 값은 SQL에서 작은따옴표로 감싼다.
 

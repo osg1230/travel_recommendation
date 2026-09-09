@@ -1,4 +1,5 @@
 -- ERD 작성용 SQL Server 구조 SQL. 실제 DB 실행 금지.
+-- users의 현재 배포 기준은 ../sql/001_create_users.sql이며 닉네임 필터 UNIQUE는 이 구조 파일에 포함하지 않는다.
 -- PK/FK/NULL/자료형만 포함. DEFAULT, UNIQUE, CHECK, 인덱스, IDENTITY, 서비스 규칙은 전체 정의서 참조.
 -- 배포용 DDL이 아니며 SQL Server 및 ERDCloud 가져오기 실행은 미검증.
 
