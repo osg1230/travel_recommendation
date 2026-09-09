@@ -2,9 +2,9 @@
 
 설계 자료와 이전 버전의 위치는 [문서 안내](docs/README.md), 현재 작업 상태는 [진행 문서](docs/progress.md)에서 확인합니다.
 
-AI 국내 여행 일정 추천 서비스의 초기 Spring Boot 프로젝트입니다. 현재는 DB 없이 실행되는 `GET /` 확인 화면만 제공하며 실제 서비스 기능은 구현하지 않았습니다.
+AI 국내 여행 일정 추천 서비스의 Spring Boot 프로젝트입니다. 현재 기본 확인 화면과 회원가입 기능을 구현했습니다. 여행 추천 기능은 이후 단계입니다.
 
-현재 회원 테이블 `dbo.users`와 `User` / `UserRepository`까지 구현했습니다. 회원가입·로그인 화면과 Service는 다음 단계입니다. Windows 인증 SQL Server 연결과 Java 21 빌드·Repository 통합 테스트를 확인했습니다.
+현재 `dbo.users`, 회원가입 DTO·Service·Controller·화면과 BCrypt 저장·CSRF 보호를 구현했습니다. SQL Server 프로필로 실행한 뒤 `/signup`에서 가입할 수 있습니다. DB 없는 기본 실행에서는 회원가입을 제공하지 않습니다. 로그인·로그아웃과 가입 완료 후 로그인 화면 연결은 다음 단계입니다. Java 21 빌드와 실제 SQL Server 통합 테스트를 확인했습니다.
 
 ## Java 21 선택
 
@@ -30,20 +30,20 @@ AI 국내 여행 일정 추천 서비스의 초기 Spring Boot 프로젝트입�
 $env:RUN_SQLSERVER_TESTS = 'true'
 $jdbcAuthPath = Join-Path $env:USERPROFILE '.m2\repository\com\microsoft\sqlserver\mssql-jdbc_auth\13.4.0.x64'
 try {
-    .\mvnw.cmd test '-Dtest=UserRepositoryIntegrationTests' "-DargLine=-Djava.library.path=$jdbcAuthPath"
+    .\mvnw.cmd test '-Dtest=UserRepositoryIntegrationTests,SignupIntegrationTests' "-DargLine=-Djava.library.path=$jdbcAuthPath"
 } finally {
     Remove-Item Env:RUN_SQLSERVER_TESTS
 }
 ```
 
-테스트는 실제 스키마를 validate하고 한글 저장·수정, 아이디·닉네임 중복 차단, 탈퇴 회원 닉네임 제외를 확인합니다. 테스트 행은 롤백하지만 SQL Server IDENTITY 번호는 소비될 수 있습니다.
+테스트는 실제 스키마를 validate하고 한글 저장·수정, 아이디·닉네임 중복 차단, 탈퇴 회원 닉네임 제외, 회원가입 요청·비밀번호 해시·일반 회원 권한 저장을 확인합니다. 테스트 행은 롤백하지만 SQL Server IDENTITY 번호는 소비될 수 있습니다.
 
 ## 기술 구성
 
 - Java 21, Spring Boot 4.1.1 (정식 안정 버전), Maven Wrapper 3.3.4 / Maven 3.9.16, Jar
 - Group: `com.travel`, Artifact: `travel_recommendation`
 - 기본 패키지: `com.travel.travel_recommendation`
-- Spring Web MVC, Thymeleaf, Spring Data JPA, Validation, Lombok, SQL Server JDBC Driver, DevTools
+- Spring Web MVC, Thymeleaf, Spring Security, Spring Data JPA, Validation, Lombok, SQL Server JDBC Driver, DevTools
 - 의존성 버전은 Spring Boot가 관리합니다. Spring Boot 4에서는 Web MVC용 `spring-boot-starter-webmvc`를 사용합니다.
 
 ## 기본 실행 (DB 불필요)
@@ -69,7 +69,7 @@ Jar 실행도 가능합니다:
 java -jar target/travel_recommendation-0.0.1.jar
 ```
 
-`sqlserver` 프로필이 없으면 DataSource/JPA 자동 구성을 제외하므로 DB 접속 정보를 요구하지 않습니다. H2 등 대체 DB는 포함하지 않습니다.
+두 SQL Server 프로필이 모두 없으면 DataSource/JPA 자동 구성을 제외하므로 DB 접속 정보를 요구하지 않습니다. H2 등 대체 DB는 포함하지 않습니다.
 
 ## SQL Server 프로필
 
@@ -131,3 +131,12 @@ src/test/java/com/travel/travel_recommendation/
 ```
 
 빈 패키지는 `package-info.java`, 빈 정적 리소스 디렉터리는 `.gitkeep`으로 보존합니다. 테스트는 DB 없이 애플리케이션을 로드하고 `GET /`의 200 응답과 Thymeleaf 렌더링 결과를 확인합니다.
+
+## 회원가입 구현 기준
+
+- 아이디: 영문·숫자·밑줄 4~50자. 닉네임: 2~50자. 앞뒤 공백을 제거합니다.
+- 비밀번호: 영문과 숫자를 포함해 8~64자. 영문·숫자·특수문자를 허용하며 공백은 제외합니다. 비밀번호 확인과 일치해야 합니다. 세부 규칙은 [진행 문서](docs/progress.md)에 기록했습니다.
+- 아이디와 탈퇴하지 않은 회원의 닉네임은 중복을 거부합니다. 권한·상태는 서버에서 MEMBER/ACTIVE로 정합니다.
+- 비밀번호는 BCrypt 해시로 저장합니다. 실패 시 아이디와 닉네임만 유지하고 비밀번호는 다시 입력받습니다.
+- [Spring Security CSRF 문서](https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html)에 따라 CSRF 보호를 유지하고 Thymeleaf POST 폼에 토큰을 포함합니다.
+- `SignupControllerTests`와 `SignupFormTests`는 DB 없이 실행되며 입력·화면·보안·실패 안내를 검사합니다. 실제 저장은 `SignupIntegrationTests`에서 별도 검증합니다.

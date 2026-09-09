@@ -10,13 +10,9 @@
 
 자연어 또는 여행 조건을 입력받아 AI와 외부 데이터를 활용해 국내 관광지, 숙소, 음식점을 포함한 여행 일정을 추천하는 웹 서비스이다.
 
-현재 Spring Boot 기본 구조와 DB 없이 첫 화면을 표시하는 코드가 추가된 초기 단계이다. `HomeController`의 `GET /`, Thymeleaf `index.html`, 기본 화면 테스트 코드가 존재한다. 회원·AI 추천·일정 관리 기능은 아직 구현되지 않았다.
+현재 Java 21 기반 Spring Boot 실행, SQL Server Windows 인증 연결, 회원 테이블과 회원가입 기능까지 구현했다. DB 없이 실행하면 기존 확인 화면을 제공하고, `sqlserver` 또는 `sqlserver-windows` 프로필에서 회원가입 화면과 저장 기능을 사용할 수 있다.
 
-최신 상태: Java 21.0.12.1 설치와 빌드 검증을 마쳤고 dbo.users(9개 컬럼), User·UserRole·UserStatus 및 UserRepository를 구현했다. 기본 테스트 2개와 실제 SQL Server Repository 테스트 4개를 통과했다. 회원가입·로그인 Service와 화면은 아직 구현하지 않았으며 다음 단계다. 아래 같은 날짜의 이전 상태 기록은 작업 이력으로 유지한다.
-
-이후 같은 날 기본 빌드·테스트와 실제 Windows 인증 DB 연결을 검증했다. 현재 SQLEXPRESS의 travel_recommendation DB는 사용자 테이블 0개이며 스키마 구현 전이다. 실행 검증은 Java 24에서 수행했으므로 기준 Java 21 환경 검증은 남아 있다. 아래 초기 문서 검토 시점의 미확인 기록과 구분하며 최신 결과는 12절을 따른다.
-
-2026-09-09에 프로젝트 파일, 설정 및 주요 설계 문서 내용을 확인했다. 코드 존재와 실행 성공은 구분한다. 이번 확인에서 빌드·애플리케이션 실행·실제 SQL Server 연결은 수행하지 않았으며, ERD와 화면 이미지 전체의 설계 일치 여부도 미확인이다. 아래 PC 설정 및 최초 push 이력은 이전 대화 기록이며 노트북 동기화 상태는 별도 확인이 필요하다.
+최신 상태: 회원가입 DTO·Service·Controller·화면, 서버 입력 검증, 아이디·닉네임 중복 안내, BCrypt 저장, CSRF 보호를 구현했다. Java 21에서 전체 테스트 18개(실제 DB 테스트 8개 포함)가 통과했고 Jar 빌드와 실제 브라우저 오류 안내를 확인했다. 로그인·로그아웃은 다음 단계이며, 가입 완료 후 로그인 화면으로 이동하는 UC-01 마지막 단계도 그때 연결한다. 같은 날짜의 이전 검증 내용은 하단 작업 이력으로 구분한다.
 
 ## 2. 완료 작업
 
@@ -123,15 +119,15 @@ travel_recommendation/
    └─ test/
 ```
 
-기본 패키지는 `com.travel.travel_recommendation`이다. 애플리케이션 진입점과 `controller/HomeController.java`가 있으며 service/repository/entity/dto/config는 `package-info.java`로 구조만 마련되어 있다. 실제 Entity와 Repository 인터페이스는 없다. `static/css`, `static/js`, `static/images`는 `.gitkeep`으로 보존되어 있다.
+기본 패키지는 `com.travel.travel_recommendation`이다. HomeController와 SignupController, SignupForm, UserService, UserRepository, User 및 권한·상태 enum, SecurityConfig를 구현했다. 회원가입 HTML·CSS·JS와 완료·403 안내 화면을 추가했다. 이미지 폴더는 아직 비어 있다.
 
-`application.properties`는 `sqlserver` 프로필이 없을 때 DataSource/JPA 자동 구성을 제외한다. `application-sqlserver.properties`는 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` 환경변수를 참조한다. `ddl-auto=none`, `spring.sql.init.mode=never`로 자동 스키마 변경과 SQL 초기화를 비활성화했다. 실제 접속 정보와 연결 성공은 확인하지 않았다.
+`application.properties`는 두 SQL Server 프로필이 모두 없을 때 DataSource/JPA 자동 구성을 제외한다. SQL 로그인 프로필은 환경변수를, Windows 인증 프로필은 실행 계정을 사용한다. `ddl-auto=none`, `spring.sql.init.mode=never`로 자동 스키마 변경과 초기화를 끈 상태다. 현재 PC의 SQLEXPRESS 연결과 회원 테이블 검증을 완료했다.
 
 ## 6. 핵심 구현 예정 기능 체크리스트
 
 ### 회원
 
-- [ ] 회원가입
+- [x] 회원가입 입력·검증·저장·완료 안내 (로그인 화면 연결은 다음 단계)
 - [ ] 로그인 / 로그아웃 및 세션 처리
 - [ ] 사용자 정보 조회 / 수정
 - [ ] 사용자 및 관리자 접근 권한 확인
@@ -182,7 +178,7 @@ travel_recommendation/
 
 ## 8. 현재 다음 작업
 
-최신 다음 작업: 회원가입 DTO·Service·Controller·화면을 함께 구현한다. 비밀번호 해시, 서버 입력 검증, 아이디·닉네임 중복 처리부터 확인한 뒤 로그인·로그아웃으로 이어간다. Java 21 환경·DB 연결·회원 테이블 및 Repository 기반 작업은 완료했다. 관리자 키워드 관리 범위의 문서 불일치는 관련 기능 구현 전에 정리한다.
+최신 다음 작업: Spring Security에 DB 기반 로그인·로그아웃과 세션 처리를 연결한다. 현재 비어 있는 `InMemoryUserDetailsManager`를 실제 User 조회로 교체하고 회원 상태·권한 확인, 인증 실패 안내, 로그아웃과 세션 종료를 검증한다. 회원가입 완료 화면도 로그인 화면으로 연결한다. 이후 사용자 정보 관리로 이어간다. 관리자 키워드 관리 범위의 문서 불일치는 관련 기능 구현 전에 정리한다.
 
 ### 2026-09-09 진행 방침
 
@@ -296,3 +292,18 @@ git push
 - 2026-09-09: 문서 경로와 내용 검토만 수행했다. 빌드·실행·DB 연결 및 ERD·화면 이미지 전체 검증은 미수행으로 유지한다.
 - 이후 기능 완료 시 수행한 확인, 결과, 미확인 항목과 다음 작업을 기록한다.
 - 2026-09-09 폴더 정리: 설계 자료 78개를 docs 아래로 이동하고 이동 전후 SHA-256을 비교해 원본 내용 보존을 확인했다. 과거 요구분석서 7개는 추가로 archive 이동 후 해시를 확인했다. ERD HTML과 리소스의 파일명·상대 배치를 보존했다. 문서 안내와 경로 기록을 갱신했으며 애플리케이션 코드·요구사항·DB 스키마는 변경하지 않았다. 문서 이동 작업이므로 빌드·DB 연결 테스트는 실행하지 않았다.
+
+## 13. 2026-09-09 회원가입 구현
+
+- UC-01, SER-04와 DB 정의서 1.2의 users를 기준으로 구현했다. 테이블·컬럼 변경은 없다.
+- 회원가입 GET/POST `/signup`, 성공 후 Redirect-After-Post로 `/signup/complete`를 표시한다. 성공 여부만 Flash에 담고 비밀번호나 계정 정보를 세션·URL로 전달하지 않는다. 완료 페이지를 직접 방문하면 가입 화면으로 돌려보낸다.
+- 구체적인 길이·문자 규칙은 요구분석서에 없어서 이번 구현 기준으로 정했다. 아이디: 영문·숫자·밑줄 4~50자, 닉네임: 2~50자, 비밀번호: 영문과 숫자를 포함한 ASCII 인쇄 가능 문자 8~64자(공백 제외, 특수문자 허용). 비밀번호는 정규화하지 않는다. ASCII 64자 상한으로 BCrypt의 72바이트 한도를 넘지 않는다.
+- 아이디와 닉네임은 앞뒤 공백 제거 후 검증·조회·저장한다. 대소문자와 닉네임 중복은 기존 DB collation과 탈퇴 회원 제외 정책을 따른다. 조회 이후 동시 가입 충돌은 DB UNIQUE 제약으로 차단하고 다시 시도할 수 있게 안내한다.
+- DTO 서버 검증과 Service 호출 검증을 적용했다. 권한·상태는 입력받지 않으며 MEMBER/ACTIVE로 저장한다. 비밀번호는 BCrypt 해시로만 저장하고 오류 HTML에 재출력하지 않는다.
+- Spring Security의 기본 CSRF 보호를 유지한다. 현재 공개 페이지·정적 리소스 외 요청은 거부하며 로그인·Basic 인증·로그아웃은 다음 단계까지 비활성 상태다. 개발용 자동 생성 계정 대신 비어 있는 UserDetailsService를 사용한다.
+- 필수 항목·형식·중복·저장 실패를 안내하고 실패 시 아이디·닉네임을 유지한다. 처리 중에는 버튼을 비활성화하고 상태 문구를 표시한다. JS 없이도 제출과 서버 검증이 동작한다.
+- Java 21 `mvnw verify`: 18개 모두 통과(일반 테스트 10개 + SQL Server 통합 테스트 8개). 비밀번호 해시 대조, 관리자 권한 입력 무시, 입력 누락·형식·길이·확인 불일치, DB 중복, 저장 실패, CSRF 누락·변조를 확인했다. DB 스키마 validate 성공. 테스트 후 users 행 수 0을 확인했으며 데이터를 삭제하거나 초기화하지 않았다.
+- 테스트 중 Boot 4 보안 자동 구성 누락은 `spring-boot-starter-security-test`로 해결했다. HTML5를 XML XPath로 읽던 테스트는 HTML 응답 검사로 수정했다.
+- 빌드된 Jar를 Java 21 / Windows 인증 / 로컬 18080 포트에서 실행했다. 브라우저에서 가입 화면의 여백·문구·입력과 잘못된 비밀번호 형식 안내를 확인했고 실제 HTTP에서도 CSRF 없는 POST가 403으로 거부되었다. 모바일 기기별 시각 검증과 부하·응답시간 보장은 이번에 확인하지 않았다.
+- 남은 작업: 로그인·로그아웃·세션·회원 상태별 인증, 가입 완료 → 로그인 연결. 요구사항과 DB 설계 범위는 확대하지 않았다.
+- 실행 검증 후 로컬 테스트 서버를 종료했다.
