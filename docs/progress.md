@@ -268,6 +268,8 @@ git push
 
 ## 12. 확인 결과 기록
 
+- 2026-09-09 코드 작성 기준: 사용자 요청에 따라 역할을 알 수 있는 자연스러운 이름과 발표 준비에 도움이 되는 짧고 쉬운 한국어 주석 기준을 `AGENTS.md`에 추가했다. 주요 흐름과 처리 이유를 설명하고 불필요한 반복 주석은 피한다. 문서 변경 내용만 검토했으며 코드 변경이나 빌드·DB 테스트는 수행하지 않았다. 다음 코드 작성부터 이 기준을 적용한다.
+
 - 2026-09-09 DB 연결 완료: 사용자 지정 SQLEXPRESS와 Windows 인증을 사용하고 DB 이름은 travel_recommendation으로 정했다. 동일 이름 DB가 없어 빈 DB를 생성했다. SQL Server 버전 15.0.2000.5, TCP 1433의 인스턴스가 SQLEXPRESS임을 확인했다. 사용자 테이블 0개를 확인했으며 스키마는 생성하지 않았다.
 - sqlserver-windows 로컬 개발 프로필을 추가했다. JDBC 13.4.0에 맞는 mssql-jdbc_auth 13.4.0.x64 DLL을 개인 Maven 저장소에 내려받았다. 초기 다운로드 좌표를 수정했으며 DLL은 Git에 포함하지 않는다. 기존 프로필 그룹은 설정 우선순위 충돌로 제거하고 Windows 프로필을 독립시켰다. 기존 application.properties의 연속 주석으로 문서 구분자가 인식되지 않는 문제를 빈 줄 추가로 수정했다.
 - 최종 검증: Maven verify 성공, 테스트 2개 실패·오류 0. default/sqlserver/sqlserver-windows 모두 ddl-auto=none, SQL 초기화 never, open-in-view=false가 적용되는 회귀 테스트를 추가했다. Windows 프로필의 JDBC 연결·JPA 시작과 GET / HTTP 200 및 제목 렌더링을 확인한 뒤 테스트 서버를 종료했다. 실행 방법은 README에 기록했다. Java 21 검증, 회원 테이블 설계 확정 및 Entity/Repository 구현이 다음 작업이다.
