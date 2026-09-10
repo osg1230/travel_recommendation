@@ -2,9 +2,9 @@
 
 설계 자료와 이전 버전의 위치는 [문서 안내](docs/README.md), 현재 작업 상태는 [진행 문서](docs/progress.md)에서 확인합니다.
 
-AI 국내 여행 일정 추천 서비스의 Spring Boot 프로젝트입니다. 현재 기본 확인 화면, 회원가입, 로그인·로그아웃을 구현했습니다. 여행 추천 기능은 이후 단계입니다.
+AI 국내 여행 일정 추천 서비스의 Spring Boot 프로젝트입니다. 현재 기본 확인 화면, 회원가입, 로그인·로그아웃, 사용자 정보 조회·수정을 구현했습니다. 여행 추천 기능은 이후 단계입니다.
 
-현재 `dbo.users`, 회원가입 DTO·Service·Controller·화면과 BCrypt 저장·CSRF 보호를 구현했습니다. SQL Server 프로필로 실행한 뒤 `/signup`에서 가입할 수 있습니다. DB 없는 기본 실행에서는 회원가입을 제공하지 않습니다. 로그인·로그아웃과 가입 완료 후 로그인 화면 연결도 구현했습니다. 다음 단계는 사용자 정보 조회·수정입니다. Java 21 빌드와 실제 SQL Server 통합 테스트를 확인했습니다.
+현재 `dbo.users`, 회원가입 DTO·Service·Controller·화면과 BCrypt 저장·CSRF 보호를 구현했습니다. SQL Server 프로필로 실행한 뒤 `/signup`에서 가입할 수 있습니다. DB 없는 기본 실행에서는 회원가입을 제공하지 않습니다. 로그인·로그아웃과 가입 완료 후 로그인 화면 연결도 구현했습니다. 사용자 정보 조회·수정도 구현했으며 다음 단계는 여행 조건 입력입니다. Java 21 빌드와 실제 SQL Server 통합 테스트를 확인했습니다.
 
 ## Java 21 선택
 
@@ -30,7 +30,7 @@ AI 국내 여행 일정 추천 서비스의 Spring Boot 프로젝트입니다. �
 $env:RUN_SQLSERVER_TESTS = 'true'
 $jdbcAuthPath = Join-Path $env:USERPROFILE '.m2\repository\com\microsoft\sqlserver\mssql-jdbc_auth\13.4.0.x64'
 try {
-    .\mvnw.cmd test '-Dtest=UserRepositoryIntegrationTests,SignupIntegrationTests,LoginIntegrationTests' "-DargLine=-Djava.library.path=$jdbcAuthPath"
+    .\mvnw.cmd test '-Dtest=UserRepositoryIntegrationTests,SignupIntegrationTests,LoginIntegrationTests,ProfileIntegrationTests' "-DargLine=-Djava.library.path=$jdbcAuthPath"
 } finally {
     Remove-Item Env:RUN_SQLSERVER_TESTS
 }
@@ -151,6 +151,21 @@ Windows 인증 프로필로 실행한 뒤 [로그인](http://localhost:8080/logi
 4. 로그아웃 버튼을 누르면 비회원 홈으로 이동합니다.
 5. 비회원이 /admin에 접근하면 로그인 화면으로 이동하고 일반 회원에게는 403을 반환합니다. 관리자는 별도 시작 화면으로 이동하며 회원 관리 기능은 아직 준비 중입니다.
 
-세션 만료 설정은 30분입니다. 자동 테스트는 SQL Server 테스트 실행 명령의 대상에 `LoginIntegrationTests`를 포함합니다. 전체 테스트를 실행하려면 `-Dtest=...` 부분을 생략합니다. 현재 전체 테스트 26개 중 13개는 실제 SQL Server와 Windows 인증 DLL이 필요합니다.
+세션 만료 설정은 30분입니다. 자동 테스트는 SQL Server 테스트 실행 명령의 대상에 `LoginIntegrationTests`를 포함합니다. 전체 테스트를 실행하려면 `-Dtest=...` 부분을 생략합니다. 현재 전체 테스트 36개 중 20개는 실제 SQL Server와 Windows 인증 DLL이 필요합니다.
 
 인증 구현은 [Spring Security DaoAuthenticationProvider](https://docs.spring.io/spring-security/reference/servlet/authentication/passwords/dao-authentication-provider.html)의 UserDetailsService·PasswordEncoder 흐름을 사용합니다. 실제 계정의 비밀번호를 로그·문서·테스트 코드에 넣지 않습니다.
+
+## 내 정보 조회·수정 테스트
+
+최신 Jar로 서버를 다시 실행한 뒤 로그인하고 홈의 **내 정보** 또는 [내 정보 화면](http://localhost:8080/account)을 엽니다.
+
+| 확인 항목 | 방법 | 예상 결과 |
+| --- | --- | --- |
+| 본인 정보 조회 | 로그인 후 내 정보 열기 | 자신의 아이디와 닉네임 표시 |
+| 닉네임 수정 | 다른 닉네임과 현재 비밀번호 입력, 새 비밀번호는 비움 | 저장 완료, 로그인 유지 |
+| 본인 확인 실패 | 잘못된 현재 비밀번호 입력 | 오류 안내, 변경되지 않음 |
+| 중복·변경 없음 | 다른 회원 닉네임 또는 원래 값을 그대로 제출 | 중복 또는 변경 없음 안내 |
+| 비밀번호 수정 | 현재 비밀번호와 새 비밀번호·확인 입력 | 저장 후 현재 세션 로그아웃, 새 비밀번호로 로그인 가능 |
+| 비회원 접근 | 로그아웃 후 내 정보 주소 열기 | 로그인 화면으로 이동 |
+
+아이디는 변경할 수 없습니다. 새 비밀번호는 회원가입과 동일하게 영문·숫자를 포함한 8~64자이며 특수문자를 허용하고 공백은 제외합니다. 화면에서 저장한 값은 실제 계정에 반영됩니다. 자동 `ProfileIntegrationTests`의 변경은 테스트 후 롤백됩니다.

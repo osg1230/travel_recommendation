@@ -58,6 +58,10 @@ public class User {
         this.nickname = nickname.strip();
     }
 
+    public void changePasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
+
     @PrePersist
     private void recordCreationTime() {
         // DB 기본값과 동일하게 UTC로 저장한다. 화면 표시는 이후 KST로 변환한다.

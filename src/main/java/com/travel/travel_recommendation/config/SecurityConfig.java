@@ -24,6 +24,7 @@ public class SecurityConfig {
                     .requestMatchers("/", "/login", "/css/**", "/js/**", "/error").permitAll()
                     .requestMatchers("/signup", "/signup/complete").anonymous()
                     .requestMatchers("/admin", "/admin/**").hasRole("ADMIN")
+                    .requestMatchers("/account").authenticated()
                     .anyRequest().denyAll())
                 .formLogin(form -> form.loginPage("/login").usernameParameter("loginId")
                     .successHandler((request, response, authentication) ->

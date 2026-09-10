@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>내 정보 · 여행 일정</title>
+    <link rel="stylesheet" th:href="@{/css/account.css}">
+</head>
+<body>
+<header class="site-header"><a th:href="@{/}">여행 일정</a></header>
+<main class="account">
+    <a class="back-link" th:href="@{/}">← 처음으로</a>
+    <h1>내 정보</h1>
+    <p class="intro">닉네임과 비밀번호를 변경할 수 있습니다.</p>
+    <p role="status" th:if="${profileUpdated}">회원 정보를 저장했습니다.</p>
+    <p>아이디 <strong th:text="${loginId}"></strong></p>
+    <form th:action="@{/account}" th:object="${profileForm}" method="post">
+        <div class="notice" role="alert" th:if="${#fields.hasAnyErrors()}">
+            <p>입력 내용을 확인해 주세요. 비밀번호는 다시 입력해 주세요.</p>
+            <p th:each="error : ${#fields.globalErrors()}" th:text="${error}"></p>
+        </div>
+        <div class="field">
+            <label for="nickname">닉네임 (필수)</label>
+            <input id="nickname" th:field="*{nickname}" required minlength="2" maxlength="50"
+                   autocomplete="nickname" aria-describedby="nickname-help nickname-error"
+                   th:attr="aria-invalid=${#fields.hasErrors('nickname')}">
+            <p class="help" id="nickname-help">서비스에서 사용할 이름, 2~50자</p>
+            <p class="field-error" id="nickname-error" th:errors="*{nickname}"></p>
+        </div>
+        <div class="field">
+            <label for="currentPassword">현재 비밀번호 (필수)</label>
+            <input id="currentPassword" name="currentPassword" type="password" required maxlength="64"
+                   autocomplete="current-password" aria-describedby="current-help current-error"
+                   th:attr="aria-invalid=${#fields.hasErrors('currentPassword')}">
+            <p class="help" id="current-help">정보를 변경하려면 현재 비밀번호를 입력해 주세요.</p>
+            <p class="field-error" id="current-error" th:errors="*{currentPassword}"></p>
+        </div>
+        <div class="field">
+            <label for="newPassword">새 비밀번호 (선택)</label>
+            <input id="newPassword" name="newPassword" type="password" maxlength="64"
+                   autocomplete="new-password" aria-describedby="new-help new-error"
+                   th:attr="aria-invalid=${#fields.hasErrors('newPassword')}">
+            <p class="help" id="new-help">비워 두면 기존 비밀번호를 유지합니다. 변경하려면 영문과 숫자를 포함해 8~64자로 입력해 주세요. 특수문자는 사용할 수 있으며 공백은 제외해 주세요.</p>
+            <p class="field-error" id="new-error" th:errors="*{newPassword}"></p>
+        </div>
+        <div class="field">
+            <label for="newPasswordConfirm">새 비밀번호 확인</label>
+            <input id="newPasswordConfirm" name="newPasswordConfirm" type="password" maxlength="64"
+                   autocomplete="new-password" aria-describedby="confirm-help confirm-error matching-error"
+                   th:attr="aria-invalid=${#fields.hasErrors('newPasswordConfirm') or #fields.hasErrors('passwordMatching')}">
+            <p class="help" id="confirm-help">새 비밀번호를 입력한 경우에만 한 번 더 입력해 주세요.</p>
+            <p class="field-error" id="confirm-error" th:errors="*{newPasswordConfirm}"></p>
+            <p class="field-error" id="matching-error" th:errors="*{passwordMatching}"></p>
+        </div>
+        <p class="help">비밀번호를 변경하면 현재 화면에서 로그아웃됩니다.</p>
+        <button type="submit">변경 사항 저장</button>
+    </form>
+</main>
+</body>
+</html>
