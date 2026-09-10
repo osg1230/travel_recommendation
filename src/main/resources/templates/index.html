@@ -7,6 +7,13 @@
 <body>
     <h1 th:text="${projectName}">프로젝트 실행 확인</h1>
     <p>Spring Boot 애플리케이션이 정상 실행되었습니다.</p>
-    <a th:if="${signupEnabled}" th:href="@{/signup}">회원가입</a>
+    <a th:if="${signupEnabled and !loggedIn}" th:href="@{/signup}">회원가입</a>
+    <a th:if="${signupEnabled and !loggedIn}" th:href="@{/login}">로그인</a>
+    <p th:if="${param.logout}" role="status">로그아웃되었습니다.</p>
+    <div th:if="${loggedIn}">
+        <p><span th:text="${loginId}"></span>님, 로그인되었습니다.</p>
+        <a th:if="${admin}" th:href="@{/admin}">관리자 시작 화면</a>
+        <form th:action="@{/logout}" method="post"><button type="submit">로그아웃</button></form>
+    </div>
 </body>
 </html>

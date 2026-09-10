@@ -2,9 +2,9 @@
 
 설계 자료와 이전 버전의 위치는 [문서 안내](docs/README.md), 현재 작업 상태는 [진행 문서](docs/progress.md)에서 확인합니다.
 
-AI 국내 여행 일정 추천 서비스의 Spring Boot 프로젝트입니다. 현재 기본 확인 화면과 회원가입 기능을 구현했습니다. 여행 추천 기능은 이후 단계입니다.
+AI 국내 여행 일정 추천 서비스의 Spring Boot 프로젝트입니다. 현재 기본 확인 화면, 회원가입, 로그인·로그아웃을 구현했습니다. 여행 추천 기능은 이후 단계입니다.
 
-현재 `dbo.users`, 회원가입 DTO·Service·Controller·화면과 BCrypt 저장·CSRF 보호를 구현했습니다. SQL Server 프로필로 실행한 뒤 `/signup`에서 가입할 수 있습니다. DB 없는 기본 실행에서는 회원가입을 제공하지 않습니다. 로그인·로그아웃과 가입 완료 후 로그인 화면 연결은 다음 단계입니다. Java 21 빌드와 실제 SQL Server 통합 테스트를 확인했습니다.
+현재 `dbo.users`, 회원가입 DTO·Service·Controller·화면과 BCrypt 저장·CSRF 보호를 구현했습니다. SQL Server 프로필로 실행한 뒤 `/signup`에서 가입할 수 있습니다. DB 없는 기본 실행에서는 회원가입을 제공하지 않습니다. 로그인·로그아웃과 가입 완료 후 로그인 화면 연결도 구현했습니다. 다음 단계는 사용자 정보 조회·수정입니다. Java 21 빌드와 실제 SQL Server 통합 테스트를 확인했습니다.
 
 ## Java 21 선택
 
@@ -30,7 +30,7 @@ AI 국내 여행 일정 추천 서비스의 Spring Boot 프로젝트입니다. �
 $env:RUN_SQLSERVER_TESTS = 'true'
 $jdbcAuthPath = Join-Path $env:USERPROFILE '.m2\repository\com\microsoft\sqlserver\mssql-jdbc_auth\13.4.0.x64'
 try {
-    .\mvnw.cmd test '-Dtest=UserRepositoryIntegrationTests,SignupIntegrationTests' "-DargLine=-Djava.library.path=$jdbcAuthPath"
+    .\mvnw.cmd test '-Dtest=UserRepositoryIntegrationTests,SignupIntegrationTests,LoginIntegrationTests' "-DargLine=-Djava.library.path=$jdbcAuthPath"
 } finally {
     Remove-Item Env:RUN_SQLSERVER_TESTS
 }
@@ -140,3 +140,17 @@ src/test/java/com/travel/travel_recommendation/
 - 비밀번호는 BCrypt 해시로 저장합니다. 실패 시 아이디와 닉네임만 유지하고 비밀번호는 다시 입력받습니다.
 - [Spring Security CSRF 문서](https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html)에 따라 CSRF 보호를 유지하고 Thymeleaf POST 폼에 토큰을 포함합니다.
 - `SignupControllerTests`와 `SignupFormTests`는 DB 없이 실행되며 입력·화면·보안·실패 안내를 검사합니다. 실제 저장은 `SignupIntegrationTests`에서 별도 검증합니다.
+
+## 로그인·로그아웃 테스트
+
+Windows 인증 프로필로 실행한 뒤 [로그인](http://localhost:8080/login)에 접속합니다. 프로그램을 이미 실행 중이었다면 해당 터미널에서 Ctrl+C로 종료하고 최신 Jar로 다시 실행합니다. 기존 회원가입 계정으로 로그인할 수 있습니다.
+
+1. 가입한 아이디와 비밀번호로 로그인하면 홈에 로그인 안내와 로그아웃 버튼이 표시됩니다.
+2. 잘못된 비밀번호로 시도하면 같은 화면에서 오류를 안내합니다. 이용 제한·탈퇴 계정도 로그인할 수 없습니다.
+3. 로그인한 채 로그인 화면을 다시 열면 시작 화면으로 이동합니다.
+4. 로그아웃 버튼을 누르면 비회원 홈으로 이동합니다.
+5. 비회원이 /admin에 접근하면 로그인 화면으로 이동하고 일반 회원에게는 403을 반환합니다. 관리자는 별도 시작 화면으로 이동하며 회원 관리 기능은 아직 준비 중입니다.
+
+세션 만료 설정은 30분입니다. 자동 테스트는 SQL Server 테스트 실행 명령의 대상에 `LoginIntegrationTests`를 포함합니다. 전체 테스트를 실행하려면 `-Dtest=...` 부분을 생략합니다. 현재 전체 테스트 26개 중 13개는 실제 SQL Server와 Windows 인증 DLL이 필요합니다.
+
+인증 구현은 [Spring Security DaoAuthenticationProvider](https://docs.spring.io/spring-security/reference/servlet/authentication/passwords/dao-authentication-provider.html)의 UserDetailsService·PasswordEncoder 흐름을 사용합니다. 실제 계정의 비밀번호를 로그·문서·테스트 코드에 넣지 않습니다.
