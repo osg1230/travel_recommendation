@@ -11,14 +11,14 @@
     <section th:if="*{inputMode == 'KEYWORD'}">
         <h2>선택한 여행 조건</h2>
         <dl class="condition-summary">
-            <dt>지역</dt><dd th:text="*{region.isEmpty() ? '상관없음' : region}"></dd>
+            <dt>지역</dt><dd th:text="*{getKeywordNames('REGION').isEmpty() ? '상관없음' : getKeywordNames('REGION')}"></dd>
             <dt>여행 날짜</dt><dd th:text="*{startDate.isEmpty() ? '상관없음' : startDate + ' ~ ' + endDate}"></dd>
             <dt>여행 일수</dt><dd th:text="*{durationDays.isEmpty() ? '상관없음' : durationDays + '일'}"></dd>
-            <dt>계절</dt><dd th:text="*{season.isEmpty() ? '상관없음' : season}"></dd>
-            <dt>동행자</dt><dd th:text="*{companion.isEmpty() ? '상관없음' : companion}"></dd>
-            <dt>여행 취향</dt><dd th:text="*{themes.isEmpty() ? '상관없음' : #strings.listJoin(themes, ', ')}"></dd>
+            <dt>계절</dt><dd th:text="*{getKeywordNames('SEASON').isEmpty() ? '상관없음' : getKeywordNames('SEASON')}"></dd>
+            <dt>동행자</dt><dd th:text="*{getKeywordNames('COMPANION').isEmpty() ? '상관없음' : getKeywordNames('COMPANION')}"></dd>
+            <dt>여행 취향</dt><dd th:text="*{getKeywordNames('THEME').isEmpty() ? '상관없음' : getKeywordNames('THEME')}"></dd>
             <dt>전체 예산</dt><dd th:text="*{budget.isEmpty() ? '상관없음' : budget + '원'}"></dd>
-            <dt>이동수단</dt><dd th:text="*{transportation.isEmpty() ? '상관없음' : transportation}"></dd>
+            <dt>이동수단</dt><dd th:text="*{getKeywordNames('TRANSPORTATION').isEmpty() ? '상관없음' : getKeywordNames('TRANSPORTATION')}"></dd>
         </dl><p class="help">선택한 조건을 확인했어요. 이 조건에 맞는 여행 추천은 준비 중이에요.</p>
     </section>
     <div class="form-actions"><a class="button" th:href="@{/travel/conditions}">입력 내용 수정하기</a><a class="home-link" th:href="@{/}">홈으로</a></div>

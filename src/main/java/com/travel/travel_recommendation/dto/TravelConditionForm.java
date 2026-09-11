@@ -20,4 +20,10 @@ public class TravelConditionForm {
     private List<String> themes = new ArrayList<>();
     private String budget = "";
     private String transportation = "";
+    private List<TravelKeyword> selectedKeywords = List.of();
+
+    public String getKeywordNames(String categoryCode) {
+        return selectedKeywords.stream().filter(keyword -> keyword.categoryCode().equals(categoryCode))
+                .map(TravelKeyword::name).collect(java.util.stream.Collectors.joining(", "));
+    }
 }

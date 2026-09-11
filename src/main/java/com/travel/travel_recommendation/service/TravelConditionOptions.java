@@ -2,11 +2,24 @@ package com.travel.travel_recommendation.service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import com.travel.travel_recommendation.dto.TravelKeyword;
+import com.travel.travel_recommendation.repository.KeywordRepository;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
-/** 입력 단계의 선택지. DB 키워드 연결 전까지 화면과 서버가 같은 목록을 사용한다. */
+/** 요청마다 활성 선택지를 조회해 화면과 제출 검증에 같은 목록을 사용한다. */
 @Component
 public class TravelConditionOptions {
+    public static final Map<String, String> CATEGORY_CODES = Map.of(
+            "region", "REGION", "season", "SEASON", "companion", "COMPANION",
+            "themes", "THEME", "transportation", "TRANSPORTATION");
+    private final KeywordRepository repository;
+
+    public TravelConditionOptions(ObjectProvider<KeywordRepository> repositories) {
+        repository = repositories.getIfAvailable();
+    }
     private final Map<String, List<String>> choices = Map.of(
             "region", List.of("서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"),
             "season", List.of("봄", "여름", "가을", "겨울"),
@@ -14,9 +27,22 @@ public class TravelConditionOptions {
             "themes", List.of("자연", "바다", "휴식", "맛집", "문화·역사", "체험·액티비티"),
             "transportation", List.of("자차", "대중교통"));
 
-    public Map<String, List<String>> getChoices() { return choices; }
+    public boolean isPreview() { return repository == null; }
 
-    public boolean contains(String field, String value) {
-        return value != null && choices.get(field).contains(value);
+    public Map<String, List<TravelKeyword>> getChoices() {
+        Map<String, List<TravelKeyword>> result = new LinkedHashMap<>();
+        CATEGORY_CODES.keySet().forEach(field -> result.put(field, new ArrayList<>()));
+        if (isPreview()) {
+            // DB 없는 기본 프로필의 화면 확인용 목록. 실제 DB ID로 취급하지 않는다.
+            choices.forEach((field, names) -> names.forEach(name -> result.get(field)
+                    .add(new TravelKeyword(null, CATEGORY_CODES.get(field), name, null))));
+        } else {
+            for (TravelKeyword keyword : repository.findActiveChoices()) {
+                CATEGORY_CODES.forEach((field, code) -> {
+                    if (code.equals(keyword.categoryCode())) result.get(field).add(keyword);
+                });
+            }
+        }
+        return result;
     }
 }

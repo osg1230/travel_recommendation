@@ -6,22 +6,16 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
+import com.travel.travel_recommendation.dto.TravelKeyword;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.validation.Errors;
-import org.springframework.validation.Validator;
 
 @Component
 @RequiredArgsConstructor
-public class TravelConditionValidator implements Validator {
-    private final TravelConditionOptions options;
-
-    @Override
-    public boolean supports(Class<?> type) { return TravelConditionForm.class.equals(type); }
-
-    @Override
-    public void validate(Object target, Errors errors) {
-        TravelConditionForm form = (TravelConditionForm) target;
+public class TravelConditionValidator {
+    public void validate(TravelConditionForm form, Errors errors, Map<String, List<TravelKeyword>> choices) {
         if (!List.of("TEXT", "KEYWORD").contains(form.getInputMode())) {
             errors.rejectValue("inputMode", "invalid", "입력 방법을 선택해 주세요.");
             return;
@@ -33,12 +27,12 @@ public class TravelConditionValidator implements Validator {
             }
             return;
         }
-        checkChoice("region", form.getRegion(), errors);
-        checkChoice("season", form.getSeason(), errors);
-        checkChoice("companion", form.getCompanion(), errors);
-        checkChoice("transportation", form.getTransportation(), errors);
-        if (form.getThemes().size() > options.getChoices().get("themes").size()
-                || form.getThemes().stream().anyMatch(value -> !options.contains("themes", value))) {
+        checkChoice("region", form.getRegion(), errors, choices);
+        checkChoice("season", form.getSeason(), errors, choices);
+        checkChoice("companion", form.getCompanion(), errors, choices);
+        checkChoice("transportation", form.getTransportation(), errors, choices);
+        if (form.getThemes().size() > 100
+                || form.getThemes().stream().anyMatch(value -> !contains(choices, "themes", value))) {
             errors.rejectValue("themes", "invalid", "여행 취향은 화면에 있는 항목에서 선택해 주세요.");
         }
         LocalDate start = parseDate("startDate", form.getStartDate(), errors);
@@ -74,8 +68,12 @@ public class TravelConditionValidator implements Validator {
         }
     }
 
-    private void checkChoice(String field, String value, Errors errors) {
-        if (!value.isEmpty() && !options.contains(field, value)) {
+    private boolean contains(Map<String, List<TravelKeyword>> choices, String field, String value) {
+        return choices.get(field).stream().anyMatch(choice -> choice.getSelectionValue().equals(value));
+    }
+
+    private void checkChoice(String field, String value, Errors errors, Map<String, List<TravelKeyword>> choices) {
+        if (!value.isEmpty() && !contains(choices, field, value)) {
             errors.rejectValue(field, "invalid", "화면에 있는 항목에서 선택해 주세요.");
         }
     }

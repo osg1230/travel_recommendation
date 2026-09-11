@@ -14,6 +14,8 @@
     <p class="eyebrow">여행 준비 · 조건 입력</p>
     <h1>어떤 여행을 생각하고 있나요?</h1>
     <p class="intro">원하는 조건을 고르거나, 생각한 여행을 문장으로 적어 주세요.</p>
+    <p th:if="${preview}" class="notice">화면 확인용 예시 선택지입니다.</p>
+    <p th:if="${choicesUnavailable}" class="notice" role="alert">조건 목록을 불러오지 못했어요. 잠시 후 다시 시도하거나 문장으로 적어 주세요.</p>
     <form th:action="@{/travel/conditions}" th:object="${travelForm}" method="post" novalidate>
         <div th:if="${#fields.hasAnyErrors()}" class="notice" role="alert" tabindex="-1" id="error-summary">
             <p><strong>입력한 내용을 다시 확인해 주세요.</strong></p>
@@ -34,12 +36,13 @@
         <section id="keyword-input" data-mode="KEYWORD">
             <h2>원하는 조건을 골라주세요</h2>
             <p class="help">모두 선택 항목이에요. 정하지 않은 조건은 비워 두면 ‘상관없음’으로 처리해요.</p>
+            <p th:if="${!choicesUnavailable and choicesEmpty}" class="help">일부 조건의 선택지는 준비 중이에요. 날짜·예산을 입력하거나 문장으로 적어 주세요.</p>
             <nav class="category-nav" aria-label="여행 조건 항목">
                 <a href="#destination">지역</a><a href="#period">기간</a><a href="#preferences">계절·동행자·취향</a><a href="#transport-budget">예산·이동수단</a>
             </nav>
             <section id="destination" class="condition-section">
                 <label for="region">어느 지역으로 갈까요?</label>
-                <select th:field="*{region}" aria-describedby="region-error" th:attr="aria-invalid=${#fields.hasErrors('region')}"><option value="">상관없음</option><option th:each="item : ${choices.region}" th:value="${item}" th:text="${item}"></option></select>
+                <select th:field="*{region}" aria-describedby="region-error" th:attr="aria-invalid=${#fields.hasErrors('region')}"><option value="">상관없음</option><option th:each="item : ${choices.region}" th:value="${item.selectionValue}" th:text="${item.name}"></option></select>
                 <p class="field-error" id="region-error" th:errors="*{region}"></p>
             </section>
             <section id="period" class="condition-section">
@@ -55,17 +58,17 @@
             </section>
             <section id="preferences" class="condition-section">
                 <div class="field-grid">
-                    <div><label for="season">어느 계절에 떠날까요?</label><select th:field="*{season}" aria-describedby="season-error"><option value="">상관없음</option><option th:each="item : ${choices.season}" th:value="${item}" th:text="${item}"></option></select><p class="field-error" id="season-error" th:errors="*{season}"></p></div>
-                    <div><label for="companion">누구와 함께하나요?</label><select th:field="*{companion}" aria-describedby="companion-error"><option value="">상관없음</option><option th:each="item : ${choices.companion}" th:value="${item}" th:text="${item}"></option></select><p class="field-error" id="companion-error" th:errors="*{companion}"></p></div>
+                    <div><label for="season">어느 계절에 떠날까요?</label><select th:field="*{season}" aria-describedby="season-error"><option value="">상관없음</option><option th:each="item : ${choices.season}" th:value="${item.selectionValue}" th:text="${item.name}"></option></select><p class="field-error" id="season-error" th:errors="*{season}"></p></div>
+                    <div><label for="companion">누구와 함께하나요?</label><select th:field="*{companion}" aria-describedby="companion-error"><option value="">상관없음</option><option th:each="item : ${choices.companion}" th:value="${item.selectionValue}" th:text="${item.name}"></option></select><p class="field-error" id="companion-error" th:errors="*{companion}"></p></div>
                 </div>
                 <fieldset class="theme-choices"><legend>어떤 여행을 좋아하나요? <span class="optional">여러 개 선택 가능</span></legend>
-                    <label th:each="item : ${choices.themes}"><input type="checkbox" th:field="*{themes}" th:value="${item}"><span th:text="${item}"></span></label>
+                    <label th:each="item : ${choices.themes}"><input type="checkbox" th:field="*{themes}" th:value="${item.selectionValue}"><span th:text="${item.name}"></span></label>
                 </fieldset><p class="field-error" th:errors="*{themes}"></p>
             </section>
             <section id="transport-budget" class="condition-section">
                 <div class="field-grid">
                     <div><label for="budget">전체 여행 예산 <span class="optional">원</span></label><input type="number" th:field="*{budget}" min="0" max="9999999999.99" step="0.01" placeholder="예: 300000" aria-describedby="budget-help budget-error" th:attr="aria-invalid=${#fields.hasErrors('budget')}"><p class="help" id="budget-help">함께 가는 사람 모두의 총예산을 적어 주세요.</p><p class="field-error" id="budget-error" th:errors="*{budget}"></p></div>
-                    <div><label for="transportation">어떻게 이동하나요?</label><select th:field="*{transportation}" aria-describedby="transportation-error"><option value="">상관없음</option><option th:each="item : ${choices.transportation}" th:value="${item}" th:text="${item}"></option></select><p class="field-error" id="transportation-error" th:errors="*{transportation}"></p></div>
+                    <div><label for="transportation">어떻게 이동하나요?</label><select th:field="*{transportation}" aria-describedby="transportation-error"><option value="">상관없음</option><option th:each="item : ${choices.transportation}" th:value="${item.selectionValue}" th:text="${item.name}"></option></select><p class="field-error" id="transportation-error" th:errors="*{transportation}"></p></div>
                 </div>
             </section>
         </section>

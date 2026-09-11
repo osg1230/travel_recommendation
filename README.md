@@ -151,7 +151,7 @@ Windows 인증 프로필로 실행한 뒤 [로그인](http://localhost:8080/logi
 4. 로그아웃 버튼을 누르면 비회원 홈으로 이동합니다.
 5. 비회원이 /admin에 접근하면 로그인 화면으로 이동하고 일반 회원에게는 403을 반환합니다. 관리자는 별도 시작 화면으로 이동하며 회원 관리 기능은 아직 준비 중입니다.
 
-세션 만료 설정은 30분입니다. 자동 테스트는 SQL Server 테스트 실행 명령의 대상에 `LoginIntegrationTests`를 포함합니다. 전체 테스트를 실행하려면 `-Dtest=...` 부분을 생략합니다. 현재 전체 테스트 45개 중 20개는 실제 SQL Server와 Windows 인증 DLL이 필요합니다.
+세션 만료 설정은 30분입니다. 자동 테스트는 SQL Server 테스트 실행 명령의 대상에 `LoginIntegrationTests`를 포함합니다. 전체 테스트를 실행하려면 `-Dtest=...` 부분을 생략합니다. 전체 테스트 중 SQL Server 통합 테스트는 실제 DB와 Windows 인증 DLL이 필요합니다. 회원 SQL뿐 아니라 아래 키워드 SQL도 먼저 적용합니다.
 
 ## 여행 조건 입력
 
@@ -161,7 +161,7 @@ Windows 인증 프로필로 실행한 뒤 [로그인](http://localhost:8080/logi
 - **문장으로 적기**: 원하는 여행을 최대 2,000자로 적습니다. 현재는 원문 확인까지 제공하며 자연어 분석은 수행하지 않습니다.
 - **입력 내용 확인하기**: 서버 검증 후 확인 화면으로 이동합니다. 수정 링크로 돌아오면 값이 유지됩니다. 입력은 현재 세션에 임시 보관하며 영구 저장하지 않습니다.
 
-선택지는 초기 UI 목록이며 DB 키워드 연결과 추천 요청 확정은 다음 단계입니다. [구현 기준](docs/screens/여행_조건_입력_구현.md)을 참고하세요. `TravelConditionControllerTests`는 DB 없이 정상 입력·오류·수정 복귀·세션 분리·CSRF·문장 이스케이프를 검증합니다.
+SQL Server 프로필에서는 DB의 활성 키워드를 사용하며, 기본 프로필은 화면 확인용 예시 목록을 사용합니다. DB 조회 실패 시 예시 데이터로 대체하지 않고 재시도 안내를 표시합니다. 추천 요청 확정은 다음 단계입니다. [구현 기준](docs/screens/여행_조건_입력_구현.md)을 참고하세요. `TravelConditionControllerTests`는 DB 없이 정상 입력·오류·수정 복귀·세션 분리·CSRF·문장 이스케이프를 검증합니다.
 
 인증 구현은 [Spring Security DaoAuthenticationProvider](https://docs.spring.io/spring-security/reference/servlet/authentication/passwords/dao-authentication-provider.html)의 UserDetailsService·PasswordEncoder 흐름을 사용합니다. 실제 계정의 비밀번호를 로그·문서·테스트 코드에 넣지 않습니다.
 
@@ -179,3 +179,17 @@ Windows 인증 프로필로 실행한 뒤 [로그인](http://localhost:8080/logi
 | 비회원 접근 | 로그아웃 후 내 정보 주소 열기 | 로그인 화면으로 이동 |
 
 아이디는 변경할 수 없습니다. 새 비밀번호는 회원가입과 동일하게 영문·숫자를 포함한 8~64자이며 특수문자를 허용하고 공백은 제외합니다. 화면에서 저장한 값은 실제 계정에 반영됩니다. 자동 `ProfileIntegrationTests`의 변경은 테스트 후 롤백됩니다.
+
+### 키워드 테이블 준비 (PC별 1회)
+
+Git pull은 DB를 변경하지 않습니다. 노트북 등 다른 PC의 DB에는 아래 SQL을 순서대로 적용합니다. 인스턴스 이름은 각 PC 환경에 맞춥니다.
+
+```powershell
+sqlcmd -S .\SQLEXPRESS -E -d travel_recommendation -i docs/database/sql/002_create_keywords.sql -b -f 65001
+# 첫 명령이 성공한 뒤 초기 선택지를 넣습니다.
+sqlcmd -S .\SQLEXPRESS -E -d travel_recommendation -i docs/database/sql/003_seed_keywords.sql -b -f 65001
+```
+
+002는 기존 키워드 테이블이 있으면 중단합니다. 이미 적용했다면 다시 생성하지 마세요. 003은 없는 코드만 추가하며 기존 항목을 덮어쓰지 않습니다. 앱 시작 시 SQL을 자동 실행하지 않습니다. 이번 데스크탑의 SQLEXPRESS에는 적용을 완료했습니다.
+
+`KeywordIntegrationTests`는 스키마 검증, 활성 항목 조회, 정렬, 실제 DB ID의 입력→확인→수정 흐름을 확인합니다. 기존 SQL Server 테스트 명령에서 `-Dtest=...`를 생략하면 키워드와 회원 테스트를 함께 실행합니다. `TravelKeywordControllerTests`는 DB 오류·빈 목록·위조 ID·비활성화 이후 재제출·선택 당시 값 유지 처리를 검증합니다.
