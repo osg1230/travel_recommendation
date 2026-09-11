@@ -23,7 +23,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                     .requestMatchers("/", "/login", "/css/**", "/js/**", "/error",
                             "/travel/conditions", "/travel/conditions/check", "/travel/conditions/analyze",
-                            "/travel/conditions/review", "/travel/conditions/confirm", "/travel/conditions/confirmed").permitAll()
+                            "/travel/conditions/review", "/travel/conditions/confirm", "/travel/conditions/confirmed",
+                            "/travel/recommendations", "/travel/recommendations/**").permitAll()
                     .requestMatchers("/signup", "/signup/complete").anonymous()
                     .requestMatchers("/admin", "/admin/**").hasRole("ADMIN")
                     .requestMatchers("/account").authenticated()

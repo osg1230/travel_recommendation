@@ -1,6 +1,6 @@
 # DB 테이블 정의서 정리본
 
-> 버전 1.3 · 2026-09-11 · 회원·키워드 카테고리·키워드 테이블 구현 기준은 아래 1~3절과 sql/001_create_users.sql, sql/002_create_keywords.sql이다. 나머지 테이블은 설계 단계이다. 기존 Word 검토용 파일은 1.1 이전 상태이며 이후 변경을 포함하지 않는다.
+> 버전 1.4 · 2026-09-11 · 1~3절의 회원·키워드와 4·6·7절의 추천 요청·AI 작업·장소를 구현했다. 배포 SQL은 sql/001~005이다. 나머지 테이블은 설계 단계이다. 기존 Word 검토용 파일은 1.1 이전 상태이며 이후 변경을 포함하지 않는다.
 
 DB 테이블 정의서
 
@@ -224,13 +224,28 @@ place_id는 DESTINATION 유형만 허용하며 서비스 또는 트리거에서 
 
 제약과 처리 규칙
 
-J1: QUEUED, ANALYZING_CONDITIONS, SEARCHING_CANDIDATES, GENERATING_SCHEDULE, VALIDATING_SCHEDULE, COMPLETED, FAILED.
+J1: QUEUED, ANALYZING_CONDITIONS, SEARCHING_CANDIDATES, CANDIDATES_READY, GENERATING_SCHEDULE, VALIDATING_SCHEDULE, COMPLETED, FAILED.
 
 CHECK: user_id와 guest_token_hash 중 정확히 하나만 존재. 비회원이면 request_id IS NULL. CHECK: 종료 상태는 completed_at 필수, 그 외는 NULL. COMPLETED는 result_json 필수, FAILED는 error_code 필수.
 
 회원 recommendation 작업은 request_id 필수로 생성하고 소유자가 같은지 검사한다. 일정 작업은 원 이력이 삭제되어도 request_json으로 실행할 수 있다. 비회원은 expires_at 이후 작업 입력·결과를 삭제한다.
 
 attempt_count는 최초 AI 생성 포함 최대 3회이며 재생성은 최대 2회이다. 작업 실행 제한·재시작 복구·상태 전이는 뒤의 설계 원칙을 따른다. 진행 문구는 status를 화면 문구에 매핑하고, 별도 설명은 message를 사용한다. current_step은 중복 저장하지 않는다.
+
+### 6.1 후보 조회·작업 생성 구현 기준 (2026-09-11)
+
+- 요구사항 SFR-02-04·SFR-03-01·DAR-02·03·09의 단계별 구현이다. 확정 조건으로 작업과 실제 지역 후보를 준비하며 GPT의 최종 추천·이유 생성은 다음 구현이다.
+- 최종 추천 완료로 오인하지 않도록 `CANDIDATES_READY`를 J1에 추가했다. 컬럼·FK 변경은 없고 status CHECK 허용값만 추가했다. `QUEUED → SEARCHING_CANDIDATES → CANDIDATES_READY` 또는 `FAILED`로 처리한다. 자연어 분석은 확정 전에 끝나므로 다시 실행하지 않는다.
+- 준비 상태는 GPT 실행 전 대기 지점이다. result_json에는 검증한 지역 후보 스냅샷 배열이 필수이고 completed_at은 NULL이다. 화면 폴링을 멈추며 자동 GPT 실행을 하지 않는다. 최종 COMPLETED 및 후보 3~5개 제약은 이 단계에 적용하지 않으며 recommendation_candidates에는 저장하지 않는다.
+- R1 도시 3개(강릉·부산·경주)의 공식 관광 출처를 확인한 SYSTEM 데이터를 places에 추가한다. 특정 지역 또는 도 단위 별칭이면 해당 도시만, 미지정이면 3개를 조회한다. 지원하지 않는 상세 지역·복수 지역은 임의로 넓히지 않고 실패 안내한다. 주변 지역 이동 가능성·예산·기간·취향 적합도는 아직 판단하지 않는다.
+- 회원은 동일 트랜잭션으로 recommendation_requests와 ai_jobs를 생성하고 비회원은 ai_jobs만 생성한다. 구조화 열과 conditions_json은 중복 조건을 저장하지 않는다. 실행용 request_json은 확정 DTO 전체 스냅샷이다. 기존 테이블·데이터 초기화는 하지 않는다.
+- 로그인 사용자는 현재 ACTIVE 상태와 user_id, 비회원은 세션의 무작위 32바이트 토큰 SHA-256 해시로 매 조회 시 소유권을 검사한다. 토큰 원문은 DB·URL에 저장하지 않는다. UUID만 알아서는 조회할 수 없다.
+- 확정 토큰과 로그인 주체별 중복 제출은 현재 세션에서 동일 jobId를 반환한다. 실패 후 명시적 재조회는 새 작업이다. 서로 다른 세션 간 중복은 별도 요청으로 처리한다.
+- JSON POST 응답은 DB 커밋 후 202+Location+jobId, JavaScript 없는 HTML 폼은 303으로 GET 화면에 이동한다. 상태 조회는 2초 간격이며 준비·실패 시 멈춘다. API에는 원문·소유자·토큰 해시를 반환하지 않는다.
+- 현재 실행기는 단일 서버에서 순차 실행한다(동시 1개, 전체 상한 5개 이하). DB 조회 트랜잭션 제한 15초, 큐 대기 60초 초과는 실패 처리한다. 앱 시작 시 실행 중 단계는 실패로 복구하고 QUEUED는 다시 확인한다. 준비된 스냅샷은 유지한다. 향후 외부 API·GPT 연결 시 전체 실행 제한과 최대 5개 동시 처리 정책을 확장 검증한다.
+- 임시 조회 만료 기본 24시간, 설정 `travel.jobs.retention-hours`(1~168시간)이다. 만료 작업은 소유자도 조회 불가하고 비회원 작업은 1분 주기 및 시작 시 삭제한다. 회원 추천 이력은 유지한다. 세션이 먼저 끝나면 비회원 작업에 접근할 수 없다.
+- `row_version`은 SQL Server 생성값으로 읽고 상태 변경은 행 잠금으로 보호한다. 단위 테스트에서는 자동 실행기를 끄고 작업 처리를 명시적으로 실행한다. 운영은 하나의 앱 인스턴스를 기준으로 한다.
+- 배포 SQL: [004_create_recommendation_jobs.sql](sql/004_create_recommendation_jobs.sql), [005_seed_destinations.sql](sql/005_seed_destinations.sql). 004는 대상 테이블 중 하나라도 있으면 중단한다. 005는 코드가 없는 도시만 추가하고 재실행 시 기존 데이터와 검증 시각을 덮어쓰지 않는다.
 
 7 검증된 장소 공통 정보
 

@@ -22,6 +22,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 public class TravelConditionReviewController {
     public static final String REVIEW_KEY = "travelConditionReview";
     public static final String CONFIRMED_KEY = "confirmedTravelConditions";
+    public static final String CONFIRMATION_TOKEN = "travelConfirmationToken";
     private static final String BUSY_KEY = "travelConditionAnalyzing";
     private final ConditionReviewService service;
     private final TravelConditionOptions options;
@@ -114,6 +115,7 @@ public class TravelConditionReviewController {
                 return "travel/condition-review";
             }
             session.setAttribute(CONFIRMED_KEY, service.confirm(form, draft, review.summary(), choices));
+            session.setAttribute(CONFIRMATION_TOKEN, UUID.randomUUID().toString());
             // 확정 때마다 토큰을 교체해 이전 탭이나 중복 제출이 최신 결과를 덮어쓰지 않게 한다.
             form.setRevision(UUID.randomUUID().toString());
             session.setAttribute(REVIEW_KEY, new Review(draft.getDraftId(), form, review.summary()));
@@ -126,6 +128,7 @@ public class TravelConditionReviewController {
         Object confirmed = session.getAttribute(CONFIRMED_KEY);
         if (confirmed == null) return "redirect:/travel/conditions";
         model.addAttribute("conditions", confirmed);
+        model.addAttribute("confirmationToken", session.getAttribute(CONFIRMATION_TOKEN));
         return "travel/condition-confirmed";
     }
 

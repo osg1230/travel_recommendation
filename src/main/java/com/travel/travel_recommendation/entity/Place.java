@@ -1,0 +1,32 @@
+package com.travel.travel_recommendation.entity;
+
+import jakarta.persistence.*;
+import lombok.*;
+import org.hibernate.annotations.Nationalized;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name="places", schema="dbo")
+@Getter
+@NoArgsConstructor(access=AccessLevel.PROTECTED)
+public class Place {
+    @Id @GeneratedValue(strategy=GenerationType.IDENTITY) @Column(name="place_id") private Long id;
+    @Column(name="place_type", nullable=false, length=20) private String placeType;
+    @Column(name="source_provider", nullable=false, length=40) private String sourceProvider;
+    @Nationalized @Column(name="source_place_id", nullable=false, length=150) private String sourcePlaceId;
+    @Nationalized @Column(name="place_name", nullable=false, length=200) private String name;
+    @Nationalized @Column(nullable=false, length=100) private String region;
+    @Nationalized @Column(length=300) private String address;
+    @Column(precision=9, scale=6) private BigDecimal latitude;
+    @Column(precision=9, scale=6) private BigDecimal longitude;
+    @Nationalized @Column(length=80) private String subtype;
+    @Nationalized @Column(length=2000) private String description;
+    @Nationalized @Column(name="details_json", columnDefinition="nvarchar(max)") private String detailsJson;
+    @Nationalized @Column(name="source_url", length=1000) private String sourceUrl;
+    @Nationalized @Column(name="map_url", length=1000) private String mapUrl;
+    @Column(name="is_active", nullable=false) private boolean active;
+    @Column(name="verified_at", nullable=false, columnDefinition="datetime2(3)") private LocalDateTime verifiedAt;
+    @Column(name="created_at", nullable=false, columnDefinition="datetime2(3)") private LocalDateTime createdAt;
+    @Column(name="updated_at", nullable=false, columnDefinition="datetime2(3)") private LocalDateTime updatedAt;
+}

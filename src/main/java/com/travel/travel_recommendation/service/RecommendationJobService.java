@@ -1,0 +1,117 @@
+package com.travel.travel_recommendation.service;
+
+import com.travel.travel_recommendation.dto.*;
+import com.travel.travel_recommendation.entity.*;
+import com.travel.travel_recommendation.repository.*;
+import java.security.MessageDigest;
+import java.time.*;
+import java.util.*;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.databind.ObjectMapper;
+
+@Service
+@Profile({"sqlserver","sqlserver-windows"})
+@RequiredArgsConstructor
+public class RecommendationJobService {
+    private final RecommendationRequestRepository requests;
+    private final AiJobRepository jobs;
+    private final UserRepository users;
+    private final DestinationCandidateService candidates;
+    private final ObjectMapper mapper;
+    @Value("${travel.jobs.retention-hours:24}") private int retentionHours;
+
+    @Transactional(timeout=10)
+    public UUID create(ConfirmedTravelConditions conditions, String loginId, byte[] guestHash) {
+        Long userId=activeUser(loginId);
+        if (userId==null && (guestHash==null || guestHash.length!=32)) throw new AccessDeniedException("Owner required");
+        // 클라이언트 JSON 대신 이미 서버에서 검증·확정한 세션 DTO만 받아 스냅샷으로 고정한다.
+        Long requestId=null;
+        if(userId!=null) requestId=requests.saveAndFlush(new RecommendationRequest(userId,conditions,conditionJson(conditions))).getId();
+        AiJob job=new AiJob(userId,userId==null?guestHash:null,requestId,mapper.writeValueAsString(conditions),
+            now().plusHours(Math.max(1,Math.min(168,retentionHours))));
+        jobs.saveAndFlush(job);
+        return job.getId();
+    }
+
+    @Transactional(readOnly=true, timeout=10)
+    public RecommendationJobView view(UUID id,String loginId,byte[] guestHash) {
+        AiJob job=jobs.findById(id).orElseThrow(this::notFound);
+        Long userId=activeUser(loginId);
+        boolean owner=job.getUserId()!=null ? job.getUserId().equals(userId)
+            : userId==null && guestHash!=null && MessageDigest.isEqual(job.getGuestTokenHash(),guestHash);
+        if(!owner || !job.getExpiresAt().isAfter(now())) throw notFound();
+        List<DestinationCandidate> result=job.getResultJson()==null?List.of():
+            Arrays.asList(mapper.readValue(job.getResultJson(),DestinationCandidate[].class));
+        return new RecommendationJobView(id,job.getStatus(),job.getMessage(),job.getErrorCode(),result,
+            Set.of("QUEUED","ANALYZING_CONDITIONS","SEARCHING_CANDIDATES").contains(job.getStatus()));
+    }
+
+    @Transactional(readOnly=true)
+    public List<UUID> queued() {
+        return jobs.findTop5ByStatusOrderByCreatedAtAsc("QUEUED").stream().map(AiJob::getId).toList();
+    }
+
+    @Transactional(timeout=15)
+    public void prepare(UUID id) {
+        AiJob job=jobs.lockById(id).orElse(null);
+        if(job==null || !"QUEUED".equals(job.getStatus())) return;
+        if(!job.getExpiresAt().isAfter(now())) { job.fail("EXPIRED","요청이 만료됐어요. 조건을 확인하고 다시 요청해 주세요."); return; }
+        if(job.getCreatedAt().isBefore(now().minusSeconds(60))) {
+            job.fail("TIMEOUT","요청 대기 시간이 초과됐어요. 잠시 후 다시 요청해 주세요."); return;
+        }
+        if(job.getUserId()!=null && users.findById(job.getUserId()).filter(u->u.getStatus()==UserStatus.ACTIVE).isEmpty()) {
+            job.fail("ACCOUNT_UNAVAILABLE","현재 계정으로 요청을 처리할 수 없어요."); return;
+        }
+        job.searching();
+        ConfirmedTravelConditions c=mapper.readValue(job.getRequestJson(),ConfirmedTravelConditions.class);
+        var found=candidates.find(c.region());
+        if(found.isEmpty()) {
+            job.fail("NO_DESTINATIONS","조회 가능한 여행지가 없어요. 현재 강릉·부산·경주를 지원해요. 지역을 수정하거나 상관없음으로 선택해 주세요.");
+        } else {
+            // 최종 추천 테이블에는 아직 넣지 않는다. 지역 후보를 확보한 준비 단계만 기록한다.
+            job.candidatesReady(mapper.writeValueAsString(found));
+        }
+    }
+
+    @Transactional(timeout=10)
+    public void fail(UUID id) {
+        jobs.lockById(id).filter(j -> Set.of("QUEUED","SEARCHING_CANDIDATES").contains(j.getStatus()))
+            .ifPresent(j -> j.fail("LOOKUP_FAILED","여행지 후보를 불러오지 못했어요. 잠시 후 다시 요청해 주세요."));
+    }
+    @Transactional(timeout=10)
+    public void recover() { jobs.recoverInterrupted(now()); }
+    @Transactional(timeout=10)
+    public void cleanup() { jobs.deleteExpiredGuests(now()); }
+
+    private Long activeUser(String loginId) {
+        if(loginId==null) return null;
+        return users.findByLoginId(loginId).filter(u->u.getStatus()==UserStatus.ACTIVE)
+            .map(User::getId).orElseThrow(()->new AccessDeniedException("Account unavailable"));
+    }
+    private String conditionJson(ConfirmedTravelConditions c) {
+        Map<String,Object> json=new LinkedHashMap<>();
+        json.put("schema_version",1);
+        for(String category:List.of("SEASON","COMPANION","TRANSPORTATION")) {
+            var selected=c.selectedKeywords().stream().filter(k->category.equals(k.categoryCode())).findFirst();
+            json.put(category.toLowerCase(Locale.ROOT),selected.map(TravelKeyword::name).orElse(null));
+        }
+        json.put("theme",c.selectedKeywords().stream().filter(k->"THEME".equals(k.categoryCode())).map(TravelKeyword::name).toList());
+        json.put("party_size",c.partySize()); json.put("include_nearby",c.includeNearby());
+        json.put("selected_keywords",c.selectedKeywords().stream().map(k->{
+            Map<String,Object> item=new LinkedHashMap<>();
+            item.put("keyword_id",k.id()); item.put("category_code",k.categoryCode());
+            item.put("name",k.name()); item.put("value",mapper.readTree(k.valueJson()));
+            return item;
+        }).toList());
+        return mapper.writeValueAsString(json);
+    }
+    private LocalDateTime now() { return LocalDateTime.now(ZoneOffset.UTC); }
+    private ResponseStatusException notFound() { return new ResponseStatusException(HttpStatus.NOT_FOUND,"요청을 찾을 수 없거나 만료됐어요."); }
+}

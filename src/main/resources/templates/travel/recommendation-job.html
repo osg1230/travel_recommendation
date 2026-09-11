@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>여행지 후보 | 국내여행</title><link rel="stylesheet" th:href="@{/css/account.css}"><link rel="stylesheet" th:href="@{/css/travel.css}"></head>
+<body><header class="site-header"><a th:href="@{/}">국내여행</a></header>
+<main class="travel confirmation" th:attr="data-job-pending=${job.pending},data-status-url=@{/travel/recommendations/{id}/status(id=${job.jobId})}">
+    <p class="eyebrow">여행 준비 · 여행지 후보</p>
+    <h1 th:text="${job.pending ? '여행지 후보를 찾고 있어요' : (job.status == 'FAILED' ? '여행지 조회를 마치지 못했어요' : '여행지 후보를 확인해 보세요')}"></h1>
+    <p class="intro" role="status" th:text="${job.message}" data-job-message></p>
+    <div th:if="${!job.candidates.isEmpty()}">
+        <p class="help">공식 관광 사이트에서 확인해 저장한 지역 정보예요. 아래 목록은 추천 순위가 아니며, 예산·기간·취향에 따른 추천과 주변 지역 이동 검토는 아직 적용되지 않았어요.</p>
+        <section class="destination-candidate" th:each="candidate : ${job.candidates}">
+            <h2 th:text="${candidate.name}"></h2>
+            <p th:text="${candidate.region}"></p><p th:text="${candidate.description}"></p>
+            <a th:href="${candidate.sourceUrl}" target="_blank" rel="noopener noreferrer">공식 관광 정보 보기</a>
+            <p class="help" th:text="${'출처 확인일: ' + #temporals.format(candidate.verifiedAt, 'yyyy-MM-dd') + ' (UTC) · 실시간 조회 아님'}"></p>
+        </section>
+    </div>
+    <form th:if="${job.status == 'FAILED' and confirmationToken != null}" th:action="@{/travel/recommendations}" method="post" data-recommendation-form>
+        <input type="hidden" name="confirmationToken" th:value="${confirmationToken}"><input type="hidden" name="retry" value="true">
+        <button class="button" type="submit">현재 확정 조건으로 다시 조회</button><p role="status" data-submit-status></p>
+    </form>
+    <div class="form-actions"><a th:href="@{/travel/conditions}">여행 조건 입력하기</a><a th:href="@{/travel/recommendations/{id}(id=${job.jobId})}">상태 새로고침</a></div>
+    <p class="help">비회원 요청은 세션이 종료되거나 보관 기간이 지나면 조회할 수 없어요.</p>
+</main><script defer th:src="@{/js/recommendation-job.js}"></script></body></html>
