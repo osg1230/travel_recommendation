@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>여행 조건 확정 | 국내여행</title><link rel="stylesheet" th:href="@{/css/account.css}"><link rel="stylesheet" th:href="@{/css/travel.css}"></head>
+<body><header class="site-header"><a th:href="@{/}">국내여행</a></header>
+<main class="travel confirmation" th:object="${conditions}">
+    <p class="eyebrow">여행 준비 · 조건 확정</p><h1>여행 조건을 확정했어요</h1>
+    <p class="intro">현재 세션에 보관한 조건이에요. 여행지 추천과 일정 생성은 아직 시작하지 않았어요.</p>
+    <dl class="condition-summary">
+        <dt>지역</dt><dd th:text="*{region.isEmpty() ? '상관없음' : region}"></dd>
+        <dt>여행 날짜</dt><dd th:text="*{startDate == null ? '아직 미정' : startDate + ' ~ ' + endDate}"></dd>
+        <dt>여행 일수</dt><dd th:text="*{durationDays == null ? '아직 미정' : durationDays + '일'}"></dd>
+        <dt>계절</dt><dd th:text="*{keywordNames('SEASON').isEmpty() ? '상관없음' : keywordNames('SEASON')}"></dd>
+        <dt>동행자</dt><dd th:text="*{keywordNames('COMPANION').isEmpty() ? '상관없음' : keywordNames('COMPANION')}"></dd>
+        <dt>여행 취향</dt><dd th:text="*{keywordNames('THEME').isEmpty() ? '상관없음' : keywordNames('THEME')}"></dd>
+        <dt>이동수단</dt><dd th:text="*{keywordNames('TRANSPORTATION').isEmpty() ? '상관없음' : keywordNames('TRANSPORTATION')}"></dd>
+        <dt>전체 인원</dt><dd th:text="*{partySize == null ? '아직 미정' : partySize + '명'}"></dd>
+        <dt>전체 예산</dt><dd th:text="*{budget == null ? '상관없음' : budget + '원'}"></dd>
+        <dt>숙박</dt><dd th:text="*{accommodationNeeded == null ? '아직 미정' : (accommodationNeeded ? '필요' : '불필요')}"></dd>
+        <dt>주변 지역</dt><dd th:text="*{includeNearby == null ? '아직 미정' : (includeNearby ? '포함' : '선택 지역 중심')}"></dd>
+    </dl>
+    <div class="form-actions"><a class="button" th:href="@{/travel/conditions/review}">확정 조건 수정하기</a><a class="home-link" th:href="@{/}">홈으로</a></div>
+    <p class="help">로그아웃하거나 세션이 만료되면 조건이 사라져요.</p>
+</main></body></html>

@@ -1,0 +1,6 @@
+{
+  "isTravel": true, "region": "강릉", "startDate": null, "endDate": null,
+  "durationDays": 3, "season": "여름", "companion": "친구", "themes": ["바다"],
+  "budget": 600000, "transportation": "자차", "partySize": 2,
+  "accommodationNeeded": true, "includeNearby": null, "summary": "날짜는 아직 미정이에요."
+}

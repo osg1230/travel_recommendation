@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "isTravel": {"type": "boolean"},
+    "region": {"type": ["string", "null"]},
+    "startDate": {"type": ["string", "null"]},
+    "endDate": {"type": ["string", "null"]},
+    "durationDays": {"type": ["integer", "null"]},
+    "season": {"type": ["string", "null"]},
+    "companion": {"type": ["string", "null"]},
+    "themes": {"type": "array", "items": {"type": "string"}},
+    "budget": {"type": ["number", "null"]},
+    "transportation": {"type": ["string", "null"]},
+    "partySize": {"type": ["integer", "null"]},
+    "accommodationNeeded": {"type": ["boolean", "null"]},
+    "includeNearby": {"type": ["boolean", "null"]},
+    "summary": {"type": "string"}
+  },
+  "required": ["isTravel", "region", "startDate", "endDate", "durationDays", "season", "companion", "themes", "budget", "transportation", "partySize", "accommodationNeeded", "includeNearby", "summary"]
+}

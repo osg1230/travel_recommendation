@@ -16,6 +16,10 @@ import org.springframework.validation.Errors;
 @RequiredArgsConstructor
 public class TravelConditionValidator {
     public void validate(TravelConditionForm form, Errors errors, Map<String, List<TravelKeyword>> choices) {
+        validate(form, errors, choices, false);
+    }
+
+    public void validate(TravelConditionForm form, Errors errors, Map<String, List<TravelKeyword>> choices, boolean freeRegion) {
         if (!List.of("TEXT", "KEYWORD").contains(form.getInputMode())) {
             errors.rejectValue("inputMode", "invalid", "입력 방법을 선택해 주세요.");
             return;
@@ -27,7 +31,11 @@ public class TravelConditionValidator {
             }
             return;
         }
-        checkChoice("region", form.getRegion(), errors, choices);
+        if (freeRegion) {
+            if (form.getRegion().length() > 100) errors.rejectValue("region", "length", "지역은 100자 이내로 입력해 주세요.");
+        } else {
+            checkChoice("region", form.getRegion(), errors, choices);
+        }
         checkChoice("season", form.getSeason(), errors, choices);
         checkChoice("companion", form.getCompanion(), errors, choices);
         checkChoice("transportation", form.getTransportation(), errors, choices);

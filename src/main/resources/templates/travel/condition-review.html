@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>여행 조건 보완 | 국내여행</title><link rel="stylesheet" th:href="@{/css/account.css}"><link rel="stylesheet" th:href="@{/css/travel.css}"></head>
+<body>
+<header class="site-header"><a th:href="@{/}">국내여행</a></header>
+<main class="travel">
+    <p class="eyebrow">여행 준비 · 조건 보완</p>
+    <h1>여행 조건이 맞는지 확인해 주세요</h1>
+    <p class="intro" th:if="${analyzed}">문장에서 찾은 조건이에요. 다르게 해석한 부분은 고쳐 주세요. 지역과 장소의 실제 정보는 아직 확인하지 않았어요.</p>
+    <p class="intro" th:unless="${analyzed}">선택한 조건을 확인하고 필요한 내용을 더해 주세요.</p>
+    <details th:if="${analyzed}"><summary>입력한 문장과 분석 안내 보기</summary><p class="travel-story" th:text="${originalText}"></p><p th:text="${analysisSummary}"></p></details>
+    <p th:if="${choicesUnavailable}" class="notice" role="alert">선택지를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</p>
+    <form th:action="@{/travel/conditions/confirm}" th:object="${reviewForm}" method="post" novalidate>
+        <input type="hidden" th:field="*{revision}">
+        <div th:if="${#fields.hasAnyErrors()}" class="notice" role="alert"><strong>입력한 내용을 다시 확인해 주세요.</strong><ul><li th:each="error : ${#fields.errors('*')}" th:text="${error}"></li></ul></div>
+        <p class="help">모두 선택 항목이에요. 정하지 않은 조건은 비워 두어도 괜찮아요.</p>
+        <section class="condition-section">
+            <label for="region">여행 지역</label><input th:field="*{region}" maxlength="100" placeholder="예: 강릉, 제주 서귀포" aria-describedby="region-help region-error">
+            <p id="region-help" class="help">문장에 나온 세부 지역명을 확인해 주세요. 지역을 정하지 않았다면 비워 두세요.</p><p id="region-error" class="field-error" th:errors="*{region}"></p>
+        </section>
+        <section class="condition-section">
+            <h2>여행 기간</h2>
+            <div class="field-grid">
+                <div><label for="startDate">출발일</label><input type="date" th:field="*{startDate}" min="0001-01-01" max="9999-12-31"><p class="field-error" th:errors="*{startDate}"></p></div>
+                <div><label for="endDate">마지막 날</label><input type="date" th:field="*{endDate}" min="0001-01-01" max="9999-12-31"><p class="field-error" th:errors="*{endDate}"></p></div>
+            </div>
+            <label for="durationDays">여행 일수</label><input type="number" th:field="*{durationDays}" min="1" max="32767" step="1">
+            <p class="help">2박 3일은 3일이에요. 날짜를 바꿨다면 일수도 맞추거나 비워 주세요.</p><p class="field-error" th:errors="*{durationDays}"></p>
+        </section>
+        <section class="condition-section">
+            <div class="field-grid">
+                <div><label for="season">계절</label><select th:field="*{season}"><option value="">상관없음</option><option th:each="item : ${choices.season}" th:value="${item.selectionValue}" th:text="${item.name}"></option></select><p class="field-error" th:errors="*{season}"></p></div>
+                <div><label for="companion">동행자</label><select th:field="*{companion}"><option value="">상관없음</option><option th:each="item : ${choices.companion}" th:value="${item.selectionValue}" th:text="${item.name}"></option></select><p class="field-error" th:errors="*{companion}"></p></div>
+            </div>
+            <fieldset class="theme-choices"><legend>여행 취향 <span class="optional">여러 개 선택 가능</span></legend><label th:each="item : ${choices.themes}"><input type="checkbox" th:field="*{themes}" th:value="${item.selectionValue}"><span th:text="${item.name}"></span></label></fieldset><p class="field-error" th:errors="*{themes}"></p>
+        </section>
+        <section class="condition-section">
+            <div class="field-grid">
+                <div><label for="partySize">전체 인원</label><input type="number" th:field="*{partySize}" min="1" max="32767" step="1"><p class="field-error" th:errors="*{partySize}"></p></div>
+                <div><label for="budget">전체 여행 예산 <span class="optional">원</span></label><input type="number" th:field="*{budget}" min="0" max="9999999999.99" step="0.01"><p class="help">모든 인원의 총예산 상한이에요.</p><p class="field-error" th:errors="*{budget}"></p></div>
+                <div><label for="transportation">이동수단</label><select th:field="*{transportation}"><option value="">상관없음</option><option th:each="item : ${choices.transportation}" th:value="${item.selectionValue}" th:text="${item.name}"></option></select><p class="field-error" th:errors="*{transportation}"></p></div>
+                <div><label for="accommodationNeeded">숙박이 필요한가요?</label><select th:field="*{accommodationNeeded}"><option value="">아직 미정</option><option value="true">숙박 필요</option><option value="false">숙박 불필요</option></select><p class="field-error" th:errors="*{accommodationNeeded}"></p></div>
+            </div>
+            <label for="includeNearby">주변 지역도 포함할까요?</label><select th:field="*{includeNearby}"><option value="">아직 미정</option><option value="true">주변 지역 포함</option><option value="false">선택 지역 중심</option></select><p class="field-error" th:errors="*{includeNearby}"></p>
+        </section>
+        <div class="form-actions"><button type="submit">이 조건으로 확정하기</button><p class="help">조건은 현재 세션에 보관해요. 여행지 추천과 일정 생성은 다음 단계에서 연결됩니다.</p></div>
+    </form>
+    <a class="home-link" th:href="@{/travel/conditions}">처음 입력부터 수정하기</a>
+</main>
+</body></html>

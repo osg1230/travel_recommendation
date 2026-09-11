@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 @RequestMapping("/travel/conditions")
 public class TravelConditionController {
-    private static final String DRAFT_KEY = "travelConditionDraft";
+    public static final String DRAFT_KEY = "travelConditionDraft";
     private final TravelConditionOptions options;
     private final TravelConditionValidator validator;
     private final TravelConditionService service;
@@ -66,7 +66,11 @@ public class TravelConditionController {
         }
         if (result.hasErrors()) return "travel/conditions";
         TravelConditionForm draft = service.createDraft(form, choices);
-        session.setAttribute(DRAFT_KEY, draft);
+        synchronized (session) {
+            session.setAttribute(DRAFT_KEY, draft);
+            session.removeAttribute(TravelConditionReviewController.REVIEW_KEY);
+            session.removeAttribute(TravelConditionReviewController.CONFIRMED_KEY);
+        }
         return "redirect:/travel/conditions/check";
     }
 

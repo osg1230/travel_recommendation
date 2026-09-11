@@ -9,6 +9,7 @@ import lombok.Setter;
 @Getter
 @Setter
 public class TravelConditionForm {
+    private final String draftId = java.util.UUID.randomUUID().toString();
     private String inputMode = "KEYWORD";
     private String originalText = "";
     private String region = "";

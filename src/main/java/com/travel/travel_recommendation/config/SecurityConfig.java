@@ -22,7 +22,8 @@ public class SecurityConfig {
         return http.addFilterBefore(new LoginInputFilter(), org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                     .requestMatchers("/", "/login", "/css/**", "/js/**", "/error",
-                            "/travel/conditions", "/travel/conditions/check").permitAll()
+                            "/travel/conditions", "/travel/conditions/check", "/travel/conditions/analyze",
+                            "/travel/conditions/review", "/travel/conditions/confirm", "/travel/conditions/confirmed").permitAll()
                     .requestMatchers("/signup", "/signup/complete").anonymous()
                     .requestMatchers("/admin", "/admin/**").hasRole("ADMIN")
                     .requestMatchers("/account").authenticated()

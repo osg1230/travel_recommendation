@@ -1,13 +1,21 @@
 <!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>입력 내용 확인 | 국내여행</title><link rel="stylesheet" th:href="@{/css/account.css}"><link rel="stylesheet" th:href="@{/css/travel.css}"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>입력 내용 확인 | 국내여행</title><link rel="stylesheet" th:href="@{/css/account.css}"><link rel="stylesheet" th:href="@{/css/travel.css}"><script defer th:src="@{/js/travel-analysis.js}"></script></head>
 <body>
 <header class="site-header"><a th:href="@{/}">국내여행</a></header>
 <main class="travel confirmation" th:object="${travelForm}">
     <p class="eyebrow">여행 준비 · 입력 내용 확인</p>
     <h1>입력한 내용을 확인해 주세요</h1>
     <p class="intro">바꾸고 싶은 내용이 있다면 돌아가서 수정할 수 있어요.</p>
-    <section th:if="*{inputMode == 'TEXT'}"><h2>적어 주신 여행 이야기</h2><p class="travel-story" th:text="*{originalText}"></p><p class="help">아직 문장을 분석하지 않았어요. 자연어 분석과 여행 추천은 준비 중이에요.</p></section>
+    <p th:if="${analysisError}" class="notice" role="alert" th:text="${analysisError}"></p>
+    <section th:if="*{inputMode == 'TEXT'}"><h2>적어 주신 여행 이야기</h2><p class="travel-story" th:text="*{originalText}"></p><p class="help">아직 문장을 분석하지 않았어요. 아래 버튼을 누르면 여행 조건을 추출하고 직접 수정할 수 있어요.</p>
+        <form th:action="@{/travel/conditions/analyze}" method="post" data-analysis-form>
+            <input type="hidden" name="draftId" th:value="*{draftId}">
+            <p class="help">입력한 문장을 OpenAI에 보내 분석해요. 이름·연락처 등 개인정보는 빼고 적어 주세요.</p>
+            <button type="submit">문장 분석하기</button>
+            <p data-analysis-status role="status" aria-live="polite" hidden>문장에서 여행 조건을 찾고 있어요. 최대 30초 정도 걸릴 수 있어요.</p>
+        </form>
+    </section>
     <section th:if="*{inputMode == 'KEYWORD'}">
         <h2>선택한 여행 조건</h2>
         <dl class="condition-summary">
@@ -19,7 +27,8 @@
             <dt>여행 취향</dt><dd th:text="*{getKeywordNames('THEME').isEmpty() ? '상관없음' : getKeywordNames('THEME')}"></dd>
             <dt>전체 예산</dt><dd th:text="*{budget.isEmpty() ? '상관없음' : budget + '원'}"></dd>
             <dt>이동수단</dt><dd th:text="*{getKeywordNames('TRANSPORTATION').isEmpty() ? '상관없음' : getKeywordNames('TRANSPORTATION')}"></dd>
-        </dl><p class="help">선택한 조건을 확인했어요. 이 조건에 맞는 여행 추천은 준비 중이에요.</p>
+        </dl><p class="help">다음 화면에서 인원·숙박 여부 등을 보완하고 조건을 확정할 수 있어요.</p>
+        <a class="button" th:href="@{/travel/conditions/review}">조건 보완·확정하기</a>
     </section>
     <div class="form-actions"><a class="button" th:href="@{/travel/conditions}">입력 내용 수정하기</a><a class="home-link" th:href="@{/}">홈으로</a></div>
     <p class="help">입력 내용은 잠시 보관돼요. 로그아웃하거나 세션이 만료되면 다시 입력해 주세요.</p>
