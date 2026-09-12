@@ -47,10 +47,13 @@ public class RecommendationJobService {
         boolean owner=job.getUserId()!=null ? job.getUserId().equals(userId)
             : userId==null && guestHash!=null && MessageDigest.isEqual(job.getGuestTokenHash(),guestHash);
         if(!owner || !job.getExpiresAt().isAfter(now())) throw notFound();
-        List<DestinationCandidate> result=job.getResultJson()==null?List.of():
+        boolean completed="COMPLETED".equals(job.getStatus());
+        List<DestinationCandidate> result=job.getResultJson()==null || completed?List.of():
             Arrays.asList(mapper.readValue(job.getResultJson(),DestinationCandidate[].class));
+        List<RankedDestination> ranked=completed?Arrays.asList(mapper.readValue(job.getResultJson(),RankedDestination[].class)):List.of();
         return new RecommendationJobView(id,job.getStatus(),job.getMessage(),job.getErrorCode(),result,
-            Set.of("QUEUED","ANALYZING_CONDITIONS","SEARCHING_CANDIDATES").contains(job.getStatus()));
+            Set.of("QUEUED","ANALYZING_CONDITIONS","SEARCHING_CANDIDATES","RECOMMENDATION_QUEUED","RANKING_CANDIDATES").contains(job.getStatus()),
+            ranked,job.getAttemptCount()<3 && ("CANDIDATES_READY".equals(job.getStatus()) || ("FAILED".equals(job.getStatus()) && job.getResultJson()!=null)),job.getAttemptCount());
     }
 
     @Transactional(readOnly=true)

@@ -1,6 +1,6 @@
 # DB 테이블 정의서 정리본
 
-> 버전 1.4 · 2026-09-11 · 1~3절의 회원·키워드와 4·6·7절의 추천 요청·AI 작업·장소를 구현했다. 배포 SQL은 sql/001~005이다. 나머지 테이블은 설계 단계이다. 기존 Word 검토용 파일은 1.1 이전 상태이며 이후 변경을 포함하지 않는다.
+> 버전 1.5 · 2026-09-12 · 1~7절의 회원·키워드·추천 요청·후보·AI 작업·장소를 구현했다. 배포 SQL은 sql/001~006이다. 나머지 테이블은 설계 단계이다. 기존 Word 검토용 파일은 1.1 이전 상태이며 이후 변경을 포함하지 않는다.
 
 DB 테이블 정의서
 
@@ -190,7 +190,7 @@ conditions_json 필수 구조: schema_version, season, companion, theme[], trans
 
 제약과 처리 규칙
 
-U1(request_id, rank_no), U2(request_id, place_id). 완료 시 후보 3~5개를 서비스 트랜잭션에서 검증한다. 개별 CHECK로 행 개수는 제한할 수 없다.
+U1(request_id, rank_no), U2(request_id, place_id). 일반 목표는 후보 3~5개지만 특정 지역 조건과 R1 지원 범위를 우선한다. 2026-09-12 구현은 조회한 실제 후보 1~5개를 각각 한 번씩 추천하며 현재 R1에서는 최대 3개다. 특정 지역 지정은 해당 지역 1개, 미지정은 활성인 초기 3개 지역을 비교한다. 후보 수를 채우려고 조건 밖 지역을 추가하지 않는다. 완료 트랜잭션에서 입력 후보와 결과의 ID 집합·개수가 정확히 같은지 검증한다. rank_no의 DB CHECK는 1~5를 유지한다.
 
 place_id는 DESTINATION 유형만 허용하며 서비스 또는 트리거에서 검증한다. 과거 상세는 스냅샷을 표시하고 현재 비활성 장소임을 별도로 안내한다.
 
@@ -224,7 +224,7 @@ place_id는 DESTINATION 유형만 허용하며 서비스 또는 트리거에서 
 
 제약과 처리 규칙
 
-J1: QUEUED, ANALYZING_CONDITIONS, SEARCHING_CANDIDATES, CANDIDATES_READY, GENERATING_SCHEDULE, VALIDATING_SCHEDULE, COMPLETED, FAILED.
+J1: QUEUED, ANALYZING_CONDITIONS, SEARCHING_CANDIDATES, CANDIDATES_READY, RECOMMENDATION_QUEUED, RANKING_CANDIDATES, GENERATING_SCHEDULE, VALIDATING_SCHEDULE, COMPLETED, FAILED.
 
 CHECK: user_id와 guest_token_hash 중 정확히 하나만 존재. 비회원이면 request_id IS NULL. CHECK: 종료 상태는 completed_at 필수, 그 외는 NULL. COMPLETED는 result_json 필수, FAILED는 error_code 필수.
 
@@ -233,6 +233,8 @@ CHECK: user_id와 guest_token_hash 중 정확히 하나만 존재. 비회원이�
 attempt_count는 최초 AI 생성 포함 최대 3회이며 재생성은 최대 2회이다. 작업 실행 제한·재시작 복구·상태 전이는 뒤의 설계 원칙을 따른다. 진행 문구는 status를 화면 문구에 매핑하고, 별도 설명은 message를 사용한다. current_step은 중복 저장하지 않는다.
 
 ### 6.1 후보 조회·작업 생성 구현 기준 (2026-09-11)
+
+이 절은 후보 조회 단계 구현 기록이며 GPT 추천 연결의 최신 기준은 6.2절이다.
 
 - 요구사항 SFR-02-04·SFR-03-01·DAR-02·03·09의 단계별 구현이다. 확정 조건으로 작업과 실제 지역 후보를 준비하며 GPT의 최종 추천·이유 생성은 다음 구현이다.
 - 최종 추천 완료로 오인하지 않도록 `CANDIDATES_READY`를 J1에 추가했다. 컬럼·FK 변경은 없고 status CHECK 허용값만 추가했다. `QUEUED → SEARCHING_CANDIDATES → CANDIDATES_READY` 또는 `FAILED`로 처리한다. 자연어 분석은 확정 전에 끝나므로 다시 실행하지 않는다.
@@ -246,6 +248,17 @@ attempt_count는 최초 AI 생성 포함 최대 3회이며 재생성은 최대 2
 - 임시 조회 만료 기본 24시간, 설정 `travel.jobs.retention-hours`(1~168시간)이다. 만료 작업은 소유자도 조회 불가하고 비회원 작업은 1분 주기 및 시작 시 삭제한다. 회원 추천 이력은 유지한다. 세션이 먼저 끝나면 비회원 작업에 접근할 수 없다.
 - `row_version`은 SQL Server 생성값으로 읽고 상태 변경은 행 잠금으로 보호한다. 단위 테스트에서는 자동 실행기를 끄고 작업 처리를 명시적으로 실행한다. 운영은 하나의 앱 인스턴스를 기준으로 한다.
 - 배포 SQL: [004_create_recommendation_jobs.sql](sql/004_create_recommendation_jobs.sql), [005_seed_destinations.sql](sql/005_seed_destinations.sql). 004는 대상 테이블 중 하나라도 있으면 중단한다. 005는 코드가 없는 도시만 추가하고 재실행 시 기존 데이터와 검증 시각을 덮어쓰지 않는다.
+
+### 6.2 GPT 추천·결과 저장 구현 기준 (2026-09-12)
+
+- [006_create_recommendation_results.sql](sql/006_create_recommendation_results.sql)로 5절 테이블과 제약을 추가하고 J1에 RECOMMENDATION_QUEUED·RANKING_CANDIDATES를 허용한다. 기존 데이터·컬럼·FK를 변경하거나 초기화하지 않는다. 006은 대상 결과 테이블이 이미 있으면 중단한다.
+- CANDIDATES_READY 화면의 명시적 POST → RECOMMENDATION_QUEUED → RANKING_CANDIDATES → COMPLETED 또는 FAILED이다. 후보 조회만으로 유료 요청을 시작하지 않는다. 상태 조회는 두 새 상태에서도 계속 폴링한다.
+- 유료 호출 전에 짧은 트랜잭션에서 행 잠금과 시도 번호 증가를 커밋한다. 외부 요청은 트랜잭션 밖에서 수행하고 완료 시 새 트랜잭션으로 동일 작업·시도 번호·상태·소유자의 ACTIVE 여부·만료·후보 활성 상태를 재검사한다. 늦은 응답은 새 시도를 덮어쓰지 않는다.
+- 같은 작업 최대 3회, 실패 후 수동 재시도만 허용한다. 제출한 이전 시도 번호가 현재와 다르면 상태만 반환한다. 중복·완료 후 POST는 추가 API 호출이나 후보 중복 저장을 만들지 않는다.
+- API 요청은 연결 제한 5초, 응답 제한 25초, 출력 상한 1,800토큰이다. 추천 큐에 넣은 started_at부터 60초를 넘기면 실행·완료를 거부한다. 단일 실행기는 순차 처리하며 부하 상황의 95% 20초 응답 목표를 보장한 것은 아니다.
+- 후보 입력은 지역명·소개와 확정 조건으로 제한한다. 원문·계정·토큰·키워드 ID는 AI에 전송하지 않는다. 모델은 기존 OPENAI_MODEL 설정을 공유하며 기본 gpt-4.1-mini이다. Structured Outputs에 허용 ID와 정확한 배열 길이를 넣고 서버에서 다시 ID·개수·중복·이유 형식·길이를 검사한다.
+- result_json은 준비·실패 상태에서 후보 배열, COMPLETED에서는 순위·지역 스냅샷·이유 배열이다. 실패한 AI 원문은 저장하지 않는다. 상태를 기준으로 역직렬화한다. 회원은 recommendation_candidates 저장과 작업 완료가 같은 트랜잭션이며 비회원은 임시 작업 결과만 저장한다.
+- source_url·지역명·확인일은 GPT 출력이 아니라 서버의 검증된 스냅샷을 사용한다. AI 이유의 사실성·적합성을 완전히 보장하는 검증은 아니므로 화면에 AI 작성과 실제 비용·운영·교통 정보의 미검증 한계를 안내한다. 상세 일정 생성과 회원 추천 이력 목록 UI는 아직 없다.
 
 7 검증된 장소 공통 정보
 

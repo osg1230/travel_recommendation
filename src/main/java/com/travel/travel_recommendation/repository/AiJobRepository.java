@@ -17,7 +17,7 @@ public interface AiJobRepository extends JpaRepository<AiJob,UUID> {
     @Query("""
         update AiJob j set j.status='FAILED', j.errorCode='SERVER_RESTART',
         j.message='서버가 재시작되어 처리를 마치지 못했어요. 조건을 확인하고 다시 요청해 주세요.', j.completedAt=:now
-        where j.status in ('ANALYZING_CONDITIONS','SEARCHING_CANDIDATES','GENERATING_SCHEDULE','VALIDATING_SCHEDULE')
+        where j.status in ('ANALYZING_CONDITIONS','SEARCHING_CANDIDATES','RANKING_CANDIDATES','GENERATING_SCHEDULE','VALIDATING_SCHEDULE')
         """)
     int recoverInterrupted(LocalDateTime now);
 }

@@ -4,10 +4,10 @@
 <body><header class="site-header"><a th:href="@{/}">국내여행</a></header>
 <main class="travel confirmation" th:attr="data-job-pending=${job.pending},data-status-url=@{/travel/recommendations/{id}/status(id=${job.jobId})}">
     <p class="eyebrow">여행 준비 · 여행지 후보</p>
-    <h1 th:text="${job.pending ? '여행지 후보를 찾고 있어요' : (job.status == 'FAILED' ? '여행지 조회를 마치지 못했어요' : '여행지 후보를 확인해 보세요')}"></h1>
+    <h1 th:text="${job.pending ? '여행지 추천을 준비하고 있어요' : (job.status == 'FAILED' ? '요청을 마치지 못했어요' : (job.status == 'COMPLETED' ? '추천 여행지를 확인해 보세요' : '여행지 후보를 확인해 보세요'))}"></h1>
     <p class="intro" role="status" th:text="${job.message}" data-job-message></p>
     <div th:if="${!job.candidates.isEmpty()}">
-        <p class="help">공식 관광 사이트에서 확인해 저장한 지역 정보예요. 아래 목록은 추천 순위가 아니며, 예산·기간·취향에 따른 추천과 주변 지역 이동 검토는 아직 적용되지 않았어요.</p>
+        <p class="help">공식 관광 사이트에서 확인해 저장한 지역 정보예요. GPT 추천을 받으면 확정한 조건에 따른 순위와 이유를 볼 수 있어요.</p>
         <section class="destination-candidate" th:each="candidate : ${job.candidates}">
             <h2 th:text="${candidate.name}"></h2>
             <p th:text="${candidate.region}"></p><p th:text="${candidate.description}"></p>
@@ -15,7 +15,24 @@
             <p class="help" th:text="${'출처 확인일: ' + #temporals.format(candidate.verifiedAt, 'yyyy-MM-dd') + ' (UTC) · 실시간 조회 아님'}"></p>
         </section>
     </div>
-    <form th:if="${job.status == 'FAILED' and confirmationToken != null}" th:action="@{/travel/recommendations}" method="post" data-recommendation-form>
+    <div th:if="${job.status == 'COMPLETED'}">
+        <p class="help">확정 조건과 지역 소개를 바탕으로 AI가 작성한 추천이에요. 실제 비용·영업시간·이동 가능 여부를 보장하지 않으며, 방문 전 공식 정보를 확인해 주세요.</p>
+        <section class="destination-candidate" th:each="item : ${job.recommendations}">
+            <h2 th:text="${item.rank + '순위 · ' + item.destination.name}"></h2>
+            <p th:text="${item.destination.region}"></p>
+            <p th:text="${item.reason}"></p>
+            <a th:href="${item.destination.sourceUrl}" target="_blank" rel="noopener noreferrer">공식 관광 정보 보기</a>
+            <p class="help" th:text="${'지역 정보 확인일: ' + #temporals.format(item.destination.verifiedAt,'yyyy-MM-dd') + ' · 실시간 조회 아님'}"></p>
+        </section>
+        <p class="help">날짜별·시간대별 여행 일정 생성은 아직 준비 중이에요.</p>
+    </div>
+    <form th:if="${job.canRecommend}" th:action="@{/travel/recommendations/{id}/recommend(id=${job.jobId})}" method="post" data-recommendation-form>
+        <input type="hidden" name="attempt" th:value="${job.attemptCount}">
+        <button class="button" type="submit" th:text="${job.attemptCount == 0 ? 'GPT 추천 받기' : 'GPT 추천 다시 받기'}"></button>
+        <p class="help">확정 조건으로 여행지를 비교해요. 추천 요청에는 API 사용량이 발생해요.</p>
+        <p role="status" data-submit-status></p>
+    </form>
+    <form th:if="${job.status == 'FAILED' and job.candidates.isEmpty() and confirmationToken != null}" th:action="@{/travel/recommendations}" method="post" data-recommendation-form>
         <input type="hidden" name="confirmationToken" th:value="${confirmationToken}"><input type="hidden" name="retry" value="true">
         <button class="button" type="submit">현재 확정 조건으로 다시 조회</button><p role="status" data-submit-status></p>
     </form>

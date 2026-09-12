@@ -1,0 +1,86 @@
+package com.travel.travel_recommendation.service;
+
+import com.sun.net.httpserver.HttpServer;
+import com.travel.travel_recommendation.config.OpenAiProperties;
+import com.travel.travel_recommendation.dto.*;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
+import java.time.*;
+import java.util.*;
+import java.util.concurrent.atomic.*;
+import org.junit.jupiter.api.*;
+import tools.jackson.databind.json.JsonMapper;
+import static org.assertj.core.api.Assertions.*;
+
+class OpenAiRecommendationClientTests {
+    private final JsonMapper mapper=new JsonMapper();
+    private HttpServer server;
+    private final AtomicInteger status=new AtomicInteger(200),calls=new AtomicInteger(),delay=new AtomicInteger();
+    private final AtomicReference<String> response=new AtomicReference<>(),request=new AtomicReference<>();
+    private final List<DestinationCandidate> pool=List.of(new DestinationCandidate(1L,"강릉","강원", "바다와 커피", "https://visitgangneung.net/",LocalDateTime.of(2026,9,11,0,0)));
+    private ConfirmedTravelConditions conditions() {
+        return new ConfirmedTravelConditions("TEXT","private-original-input","강릉",null,null,3,null,2,true,null,List.of(),"private-summary");
+    }
+    @BeforeEach void setup() throws Exception {
+        output("{\"recommendations\":[{\"placeId\":1,\"reason\":\"바다 여행을 즐기기 좋은 후보입니다.\"}]}");
+        server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/responses",e->{
+            calls.incrementAndGet();request.set(new String(e.getRequestBody().readAllBytes(),StandardCharsets.UTF_8));
+            try { Thread.sleep(delay.get());byte[] bytes=response.get().getBytes(StandardCharsets.UTF_8);
+                e.sendResponseHeaders(status.get(),bytes.length);e.getResponseBody().write(bytes);
+            } catch(InterruptedException ex) { Thread.currentThread().interrupt(); } finally { e.close(); }
+        });server.start();
+    }
+    @AfterEach void stop() { server.stop(0); }
+    private OpenAiRecommendationClient client(String key,Duration timeout) {
+        return new OpenAiRecommendationClient(new OpenAiProperties(key,"gpt-4.1-mini"),mapper,
+            URI.create("http://127.0.0.1:"+server.getAddress().getPort()+"/responses"),timeout);
+    }
+    private void output(String json) {
+        response.set(mapper.writeValueAsString(Map.of("status","completed","output",List.of(Map.of("type","message","content",
+            List.of(Map.of("type","output_text","text",json)))))));
+    }
+    @Test void sendsOnlyConfirmedConditionsAndCandidateFacts() {
+        var result=client("test-key",Duration.ofSeconds(2)).recommend(conditions(),pool);
+        assertThat(result).hasSize(1);assertThat(result.getFirst().rank()).isEqualTo(1);
+        assertThat(result.getFirst().destination()).isEqualTo(pool.getFirst());
+        var body=mapper.readTree(request.get());
+        assertThat(body.path("store").booleanValue()).isFalse();
+        assertThat(body.path("text").path("format").path("strict").booleanValue()).isTrue();
+        assertThat(request.get()).doesNotContain("private-original-input","private-summary","test-key","guestToken","userId");
+        assertThat(calls.get()).isEqualTo(1);
+    }
+    @Test void rejectsUnknownDuplicateMissingAndMalformedResults() {
+        var client=client("test-key",Duration.ofSeconds(2));
+        for(String json:List.of("{}","{\"recommendations\":[]}",
+            "{\"recommendations\":[{\"placeId\":99,\"reason\":\"없는 후보\"}]}",
+            "{\"recommendations\":[{\"placeId\":1,\"reason\":\" \"}]}",
+            "{\"recommendations\":[{\"placeId\":1,\"reason\":\"<script>bad</script>\"}]}",
+            "{\"recommendations\":[{\"placeId\":\"1\",\"reason\":\"wrong type\"}]}",
+            "{\"recommendations\":[{\"placeId\":1,\"reason\":\"x\",\"name\":\"fake\"}]}")) {
+            output(json);assertThatThrownBy(()->client.recommend(conditions(),pool)).isInstanceOf(RecommendationException.class);
+        }
+        var second=new DestinationCandidate(2L,"부산","부산","해변", "https://www.visitbusan.net/kr/index.do",pool.getFirst().verifiedAt());
+        output("{\"recommendations\":[{\"placeId\":1,\"reason\":\"x\"},{\"placeId\":1,\"reason\":\"y\"}]}");
+        assertThatThrownBy(()->client.recommend(conditions(),List.of(pool.getFirst(),second))).isInstanceOf(RecommendationException.class);
+    }
+    @Test void errorsRefusalAndIncompleteAreSafeWithoutAutomaticRetry() {
+        var client=client("test-key",Duration.ofSeconds(2));
+        response.set("private-provider-body");
+        for(int code:List.of(401,403,429,500)) {
+            status.set(code);assertThatThrownBy(()->client.recommend(conditions(),pool))
+                .isInstanceOf(RecommendationException.class).hasMessageNotContaining("private-provider-body");
+        }
+        assertThat(calls.get()).isEqualTo(4);status.set(200);
+        for(String text:List.of("bad-json","{\"status\":\"incomplete\"}",
+            "{\"status\":\"completed\",\"output\":[{\"content\":[{\"type\":\"refusal\"}]}]}")) {
+            response.set(text);assertThatThrownBy(()->client.recommend(conditions(),pool)).isInstanceOf(RecommendationException.class);
+        }
+    }
+    @Test void missingKeyMakesNoCallAndTimeoutStopsOnce() {
+        assertThatThrownBy(()->client("",Duration.ofSeconds(2)).recommend(conditions(),pool)).isInstanceOf(RecommendationException.class);
+        assertThat(calls.get()).isZero();delay.set(700);
+        assertThatThrownBy(()->client("test-key",Duration.ofMillis(100)).recommend(conditions(),pool)).hasMessageContaining("초과");
+        assertThat(calls.get()).isLessThanOrEqualTo(1);
+    }
+}

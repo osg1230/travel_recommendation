@@ -9,7 +9,8 @@ document.querySelector('[data-recommendation-form]')?.addEventListener('submit',
         const response = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { Accept: 'application/json' } });
         if (!response.ok) {
             status.textContent = response.status === 409 ? '조건이 바뀌었거나 만료됐어요. 조건을 다시 확정해 주세요.' :
-                response.status === 403 ? '세션이 만료되었거나 요청 권한이 없어요. 화면을 새로고침해 주세요.' :
+                response.status === 403 || response.status === 404 ? '요청이 만료되었거나 조회 권한이 없어요. 조건을 다시 입력해 주세요.' :
+                response.status === 503 ? '추천 연결 설정을 확인해야 해요. 잠시 후 다시 이용해 주세요.' :
                 '요청을 접수하지 못했어요. DB 연결과 서버 상태를 확인한 뒤 다시 시도해 주세요.';
             return;
         }

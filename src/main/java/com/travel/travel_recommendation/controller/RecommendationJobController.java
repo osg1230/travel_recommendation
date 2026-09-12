@@ -2,6 +2,7 @@ package com.travel.travel_recommendation.controller;
 
 import com.travel.travel_recommendation.dto.*;
 import com.travel.travel_recommendation.service.RecommendationJobService;
+import com.travel.travel_recommendation.service.DestinationRecommendationService;
 import jakarta.servlet.http.HttpSession;
 import java.nio.charset.StandardCharsets;
 import java.security.*;
@@ -20,6 +21,7 @@ import static com.travel.travel_recommendation.controller.TravelConditionReviewC
 @RequestMapping("/travel/recommendations")
 public class RecommendationJobController {
     private final ObjectProvider<RecommendationJobService> services;
+    private final ObjectProvider<DestinationRecommendationService> recommendations;
     private static final String GUEST_TOKEN="recommendationGuestToken";
     private static final String LAST_JOB="lastRecommendationJob";
     private record Submission(String token, String loginId, UUID jobId) {}
@@ -57,6 +59,19 @@ public class RecommendationJobController {
         model.addAttribute("job",service().view(id,principal==null?null:principal.getName(),guestHash(session,false)));
         model.addAttribute("confirmationToken",session.getAttribute(CONFIRMATION_TOKEN));
         return "travel/recommendation-job";
+    }
+    @PostMapping("/{id}/recommend")
+    @ResponseBody
+    ResponseEntity<Map<String,String>> recommend(@PathVariable UUID id,@RequestParam int attempt,
+            @RequestHeader(value="Accept",defaultValue="") String accept,Principal principal,HttpSession session) {
+        var recommendationService=recommendations.getIfAvailable();
+        if(recommendationService==null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE);
+        recommendationService.enqueue(id,principal==null?null:principal.getName(),guestHash(session,false),attempt);
+        String location="/travel/recommendations/"+id;
+        if(accept.contains("text/html")) return ResponseEntity.status(HttpStatus.SEE_OTHER)
+            .header(HttpHeaders.LOCATION,location).cacheControl(CacheControl.noStore()).build();
+        return ResponseEntity.accepted().header(HttpHeaders.LOCATION,location).cacheControl(CacheControl.noStore())
+            .body(Map.of("jobId",id.toString(),"location",location));
     }
     @GetMapping("/{id}/status")
     @ResponseBody

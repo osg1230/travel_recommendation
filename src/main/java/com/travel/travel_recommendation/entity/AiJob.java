@@ -41,7 +41,25 @@ public class AiJob {
     public void searching() { status="SEARCHING_CANDIDATES"; startedAt=LocalDateTime.now(ZoneOffset.UTC); }
     public void candidatesReady(String json) {
         status="CANDIDATES_READY"; resultJson=json;
-        message="여행지 후보를 찾았어요. GPT 추천 순위와 이유 생성은 다음 단계에서 연결됩니다.";
+        message="여행지 후보를 찾았어요. 확정한 조건으로 추천 순위와 이유를 받아보세요.";
+    }
+    public void queueRecommendation() {
+        status="RECOMMENDATION_QUEUED"; errorCode=null; completedAt=null;
+        startedAt=LocalDateTime.now(ZoneOffset.UTC);
+        message="여행지 추천 요청을 접수했어요.";
+    }
+    public void ranking() {
+        status="RANKING_CANDIDATES"; attemptCount++;
+        message="확정한 조건에 맞춰 여행지를 비교하고 있어요.";
+    }
+    public void completeRecommendation(String json) {
+        status="COMPLETED"; resultJson=json; errorCode=null;
+        completedAt=LocalDateTime.now(ZoneOffset.UTC); message="여행지 추천이 준비됐어요.";
+    }
+    public void failRecommendation(String code, String safeMessage) {
+        // 재시도에는 같은 후보를 사용한다. 실패한 AI 원문은 저장하지 않는다.
+        status="FAILED"; errorCode=code; message=safeMessage;
+        completedAt=LocalDateTime.now(ZoneOffset.UTC);
     }
     public void fail(String code, String safeMessage) {
         status="FAILED"; errorCode=code; message=safeMessage; resultJson=null;
