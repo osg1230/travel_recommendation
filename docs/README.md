@@ -5,7 +5,7 @@
 | 위치 | 내용 |
 | --- | --- |
 | [progress.md](progress.md) | 현재 진행 상황, 확인 결과, 다음 작업 |
-| [requirements](requirements/) | 관리자 범위 축소 요구분석서 |
+| [requirements](requirements/) | 통합 요구분석서와 변경 내역 |
 | [requirements/archive](requirements/archive/) | 이전 요구분석서와 최종본이 아닌 문서 |
 | [database](database/) | 수정된 DB 테이블 정의서 |
 | [database/archive](database/archive/) | 이전 DB 테이블 정의서 |
@@ -14,9 +14,11 @@
 
 ## 먼저 확인할 자료
 
-DB 설계 이름과 중복 컬럼 정리 결과는 [DB 검토 변경 내역](database/DB_검토_변경내역.md)과 [전체 정의서 정리본](database/DB_테이블_정의서.md)에서 확인합니다. 기존 Word 원본은 보존되어 있으며 새 Word 파일은 페이지 모양 미검증인 검토용입니다.
+DB 설계 이름과 중복 컬럼 정리 결과는 [DB 검토 변경 내역](database/DB_검토_변경내역.md)과 [전체 정의서 정리본](database/DB_테이블_정의서.md)에서 확인합니다. 기존 Word 원본은 보존되어 있다. 통합 요구분석서는 Microsoft Word 출력으로 105페이지를 확인했으며, DB 정리본 Word 파일은 페이지 모양을 아직 확인하지 않은 검토용이다.
 
-- [관리자 범위 축소 요구분석서](requirements/창프2_요구분석서%203.0_관리자범위축소_최종본.docx)
+- [통합 요구분석서 3.1](requirements/창프2_요구분석서%203.1_통합최종본.docx)
+- [통합 변경 내역](requirements/2026-09-16_요구분석서_3.1_통합_변경내역.md)
+- [이전 관리자 범위 축소 요구분석서 3.0](requirements/창프2_요구분석서%203.0_관리자범위축소_최종본.docx)
 - [DB 테이블 정의서 수정본](database/DB%20테이블%20정의서_수정본.docx)
 - [ERD HTML](database/erd/여행%20추천%20서비스DB%20ERD.html)
 - [최종 화면 ID](screens/최종_화면_ID_정리.txt)
