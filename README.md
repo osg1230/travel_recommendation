@@ -196,7 +196,7 @@ sqlcmd -S .\SQLEXPRESS -E -d travel_recommendation -i docs/database/sql/003_seed
 
 ## GPT 조건 분석 사용하기
 
-카카오 지도 연동용 서버 키는 `KAKAO_REST_API_KEY` 사용자 환경변수로 준비합니다. [카카오 API 설정 안내](docs/ai/카카오_API_설정.md)를 참고하세요. 현재 환경변수 설정만 추가했으며 좌표·경로 조회와 시간대별 일정 생성은 구현 중입니다.
+카카오 지도 연동용 서버 키는 `KAKAO_REST_API_KEY` 사용자 환경변수로 준비합니다. [카카오 API 설정 안내](docs/ai/카카오_API_설정.md)를 참고하세요. 서버의 주소 좌표·자동차·대중교통 이동시간 조회 클라이언트는 실제 API 검증을 마쳤으며 화면과 시간대별 일정 생성 연결은 아직 구현 중입니다.
 
 OpenAI Responses API와 `gpt-4.1-mini`를 기본으로 사용합니다. `OPENAI_API_KEY` 환경변수 또는 기존 `Portfolio_java_API` 환경변수를 서버 실행 환경에 설정합니다. 두 변수가 모두 있으면 `OPENAI_API_KEY`가 우선입니다. 실제 키를 소스·문서·대화에 붙여 넣지 않습니다. 모델은 `OPENAI_MODEL`로 바꿀 수 있습니다.
 

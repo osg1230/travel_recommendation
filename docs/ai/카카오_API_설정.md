@@ -2,7 +2,11 @@
 
 ## 현재 단계
 
-서버가 `KAKAO_REST_API_KEY` 환경변수를 읽는 설정을 준비했다. 아직 좌표·경로 API 호출과 일정 생성 기능을 연결하지 않았으며, 키 설정만으로 기존 화면 동작이 달라지지는 않는다. DB 변경은 없다.
+서버가 `KAKAO_REST_API_KEY` 환경변수를 읽고 `KakaoMapClient`에서 주소 좌표와 자동차·대중교통 경로의 소요시간을 조회한다. 2026-09-18 현재 PC에서 실제 Java 클라이언트 호출을 검증했다. 아직 화면·일정 생성 작업에는 연결하지 않았으며 기존 화면 동작과 DB 변경은 없다.
+
+입력 도로명 주소와 응답 주소가 정확히 일치하고 결과가 1개일 때만 국내 좌표를 반환한다. 초기 지역의 광역시·도 표기 차이만 정규화한다. 층·상호가 붙은 상세주소는 호출 전에 검증된 도로명 주소로 구분하는 작업이 남아 있으며 임의로 첫 결과를 사용하지 않는다. 경로 소요시간은 초 단위로 받고 분 단위 표시 시 올림한다. 대중교통은 해당 경로 중 가장 짧은 소요시간을 사용한다. 동일 좌표·경로 없음·잘못된 값은 오류로 처리하며 추정 시간으로 대체하지 않는다.
+
+연결 제한 3초·요청 제한 8초이며 인증·권한·사용량·통신·시간 초과 오류를 구분한다. 자동 재호출과 오류 원문 저장은 하지 않는다. 지도 조회 시각을 반환하며 실제 영업 여부·입구 위치·여행 당일 이동시간·방문 가능성까지 검증하는 것은 아니다.
 
 ## 키 준비
 
@@ -31,5 +35,19 @@ if ([string]::IsNullOrWhiteSpace($env:KAKAO_REST_API_KEY)) {
 - 이동수단에 맞는 경로 응답의 거리·소요시간을 확인한다. 조회 시점의 예상 소요시간이며 여행 당일 도착 시간을 보장하지 않는다.
 - 인증 실패·권한 제한·사용량 제한·경로 없음은 별도 안내하고 임의의 이동시간으로 바꾸지 않는다.
 - 기간과 하루 시작/종료 시간을 확인받아 가까운 장소를 같은 날 배치하고 이동·체류 시간의 충돌을 검사한다.
+
+## 검증
+
+일반 `KakaoMapClientTests`는 로컬 응답 서버를 사용하며 실제 API를 호출하지 않는다. 주소 불일치·좌표 이상·초/분 변환·이동수단 구분·실패 응답과 추가 호출 차단을 검사한다. 실제 호출은 `RUN_KAKAO_TESTS=true`와 `KAKAO_REST_API_KEY`가 있을 때만 `KakaoMapLiveTests`에서 수행하며 API 사용량이 발생한다.
+
+```powershell
+. ./scripts/use-java21.ps1
+$env:KAKAO_REST_API_KEY = [Environment]::GetEnvironmentVariable('KAKAO_REST_API_KEY', 'User')
+$env:RUN_KAKAO_TESTS = 'true'
+./mvnw.cmd '-Dtest=KakaoMapClientTests,KakaoMapLiveTests' test
+Remove-Item Env:RUN_KAKAO_TESTS
+```
+
+2026-09-18 자동 6개와 실제 연동 1개, 총 7개 통과. 실제 연동은 오죽헌·경포대 주소 2개와 두 장소 간 자동차·대중교통 경로를 확인한다. 특정 시점 소요시간을 고정된 정답으로 테스트하지 않는다. 전체 회귀·부하·모든 초기 장소 주소 검증은 이번 실행 범위에 포함하지 않았다.
 
 2026-09-18 확인한 공식 자료: [카카오모빌리티 시작하기](https://developers.kakaomobility.com/guide/navi-api/start), [자동차 길찾기](https://developers.kakaomobility.com/guide/navi-api/directions.html), [카카오맵 REST API](https://developers.kakao.com/docs/ko/kakaomap/rest-api). 실제 앱 권한과 API 응답은 키 설정 후 확인한다.
