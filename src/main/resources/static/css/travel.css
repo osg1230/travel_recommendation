@@ -28,3 +28,6 @@
 [hidden] { display: none !important; }
 @media (max-width: 540px) { .field-grid { grid-template-columns: 1fr; } .mode-switch { gap: 8px; } .mode-switch label { padding: 12px 8px; font-size: 14px; } .travel h1 { font-size: 26px; } .condition-summary { grid-template-columns: 100px 1fr; } .form-actions button, .form-actions .button { max-width: none; } }
  .destination-candidate { padding: 1rem 0; border-top: 1px solid #dce4df; }
+.place-row { padding: 20px 0; border-bottom: 1px solid #e0e5df; overflow-wrap: anywhere; }
+.place-row:last-child { border-bottom: 0; }
+.place-links { display: flex; flex-wrap: wrap; gap: 12px 24px; }

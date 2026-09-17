@@ -23,6 +23,7 @@
             <p th:text="${item.reason}"></p>
             <a th:href="${item.destination.sourceUrl}" target="_blank" rel="noopener noreferrer">공식 관광 정보 보기</a>
             <p class="help" th:text="${'지역 정보 확인일: ' + #temporals.format(item.destination.verifiedAt,'yyyy-MM-dd') + ' · 실시간 조회 아님'}"></p>
+            <div class="form-actions"><a class="button" th:href="@{/travel/recommendations/{id}/destinations/{destinationId}/places(id=${job.jobId},destinationId=${item.destination.placeId})}" th:text="${item.destination.name + ' 선택하고 장소 보기'}"></a></div>
         </section>
         <p class="help">날짜별·시간대별 여행 일정 생성은 아직 준비 중이에요.</p>
     </div>

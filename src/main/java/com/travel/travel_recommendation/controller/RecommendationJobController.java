@@ -84,7 +84,7 @@ public class RecommendationJobController {
         if(service==null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"DB 연결 모드에서 여행지 조회를 이용해 주세요.");
         return service;
     }
-    private byte[] guestHash(HttpSession session,boolean create) {
+    static byte[] guestHash(HttpSession session,boolean create) {
         synchronized(session) {
             String token=(String)session.getAttribute(GUEST_TOKEN);
             if(token==null && create) {

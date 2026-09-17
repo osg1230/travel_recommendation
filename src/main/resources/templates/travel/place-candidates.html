@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${places.destination.name + ' 방문 장소 | 국내여행'}">방문 장소 | 국내여행</title>
+    <link rel="stylesheet" th:href="@{/css/account.css}"><link rel="stylesheet" th:href="@{/css/travel.css}">
+</head>
+<body>
+<header class="site-header"><a th:href="@{/}">국내여행</a></header>
+<main class="travel">
+    <a class="back-link" th:href="@{/travel/recommendations/{id}(id=${places.jobId})}">← 추천 결과에서 다른 지역 선택</a>
+    <p class="eyebrow">여행 준비 · 방문 장소</p>
+    <h1 th:text="${places.destination.name + '에서 방문할 곳을 살펴보세요'}"></h1>
+    <p class="intro">공식 관광·업체 출처에서 이름과 주소를 확인한 장소 후보예요. 아직 방문 순서와 시간이 정해진 일정은 아니에요.</p>
+    <p th:if="${places.durationDays != null}" th:text="${'여행 기간: ' + places.durationDays + '일'}"></p>
+    <p class="help">초기 지원 장소만 표시해요. 예산·취향·동선에 맞춘 비교는 다음 일정 생성 단계에서 필요해요.</p>
+    <nav class="category-nav" aria-label="장소 종류">
+        <a href="#attractions">관광지</a><a href="#restaurants">음식점</a><a href="#accommodations">숙소</a>
+    </nav>
+    <section id="attractions" class="condition-section">
+        <h2 th:text="${'관광지 · ' + places.attractions.size() + '곳'}"></h2>
+        <p th:if="${places.attractions.isEmpty()}" role="status">이 지역에서 확인된 관광지 후보가 아직 없어요. 다른 추천 지역을 선택해 주세요.</p>
+        <th:block th:each="place : ${places.attractions}"><article th:replace="~{::placeRow(${place})}"></article></th:block>
+    </section>
+    <section id="restaurants" class="condition-section">
+        <h2 th:text="${'음식점 · ' + places.restaurants.size() + '곳'}"></h2>
+        <p th:if="${places.restaurants.isEmpty()}" role="status">확인된 음식점 후보가 아직 없어요. 음식점 정보는 추가 확인이 필요해요.</p>
+        <th:block th:each="place : ${places.restaurants}"><article th:replace="~{::placeRow(${place})}"></article></th:block>
+    </section>
+    <section id="accommodations" class="condition-section">
+        <h2>숙소</h2>
+        <p th:if="${places.durationDays == null}">여행 기간이 미정이라 숙소 필요 여부를 아직 확정할 수 없어요. 일정 생성 전에 기간을 확인해 주세요.</p>
+        <p th:if="${places.durationDays != null and !places.accommodationNeeded}">당일 여행이거나 숙박이 필요 없다는 조건에 따라 숙소 후보를 제외했어요.</p>
+        <p th:if="${places.accommodationNeeded and places.accommodations.isEmpty()}" role="status">확인된 숙소 후보가 아직 없어요. 숙소 정보는 추가 확인이 필요해요.</p>
+        <th:block th:each="place : ${places.accommodations}"><article th:replace="~{::placeRow(${place})}"></article></th:block>
+    </section>
+    <p class="help">실시간 조회가 아니에요. 가격·영업시간·예약 가능 여부와 이동시간은 확인하지 않았어요. 방문 전 출처에서 최신 정보를 확인해 주세요.</p>
+    <p class="help">지도는 이름과 주소로 검색해요. 검색 결과의 장소가 맞는지 확인해 주세요.</p>
+    <div class="form-actions"><a th:href="@{/travel/recommendations/{id}(id=${places.jobId})}">추천 결과로 돌아가기</a></div>
+</main>
+<!-- 같은 장소 항목을 관광지·음식점·숙소에 공통으로 표시한다. -->
+<th:block th:if="${false}">
+    <article th:fragment="placeRow(place)" class="place-row">
+        <h3 th:text="${place.name}"></h3>
+        <p class="help" th:text="${place.subtype}"></p>
+        <p th:text="${place.description}"></p>
+        <p th:text="${place.address}"></p>
+        <div class="place-links">
+            <a th:href="${place.sourceUrl}" target="_blank" rel="noopener noreferrer">출처에서 상세 정보 확인 <span class="help">(새 창)</span></a>
+            <a th:href="${place.mapSearchUrl}" target="_blank" rel="noopener noreferrer">지도에서 검색 <span class="help">(새 창)</span></a>
+        </div>
+        <p class="help" th:text="${'출처 확인일: ' + #temporals.format(place.verifiedAt, 'yyyy-MM-dd') + ' (UTC)'}"></p>
+    </article>
+</th:block>
+</body></html>

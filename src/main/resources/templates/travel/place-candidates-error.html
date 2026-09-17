@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>장소 조회 안내 | 국내여행</title><link rel="stylesheet" th:href="@{/css/account.css}"><link rel="stylesheet" th:href="@{/css/travel.css}"></head>
+<body><header class="site-header"><a th:href="@{/}">국내여행</a></header>
+<main class="travel">
+    <h1>장소를 조회할 수 없어요</h1>
+    <p class="intro" role="alert" th:text="${message}"></p>
+    <p th:if="${jobId != null}"><a th:href="@{/travel/recommendations/{id}(id=${jobId})}">추천 결과로 돌아가기</a></p>
+    <a th:href="@{/travel/conditions}">여행 조건 다시 입력하기</a>
+</main></body></html>
