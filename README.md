@@ -196,6 +196,8 @@ sqlcmd -S .\SQLEXPRESS -E -d travel_recommendation -i docs/database/sql/003_seed
 
 ## GPT 조건 분석 사용하기
 
+카카오 지도 연동용 서버 키는 `KAKAO_REST_API_KEY` 사용자 환경변수로 준비합니다. [카카오 API 설정 안내](docs/ai/카카오_API_설정.md)를 참고하세요. 현재 환경변수 설정만 추가했으며 좌표·경로 조회와 시간대별 일정 생성은 구현 중입니다.
+
 OpenAI Responses API와 `gpt-4.1-mini`를 기본으로 사용합니다. `OPENAI_API_KEY` 환경변수 또는 기존 `Portfolio_java_API` 환경변수를 서버 실행 환경에 설정합니다. 두 변수가 모두 있으면 `OPENAI_API_KEY`가 우선입니다. 실제 키를 소스·문서·대화에 붙여 넣지 않습니다. 모델은 `OPENAI_MODEL`로 바꿀 수 있습니다.
 
 홈 → 여행 조건 입력 → 문장으로 적기 → 입력 내용 확인 → 문장 분석하기 → 조건 보완 → 이 조건으로 확정하기 순서입니다. 문장 분석 버튼은 실제 유료 API를 호출합니다. 키워드 방식은 API를 호출하지 않고 보완·확정할 수 있습니다. API 키가 없거나 호출에 실패하면 원문을 유지하고 재시도 안내를 표시합니다.
