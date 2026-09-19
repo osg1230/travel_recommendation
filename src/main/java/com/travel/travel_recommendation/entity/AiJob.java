@@ -39,6 +39,20 @@ public class AiJob {
         message="확정 조건으로 여행지 후보를 조회할 준비를 하고 있어요.";
     }
     public void searching() { status="SEARCHING_CANDIDATES"; startedAt=LocalDateTime.now(ZoneOffset.UTC); }
+    public static AiJob itinerary(AiJob parent, String input) {
+        var job=new AiJob(parent.userId,parent.guestTokenHash,parent.requestId,input,parent.expiresAt);
+        job.jobType="ITINERARY";
+        job.message="장소 좌표와 이동시간을 확인할 준비를 하고 있어요.";
+        return job;
+    }
+    public void generatingSchedule() {
+        status="GENERATING_SCHEDULE"; startedAt=LocalDateTime.now(ZoneOffset.UTC); attemptCount++;
+        message="장소 좌표와 이동시간을 확인하고 날짜별로 배치하고 있어요.";
+    }
+    public void validatingSchedule() { status="VALIDATING_SCHEDULE"; message="시간 충돌과 방문 순서를 검사하고 있어요."; }
+    public void completeSchedule(String json) {
+        completeRecommendation(json); message="이동시간을 반영한 일정 초안이 준비됐어요.";
+    }
     public void candidatesReady(String json) {
         status="CANDIDATES_READY"; resultJson=json;
         message="여행지 후보를 찾았어요. 확정한 조건으로 추천 순위와 이유를 받아보세요.";

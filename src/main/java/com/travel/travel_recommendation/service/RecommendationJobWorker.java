@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 public class RecommendationJobWorker {
     private final RecommendationJobService service;
     private final DestinationRecommendationService recommendations;
+    private final ItineraryJobService itineraries;
     private volatile boolean ready;
 
     @EventListener(ApplicationReadyEvent.class)
@@ -36,6 +37,13 @@ public class RecommendationJobWorker {
             try { recommendations.complete(work,recommendations.generate(work)); }
             catch(RecommendationException e) { recommendations.fail(work,e.getCode(),e.getMessage()); }
             catch(RuntimeException e) { recommendations.fail(work,"RECOMMENDATION_FAILED","추천 결과를 저장하지 못했어요. 잠시 후 다시 시도해 주세요."); }
+        }
+        for(UUID id:itineraries.queued()) {
+            var work=itineraries.claim(id);
+            if(work==null) continue;
+            try { itineraries.complete(work,itineraries.generate(work)); }
+            catch(RecommendationException e) { itineraries.fail(work,e.getCode(),e.getMessage()); }
+            catch(RuntimeException e) { itineraries.fail(work,"SCHEDULE_FAILED","일정을 만들지 못했어요. 잠시 후 다시 요청해 주세요."); }
         }
     }
     @Scheduled(fixedDelay=60000)

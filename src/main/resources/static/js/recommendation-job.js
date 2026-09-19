@@ -22,7 +22,7 @@ document.querySelector('[data-recommendation-form]')?.addEventListener('submit',
 
 const job = document.querySelector('[data-job-pending="true"]');
 if (job) {
-    const deadline = Date.now() + 60000;
+    const deadline = Date.now() + (job.dataset.pollSeconds === '120' ? 120000 : 60000);
     const poll = async () => {
         try {
             const response = await fetch(job.dataset.statusUrl, { headers: { Accept: 'application/json' }, cache: 'no-store' });

@@ -42,11 +42,7 @@ public class RecommendationJobService {
 
     @Transactional(readOnly=true, timeout=10)
     public RecommendationJobView view(UUID id,String loginId,byte[] guestHash) {
-        AiJob job=jobs.findById(id).orElseThrow(this::notFound);
-        Long userId=activeUser(loginId);
-        boolean owner=job.getUserId()!=null ? job.getUserId().equals(userId)
-            : userId==null && guestHash!=null && MessageDigest.isEqual(job.getGuestTokenHash(),guestHash);
-        if(!owner || !job.getExpiresAt().isAfter(now())) throw notFound();
+        AiJob job=owned(id,loginId,guestHash,"RECOMMENDATION");
         boolean completed="COMPLETED".equals(job.getStatus());
         List<DestinationCandidate> result=job.getResultJson()==null || completed?List.of():
             Arrays.asList(mapper.readValue(job.getResultJson(),DestinationCandidate[].class));
@@ -56,15 +52,25 @@ public class RecommendationJobService {
             ranked,job.getAttemptCount()<3 && ("CANDIDATES_READY".equals(job.getStatus()) || ("FAILED".equals(job.getStatus()) && job.getResultJson()!=null)),job.getAttemptCount());
     }
 
+    @Transactional(readOnly=true, timeout=10)
+    public AiJob owned(UUID id,String loginId,byte[] guestHash,String type) {
+        AiJob job=jobs.findById(id).orElseThrow(this::notFound);
+        Long userId=activeUser(loginId);
+        boolean owner=job.getUserId()!=null ? job.getUserId().equals(userId)
+            : userId==null && guestHash!=null && MessageDigest.isEqual(job.getGuestTokenHash(),guestHash);
+        if(!owner || !job.getExpiresAt().isAfter(now()) || !type.equals(job.getJobType())) throw notFound();
+        return job;
+    }
+
     @Transactional(readOnly=true)
     public List<UUID> queued() {
-        return jobs.findTop5ByStatusOrderByCreatedAtAsc("QUEUED").stream().map(AiJob::getId).toList();
+        return jobs.findTop5ByJobTypeAndStatusOrderByCreatedAtAsc("RECOMMENDATION","QUEUED").stream().map(AiJob::getId).toList();
     }
 
     @Transactional(timeout=15)
     public void prepare(UUID id) {
         AiJob job=jobs.lockById(id).orElse(null);
-        if(job==null || !"QUEUED".equals(job.getStatus())) return;
+        if(job==null || !"RECOMMENDATION".equals(job.getJobType()) || !"QUEUED".equals(job.getStatus())) return;
         if(!job.getExpiresAt().isAfter(now())) { job.fail("EXPIRED","요청이 만료됐어요. 조건을 확인하고 다시 요청해 주세요."); return; }
         if(job.getCreatedAt().isBefore(now().minusSeconds(60))) {
             job.fail("TIMEOUT","요청 대기 시간이 초과됐어요. 잠시 후 다시 요청해 주세요."); return;

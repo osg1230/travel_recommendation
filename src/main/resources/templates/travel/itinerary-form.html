@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>하루 시간 정하기 | 국내여행</title><link rel="stylesheet" th:href="@{/css/account.css}"><link rel="stylesheet" th:href="@{/css/travel.css}"></head>
+<body><header class="site-header"><a th:href="@{/}">국내여행</a></header><main class="travel">
+<a th:href="@{/travel/recommendations/{id}/destinations/{dest}/places(id=${options.recommendationId},dest=${options.places.destination.placeId})}">← 장소 목록</a>
+<h1>하루 시간 정하기</h1>
+<p th:text="${options.places.destination.name + ' · ' + (options.conditions.durationDays == null ? '기간 미정' : options.conditions.durationDays + '일')}"></p>
+<p class="intro">가까운 관광지를 묶고, 식사와 이동시간을 포함한 일정 초안을 만들어요.</p>
+<p>기본 시간은 09:00~18:00, 관광지 체류는 90분이에요. 원하는 시간으로 바꿔 주세요. 모든 날짜에 같은 시간을 적용해요.</p>
+<p class="help">현재 지역별 관광지 2곳으로 1~2일을 구성해요. 기간·숙박 여부가 미정이거나 3일 이상이면 <a th:href="@{/travel/conditions}">여행 조건부터 수정</a>해 주세요. 확정한 이동수단은 유지해야 해요.</p>
+<form method="post" th:action="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${options.recommendationId},dest=${options.places.destination.placeId})}">
+<input type="hidden" name="submissionToken" th:value="${submissionToken}">
+<div class="condition-section">
+<p><label for="start">하루 시작 시간 (필수)</label><input id="start" name="start" type="time" min="08:00" max="17:00" th:value="${options.start}" required></p>
+<p><label for="end">하루 종료 시간 (필수)</label><input id="end" name="end" type="time" min="12:00" max="21:00" th:value="${options.end}" required></p>
+<p class="help">08:00~21:00 사이, 최소 4시간을 확보해 주세요.</p>
+<p><label for="transport">이동수단 (필수)</label><select id="transport" name="transport" required>
+<option value="CAR" th:selected="${options.transport.name() == 'CAR'}">자동차</option>
+<option value="PUBLIC_TRANSIT" th:selected="${options.transport.name() == 'PUBLIC_TRANSIT'}">대중교통</option></select></p>
+<p><label for="visitMinutes">관광지 한 곳의 체류시간 (분, 필수)</label><input id="visitMinutes" name="visitMinutes" type="number" min="30" max="180" th:value="${options.visitMinutes}" required></p>
+</div>
+<p class="help">식사는 60분, 각 이동 구간은 카카오 예상시간에 여유 10분을 더해요. 같은 주소 안 이동은 계획상 5분을 두며 내부 동선 확인이 필요해요. 출발지에서 여행 지역까지의 왕복 이동은 포함하지 않아요.</p>
+<p class="help">영업시간·휴무·가격·숙소 예약은 아직 확인하지 않아요. 초안을 확인한 뒤 방문 전 공식 출처에서 확인해 주세요.</p>
+<button type="submit">이 시간으로 일정 초안 만들기</button>
+</form></main></body></html>

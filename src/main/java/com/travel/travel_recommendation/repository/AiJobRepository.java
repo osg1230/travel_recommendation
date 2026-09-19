@@ -10,6 +10,7 @@ public interface AiJobRepository extends JpaRepository<AiJob,UUID> {
     @Query("select j from AiJob j where j.id=:id")
     Optional<AiJob> lockById(UUID id);
     List<AiJob> findTop5ByStatusOrderByCreatedAtAsc(String status);
+    List<AiJob> findTop5ByJobTypeAndStatusOrderByCreatedAtAsc(String jobType,String status);
     @Modifying(clearAutomatically=true,flushAutomatically=true)
     @Query("delete from AiJob j where j.userId is null and j.expiresAt<=:now")
     int deleteExpiredGuests(LocalDateTime now);
