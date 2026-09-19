@@ -21,7 +21,7 @@
 <h3 th:text="${item.name}"></h3><p th:text="${item.note}"></p>
 <p class="help" th:if="${item.checkedAt != null}" th:text="${'이동시간 조회: ' + item.checkedAt + ' (UTC)'}"></p>
 <div class="place-links"><a th:href="${item.mapUrl}" target="_blank" rel="noopener noreferrer">위치 보기 (새 창)</a>
-<a th:if="${item.type != 'TRANSIT'}" th:href="${item.sourceUrl}" target="_blank" rel="noopener noreferrer">공식 출처 확인 (새 창)</a></div>
+<a th:if="${item.type != 'TRANSIT'}" th:href="${item.sourceUrl}" target="_blank" rel="noopener noreferrer">장소 출처 확인 (새 창)</a></div>
 </article></section>
 </th:block>
 <p th:unless="${job.pending}"><a th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">시간을 조정해서 다시 만들기</a></p>

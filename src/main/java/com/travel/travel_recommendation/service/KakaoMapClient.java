@@ -7,6 +7,8 @@ import java.net.URLEncoder;
 import java.net.http.*;
 import java.nio.charset.StandardCharsets;
 import java.time.*;
+import java.util.*;
+import com.travel.travel_recommendation.dto.KakaoPlace;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.*;
@@ -65,6 +67,60 @@ public class KakaoMapClient {
         } catch (IllegalArgumentException e) { throw invalidAddress(); }
     }
 
+    public List<KakaoPlace> searchPlaces(String region,String type) {
+        String city=switch(region) {
+            case "강원특별자치도 강릉시" -> "강릉";
+            case "부산광역시" -> "부산";
+            case "경상북도 경주시" -> "경주";
+            default -> throw failure("MAP_REGION","현재 강릉·부산·경주만 조회할 수 있어요.");
+        };
+        String code, keyword; int limit;
+        switch(type) {
+            case "ATTRACTION" -> { code="AT4"; keyword="관광지"; limit=8; }
+            case "RESTAURANT" -> { code="FD6"; keyword="음식점"; limit=5; }
+            case "ACCOMMODATION" -> { code="AD5"; keyword="숙소"; limit=3; }
+            default -> throw invalid();
+        }
+        var root=get(localEndpoint.resolve("/v2/local/search/keyword.json?query="
+            +URLEncoder.encode(city+" "+keyword,StandardCharsets.UTF_8)
+            +"&category_group_code="+code+"&rect=124,33,132,39&size=15&page=1&sort=accuracy"));
+        var documents=root.path("documents");
+        if(!documents.isArray() || documents.size()>15) throw invalid();
+        List<KakaoPlace> result=new ArrayList<>(); Set<String> ids=new HashSet<>();
+        for(var item:documents) {
+            try {
+                String id=requiredText(item,"id",20), name=requiredText(item,"place_name",200);
+                String address=requiredText(item,"address_name",300);
+                if(!id.matches("[1-9][0-9]{0,19}") || !code.equals(item.path("category_group_code").asText())) continue;
+                String normalized=normalize(address);
+                if(!normalized.startsWith(normalize(region)+" ")) continue;
+                String road=item.path("road_address_name").asText("");
+                if(!road.isBlank()) {
+                    if(road.length()>300 || !normalize(road).startsWith(normalize(region)+" ")) continue;
+                    address=road;
+                }
+                var location=new Location(address,Double.parseDouble(requiredText(item,"x",40)),
+                    Double.parseDouble(requiredText(item,"y",40)),Instant.now());
+                String category=requiredText(item,"category_name",80);
+                var url=URI.create(requiredText(item,"place_url",1000));
+                if(!Set.of("http","https").contains(url.getScheme()) || !"place.map.kakao.com".equals(url.getHost())
+                    || url.getUserInfo()!=null || url.getPort()!=-1 || !url.getPath().equals("/"+id)
+                    || url.getQuery()!=null || url.getFragment()!=null || !ids.add(id)) continue;
+                result.add(new KakaoPlace(id,type,name,region,address,category,location.longitude(),location.latitude(),
+                    "https://place.map.kakao.com/"+id,LocalDateTime.now(ZoneOffset.UTC).withNano(0)));
+                if(result.size()==limit) break;
+            } catch(IllegalArgumentException ignored) {
+                // 한 항목의 잘못된 주소·좌표로 다른 검증 가능한 후보까지 잃지 않는다.
+            }
+        }
+        return List.copyOf(result);
+    }
+    private String requiredText(JsonNode item,String field,int max) {
+        var value=item.path(field);
+        if(!value.isTextual() || value.asText().isBlank() || value.asText().length()>max) throw new IllegalArgumentException();
+        return value.asText().strip();
+    }
+
     public TravelTime travelTime(Location from, Location to, Transport transport) {
         if (from==null || to==null || transport==null) throw invalid();
         if (from.longitude()==to.longitude() && from.latitude()==to.latitude())
@@ -121,10 +177,10 @@ public class KakaoMapClient {
         // 인증키나 공급자 오류 원문을 예외·로그에 포함하지 않는다. 자동 재호출도 하지 않는다.
         catch (RuntimeException e) { throw invalid(); }
     }
-    private static String normalize(String address) {
+    static String normalize(String address) {
         return address.strip().replaceFirst("^강원특별자치도\\s+", "강원 ")
             .replaceFirst("^강원도\\s+", "강원 ").replaceFirst("^경상북도\\s+", "경북 ")
-            .replaceFirst("^부산광역시\\s+", "부산 ").replaceAll("\\s+", " ");
+            .replaceFirst("^부산광역시(?:\\s+|$)", "부산 ").replaceAll("\\s+", " ").strip();
     }
     private static RecommendationException invalidAddress() { return failure("MAP_ADDRESS", "도로명 주소와 좌표를 정확히 확인하지 못했어요. 장소 주소를 확인해 주세요."); }
     private static RecommendationException noRoute() { return failure("MAP_NO_ROUTE", "선택한 이동수단으로 경로를 찾지 못했어요."); }

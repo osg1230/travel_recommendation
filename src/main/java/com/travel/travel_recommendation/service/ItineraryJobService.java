@@ -32,6 +32,10 @@ public class ItineraryJobService {
         var pool=candidates.find(parentId,destinationId,login,hash);
         var parent=access.owned(parentId,login,hash,"RECOMMENDATION");
         var conditions=mapper.readValue(parent.getRequestJson(),ConfirmedTravelConditions.class);
+        int days=conditions.durationDays()==null?1:Math.max(1,Math.min(7,conditions.durationDays()));
+        // 후보가 늘어도 전부 방문시키지 않는다. 기간당 최대 2곳, 전체 8곳으로 조회 비용·체류량을 제한한다.
+        pool=new PlaceCandidateView(pool.jobId(),pool.destination(),pool.durationDays(),pool.accommodationNeeded(),
+            pool.attractions().stream().limit(Math.min(8,days*2)).toList(),pool.accommodations(),pool.restaurants());
         var transport=confirmedTransport(conditions);
         return new Input(parentId,pool,conditions,LocalTime.of(9,0),LocalTime.of(18,0),
             transport==null?KakaoMapClient.Transport.CAR:transport,90);
@@ -95,7 +99,9 @@ public class ItineraryJobService {
             if(places.findById(candidate.placeId()).filter(p->p.isActive() && type.equals(p.getPlaceType())
                 && destination.region().equals(p.getRegion()) && candidate.name().equals(p.getName())
                 && candidate.address().equals(p.getAddress()) && candidate.sourceUrl().equals(p.getSourceUrl())
-                && candidate.verifiedAt().equals(p.getVerifiedAt())).isEmpty()) return false;
+                && candidate.verifiedAt().equals(p.getVerifiedAt())
+                && (candidate.longitude()==null || (p.getLongitude()!=null && Double.compare(candidate.longitude(),p.getLongitude().doubleValue())==0))
+                && (candidate.latitude()==null || (p.getLatitude()!=null && Double.compare(candidate.latitude(),p.getLatitude().doubleValue())==0))).isEmpty()) return false;
         }
         return true;
     }

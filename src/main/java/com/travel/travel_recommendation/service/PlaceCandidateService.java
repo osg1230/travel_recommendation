@@ -56,10 +56,19 @@ public class PlaceCandidateService {
             && conditions.durationDays() != null && conditions.durationDays() > 1;
         // 부분 문자열 검색으로 다른 시·군을 섞지 않는다. 출처·주소를 확인한 활성 장소만 반환한다.
         var candidates = places.findLocalPlaces(current.getRegion()).stream()
-            .filter(place -> usable(place, current.getRegion())).toList();
+            .filter(place -> usable(place, current.getRegion()))
+            .sorted(Comparator.comparing((Place p)->!"KAKAO".equals(p.getSourceProvider()))
+                .thenComparing(Place::getName).thenComparing(Place::getId)).toList();
+        var distinct=new ArrayList<Place>(); Set<String> seen=new HashSet<>();
+        for(var place:candidates) {
+            // 같은 유형·건물 주소의 후보는 하나만 표시해 동일 장소의 다른 명칭을 중복 방문하지 않는다.
+            String address=KakaoMapClient.normalize(place.getAddress()).replaceFirst("^(.+?(?:로|길)\\s+\\d+(?:-\\d+)?)(?:\\s+.*)?$","$1");
+            String key=place.getPlaceType()+":"+address;
+            if(seen.add(key)) distinct.add(place);
+        }
         return new PlaceCandidateView(jobId, destination, conditions.durationDays(), needsAccommodation,
-            ofType(candidates, "ATTRACTION"), needsAccommodation ? ofType(candidates, "ACCOMMODATION") : List.of(),
-            ofType(candidates, "RESTAURANT"));
+            ofType(distinct, "ATTRACTION"), needsAccommodation ? ofType(distinct, "ACCOMMODATION") : List.of(),
+            ofType(distinct, "RESTAURANT"));
     }
 
     private boolean usable(Place place, String region) {
@@ -67,7 +76,16 @@ public class PlaceCandidateService {
             && place.getName() != null && !place.getName().isBlank()
             && place.getAddress() != null && !place.getAddress().isBlank()
             && place.getVerifiedAt() != null && !place.getVerifiedAt().isAfter(LocalDateTime.now(ZoneOffset.UTC))
-            && safeSource(place.getSourceUrl());
+            && ("KAKAO".equals(place.getSourceProvider()) ? usableKakao(place) : safeSource(place.getSourceUrl()));
+    }
+
+    private boolean usableKakao(Place place) {
+        if(!place.getVerifiedAt().isAfter(LocalDateTime.now(ZoneOffset.UTC).minusHours(24))
+            || place.getLongitude()==null || place.getLatitude()==null
+            || !place.getSourcePlaceId().matches("[1-9][0-9]{0,19}")
+            || !("https://place.map.kakao.com/"+place.getSourcePlaceId()).equals(place.getSourceUrl())) return false;
+        try { new KakaoMapClient.Location(place.getAddress(),place.getLongitude().doubleValue(),place.getLatitude().doubleValue(),place.getVerifiedAt().toInstant(ZoneOffset.UTC)); return true; }
+        catch(IllegalArgumentException error) { return false; }
     }
 
     private boolean safeSource(String url) {
@@ -81,13 +99,15 @@ public class PlaceCandidateService {
     }
 
     private List<PlaceCandidate> ofType(List<Place> candidates, String type) {
-        return candidates.stream().filter(place -> type.equals(place.getPlaceType())).map(place -> {
+        int limit="ATTRACTION".equals(type)?16:"RESTAURANT".equals(type)?8:5;
+        return candidates.stream().filter(place -> type.equals(place.getPlaceType())).limit(limit).map(place -> {
             // 주소 검색 링크이며 확정 좌표나 길찾기 결과로 표시하지 않는다.
             String query = URLEncoder.encode(place.getAddress() + " " + place.getName(), StandardCharsets.UTF_8)
                 .replace("+", "%20");
             return new PlaceCandidate(place.getId(), place.getName(), place.getAddress(), place.getSubtype(),
-                place.getDescription(), place.getSourceUrl(), "https://map.kakao.com/link/search/" + query,
-                place.getVerifiedAt());
+                place.getDescription(), place.getSourceUrl(), "KAKAO".equals(place.getSourceProvider())?place.getSourceUrl():"https://map.kakao.com/link/search/" + query,
+                place.getVerifiedAt(),place.getLongitude()==null?null:place.getLongitude().doubleValue(),
+                place.getLatitude()==null?null:place.getLatitude().doubleValue(),place.getSourceProvider());
         }).toList();
     }
 }

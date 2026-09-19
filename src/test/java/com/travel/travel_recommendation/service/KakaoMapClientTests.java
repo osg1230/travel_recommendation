@@ -85,4 +85,31 @@ class KakaoMapClientTests {
     private void assertCode(String code,Runnable action) {
         assertThatThrownBy(action::run).isInstanceOfSatisfying(RecommendationException.class,e->assertThat(e.getCode()).isEqualTo(code));
     }
+    private java.util.Map<String,String> searchItem(String id,String address) {
+        return new java.util.HashMap<>(java.util.Map.of("id",id,"place_name","장소"+id,"address_name",address,
+            "road_address_name","","category_group_code","AT4","category_name","여행 > 관광명소",
+            "x","128.87","y","37.77","place_url","http://place.map.kakao.com/"+id));
+    }
+    @Test void searchFiltersRegionCategoryCoordinatesAndUrl() {
+        var valid=searchItem("123","강원 강릉시 죽헌동 1");
+        var other=searchItem("124","강원 동해시 천곡동 1");
+        var wrongCategory=searchItem("125","강원 강릉시 죽헌동 2"); wrongCategory.put("category_group_code","FD6");
+        var badCoordinate=searchItem("126","강원 강릉시 죽헌동 3"); badCoordinate.put("x","NaN");
+        var badUrl=searchItem("127","강원 강릉시 죽헌동 4"); badUrl.put("place_url","https://evil.example/127");
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(valid,valid,other,wrongCategory,badCoordinate,badUrl))));
+        var found=client("key").searchPlaces("강원특별자치도 강릉시","ATTRACTION");
+        assertThat(found).hasSize(1); assertThat(found.getFirst().url()).isEqualTo("https://place.map.kakao.com/123");
+        assertThat(found.getFirst().address()).isEqualTo("강원 강릉시 죽헌동 1");
+        assertThat(path.get()).contains("category_group_code=AT4","size=15","page=1");
+    }
+    @Test void searchHasBoundedResultsAndRejectsUnsupportedRegionBeforeCalling() {
+        var items=new java.util.ArrayList<java.util.Map<String,String>>();
+        for(int i=1;i<=15;i++) items.add(searchItem(""+i,"부산 해운대구 중동 "+i));
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",items)));
+        assertThat(client("key").searchPlaces("부산광역시","ATTRACTION")).hasSize(8);
+        int before=calls.get(); assertCode("MAP_REGION",()->client("key").searchPlaces("서울","ATTRACTION"));
+        assertThat(calls.get()).isEqualTo(before);
+        body.set("{\"documents\":[]}"); assertThat(client("key").searchPlaces("부산광역시","ATTRACTION")).isEmpty();
+        body.set("{}"); assertCode("MAP_INVALID_RESPONSE",()->client("key").searchPlaces("부산광역시","ATTRACTION"));
+    }
 }

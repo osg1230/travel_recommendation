@@ -8,7 +8,9 @@
 <p th:text="${options.places.destination.name + ' · ' + (options.conditions.durationDays == null ? '기간 미정' : options.conditions.durationDays + '일')}"></p>
 <p class="intro">가까운 관광지를 묶고, 식사와 이동시간을 포함한 일정 초안을 만들어요.</p>
 <p>기본 시간은 09:00~18:00, 관광지 체류는 90분이에요. 원하는 시간으로 바꿔 주세요. 모든 날짜에 같은 시간을 적용해요.</p>
-<p class="help">현재 지역별 관광지 2곳으로 1~2일을 구성해요. 기간·숙박 여부가 미정이거나 3일 이상이면 <a th:href="@{/travel/conditions}">여행 조건부터 수정</a>해 주세요. 확정한 이동수단은 유지해야 해요.</p>
+<p class="help">현재 후보에서 하루 평균 최대 2곳, 전체 최대 8곳을 골라 1~7일을 구성해요. 관광지가 여행 일수보다 적으면 장소 목록에서 더 찾아 주세요. 기간·숙박 여부가 미정이면 <a th:href="@{/travel/conditions}">여행 조건부터 수정</a>해 주세요. 확정한 이동수단은 유지해야 해요.</p>
+<p th:text="${'이번 일정의 관광지 후보: ' + options.places.attractions.size() + '곳'}"></p>
+<ul><li th:each="place : ${options.places.attractions}" th:text="${place.name}"></li></ul>
 <form method="post" th:action="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${options.recommendationId},dest=${options.places.destination.placeId})}">
 <input type="hidden" name="submissionToken" th:value="${submissionToken}">
 <div class="condition-section">

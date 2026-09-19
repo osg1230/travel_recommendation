@@ -22,11 +22,16 @@ public class ItineraryGenerator {
         Map<Long,KakaoMapClient.Location> locations=new HashMap<>();
         Map<String,KakaoMapClient.Location> addresses=new HashMap<>();
         var places=input.places();
-        var restaurant=places.restaurants().getFirst();
         var hotel=places.accommodationNeeded()?places.accommodations().getFirst():null;
-        var used=new ArrayList<>(places.attractions()); used.add(restaurant); if(hotel!=null) used.add(hotel);
+        var used=new ArrayList<>(places.attractions()); used.addAll(places.restaurants()); if(hotel!=null) used.add(hotel);
         for(var place:used) {
             checkDeadline(deadline);
+            if("KAKAO".equals(place.sourceProvider()) && place.longitude()!=null && place.latitude()!=null) {
+                if(place.verifiedAt()==null || place.verifiedAt().isBefore(LocalDateTime.now(ZoneOffset.UTC).minusHours(24)))
+                    throw failure("PLACE_STALE","장소 조회 결과가 오래됐어요. 장소 목록에서 다시 조회해 주세요.");
+                locations.put(place.placeId(),new KakaoMapClient.Location(place.address(),place.longitude(),place.latitude(),place.verifiedAt().toInstant(ZoneOffset.UTC)));
+                continue;
+            }
             var matcher=ROAD.matcher(place.address());
             if(!matcher.matches()) throw failure("ADDRESS_REQUIRED","장소의 도로명 주소를 확인해야 해요.");
             String address=matcher.group(1);
@@ -49,6 +54,9 @@ public class ItineraryGenerator {
                 remaining.remove(next);
                 builder.visit(next,"VISIT",input.visitMinutes(),"관광·관람 (계획한 체류시간)");
                 if(!builder.meal && (!builder.time.isBefore(LocalTime.NOON) || i==count-1)) {
+                    // 식사는 방금 방문한 관광지에서 가까운 후보를 고른다.
+                    var restaurant=places.restaurants().stream().min(Comparator.comparingDouble(p->
+                        distance(locations.get(next.placeId()),locations.get(p.placeId())))).orElseThrow();
                     builder.move(restaurant);
                     if(builder.time.isBefore(LocalTime.NOON) && !input.end().isBefore(LocalTime.of(13,0)))
                         builder.add("FREE",restaurant,"식사 전 자유시간",(int)Duration.between(builder.time,LocalTime.NOON).toMinutes(),"주변 휴식·자유시간",null,null);

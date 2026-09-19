@@ -11,6 +11,20 @@ import java.time.LocalDateTime;
 @Getter
 @NoArgsConstructor(access=AccessLevel.PROTECTED)
 public class Place {
+    public static Place fromKakao(com.travel.travel_recommendation.dto.KakaoPlace data) {
+        var place=new Place(); place.sourceProvider="KAKAO"; place.sourcePlaceId=data.sourceId();
+        place.placeType=data.type(); place.region=data.region(); place.active=true; place.createdAt=data.checkedAt();
+        place.refreshKakao(data); return place;
+    }
+    public void refreshKakao(com.travel.travel_recommendation.dto.KakaoPlace data) {
+        if(!"KAKAO".equals(sourceProvider) || !sourcePlaceId.equals(data.sourceId()) || !region.equals(data.region())
+                || !placeType.equals(data.type())) throw new IllegalArgumentException("Place identity mismatch");
+        name=data.name(); address=data.address(); subtype=data.category();
+        longitude=BigDecimal.valueOf(data.longitude()).setScale(6,java.math.RoundingMode.HALF_UP);
+        latitude=BigDecimal.valueOf(data.latitude()).setScale(6,java.math.RoundingMode.HALF_UP);
+        sourceUrl=data.url(); mapUrl=data.url(); verifiedAt=data.checkedAt(); updatedAt=data.checkedAt();
+        description="카카오 장소 검색에서 확인한 후보예요. 영업시간·휴무·가격은 상세 페이지에서 확인해 주세요.";
+    }
     @Id @GeneratedValue(strategy=GenerationType.IDENTITY) @Column(name="place_id") private Long id;
     @Column(name="place_type", nullable=false, length=20) private String placeType;
     @Column(name="source_provider", nullable=false, length=40) private String sourceProvider;
