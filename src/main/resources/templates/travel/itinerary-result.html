@@ -33,5 +33,14 @@
 </article></section>
 </th:block>
 <p th:unless="${job.pending}"><a th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">시간을 조정해서 다시 만들기</a></p>
-<p class="help">이 결과는 만료되는 임시 초안이에요. 내 일정으로 저장하는 기능은 아직 준비 중이에요.</p>
+<section class="condition-section" th:if="${job.result != null}">
+<h2>내 일정으로 저장</h2>
+<p class="help">이 초안은 만료되는 임시 결과예요. 저장하면 만료되지 않고 내 일정에서 다시 볼 수 있어요.</p>
+<form th:if="${loggedIn and job.input.conditions.startDate != null}" th:action="@{/my/itineraries}" method="post">
+<input type="hidden" name="jobId" th:value="${job.id}">
+<div class="form-actions"><button type="submit">이 일정 저장하기</button></div>
+</form>
+<p th:if="${loggedIn and job.input.conditions.startDate == null}">여행 날짜가 정해지지 않아 저장할 수 없어요. <a th:href="@{/travel/conditions}">여행 조건에서 출발일을 정한 뒤</a> 일정을 다시 만들어 주세요.</p>
+<p th:unless="${loggedIn}"><a th:href="@{/login}">로그인</a>하면 이 일정을 내 일정으로 저장할 수 있어요.</p>
+</section>
 </main></body></html>

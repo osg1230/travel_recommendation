@@ -14,6 +14,8 @@ public interface PlaceRepository extends Repository<Place,Long> {
     @Query("select p from Place p where p.active=true and p.placeType='DESTINATION' order by p.id")
     List<Place> findDestinations();
     Optional<Place> findById(Long id);
+    // 즐겨찾기 목록처럼 여러 장소를 한 번에 읽을 때 사용한다.
+    List<Place> findByIdIn(java.util.Collection<Long> ids);
 
     @Query("select p from Place p where p.active=true and p.region=:region "
         + "and p.placeType in ('ATTRACTION','ACCOMMODATION','RESTAURANT') order by p.name,p.id")

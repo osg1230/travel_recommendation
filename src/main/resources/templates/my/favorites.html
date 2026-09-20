@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>즐겨찾기 | 국내여행</title>
+    <link rel="stylesheet" th:href="@{/css/account.css}"><link rel="stylesheet" th:href="@{/css/travel.css}">
+</head>
+<body>
+<header class="site-header"><a th:href="@{/}">국내여행</a></header>
+<main class="travel">
+    <a class="back-link" th:href="@{/}">← 처음으로</a>
+    <p class="eyebrow">내 여행 · 즐겨찾기</p>
+    <h1>즐겨찾기</h1>
+    <p class="intro">여행지·관광지·숙소를 저장해 두고 다음 여행 계획에 참고할 수 있어요. 음식점은 등록할 수 없어요.</p>
+    <p role="status" th:if="${favoriteMessage != null}" th:text="${favoriteMessage}"></p>
+    <p role="status" th:if="${favorites.isEmpty()}">아직 등록한 즐겨찾기가 없어요. 장소 목록에서 별 표시 대신 <strong>즐겨찾기 추가</strong> 버튼으로 등록할 수 있어요.</p>
+    <p th:if="${favorites.isEmpty()}"><a th:href="@{/travel/conditions}">여행 조건 입력하고 장소 살펴보기 →</a></p>
+    <article class="place-row" th:each="favorite : ${favorites}">
+        <p class="help" th:text="${favorite.typeName + ' · ' + favorite.region}"></p>
+        <h2 th:text="${favorite.name}"></h2>
+        <p th:if="${!#strings.isEmpty(favorite.address)}" th:text="${favorite.address}"></p>
+        <div class="place-links">
+            <a th:if="${!#strings.isEmpty(favorite.sourceUrl)}" th:href="${favorite.sourceUrl}"
+               target="_blank" rel="noopener noreferrer">출처에서 상세 정보 확인 (새 창)</a>
+            <a th:if="${!#strings.isEmpty(favorite.mapUrl)}" th:href="${favorite.mapUrl}"
+               target="_blank" rel="noopener noreferrer">지도에서 보기 (새 창)</a>
+        </div>
+        <p class="help" th:text="${'등록: ' + favorite.createdAt + ' (UTC)'}"></p>
+        <form th:action="@{/my/favorites/{placeId}/delete(placeId=${favorite.placeId})}" method="post">
+            <input type="hidden" name="returnTo" value="/my/favorites">
+            <button type="submit">즐겨찾기 삭제</button>
+        </form>
+    </article>
+    <p class="help">영업시간·휴무일·가격은 즐겨찾기에 저장하지 않아요. 방문 전에 각 장소의 출처에서 확인해 주세요.</p>
+</main>
+</body>
+</html>

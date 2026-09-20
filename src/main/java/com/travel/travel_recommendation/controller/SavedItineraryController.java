@@ -1,0 +1,76 @@
+package com.travel.travel_recommendation.controller;
+
+import com.travel.travel_recommendation.service.SavedItineraryService;
+import jakarta.servlet.http.HttpServletResponse;
+import java.security.Principal;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.dao.DataAccessException;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+/** 회원이 저장한 내 일정의 저장·목록·상세·이름 수정·삭제 화면을 처리한다. */
+@Controller
+@RequiredArgsConstructor
+@RequestMapping("/my/itineraries")
+public class SavedItineraryController {
+    private final ObjectProvider<SavedItineraryService> services;
+
+    @PostMapping
+    String save(@RequestParam UUID jobId, Principal principal, RedirectAttributes redirect) {
+        var saved=service().save(jobId,login(principal));
+        redirect.addFlashAttribute("savedMessage",saved.created()
+            ?"내 일정으로 저장했어요. 이름은 아래에서 바꿀 수 있어요."
+            :"이미 저장한 일정이에요. 저장해 둔 내용을 보여 드릴게요.");
+        return "redirect:/my/itineraries/"+saved.id();
+    }
+
+    @GetMapping
+    String list(Principal principal, HttpServletResponse response, Model model) {
+        response.setHeader("Cache-Control","no-store");
+        model.addAttribute("itineraries",service().list(login(principal)));
+        return "my/itineraries";
+    }
+
+    @GetMapping("/{id}")
+    String detail(@PathVariable long id, Principal principal, HttpServletResponse response, Model model) {
+        response.setHeader("Cache-Control","no-store");
+        model.addAttribute("itinerary",service().detail(id,login(principal)));
+        return "my/itinerary";
+    }
+
+    @PostMapping("/{id}/title")
+    String rename(@PathVariable long id, @RequestParam String title, Principal principal, RedirectAttributes redirect) {
+        service().rename(id,login(principal),title);
+        redirect.addFlashAttribute("savedMessage","일정 이름을 바꿨어요.");
+        return "redirect:/my/itineraries/"+id;
+    }
+
+    @PostMapping("/{id}/delete")
+    String delete(@PathVariable long id, Principal principal, RedirectAttributes redirect) {
+        service().delete(id,login(principal));
+        redirect.addFlashAttribute("savedMessage","저장한 일정을 삭제했어요.");
+        return "redirect:/my/itineraries";
+    }
+
+    @ExceptionHandler({ResponseStatusException.class,DataAccessException.class})
+    String error(RuntimeException error, HttpServletResponse response, Model model) {
+        int status=400; String message;
+        if(error instanceof ResponseStatusException e) { status=e.getStatusCode().value(); message=e.getReason(); }
+        else { status=503; message="저장한 일정을 불러오지 못했어요. 잠시 후 다시 시도해 주세요."; }
+        response.setStatus(status); response.setHeader("Cache-Control","no-store");
+        model.addAttribute("message",message);
+        return "my/itinerary-error";
+    }
+    private SavedItineraryService service() {
+        var service=services.getIfAvailable();
+        if(service==null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"내 일정은 DB 연결 후 이용할 수 있어요.");
+        return service;
+    }
+    private String login(Principal principal) { return principal==null?null:principal.getName(); }
+}
