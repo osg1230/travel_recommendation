@@ -103,4 +103,44 @@ class ItineraryGeneratorTests {
         var result=generator.generate(input);
         assertThat(result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).map(Item::placeId)).containsExactly(1L,2L);
     }
+    // 정기휴무일이 겹치는 관광지는 다른 날로 미루고, 피할 수 없는 충돌은 장소 이름과 함께 알린다.
+    @Test void movesPlacesClosedOnADayInsteadOfFailingTheWholeSchedule() {
+        var base=input(2,LocalTime.of(20,0)); var pool=base.places();
+        var closed=withInfo(pool.attractions().getFirst(),new PlaceOperatingInfo("123","12","09:00~18:00","매주 목요일","","",Instant.now()));
+        var input=new Input(base.recommendationId(),new PlaceCandidateView(pool.jobId(),pool.destination(),pool.durationDays(),
+            pool.accommodationNeeded(),List.of(closed,pool.attractions().get(1)),pool.accommodations(),pool.restaurants()),
+            base.conditions(),base.start(),base.end(),base.transport(),base.visitMinutes());
+        // 첫날은 2026-10-01 목요일이므로 휴무인 장소1은 둘째 날로 미뤄야 한다.
+        var result=generator.generate(input);
+        assertThat(result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).map(Item::placeId)).containsExactly(2L);
+        assertThat(result.days().get(1).items().stream().filter(i->i.type().equals("VISIT")).map(Item::placeId)).containsExactly(1L);
+        generator.validate(input,result);
+        // 미룰 날이 없으면 어느 장소 때문에 일정을 만들지 못했는지 이름으로 알린다.
+        var blocked=new Input(base.recommendationId(),new PlaceCandidateView(pool.jobId(),pool.destination(),1,false,
+            List.of(closed),List.of(),pool.restaurants()),conditions(1,LocalDate.of(2026,10,1),false),
+            base.start(),base.end(),base.transport(),base.visitMinutes());
+        assertThatThrownBy(()->generator.generate(blocked)).isInstanceOfSatisfying(RecommendationException.class,
+            e->{ assertThat(e.getCode()).isEqualTo("OPERATING_CONFLICT"); assertThat(e.getMessage()).contains("장소1"); });
+    }
+    private PlaceCandidate withInfo(PlaceCandidate place,PlaceOperatingInfo info) {
+        return new PlaceCandidate(place.placeId(),place.name(),place.address(),place.subtype(),place.description(),
+            place.sourceUrl(),place.mapSearchUrl(),place.verifiedAt(),null,null,"SYSTEM",info);
+    }
+    @Test void checksOperatingRulesDuringGenerationAndFinalValidation() {
+        var base=input(1,LocalTime.of(18,0)); var plain=generator.generate(base);
+        var original=base.places().attractions().getFirst();
+        var info=new PlaceOperatingInfo("123","12","10:00~18:00","연중무휴","","",Instant.now());
+        var changed=new PlaceCandidate(original.placeId(),original.name(),original.address(),original.subtype(),original.description(),
+            original.sourceUrl(),original.mapSearchUrl(),original.verifiedAt(),null,null,"SYSTEM",info);
+        var pool=base.places();
+        var withInfo=new PlaceCandidateView(pool.jobId(),pool.destination(),pool.durationDays(),pool.accommodationNeeded(),List.of(changed,pool.attractions().get(1)),pool.accommodations(),pool.restaurants());
+        var input=new Input(base.recommendationId(),withInfo,base.conditions(),base.start(),base.end(),base.transport(),base.visitMinutes());
+        assertThatThrownBy(()->generator.generate(input)).isInstanceOfSatisfying(RecommendationException.class,e->assertThat(e.getCode()).isEqualTo("OPERATING_CONFLICT"));
+        assertThatThrownBy(()->generator.validate(input,plain)).isInstanceOfSatisfying(RecommendationException.class,e->assertThat(e.getCode()).isEqualTo("OPERATING_CONFLICT"));
+        // 이전 작업 JSON에는 새 필드가 없어도 미확인 후보로 복원된다.
+        var mapper=new tools.jackson.databind.json.JsonMapper();
+        var tree=mapper.valueToTree(original);
+        ((tools.jackson.databind.node.ObjectNode)tree).remove("operatingInfo");
+        assertThat(mapper.treeToValue(tree,PlaceCandidate.class).operatingInfo()).isNull();
+    }
 }

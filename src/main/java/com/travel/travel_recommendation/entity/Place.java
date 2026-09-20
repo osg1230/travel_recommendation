@@ -11,6 +11,10 @@ import java.time.LocalDateTime;
 @Getter
 @NoArgsConstructor(access=AccessLevel.PROTECTED)
 public class Place {
+    public void updateDetails(String detailsJson) {
+        this.detailsJson = detailsJson;
+        this.updatedAt = LocalDateTime.now(java.time.ZoneOffset.UTC);
+    }
     public static Place fromKakao(com.travel.travel_recommendation.dto.KakaoPlace data) {
         var place=new Place(); place.sourceProvider="KAKAO"; place.sourcePlaceId=data.sourceId();
         place.placeType=data.type(); place.region=data.region(); place.active=true; place.createdAt=data.checkedAt();

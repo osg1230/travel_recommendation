@@ -2,6 +2,7 @@ package com.travel.travel_recommendation.controller;
 
 import com.travel.travel_recommendation.service.PlaceCandidateService;
 import com.travel.travel_recommendation.service.PlaceDiscoveryService;
+import com.travel.travel_recommendation.service.PlaceOperatingService;
 import com.travel.travel_recommendation.service.RecommendationException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import jakarta.servlet.http.HttpServletResponse;
@@ -23,6 +24,33 @@ import org.springframework.web.server.ResponseStatusException;
 public class PlaceCandidateController {
     private final ObjectProvider<PlaceCandidateService> services;
     private final ObjectProvider<PlaceDiscoveryService> discoveries;
+    private final ObjectProvider<PlaceOperatingService> operatingServices;
+
+    @PostMapping("/{id}/destinations/{destinationId}/places/{placeId}/operating-info")
+    @ResponseStatus(HttpStatus.SEE_OTHER)
+    String operatingInfo(@PathVariable UUID id,@PathVariable long destinationId,@PathVariable long placeId,
+            Principal principal,HttpSession session,HttpServletResponse response,RedirectAttributes flash) {
+        response.setHeader("Cache-Control","no-store");
+        var service=operatingServices.getIfAvailable();
+        if(service==null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"운영정보 조회는 DB 연결 후 이용할 수 있어요.");
+        byte[] guest;
+        boolean allowed;
+        // 외부 조회 전에 다음 조회 시각을 먼저 잡아 두고, 느린 호출은 세션 잠금 밖에서 한다.
+        synchronized(session) {
+            var last=(Long)session.getAttribute("lastOperatingLookupTime");
+            allowed=last==null || System.currentTimeMillis()-last>=60000;
+            if(allowed) session.setAttribute("lastOperatingLookupTime",System.currentTimeMillis());
+            guest=RecommendationJobController.guestHash(session,false);
+        }
+        if(!allowed) {
+            flash.addFlashAttribute("lookupMessage","새 운영정보 조회는 1분 후 가능해요.");
+        } else {
+            boolean found=service.refresh(id,destinationId,placeId,principal==null?null:principal.getName(),guest);
+            flash.addFlashAttribute("lookupMessage",found?"관광공사의 운영정보를 표시해요. 방문 가능 여부는 일정의 날짜·시간과 별도로 대조해요.":"같은 장소의 운영정보를 확실하게 연결하지 못했어요. 출처에서 직접 확인해 주세요.");
+        }
+        response.setStatus(303);
+        return "redirect:/travel/recommendations/"+id+"/destinations/"+destinationId+"/places";
+    }
 
     @PostMapping("/{id}/destinations/{destinationId}/places/refresh")
     String refresh(@PathVariable UUID id,@PathVariable long destinationId,Principal principal,HttpSession session,

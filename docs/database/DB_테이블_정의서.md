@@ -317,6 +317,10 @@ U1(source_provider, source_place_id). 좌표는 둘 다 NULL 또는 둘 다 입�
 
 details_json의 foods[]는 음식명·분류·설명·출처를 보관한다. 실제 음식점이 없으면 일정의 음식 안내 스냅샷으로 대체하고 가짜 RESTAURANT 행을 생성하지 않는다.
 
+2026-09-20 운영정보 연결: 기존 `details_json`에 선택 객체 `tourApiOperating`을 사용한다. 구조는 `{name, address, info:{contentId, contentTypeId, hours, closedDays, checkIn, checkOut, fetchedAt}}`이다. name/address는 연결 당시 내부 장소 이름·주소, info는 한국관광공사 소개정보 원문과 UTC 조회 시각이다. fetchedAt은 제공자 정보 수정일이나 여행 당일 운영 보장이 아니다. 테이블·컬럼·관계 추가는 없으며 다른 JSON 필드는 보존한다. 운영정보 갱신은 updated_at만 갱신하고 장소 존재 확인 verified_at은 바꾸지 않는다.
+
+조회 후 24시간, 동일한 이름·주소에만 운영정보를 재사용한다. 기존 필드 없음·읽기 실패는 미확인이다. ai_jobs의 일정 request_json 내 PlaceCandidate에 nullable operatingInfo를 추가하며 이전 작업 JSON의 누락 필드는 null로 읽는다. 완료 직전에 DB 운영정보와 입력 스냅샷이 다른 경우 PLACES_CHANGED로 실패시킨다. 원문·확인 범위는 결과 항목 note에 포함하며 해석 불가 예외를 검증 완료로 표시하지 않는다. 상세 기준은 [TourAPI 설정·연결](../ai/TourAPI_설정.md)을 따른다.
+
 ### 7.1 지역 내 장소 조회 (2026-09-18)
 
 요구분석서 3.1의 SFR-03-06·SFR-04-02와 대조하여 추천 지역 선택과 관광지·숙소·음식점 조회를 연결했다. [007 SQL](sql/007_seed_local_places.sql)은 강릉·부산·경주의 실제 장소 12곳을 SYSTEM 식별자로 추가하며 재실행 시 기존 행을 변경하지 않는다. 지역 단위 DESTINATION과 물리 장소를 구분하고 기존 `region`의 정확한 일치로 조회한다. 열·관계·제약 변경은 없다.
