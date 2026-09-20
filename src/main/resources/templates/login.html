@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>로그인 · 여행 일정</title>
-    <link rel="stylesheet" th:href="@{/css/account.css}">
+    <link rel="stylesheet" th:href="@{/css/app.css}">
 </head>
 <body>
-<header class="site-header"><a th:href="@{/}">여행 일정</a></header>
+<header th:replace="~{fragments/layout :: header}"></header>
 <main class="account">
     <a class="back-link" th:href="@{/}">← 처음으로</a>
     <h1>로그인</h1>

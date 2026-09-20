@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>일정 초안 | 국내여행</title><link rel="stylesheet" th:href="@{/css/account.css}"><link rel="stylesheet" th:href="@{/css/travel.css}">
-<script defer th:src="@{/js/recommendation-job.js}"></script></head>
-<body><header class="site-header"><a th:href="@{/}">국내여행</a></header><main class="travel">
-<a th:href="@{/travel/recommendations/{id}/destinations/{dest}/places(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">← 장소 목록</a>
+<head th:replace="~{fragments/layout :: head('일정 초안 | 국내여행')}"></head>
+<body>
+<script defer th:src="@{/js/recommendation-job.js}"></script>
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="travel">
+<a class="back-link" th:href="@{/travel/recommendations/{id}/destinations/{dest}/places(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">← 장소 목록</a>
+<p class="eyebrow">여행 준비 · 일정 초안</p>
 <h1 th:text="${job.input.places.destination.name + ' 일정 초안'}"></h1>
 <div role="status" data-poll-seconds="120" th:attr="data-job-pending=${job.pending},data-status-url=@{/travel/recommendations/itineraries/{id}/status(id=${job.id})}">
 <p data-job-message th:text="${job.message}"></p></div>
@@ -12,35 +14,44 @@
 <a th:if="${job.pending}" th:href="@{/travel/recommendations/itineraries/{id}(id=${job.id})}">상태 새로고침</a>
 <th:block th:if="${job.result != null}">
 <p th:text="${'이동수단: ' + (job.result.transport.name() == 'CAR' ? '자동차' : '대중교통')}"></p>
-<p class="help">기간·방문 중복·시간 겹침과 이동시간을 검사한 초안이에요. 영업시간·휴무일·예산·예약 가능 여부는 확인이 필요해요. 최단 경로를 보장하지 않으며 지역까지의 왕복 이동은 포함하지 않아요.</p>
-<p class="help">체류시간은 입력한 계획값이고 이동시간은 조회 시점의 예상값이에요. 숙소 도착은 체크인 가능 시각을 의미하지 않아요. 표시된 마지막 활동 이후에는 별도 일정이 없어요.</p>
+
 <section class="condition-section" th:if="${job.result.assist != null}">
 <h2>AI 준비 안내</h2>
 <p style="white-space: pre-line" th:text="${job.result.assist.summary}"></p>
 <p class="help">AI가 위 초안을 읽고 쓴 준비 안내예요. 일정의 시각·장소·순서는 서버가 만든 초안 그대로예요. 영업시간·가격·예약 가능 여부를 확인한 내용이 아니니 방문 전 출처에서 확인해 주세요.</p>
 </section>
+
 <section class="condition-section" th:each="day : ${job.result.days}">
 <h2 th:text="${day.number + '일차' + (day.date == null ? ' · 날짜 미정' : ' · ' + day.date)}"></h2>
 <th:block th:if="${job.result.assist != null}" th:each="advice : ${job.result.assist.days}">
-<p th:if="${advice.number == day.number}" style="white-space: pre-line" th:text="${'AI 준비 안내 · ' + advice.advice}"></p>
+<p class="notice" th:if="${advice.number == day.number}" style="white-space: pre-line" th:text="${'AI 준비 안내 · ' + advice.advice}"></p>
 </th:block>
-<article class="place-row" th:each="item : ${day.items}">
-<p><strong th:text="${#temporals.format(item.start, 'HH:mm') + '–' + #temporals.format(item.end, 'HH:mm')}"></strong></p>
+<article class="place-row schedule-item" th:each="item : ${day.items}">
+<p class="schedule-time" th:text="${#temporals.format(item.start, 'HH:mm') + '–' + #temporals.format(item.end, 'HH:mm')}"></p>
+<div class="schedule-body">
 <h3 th:text="${item.name}"></h3><p style="white-space: pre-line" th:text="${item.note}"></p>
 <p class="help" th:if="${item.checkedAt != null}" th:text="${'이동시간 조회: ' + item.checkedAt + ' (UTC)'}"></p>
 <div class="place-links"><a th:href="${item.mapUrl}" target="_blank" rel="noopener noreferrer">위치 보기 (새 창)</a>
 <a th:if="${item.type != 'TRANSIT'}" th:href="${item.sourceUrl}" target="_blank" rel="noopener noreferrer">장소 출처 확인 (새 창)</a></div>
+</div>
 </article></section>
 </th:block>
-<p th:unless="${job.pending}"><a th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">시간을 조정해서 다시 만들기</a></p>
+
 <section class="condition-section" th:if="${job.result != null}">
 <h2>내 일정으로 저장</h2>
 <p class="help">이 초안은 만료되는 임시 결과예요. 저장하면 만료되지 않고 내 일정에서 다시 볼 수 있어요.</p>
 <form th:if="${loggedIn and job.input.conditions.startDate != null}" th:action="@{/my/itineraries}" method="post">
 <input type="hidden" name="jobId" th:value="${job.id}">
-<div class="form-actions"><button type="submit">이 일정 저장하기</button></div>
+<div class="form-actions"><button type="submit">이 일정 저장하기</button>
+<a class="button button-quiet" th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">시간을 조정해서 다시 만들기</a></div>
 </form>
 <p th:if="${loggedIn and job.input.conditions.startDate == null}">여행 날짜가 정해지지 않아 저장할 수 없어요. <a th:href="@{/travel/conditions}">여행 조건에서 출발일을 정한 뒤</a> 일정을 다시 만들어 주세요.</p>
 <p th:unless="${loggedIn}"><a th:href="@{/login}">로그인</a>하면 이 일정을 내 일정으로 저장할 수 있어요.</p>
 </section>
+<p th:unless="${job.pending or job.result != null}"><a th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">시간을 조정해서 다시 만들기</a></p>
+
+<div class="guide-note" th:if="${job.result != null}">
+<p>기간·방문 중복·시간 겹침과 이동시간을 검사한 초안이에요. 영업시간·휴무일·예산·예약 가능 여부는 확인이 필요해요. 최단 경로를 보장하지 않으며 지역까지의 왕복 이동은 포함하지 않아요.</p>
+<p>체류시간은 입력한 계획값이고 이동시간은 조회 시점의 예상값이에요. 숙소 도착은 체크인 가능 시각을 의미하지 않아요. 표시된 마지막 활동 이후에는 별도 일정이 없어요.</p>
+</div>
 </main></body></html>
