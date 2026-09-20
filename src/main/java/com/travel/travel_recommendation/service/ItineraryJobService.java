@@ -24,6 +24,7 @@ public class ItineraryJobService {
     private final UserRepository users;
     private final PlaceRepository places;
     private final ItineraryGenerator generator;
+    private final ItineraryAssistant assistant;
     private final ObjectMapper mapper;
     public record Work(UUID id,Input input) {}
 
@@ -71,8 +72,13 @@ public class ItineraryJobService {
         }
         job.generatingSchedule(); return new Work(id,mapper.readValue(job.getRequestJson(),Input.class));
     }
-    // 외부 지도 호출 동안 트랜잭션이나 DB 잠금을 유지하지 않는다.
-    public Result generate(Work work) { return generator.generate(work.input()); }
+    // 외부 지도 호출 동안 트랜잭션이나 DB 잠금을 유지하지 않는다. AI 보조도 같은 단계에서 처리한다.
+    public Result generate(Work work) {
+        // 작업 처리 제한은 2분이다. 배치에 쓴 시간을 빼고 남는 동안만 AI 보조를 시도한다.
+        var deadline=Instant.now().plusSeconds(100);
+        var plan=generator.generate(work.input());
+        return assistant.assist(work.input(),plan,deadline);
+    }
 
     @Transactional(timeout=10)
     public void complete(Work work,Result result) {
