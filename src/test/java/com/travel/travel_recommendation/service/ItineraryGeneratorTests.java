@@ -67,6 +67,35 @@ class ItineraryGeneratorTests {
         var duplicate=new Result(good.destination(),List.of(new Day(1,day.date(),items)),good.transport(),good.createdAt());
         assertThatThrownBy(()->generator.validate(input,duplicate)).isInstanceOf(RecommendationException.class);
     }
+    // 잘못된 입력은 generate()가 지도 API를 부르기 전에 실패 사유별로 거른다.
+    @Test void generateRejectsPeriodHoursAccommodationAndDateMismatchBeforeCallingMaps() {
+        generator.checkInput(input(1,LocalTime.of(18,0)));
+        assertRejected(withConditions(conditions(null,LocalDate.of(2026,10,1),false)),"PERIOD_REQUIRED");
+        assertRejected(withConditions(conditions(8,LocalDate.of(2026,10,8),true)),"PERIOD_REQUIRED");
+        assertRejected(withHours(LocalTime.of(7,0),LocalTime.of(18,0),90),"INVALID_HOURS");
+        assertRejected(withHours(LocalTime.of(9,0),LocalTime.of(22,0),90),"INVALID_HOURS");
+        assertRejected(withHours(LocalTime.of(9,0),LocalTime.of(12,0),90),"INVALID_HOURS");
+        assertRejected(withHours(LocalTime.of(9,0),LocalTime.of(18,0),20),"INVALID_HOURS");
+        assertRejected(withHours(LocalTime.of(9,0),LocalTime.of(18,0),200),"INVALID_HOURS");
+        // 숙박 필요 여부를 확정하지 않은 2일 이상 일정은 생성하지 않는다.
+        assertRejected(withConditions(conditions(2,LocalDate.of(2026,10,2),null)),"ACCOMMODATION_REQUIRED");
+        assertRejected(withConditions(conditions(1,LocalDate.of(2026,10,5),false)),"INVALID_PERIOD");
+        verifyNoInteractions(maps);
+    }
+    private ConfirmedTravelConditions conditions(Integer days,LocalDate end,Boolean accommodationNeeded) {
+        return new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),end,days,null,2,accommodationNeeded,false,List.of(),"");
+    }
+    private Input withConditions(ConfirmedTravelConditions conditions) {
+        var base=input(1,LocalTime.of(18,0));
+        return new Input(base.recommendationId(),base.places(),conditions,base.start(),base.end(),base.transport(),base.visitMinutes());
+    }
+    private Input withHours(LocalTime start,LocalTime end,int visitMinutes) {
+        var base=input(1,LocalTime.of(18,0));
+        return new Input(base.recommendationId(),base.places(),base.conditions(),start,end,base.transport(),visitMinutes);
+    }
+    private void assertRejected(Input input,String code) {
+        assertThatThrownBy(()->generator.generate(input)).isInstanceOfSatisfying(RecommendationException.class,e->assertThat(e.getCode()).isEqualTo(code));
+    }
     @Test void nearbyOrderGroupsLocationsInsteadOfFollowingInputOrder() {
         var base=input(2,LocalTime.of(20,0));
         var pool=new PlaceCandidateView(base.places().jobId(),base.places().destination(),2,true,List.of(place(1),place(6),place(2),place(5)),base.places().accommodations(),base.places().restaurants());
