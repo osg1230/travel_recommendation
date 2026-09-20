@@ -9,7 +9,18 @@ class OperatingHoursValidatorTests {
     private final LocalDate monday = LocalDate.of(2026, 9, 21);
     private PlaceOperatingInfo info(String hours, String closed) { return new PlaceOperatingInfo("123", "12", hours, closed, "", "", Instant.now()); }
     private String check(PlaceOperatingInfo info, LocalDate date, int start, int end) {
-        return OperatingHoursValidator.check(info, date, LocalTime.of(start, 0), LocalTime.of(end, 0));
+        return OperatingHoursValidator.check("오죽헌", info, date, LocalTime.of(start, 0), LocalTime.of(end, 0));
+    }
+    // 일정 생성이 멈춘 이유를 알 수 있도록 실패 메시지에 장소 이름을 남긴다.
+    @Test void conflictMessagesNameThePlaceThatBlocksTheSchedule() {
+        assertThatThrownBy(() -> check(info("09:00~18:00", "연중무휴"), monday, 8, 10))
+            .isInstanceOf(RecommendationException.class).hasMessageContaining("오죽헌").hasMessageContaining("09:00~18:00");
+        assertThatThrownBy(() -> check(info("", "매주 월요일"), monday, 9, 10))
+            .isInstanceOf(RecommendationException.class).hasMessageContaining("오죽헌");
+        assertThat(OperatingHoursValidator.closedOn(info("09:00~18:00", "매주 월요일"), monday)).isTrue();
+        assertThat(OperatingHoursValidator.closedOn(info("09:00~18:00", "매주 월요일"), monday.plusDays(1))).isFalse();
+        assertThat(OperatingHoursValidator.closedOn(info("09:00~18:00", "연중무휴"), monday)).isFalse();
+        assertThat(OperatingHoursValidator.closedOn(null, monday)).isFalse();
     }
     @Test void validatesBoundariesAndRejectsClosedDayOrOutsideHours() {
         assertThat(check(info("09:00~18:00", "연중무휴"), monday, 9, 18)).contains("일치");

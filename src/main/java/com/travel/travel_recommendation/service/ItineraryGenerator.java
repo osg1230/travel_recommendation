@@ -49,14 +49,14 @@ public class ItineraryGenerator {
             // 가까운 관광지를 연속 선택한 뒤 하루 단위로 나눈다. 최단 경로 보장은 아니다.
             for(int i=0;i<count;i++) {
                 PlaceCandidate anchor=builder.previous;
-                var next=anchor==null?remaining.getFirst():remaining.stream().min(Comparator.comparingDouble(
-                    p->distance(locations.get(anchor.placeId()),locations.get(p.placeId())))).orElseThrow();
+                var next=remaining.stream().min(order(builder.date,p->anchor==null?remaining.indexOf(p)
+                    :distance(locations.get(anchor.placeId()),locations.get(p.placeId())))).orElseThrow();
                 remaining.remove(next);
                 builder.visit(next,"VISIT",input.visitMinutes(),"관광·관람 (계획한 체류시간)");
                 if(!builder.meal && (!builder.time.isBefore(LocalTime.NOON) || i==count-1)) {
                     // 식사는 방금 방문한 관광지에서 가까운 후보를 고른다.
-                    var restaurant=places.restaurants().stream().min(Comparator.comparingDouble(p->
-                        distance(locations.get(next.placeId()),locations.get(p.placeId())))).orElseThrow();
+                    var restaurant=places.restaurants().stream().min(order(builder.date,
+                        p->distance(locations.get(next.placeId()),locations.get(p.placeId())))).orElseThrow();
                     builder.move(restaurant);
                     if(builder.time.isBefore(LocalTime.NOON) && !input.end().isBefore(LocalTime.of(13,0)))
                         builder.add("FREE",restaurant,"식사 전 자유시간",(int)Duration.between(builder.time,LocalTime.NOON).toMinutes(),"주변 휴식·자유시간",null,null);
@@ -131,7 +131,7 @@ public class ItineraryGenerator {
                     if(Set.of("VISIT","MEAL","STAY").contains(item.type())) {
                         var pool=new ArrayList<>(input.places().attractions()); pool.addAll(input.places().restaurants()); pool.addAll(input.places().accommodations());
                         var place=pool.stream().filter(p->p.placeId().equals(item.placeId())).findFirst().orElseThrow(ItineraryGenerator::invalid);
-                        OperatingHoursValidator.check(place.operatingInfo(),date,item.start(),item.end());
+                        OperatingHoursValidator.check(place.name(),place.operatingInfo(),date,item.start(),item.end());
                     }
                 }
                 end=item.end();
@@ -175,11 +175,16 @@ public class ItineraryGenerator {
             if(minutes<=0 || time.toSecondOfDay()+minutes*60>input.end().toSecondOfDay())
                 throw failure("TIME_OVERLAP","방문·식사·이동 시간이 하루 종료 시간을 넘어요. 이용 시간을 늘리거나 관광지 체류시간을 줄여 주세요.");
             var location=locations.get(place.placeId());
-            if(Set.of("VISIT","MEAL","STAY").contains(type)) note += "\n" + OperatingHoursValidator.note(place.operatingInfo(),date,time,time.plusMinutes(minutes));
+            if(Set.of("VISIT","MEAL","STAY").contains(type)) note += "\n" + OperatingHoursValidator.note(place.name(),place.operatingInfo(),date,time,time.plusMinutes(minutes));
             String map="https://map.kakao.com/link/map/"+URLEncoder.encode(place.name(),StandardCharsets.UTF_8).replace("+","%20")+","+location.latitude()+","+location.longitude();
             items.add(new Item(type,place.placeId(),name,time,time.plusMinutes(minutes),note,map,place.sourceUrl(),seconds,checkedAt));
             time=time.plusMinutes(minutes);
         }
+    }
+    // 안내된 정기휴무일이 겹치는 장소는 그날 선택에서 뒤로 미룬다. 휴무 정보가 없으면 기존 근거리 순서를 그대로 쓴다.
+    private static Comparator<PlaceCandidate> order(LocalDate date,java.util.function.ToDoubleFunction<PlaceCandidate> nearest) {
+        return Comparator.<PlaceCandidate>comparingInt(p->OperatingHoursValidator.closedOn(p.operatingInfo(),date)?1:0)
+            .thenComparingDouble(nearest);
     }
     private static double distance(KakaoMapClient.Location a,KakaoMapClient.Location b) {
         double x=(a.longitude()-b.longitude())*Math.cos(Math.toRadians(a.latitude()));
