@@ -91,10 +91,11 @@ public class ItineraryGenerator {
             throw failure("INVALID_PERIOD","여행 날짜와 기간을 다시 확인해 주세요.");
     }
 
-    // 저장 직전에도 기간·장소·중복·겹침·이동시간을 검사한다.
+    // 저장 직전에도 기간·장소·중복·겹침·이동시간과 AI 보조 안내를 검사한다.
     public void validate(Input input,Result result) {
         checkInput(input);
         if(result.days().size()!=input.conditions().durationDays() || result.transport()!=input.transport()) throw invalid();
+        checkAssist(result);
         Set<Long> expected=new HashSet<>(); input.places().attractions().forEach(p->expected.add(p.placeId()));
         Set<Long> seen=new HashSet<>(); Set<Long> allowed=new HashSet<>(expected);
         input.places().restaurants().forEach(p->allowed.add(p.placeId()));
@@ -180,6 +181,21 @@ public class ItineraryGenerator {
             items.add(new Item(type,place.placeId(),name,time,time.plusMinutes(minutes),note,map,place.sourceUrl(),seconds,checkedAt));
             time=time.plusMinutes(minutes);
         }
+    }
+    // AI 보조 안내는 저장 직전에도 일차 수·번호와 문구 형식만 확인한다. 안내 내용은 검증된 사실이 아니다.
+    private static void checkAssist(Result result) {
+        var assist=result.assist();
+        if(assist==null) return;
+        if(assist.days()==null || assist.days().size()!=result.days().size() || assist.createdAt()==null) throw invalid();
+        var numbers=new ArrayList<>(result.days().stream().map(Day::number).toList());
+        for(var advice:assist.days()) {
+            if(!numbers.remove((Integer)advice.number())) throw invalid();
+            checkAssistText(advice.advice());
+        }
+        checkAssistText(assist.summary());
+    }
+    private static void checkAssistText(String text) {
+        if(text==null || text.isBlank() || text.length()>600 || text.contains("<") || text.contains(">")) throw invalid();
     }
     // 안내된 정기휴무일이 겹치는 장소는 그날 선택에서 뒤로 미룬다. 휴무 정보가 없으면 기존 근거리 순서를 그대로 쓴다.
     private static Comparator<PlaceCandidate> order(LocalDate date,java.util.function.ToDoubleFunction<PlaceCandidate> nearest) {

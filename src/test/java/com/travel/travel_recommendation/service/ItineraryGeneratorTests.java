@@ -103,6 +103,18 @@ class ItineraryGeneratorTests {
         var result=generator.generate(input);
         assertThat(result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).map(Item::placeId)).containsExactly(1L,2L);
     }
+    // 저장 직전 검증은 AI 보조 안내의 일차 수·번호와 문구 형식도 확인한다.
+    @Test void finalValidationRejectsAssistThatDoesNotMatchTheServerPlan() {
+        var input=input(1,LocalTime.of(18,0)); var result=generator.generate(input);
+        var good=new Assist("하루 안내",List.of(new DayAdvice(1,"편한 신발을 준비해 주세요.")),Instant.now());
+        generator.validate(input,result.withAssist(good));
+        for(var bad:List.of(new Assist("안내",List.of(),Instant.now()),
+                new Assist("안내",List.of(new DayAdvice(2,"다른 날 안내")),Instant.now()),
+                new Assist("안내",List.of(new DayAdvice(1,"<b>안내</b>")),Instant.now()),
+                new Assist(" ",List.of(new DayAdvice(1,"안내")),Instant.now()),
+                new Assist("안내",List.of(new DayAdvice(1,"안내")),null)))
+            assertThatThrownBy(()->generator.validate(input,result.withAssist(bad))).isInstanceOf(RecommendationException.class);
+    }
     // 정기휴무일이 겹치는 관광지는 다른 날로 미루고, 피할 수 없는 충돌은 장소 이름과 함께 알린다.
     @Test void movesPlacesClosedOnADayInsteadOfFailingTheWholeSchedule() {
         var base=input(2,LocalTime.of(20,0)); var pool=base.places();
