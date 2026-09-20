@@ -25,7 +25,7 @@
             <p class="help" th:text="${'지역 정보 확인일: ' + #temporals.format(item.destination.verifiedAt,'yyyy-MM-dd') + ' · 실시간 조회 아님'}"></p>
             <div class="form-actions"><a class="button" th:href="@{/travel/recommendations/{id}/destinations/{destinationId}/places(id=${job.jobId},destinationId=${item.destination.placeId})}" th:text="${item.destination.name + ' 선택하고 장소 보기'}"></a></div>
         </section>
-        <p class="help">날짜별·시간대별 여행 일정 생성은 아직 준비 중이에요.</p>
+        <p class="help">여행지를 선택해 장소를 살펴본 뒤, 하루 시간을 정하고 일정 초안을 만들 수 있어요.</p>
     </div>
     <form th:if="${job.canRecommend}" th:action="@{/travel/recommendations/{id}/recommend(id=${job.jobId})}" method="post" data-recommendation-form>
         <input type="hidden" name="attempt" th:value="${job.attemptCount}">

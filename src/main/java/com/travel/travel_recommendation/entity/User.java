@@ -62,6 +62,14 @@ public class User {
         this.passwordHash = passwordHash;
     }
 
+    // 관리자는 정상·이용 제한만 바꾼다. 탈퇴 처리와 탈퇴 시각은 이 기능에서 다루지 않는다.
+    public void changeStatus(UserStatus status) {
+        if (status != UserStatus.ACTIVE && status != UserStatus.RESTRICTED) {
+            throw new IllegalArgumentException("Unsupported status change");
+        }
+        this.status = status;
+    }
+
     @PrePersist
     private void recordCreationTime() {
         // DB 기본값과 동일하게 UTC로 저장한다. 화면 표시는 이후 KST로 변환한다.

@@ -6,7 +6,7 @@
 
 - 아래 본문 머리말의 `기준 문서`는 요구분석서 3.0 표기다. 현재 요구사항 기준은 `창프2_요구분석서 3.1_통합최종본.docx`와 [3.1 통합 변경 내역](../requirements/2026-09-16_요구분석서_3.1_통합_변경내역.md)이므로, 본문의 3.0 표기는 작성 당시 기준으로 읽는다.
 - 이번 확인 범위는 좁다. 7절 places만 컬럼 단위로 대조해 정의서의 18개 컬럼과 `Place` Entity의 `@Column`이 이름·길이·정밀도까지 일치함을 확인했다. 나머지 1~6절(users·keyword_categories·keywords·recommendation_requests·recommendation_candidates·ai_jobs)은 테이블명과 Entity 존재만 확인했고 컬럼 단위 대조는 하지 않았다.
-- 8~9절(itineraries·itinerary_items)은 2026-09-20에 정의서대로 생성하고 Entity를 만들었다. 아래 1.9 적용 메모를 참고한다. 10절(favorites)도 2026-09-20에 정의서대로 생성하고 Entity를 만들었다. 아래 1.10 적용 메모를 참고한다. 11~18절(place_ratings·rating_tags·place_rating_tags·operation_logs와 R3 확장 4개)은 설계 단계이며 Entity가 없다. 3.1에서 추가된 요구사항이 이 테이블들의 컬럼에 주는 영향은 아직 대조하지 않았다.
+- 8~9절(itineraries·itinerary_items)과 10절(favorites), 14절(operation_logs)은 2026-09-20에 정의서대로 생성하고 Entity를 만들었다. 아래 1.9·1.10·1.11 적용 메모를 참고한다. 11~13절과 15~18절(place_ratings·rating_tags·place_rating_tags와 R3 확장 4개)은 설계 단계이며 Entity가 없다. 3.1에서 추가된 요구사항이 이 테이블들의 컬럼에 주는 영향은 아직 대조하지 않았다.
 
 ### 1.9 적용 메모: 내 일정 저장 (2026-09-20)
 
@@ -23,6 +23,14 @@
 - 허용 유형은 DESTINATION·ATTRACTION·ACCOMMODATION이다. RESTAURANT와 비활성 장소는 등록하지 않는다. 등록 서비스에서 먼저 확인하고, `TR_favorites_place_type` 트리거가 직접 INSERT·UPDATE도 막는다. `TR_places_favorite_type` 트리거는 즐겨찾기가 있는 장소의 place_type을 허용되지 않는 값으로 바꾸지 못하게 한다.
 - 등록은 회원만 가능하고 본인 행만 조회·삭제한다. 같은 장소를 다시 등록해도 U1과 서비스 확인으로 새 행을 만들지 않는다. 일정 즐겨찾기는 만들지 않는다.
 - 목록은 등록 당시 스냅샷이 아니라 현재 `places` 정보를 읽어 이름·지역·주소·출처/지도 링크를 보여 준다. 장소가 비활성이 되면 목록에서 빼고 등록 행은 남긴다. 영업시간·가격은 즐겨찾기에 저장하지 않는다.
+### 1.11 적용 메모: 관리자 회원 관리 (2026-09-20)
+
+- 14절 정의서대로 [010 SQL](sql/010_create_operation_logs.sql)로 `operation_logs`만 추가했다. `users`를 포함한 기존 테이블·컬럼·관계는 변경하지 않는다. 대상이 삭제돼도 기록을 남기도록 `target_id`에는 FK를 걸지 않는다.
+- 관리자 회원 관리(SFR-15-01~03)는 검색·목록, 상세 조회, 상태 변경만 제공한다. 상태는 ACTIVE와 RESTRICTED 사이에서만 바꾸며 WITHDRAWN 전환과 회원 삭제는 이 기능에 없다. 관리자 계정과 탈퇴 회원은 상태 변경 대상이 아니다.
+- 성공한 상태 변경은 `users.status` 수정과 같은 트랜잭션에서 `operation_logs`에 남긴다. actor_kind=ADMIN, target_type=USER, action_code=MEMBER_STATUS_CHANGE, outcome=SUCCESS이며 before/after 상태와 관리자가 입력한 사유를 보관한다. 실패는 기록하지 않고 화면 안내로 끝낸다(R3 실패 기록은 이후 범위).
+- 기록에는 이메일·실명·입력 원문·금융정보를 넣지 않는다. 대상과 처리자는 식별자로만 남기고 화면에 보일 때만 아이디를 찾는다. 사유 입력란에도 개인정보를 적지 않도록 안내한다.
+- 보관 기간 1년은 아직 자동 삭제로 구현하지 않았다. 별도 운영 이력 조회 화면도 만들지 않고 회원 상세에 최근 10건만 표시한다.
+
 - 본문의 적용 범위 문단은 관리자가 키워드 카테고리·키워드를 관리한다고 적고 있으나, 현재 개발 규칙(AGENTS.md 6절)과 3.1 통합 변경 내역은 관리자 범위를 회원 관리로 한정하고 키워드 CRUD를 추가하지 않는다. 키워드 테이블은 조회용으로 유지한다.
 
 ### 1.8 적용 메모: 외부 장소 캐시
