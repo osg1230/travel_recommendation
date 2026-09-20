@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>회원 관리 안내 | 관리자</title>
+    <link rel="stylesheet" th:href="@{/css/account.css}">
+</head>
+<body>
+<header class="site-header"><a th:href="@{/}">여행 일정</a></header>
+<main class="account">
+    <h1>요청을 처리하지 못했습니다</h1>
+    <p class="intro" role="alert" th:text="${message}"></p>
+    <p><a th:href="@{/admin/members}">회원 목록으로 가기</a></p>
+    <a th:href="@{/admin}">관리자 시작 화면</a>
+</main>
+</body>
+</html>

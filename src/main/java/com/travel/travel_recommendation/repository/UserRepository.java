@@ -11,6 +11,18 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByLoginId(String loginId);
 
+    // 관리자 회원 관리의 검색이다. 검색어·상태는 비어 있으면 조건에서 제외한다.
+    @org.springframework.data.jpa.repository.Query("""
+        select u from User u
+        where (:keyword is null or lower(u.loginId) like lower(concat('%', :keyword, '%'))
+            or lower(u.nickname) like lower(concat('%', :keyword, '%')))
+          and (:status is null or u.status = :status)
+        """)
+    org.springframework.data.domain.Page<User> searchMembers(
+        @org.springframework.data.repository.query.Param("keyword") String keyword,
+        @org.springframework.data.repository.query.Param("status") UserStatus status,
+        org.springframework.data.domain.Pageable pageable);
+
     // 탈퇴 계정의 공통 닉네임은 중복 검사에서 제외한다.
     boolean existsByNicknameAndStatusNot(String nickname, UserStatus status);
 
