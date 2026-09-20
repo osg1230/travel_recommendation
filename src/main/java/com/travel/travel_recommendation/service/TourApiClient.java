@@ -76,13 +76,12 @@ public class TourApiClient {
         if (data.path("totalCount").asInt() > 10) return List.of();
         List<SearchPlace> result = new ArrayList<>();
         for (var item : data.path("items").path("item")) {
-            try {
-                String id = text(item, "contentid"), type = text(item, "contenttypeid");
-                if (!id.matches("[1-9][0-9]{0,19}") || !TYPES.contains(type)) continue;
-                double x = Double.parseDouble(text(item, "mapx")), y = Double.parseDouble(text(item, "mapy"));
-                if (!Double.isFinite(x) || !Double.isFinite(y) || x < 124 || x > 132 || y < 33 || y > 39) continue;
-                result.add(new SearchPlace(id, type, text(item, "title"), text(item, "addr1"), x, y));
-            } catch (NumberFormatException ignored) { /* 좌표가 없는 결과는 자동 연결하지 않는다. */ }
+            String id = text(item, "contentid"), type = text(item, "contenttypeid");
+            if (!id.matches("[1-9][0-9]{0,19}") || !TYPES.contains(type)) continue;
+            // 좌표가 없거나 국내 범위를 벗어난 결과는 자동 연결하지 않는다.
+            double x = coordinate(item, "mapx"), y = coordinate(item, "mapy");
+            if (!Double.isFinite(x) || !Double.isFinite(y) || x < 124 || x > 132 || y < 33 || y > 39) continue;
+            result.add(new SearchPlace(id, type, text(item, "title"), text(item, "addr1"), x, y));
         }
         return List.copyOf(result);
     }
@@ -135,6 +134,14 @@ public class TourApiClient {
             // 예외 원인에도 키가 포함될 수 있으므로 공개 오류만 전달한다.
             throw invalid();
         }
+    }
+
+    // 좌표는 제공자가 문자열로도 숫자로도 보낼 수 있다. 읽지 못하면 그 결과만 건너뛴다.
+    private double coordinate(JsonNode item, String field) {
+        var value = item.path(field);
+        if (value.isNumber()) return value.doubleValue();
+        if (!value.isTextual()) return Double.NaN;
+        try { return Double.parseDouble(value.asText().trim()); } catch (NumberFormatException ignored) { return Double.NaN; }
     }
 
     private String text(JsonNode item, String field) {

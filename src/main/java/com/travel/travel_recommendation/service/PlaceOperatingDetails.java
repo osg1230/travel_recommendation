@@ -22,9 +22,19 @@ public final class PlaceOperatingDetails {
     }
 
     public static String write(Place place, PlaceOperatingInfo info, ObjectMapper mapper) {
-        var node = place.getDetailsJson() == null ? mapper.createObjectNode() : mapper.readTree(place.getDetailsJson());
-        if (!(node instanceof ObjectNode root)) throw new RecommendationException("TOUR_DETAILS", "기존 장소 상세정보를 확인해야 해요.");
+        var node = place.getDetailsJson() == null ? mapper.createObjectNode() : parse(place.getDetailsJson(), mapper);
+        if (!(node instanceof ObjectNode root)) throw invalid();
         root.set("tourApiOperating", mapper.valueToTree(new Snapshot(place.getName(), place.getAddress(), info)));
-        return mapper.writeValueAsString(root);
+        try {
+            return mapper.writeValueAsString(root);
+        // 기존 상세정보를 읽거나 다시 쓰지 못하면 덮어쓰지 않고 안내만 한다.
+        } catch (RuntimeException error) { throw invalid(); }
+    }
+
+    private static tools.jackson.databind.JsonNode parse(String json, ObjectMapper mapper) {
+        try { return mapper.readTree(json); } catch (RuntimeException error) { throw invalid(); }
+    }
+    private static RecommendationException invalid() {
+        return new RecommendationException("TOUR_DETAILS", "기존 장소 상세정보를 확인해야 해요.");
     }
 }

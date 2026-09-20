@@ -49,4 +49,17 @@ class PlaceOperatingServiceTests {
         entity.refreshKakao(new KakaoPlace("1", "ATTRACTION", "변경된 장소", data.region(), data.address(), "", data.longitude(), data.latitude(), data.url(), data.checkedAt()));
         assertThat(PlaceOperatingDetails.read(entity, mapper)).isNull();
     }
+    // 읽을 수 없는 기존 상세정보는 덮어쓰지 않고 안내 가능한 오류로 알린다.
+    @Test void brokenExistingDetailsAreReportedInsteadOfOverwritten() {
+        var mapper = new JsonMapper();
+        var data = new KakaoPlace("1", "ATTRACTION", place.name(), "강원특별자치도 강릉시", place.address(), "", 128.8796, 37.7791, "https://place.map.kakao.com/1", LocalDateTime.now());
+        var info = new PlaceOperatingInfo("129784", "14", "09:00~18:00", "연중무휴", "", "", Instant.now());
+        for (String stored : new String[]{"{\"foods\":", "깨진 값", "[1,2]"}) {
+            var entity = Place.fromKakao(data); entity.updateDetails(stored);
+            assertThatThrownBy(() -> PlaceOperatingDetails.write(entity, info, mapper))
+                .isInstanceOfSatisfying(RecommendationException.class, error -> assertThat(error.getCode()).isEqualTo("TOUR_DETAILS"));
+            assertThat(PlaceOperatingDetails.read(entity, mapper)).isNull();
+            assertThat(entity.getDetailsJson()).isEqualTo(stored);
+        }
+    }
 }

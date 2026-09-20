@@ -71,6 +71,21 @@ class TourApiClientTests {
         body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":0,\"items\":\"\"}}}");
         assertThat(client("key").search("없는 장소")).isEmpty();
     }
+    // 좌표는 제공자가 문자열로도 숫자로도 보낸다. 읽지 못한 결과만 빠지고 검색 전체가 실패하지 않는다.
+    @Test void readsCoordinatesAsTextOrNumberAndSkipsUnusableResults() {
+        String place = ",\"title\":\"오죽헌\",\"addr1\":\"강원 강릉시 율곡로3139번길 24\"";
+        response("14", place + ",\"mapx\":128.8796,\"mapy\":37.7791");
+        assertThat(client("key").search("오죽헌")).singleElement()
+            .satisfies(found -> assertThat(found.longitude()).isEqualTo(128.8796));
+        response("14", place + ",\"mapx\":\" 128.8796 \",\"mapy\":\"37.7791\"");
+        assertThat(client("key").search("오죽헌")).hasSize(1);
+        response("14", place);
+        assertThat(client("key").search("오죽헌")).isEmpty();
+        response("14", place + ",\"mapx\":\"좌표없음\",\"mapy\":\"37.7791\"");
+        assertThat(client("key").search("오죽헌")).isEmpty();
+        response("14", place + ",\"mapx\":139.7,\"mapy\":35.7");
+        assertThat(client("key").search("오죽헌")).isEmpty();
+    }
     @Test void distinguishesNoResultFromInvalidOrMismatchedData() {
         body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":0,\"items\":\"\"}}}");
         assertThat(client("key").findOperatingInfo("123", "12")).isEmpty();

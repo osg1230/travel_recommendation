@@ -33,15 +33,20 @@ public class PlaceCandidateController {
         response.setHeader("Cache-Control","no-store");
         var service=operatingServices.getIfAvailable();
         if(service==null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"운영정보 조회는 DB 연결 후 이용할 수 있어요.");
+        byte[] guest;
+        boolean allowed;
+        // 외부 조회 전에 다음 조회 시각을 먼저 잡아 두고, 느린 호출은 세션 잠금 밖에서 한다.
         synchronized(session) {
             var last=(Long)session.getAttribute("lastOperatingLookupTime");
-            if(last!=null && System.currentTimeMillis()-last<60000) {
-                flash.addFlashAttribute("lookupMessage","새 운영정보 조회는 1분 후 가능해요.");
-            } else {
-                session.setAttribute("lastOperatingLookupTime",System.currentTimeMillis());
-                boolean found=service.refresh(id,destinationId,placeId,principal==null?null:principal.getName(),RecommendationJobController.guestHash(session,false));
-                flash.addFlashAttribute("lookupMessage",found?"관광공사의 운영정보를 표시해요. 방문 가능 여부는 일정의 날짜·시간과 별도로 대조해요.":"같은 장소의 운영정보를 확실하게 연결하지 못했어요. 출처에서 직접 확인해 주세요.");
-            }
+            allowed=last==null || System.currentTimeMillis()-last>=60000;
+            if(allowed) session.setAttribute("lastOperatingLookupTime",System.currentTimeMillis());
+            guest=RecommendationJobController.guestHash(session,false);
+        }
+        if(!allowed) {
+            flash.addFlashAttribute("lookupMessage","새 운영정보 조회는 1분 후 가능해요.");
+        } else {
+            boolean found=service.refresh(id,destinationId,placeId,principal==null?null:principal.getName(),guest);
+            flash.addFlashAttribute("lookupMessage",found?"관광공사의 운영정보를 표시해요. 방문 가능 여부는 일정의 날짜·시간과 별도로 대조해요.":"같은 장소의 운영정보를 확실하게 연결하지 못했어요. 출처에서 직접 확인해 주세요.");
         }
         response.setStatus(303);
         return "redirect:/travel/recommendations/"+id+"/destinations/"+destinationId+"/places";
