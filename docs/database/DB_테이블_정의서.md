@@ -2,6 +2,13 @@
 
 > 버전 1.8 · 2026-09-20 · 1~7절의 회원·키워드·추천 요청·후보·AI 작업·장소를 구현했다. 배포 SQL은 sql/001~007이다. 1.8은 기존 places의 외부 장소 캐시 적용이며 스키마 변경은 없다. 나머지 테이블은 설계 단계이다. 기존 Word 검토용 파일은 1.1 이전 상태이며 이후 변경을 포함하지 않는다.
 
+### 기준 문서 표기 안내 (2026-09-20)
+
+- 아래 본문 머리말의 `기준 문서`는 요구분석서 3.0 표기다. 현재 요구사항 기준은 `창프2_요구분석서 3.1_통합최종본.docx`와 [3.1 통합 변경 내역](../requirements/2026-09-16_요구분석서_3.1_통합_변경내역.md)이므로, 본문의 3.0 표기는 작성 당시 기준으로 읽는다.
+- 이번 확인 범위는 좁다. 7절 places만 컬럼 단위로 대조해 정의서의 18개 컬럼과 `Place` Entity의 `@Column`이 이름·길이·정밀도까지 일치함을 확인했다. 나머지 1~6절(users·keyword_categories·keywords·recommendation_requests·recommendation_candidates·ai_jobs)은 테이블명과 Entity 존재만 확인했고 컬럼 단위 대조는 하지 않았다.
+- 8~18절(itineraries·itinerary_items·favorites·place_ratings·rating_tags·place_rating_tags·operation_logs와 R3 확장 4개)은 설계 단계이며 Entity가 없다. 3.1에서 추가된 요구사항이 이 테이블들의 컬럼에 주는 영향은 아직 대조하지 않았다.
+- 본문의 적용 범위 문단은 관리자가 키워드 카테고리·키워드를 관리한다고 적고 있으나, 현재 개발 규칙(AGENTS.md 6절)과 3.1 통합 변경 내역은 관리자 범위를 회원 관리로 한정하고 키워드 CRUD를 추가하지 않는다. 키워드 테이블은 조회용으로 유지한다.
+
 ### 1.8 적용 메모: 외부 장소 캐시
 
 - 기존 places의 source_provider=KAKAO, source_place_id와 복합 유일 키를 사용한다. 이름·주소·유형·지역·위경도·출처/지도 URL·verified_at·updated_at을 저장/갱신하며 새 컬럼·관계·SQL은 없다.
