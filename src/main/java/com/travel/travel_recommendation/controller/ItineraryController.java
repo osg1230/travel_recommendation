@@ -60,6 +60,8 @@ public class ItineraryController {
     String result(@PathVariable UUID id,Principal principal,HttpSession session,HttpServletResponse response,Model model) {
         response.setHeader("Cache-Control","no-store");
         model.addAttribute("job",service().view(id,login(principal),hash(session)));
+        // 내 일정 저장은 회원만 할 수 있어 화면에서 로그인 여부를 구분한다.
+        model.addAttribute("loggedIn",principal!=null);
         return "travel/itinerary-result";
     }
     @GetMapping("/itineraries/{id}/status")

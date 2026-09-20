@@ -16,6 +16,18 @@
     <p th:if="${places.durationDays != null}" th:text="${'여행 기간: ' + places.durationDays + '일'}"></p>
     <p class="help">추가 조회로 관광지·음식점·숙소 후보를 늘릴 수 있어요. 검색 결과는 추천 순위가 아니며 영업시간·휴무·예산은 확인이 필요해요.</p>
     <p th:if="${lookupMessage != null}" role="status" th:text="${lookupMessage}"></p>
+    <p th:if="${favoriteMessage != null}" role="status" th:text="${favoriteMessage}"></p>
+    <form th:if="${loggedIn}" method="post"
+          th:action="${favoritePlaceIds.contains(places.destination.placeId)}
+              ? @{/my/favorites/{placeId}/delete(placeId=${places.destination.placeId})} : @{/my/favorites}">
+        <input type="hidden" name="placeId" th:value="${places.destination.placeId}">
+        <input type="hidden" name="returnTo"
+               th:value="@{/travel/recommendations/{id}/destinations/{dest}/places(id=${places.jobId},dest=${places.destination.placeId})}">
+        <button type="submit"
+                th:text="${favoritePlaceIds.contains(places.destination.placeId)
+                    ? '이 여행지 즐겨찾기 삭제' : '이 여행지 즐겨찾기에 추가'}"></button>
+    </form>
+    <p th:unless="${loggedIn}" class="help"><a th:href="@{/login}">로그인</a>하면 여행지·관광지·숙소를 즐겨찾기에 등록할 수 있어요.</p>
     <form data-place-discovery method="post" th:action="@{/travel/recommendations/{id}/destinations/{dest}/places/refresh(id=${places.jobId},dest=${places.destination.placeId})}">
         <button type="submit">카카오에서 장소 더 찾아보기</button>
         <p data-lookup-status class="help" role="status">세 종류를 조회하며 최대 약 30초가 걸릴 수 있어요. 실패해도 기존 후보는 유지해요.</p>
@@ -27,19 +39,20 @@
     <section id="attractions" class="condition-section">
         <h2 th:text="${'관광지 · ' + places.attractions.size() + '곳'}"></h2>
         <p th:if="${places.attractions.isEmpty()}" role="status">이 지역에서 확인된 관광지 후보가 아직 없어요. 다른 추천 지역을 선택해 주세요.</p>
-        <th:block th:each="place : ${places.attractions}"><article th:replace="~{::placeRow(${place})}"></article></th:block>
+        <th:block th:each="place : ${places.attractions}"><article th:replace="~{::placeRow(${place},true)}"></article></th:block>
     </section>
     <section id="restaurants" class="condition-section">
         <h2 th:text="${'음식점 · ' + places.restaurants.size() + '곳'}"></h2>
         <p th:if="${places.restaurants.isEmpty()}" role="status">확인된 음식점 후보가 아직 없어요. 음식점 정보는 추가 확인이 필요해요.</p>
-        <th:block th:each="place : ${places.restaurants}"><article th:replace="~{::placeRow(${place})}"></article></th:block>
+        <p class="help">음식점은 즐겨찾기에 등록할 수 없어요.</p>
+        <th:block th:each="place : ${places.restaurants}"><article th:replace="~{::placeRow(${place},false)}"></article></th:block>
     </section>
     <section id="accommodations" class="condition-section">
         <h2>숙소</h2>
         <p th:if="${places.durationDays == null}">여행 기간이 미정이라 숙소 필요 여부를 아직 확정할 수 없어요. 일정 생성 전에 기간을 확인해 주세요.</p>
         <p th:if="${places.durationDays != null and !places.accommodationNeeded}">당일 여행이거나 숙박이 필요 없다는 조건에 따라 숙소 후보를 제외했어요.</p>
         <p th:if="${places.accommodationNeeded and places.accommodations.isEmpty()}" role="status">확인된 숙소 후보가 아직 없어요. 숙소 정보는 추가 확인이 필요해요.</p>
-        <th:block th:each="place : ${places.accommodations}"><article th:replace="~{::placeRow(${place})}"></article></th:block>
+        <th:block th:each="place : ${places.accommodations}"><article th:replace="~{::placeRow(${place},true)}"></article></th:block>
     </section>
     <p class="help">상시 실시간 조회가 아니에요. 카카오 후보는 최근 24시간 내 조회한 결과만 표시해요. 운영정보는 장소별로 조회할 수 있으며 가격·예약 가능 여부는 별도 확인이 필요해요.</p>
     <p class="help">카카오 후보는 장소 상세 지도, 기존 후보는 이름과 주소 검색으로 열어요. 이동시간은 일정 생성 시 별도로 조회해요.</p>
@@ -47,7 +60,7 @@
 </main>
 <!-- 같은 장소 항목을 관광지·음식점·숙소에 공통으로 표시한다. -->
 <th:block th:if="${false}">
-    <article th:fragment="placeRow(place)" class="place-row">
+    <article th:fragment="placeRow(place,favoritable)" class="place-row">
         <h3 th:text="${place.name}"></h3>
         <p class="help" th:text="${place.subtype}"></p>
         <p class="help" th:if="${place.sourceProvider == 'KAKAO'}">카카오 검색 · 주소와 좌표 확인 · 영업 여부 확인 필요</p>
@@ -60,6 +73,14 @@
             <p th:if="${place.operatingInfo.contentTypeId == '32'}" th:text="${'입실: ' + place.operatingInfo.checkIn + ' / 퇴실: ' + place.operatingInfo.checkOut}"></p>
             <p class="help">출처의 안내 원문이에요. 입장 마감·공휴일·부분 휴관은 직접 확인해 주세요.</p>
         </div>
+        <form th:if="${favoritable and loggedIn}" method="post"
+              th:action="${favoritePlaceIds.contains(place.placeId)}
+                  ? @{/my/favorites/{placeId}/delete(placeId=${place.placeId})} : @{/my/favorites}">
+            <input type="hidden" name="placeId" th:value="${place.placeId}">
+            <input type="hidden" name="returnTo"
+                   th:value="@{/travel/recommendations/{id}/destinations/{dest}/places(id=${places.jobId},dest=${places.destination.placeId})}">
+            <button type="submit" th:text="${favoritePlaceIds.contains(place.placeId) ? '즐겨찾기 삭제' : '즐겨찾기 추가'}"></button>
+        </form>
         <form data-operating-lookup method="post" th:action="@{/travel/recommendations/{id}/destinations/{dest}/places/{placeId}/operating-info(id=${places.jobId},dest=${places.destination.placeId},placeId=${place.placeId})}">
             <button type="submit">관광공사 운영정보 확인</button>
             <p data-operating-status class="help" role="status">장소 한 곳을 조회해요. 최대 약 20초가 걸리며 새 조회는 1분 간격으로 가능해요.</p>

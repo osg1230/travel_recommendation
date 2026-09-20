@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${itinerary.summary.title + ' | 국내여행'}">저장한 일정 | 국내여행</title>
+    <link rel="stylesheet" th:href="@{/css/account.css}"><link rel="stylesheet" th:href="@{/css/travel.css}">
+</head>
+<body>
+<header class="site-header"><a th:href="@{/}">국내여행</a></header>
+<main class="travel">
+    <a class="back-link" th:href="@{/my/itineraries}">← 내 일정 목록</a>
+    <p class="eyebrow">내 여행 · 저장한 일정</p>
+    <h1 th:text="${itinerary.summary.title}"></h1>
+    <p role="status" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
+    <p th:text="${itinerary.summary.destination + ' · ' + itinerary.summary.startDate + ' ~ ' + itinerary.summary.endDate
+        + ' (' + itinerary.summary.dayCount + '일) · 이동수단 ' + itinerary.transportName}"></p>
+    <p class="help">저장할 때의 일정 초안이에요. 체류시간은 계획값이고 이동시간은 저장 당시의 예상값이에요. 영업시간·휴무일·예산·예약 가능 여부는 방문 전에 각 장소의 출처에서 확인해 주세요.</p>
+
+    <section class="condition-section" th:each="day : ${itinerary.days}">
+        <h2 th:text="${day.number + '일차 · ' + day.date}"></h2>
+        <article class="place-row" th:each="item : ${day.items}">
+            <p><strong th:text="${#temporals.format(item.start, 'HH:mm') + '–' + #temporals.format(item.end, 'HH:mm')}"></strong>
+                <span th:text="${' · ' + item.typeName}"></span></p>
+            <h3 th:text="${item.name}"></h3>
+            <p style="white-space: pre-line" th:text="${item.note}"></p>
+            <p class="help" th:if="${item.travelMinutes != null}" th:text="${'저장 당시 예상 이동시간 약 ' + item.travelMinutes + '분'}"></p>
+            <div class="place-links">
+                <a th:if="${!#strings.isEmpty(item.mapUrl)}" th:href="${item.mapUrl}" target="_blank" rel="noopener noreferrer">위치 보기 (새 창)</a>
+                <a th:if="${item.type != 'TRANSIT' and !#strings.isEmpty(item.sourceUrl)}" th:href="${item.sourceUrl}"
+                   target="_blank" rel="noopener noreferrer">장소 출처 확인 (새 창)</a>
+            </div>
+        </article>
+    </section>
+
+    <section class="condition-section">
+        <h2>일정 관리</h2>
+        <form th:action="@{/my/itineraries/{id}/title(id=${itinerary.summary.id})}" method="post">
+            <div class="field">
+                <label for="title">일정 이름 (필수)</label>
+                <input id="title" name="title" type="text" required maxlength="150"
+                       th:value="${itinerary.summary.title}" aria-describedby="title-help">
+                <p id="title-help" class="help">이름만 바꿀 수 있어요. 시각·장소·순서를 바꾸려면 일정을 새로 만들어 저장해 주세요.</p>
+            </div>
+            <div class="form-actions"><button type="submit">이름 저장</button></div>
+        </form>
+        <form th:action="@{/my/itineraries/{id}/delete(id=${itinerary.summary.id})}" method="post"
+              onsubmit="return confirm('저장한 일정을 삭제할까요? 삭제하면 되돌릴 수 없어요.');">
+            <div class="form-actions"><button type="submit">이 일정 삭제</button></div>
+        </form>
+    </section>
+</main>
+</body>
+</html>

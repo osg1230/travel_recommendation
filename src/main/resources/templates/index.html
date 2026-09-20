@@ -13,6 +13,8 @@
     <p th:if="${param.logout}" role="status">로그아웃되었습니다.</p>
     <div th:if="${loggedIn}">
         <a th:href="@{/account}">내 정보</a>
+        <a th:href="@{/my/itineraries}">내 일정</a>
+        <a th:href="@{/my/favorites}">즐겨찾기</a>
         <p><span th:text="${loginId}"></span>님, 로그인되었습니다.</p>
         <a th:if="${admin}" th:href="@{/admin}">관리자 시작 화면</a>
         <form th:action="@{/logout}" method="post"><button type="submit">로그아웃</button></form>

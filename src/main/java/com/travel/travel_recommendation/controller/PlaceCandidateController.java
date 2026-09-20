@@ -25,6 +25,7 @@ public class PlaceCandidateController {
     private final ObjectProvider<PlaceCandidateService> services;
     private final ObjectProvider<PlaceDiscoveryService> discoveries;
     private final ObjectProvider<PlaceOperatingService> operatingServices;
+    private final ObjectProvider<com.travel.travel_recommendation.service.FavoriteService> favoriteServices;
 
     @PostMapping("/{id}/destinations/{destinationId}/places/{placeId}/operating-info")
     @ResponseStatus(HttpStatus.SEE_OTHER)
@@ -91,6 +92,11 @@ public class PlaceCandidateController {
         }
         model.addAttribute("places", service.find(id, destinationId,
             principal == null ? null : principal.getName(), RecommendationJobController.guestHash(session, false)));
+        // 즐겨찾기는 회원 기능이라 로그인 여부와 이미 등록한 장소만 화면에 전달한다.
+        var favorites = favoriteServices.getIfAvailable();
+        model.addAttribute("loggedIn", principal != null);
+        model.addAttribute("favoritePlaceIds", favorites == null ? java.util.Set.of()
+            : favorites.registeredPlaceIds(principal == null ? null : principal.getName()));
         return "travel/place-candidates";
     }
 
