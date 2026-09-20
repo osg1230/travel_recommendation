@@ -42,6 +42,9 @@ class ItineraryIntegrationTests {
     @Autowired JdbcTemplate jdbc;
     @Autowired MockMvc mvc;
     @MockitoBean KakaoMapClient maps;
+    @MockitoBean TourApiClient tour;
+    @Autowired PlaceOperatingService operating;
+    @Autowired PlaceRepository placeRepository;
     private MockHttpSession session;
     private byte[] hash;
     private UUID parent;
@@ -64,6 +67,28 @@ class ItineraryIntegrationTests {
     private UUID create() { return schedules.create(parent,destination,null,hash,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90); }
     private String formUrl() { return "/travel/recommendations/"+parent+"/destinations/"+destination+"/schedule"; }
     private String resultUrl(UUID id) { return "/travel/recommendations/itineraries/"+id; }
+
+    @Test void operatingInfoPersistsReachesScheduleAndDetectsLaterChanges() throws Exception {
+        var candidate=schedules.options(parent,destination,null,hash).places().attractions().getFirst();
+        when(tour.search(candidate.name())).thenReturn(List.of(new TourApiClient.SearchPlace("123","14",candidate.name(),candidate.address(),128.88,37.78)));
+        var info=new PlaceOperatingInfo("123","14","매표 09:00~17:00 관람 09:00~18:00","연중무휴(명절 부분 휴관)","","",Instant.now());
+        when(tour.findOperatingInfo("123","14")).thenReturn(Optional.of(info));
+        assertThat(operating.refresh(parent,destination,candidate.placeId(),null,hash)).isTrue();
+        em.flush(); em.clear();
+        assertThat(schedules.options(parent,destination,null,hash).places().attractions().getFirst().operatingInfo()).isEqualTo(info);
+        var id=create(); var work=schedules.claim(id); var result=schedules.generate(work);
+        assertThat(result.days().stream().flatMap(d->d.items().stream()).filter(i->i.type().equals("VISIT")).map(i->i.note()))
+            .anyMatch(note->note.contains("명절 부분 휴관") && note.contains("확인 필요"));
+        schedules.complete(work,result);
+        mvc.perform(get(resultUrl(id)).session(session)).andExpect(status().isOk()).andExpect(content().string(containsString("명절 부분 휴관")));
+        var second=create(); var secondWork=schedules.claim(second); var secondResult=schedules.generate(secondWork);
+        placeRepository.findById(candidate.placeId()).orElseThrow().updateDetails("{}"); em.flush();
+        schedules.complete(secondWork,secondResult);
+        assertThat(schedules.view(second,null,hash).status()).isEqualTo("FAILED");
+        assertThatThrownBy(()->operating.refresh(parent,destination,candidate.placeId(),null,new byte[32]))
+            .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        verify(tour,times(1)).search(candidate.name());
+    }
 
     @Test void createsIsolatedQueueCompletesAndRendersDraft() throws Exception {
         var id=create();

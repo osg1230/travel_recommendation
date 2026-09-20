@@ -7,4 +7,11 @@ document.querySelector('[data-place-discovery]')?.addEventListener('submit', eve
 window.addEventListener('pageshow', () => {
     const form = document.querySelector('[data-place-discovery]');
     if (form) form.querySelector('button').disabled = false;
+    document.querySelectorAll('[data-operating-lookup] button').forEach(button => button.disabled = false);
+});
+document.querySelectorAll('[data-operating-lookup]').forEach(form => {
+    form.addEventListener('submit', () => {
+        form.querySelector('button').disabled = true;
+        form.querySelector('[data-operating-status]').textContent = '관광공사에서 같은 장소와 운영정보를 확인하고 있어요.';
+    });
 });

@@ -10,6 +10,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.*;
 import java.util.Optional;
 import java.util.Set;
+import java.util.List;
+import java.util.ArrayList;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.*;
@@ -40,14 +42,59 @@ public class TourApiClient {
     public Optional<PlaceOperatingInfo> findOperatingInfo(String contentId, String contentTypeId) {
         if (contentId == null || !contentId.matches("[1-9][0-9]{0,19}") || !TYPES.contains(contentTypeId == null ? "" : contentTypeId))
             throw failure("TOUR_INPUT", "관광정보의 장소 ID와 유형을 확인해 주세요.");
+        var data = get(endpoint, "&numOfRows=1&contentId=" + contentId + "&contentTypeId=" + contentTypeId);
+        var items = data.path("items").path("item");
+        if (data.path("totalCount").asInt() == 0) return Optional.empty();
+        if (data.path("totalCount").asInt() != 1 || items.size() != 1) throw invalid();
+        var item = items.get(0);
+        if (!contentId.equals(item.path("contentid").asText()) || !contentTypeId.equals(item.path("contenttypeid").asText())) throw invalid();
+        String hoursField = switch (contentTypeId) {
+            case "12" -> "usetime";
+            case "14" -> "usetimeculture";
+            case "28" -> "usetimeleports";
+            case "39" -> "opentimefood";
+            default -> "";
+        };
+        String closedField = switch (contentTypeId) {
+            case "12" -> "restdate";
+            case "14" -> "restdateculture";
+            case "28" -> "restdateleports";
+            case "39" -> "restdatefood";
+            default -> "";
+        };
+        return Optional.of(new PlaceOperatingInfo(contentId, contentTypeId, text(item, hoursField), text(item, closedField),
+            "32".equals(contentTypeId) ? text(item, "checkintime") : "",
+            "32".equals(contentTypeId) ? text(item, "checkouttime") : "", Instant.now()));
+    }
+
+    public record SearchPlace(String id, String type, String name, String address, double longitude, double latitude) {}
+
+    public List<SearchPlace> search(String name) {
+        if (name == null || name.isBlank() || name.length() > 200) throw failure("TOUR_INPUT", "장소 이름을 확인해 주세요.");
+        var data = get(endpoint.resolve("searchKeyword2"), "&numOfRows=10&keyword=" + URLEncoder.encode(name, StandardCharsets.UTF_8));
+        // 일부 결과만 보고 유일한 장소라고 판단하지 않는다.
+        if (data.path("totalCount").asInt() > 10) return List.of();
+        List<SearchPlace> result = new ArrayList<>();
+        for (var item : data.path("items").path("item")) {
+            try {
+                String id = text(item, "contentid"), type = text(item, "contenttypeid");
+                if (!id.matches("[1-9][0-9]{0,19}") || !TYPES.contains(type)) continue;
+                double x = Double.parseDouble(text(item, "mapx")), y = Double.parseDouble(text(item, "mapy"));
+                if (!Double.isFinite(x) || !Double.isFinite(y) || x < 124 || x > 132 || y < 33 || y > 39) continue;
+                result.add(new SearchPlace(id, type, text(item, "title"), text(item, "addr1"), x, y));
+            } catch (NumberFormatException ignored) { /* 좌표가 없는 결과는 자동 연결하지 않는다. */ }
+        }
+        return List.copyOf(result);
+    }
+
+    private JsonNode get(URI target, String parameters) {
         if (!properties.isConfigured())
             throw failure("TOUR_NOT_CONFIGURED", "TourAPI 인증키 설정이 필요해요.");
         // Decoding 키를 한 번만 인코딩한다. 요청 URL에는 키가 있어 로그에 남기지 않는다.
         String query = "?serviceKey=" + URLEncoder.encode(properties.serviceKey().trim(), StandardCharsets.UTF_8)
-            + "&MobileOS=WEB&MobileApp=travel_recommendation&_type=json&numOfRows=1&pageNo=1"
-            + "&contentId=" + contentId + "&contentTypeId=" + contentTypeId;
+            + "&MobileOS=WEB&MobileApp=travel_recommendation&_type=json&pageNo=1" + parameters;
         try {
-            var request = HttpRequest.newBuilder(URI.create(endpoint + query)).timeout(timeout).GET().build();
+            var request = HttpRequest.newBuilder(URI.create(target + query)).timeout(timeout).GET().build();
             var response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (response.statusCode() == 401 || response.statusCode() == 403) throw auth();
             if (response.statusCode() == 429) throw quota();
@@ -71,28 +118,10 @@ public class TourApiClient {
             var items = data.path("items").path("item");
             if (count == 0) {
                 if ((items.isArray() && !items.isEmpty()) || items.isObject()) throw invalid();
-                return Optional.empty();
+                return data;
             }
-            if (count != 1 || !items.isArray() || items.size() != 1) throw invalid();
-            var item = items.get(0);
-            if (!contentId.equals(item.path("contentid").asText()) || !contentTypeId.equals(item.path("contenttypeid").asText())) throw invalid();
-            String hoursField = switch (contentTypeId) {
-                case "12" -> "usetime";
-                case "14" -> "usetimeculture";
-                case "28" -> "usetimeleports";
-                case "39" -> "opentimefood";
-                default -> "";
-            };
-            String closedField = switch (contentTypeId) {
-                case "12" -> "restdate";
-                case "14" -> "restdateculture";
-                case "28" -> "restdateleports";
-                case "39" -> "restdatefood";
-                default -> "";
-            };
-            return Optional.of(new PlaceOperatingInfo(contentId, contentTypeId, text(item, hoursField), text(item, closedField),
-                "32".equals(contentTypeId) ? text(item, "checkintime") : "",
-                "32".equals(contentTypeId) ? text(item, "checkouttime") : "", Instant.now()));
+            if (count < 1 || !items.isArray() || items.size() != Math.min(count, parameters.startsWith("&numOfRows=1&") ? 1 : 10)) throw invalid();
+            return data;
         } catch (HttpTimeoutException e) {
             throw failure("TOUR_TIMEOUT", "관광정보 조회 시간이 초과됐어요. 다시 시도해 주세요.");
         } catch (InterruptedException e) {

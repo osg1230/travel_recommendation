@@ -103,4 +103,21 @@ class ItineraryGeneratorTests {
         var result=generator.generate(input);
         assertThat(result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).map(Item::placeId)).containsExactly(1L,2L);
     }
+    @Test void checksOperatingRulesDuringGenerationAndFinalValidation() {
+        var base=input(1,LocalTime.of(18,0)); var plain=generator.generate(base);
+        var original=base.places().attractions().getFirst();
+        var info=new PlaceOperatingInfo("123","12","10:00~18:00","연중무휴","","",Instant.now());
+        var changed=new PlaceCandidate(original.placeId(),original.name(),original.address(),original.subtype(),original.description(),
+            original.sourceUrl(),original.mapSearchUrl(),original.verifiedAt(),null,null,"SYSTEM",info);
+        var pool=base.places();
+        var withInfo=new PlaceCandidateView(pool.jobId(),pool.destination(),pool.durationDays(),pool.accommodationNeeded(),List.of(changed,pool.attractions().get(1)),pool.accommodations(),pool.restaurants());
+        var input=new Input(base.recommendationId(),withInfo,base.conditions(),base.start(),base.end(),base.transport(),base.visitMinutes());
+        assertThatThrownBy(()->generator.generate(input)).isInstanceOfSatisfying(RecommendationException.class,e->assertThat(e.getCode()).isEqualTo("OPERATING_CONFLICT"));
+        assertThatThrownBy(()->generator.validate(input,plain)).isInstanceOfSatisfying(RecommendationException.class,e->assertThat(e.getCode()).isEqualTo("OPERATING_CONFLICT"));
+        // 이전 작업 JSON에는 새 필드가 없어도 미확인 후보로 복원된다.
+        var mapper=new tools.jackson.databind.json.JsonMapper();
+        var tree=mapper.valueToTree(original);
+        ((tools.jackson.databind.node.ObjectNode)tree).remove("operatingInfo");
+        assertThat(mapper.treeToValue(tree,PlaceCandidate.class).operatingInfo()).isNull();
+    }
 }

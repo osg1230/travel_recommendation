@@ -14,7 +14,13 @@ class TourApiLiveTests {
         String id = System.getenv("TOUR_API_TEST_CONTENT_ID"), type = System.getenv("TOUR_API_TEST_CONTENT_TYPE");
         assertThat(id).as("TourAPI 표본 contentId").isNotBlank();
         assertThat(type).as("TourAPI 표본 contentTypeId").isNotBlank();
-        var result = new TourApiClient(properties, new JsonMapper()).findOperatingInfo(id, type);
+        var client = new TourApiClient(properties, new JsonMapper());
+        String name = System.getenv("TOUR_API_TEST_NAME");
+        if (name != null && !name.isBlank()) {
+            assertThat(client.search(name)).as("검색 결과와 소개정보의 콘텐츠 ID 일치")
+                .anyMatch(place -> place.id().equals(id) && place.type().equals(type));
+        }
+        var result = client.findOperatingInfo(id, type);
         assertThat(result).as("지정한 표본의 소개정보 존재 여부").isPresent();
         assertThat(result.orElseThrow().contentId()).isEqualTo(id);
     }

@@ -100,6 +100,7 @@ public class ItineraryJobService {
                 && destination.region().equals(p.getRegion()) && candidate.name().equals(p.getName())
                 && candidate.address().equals(p.getAddress()) && candidate.sourceUrl().equals(p.getSourceUrl())
                 && candidate.verifiedAt().equals(p.getVerifiedAt())
+                && Objects.equals(candidate.operatingInfo(),PlaceOperatingDetails.read(p,mapper))
                 && (candidate.longitude()==null || (p.getLongitude()!=null && Double.compare(candidate.longitude(),p.getLongitude().doubleValue())==0))
                 && (candidate.latitude()==null || (p.getLatitude()!=null && Double.compare(candidate.latitude(),p.getLatitude().doubleValue())==0))).isEmpty()) return false;
         }

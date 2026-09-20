@@ -62,6 +62,15 @@ class TourApiClientTests {
         assertCode("TOUR_INPUT", () -> client("key").findOperatingInfo("123", "15"));
         assertThat(calls.get()).isZero();
     }
+    @Test void searchesOnlyCompleteBoundedResultSets() {
+        response("14", ",\"title\":\"오죽헌\",\"addr1\":\"강원 강릉시 율곡로3139번길 24\",\"mapx\":\"128.8796\",\"mapy\":\"37.7791\"");
+        assertThat(client("key").search("오죽헌")).hasSize(1);
+        assertThat(query.get()).contains("keyword=", "numOfRows=10");
+        body.set(body.get().replace("\"totalCount\":1", "\"totalCount\":11"));
+        assertCode("TOUR_RESPONSE", () -> client("key").search("오죽헌"));
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":0,\"items\":\"\"}}}");
+        assertThat(client("key").search("없는 장소")).isEmpty();
+    }
     @Test void distinguishesNoResultFromInvalidOrMismatchedData() {
         body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":0,\"items\":\"\"}}}");
         assertThat(client("key").findOperatingInfo("123", "12")).isEmpty();

@@ -44,7 +44,7 @@ public class ItineraryGenerator {
         PlaceCandidate previous=null;
         int dayCount=input.conditions().durationDays();
         for(int day=1;day<=dayCount;day++) {
-            var builder=new DayBuilder(input,locations,routes,deadline,previous);
+            var builder=new DayBuilder(input,locations,routes,deadline,previous,day);
             int count=(remaining.size()+dayCount-day)/(dayCount-day+1);
             // 가까운 관광지를 연속 선택한 뒤 하루 단위로 나눈다. 최단 경로 보장은 아니다.
             for(int i=0;i<count;i++) {
@@ -60,7 +60,7 @@ public class ItineraryGenerator {
                     builder.move(restaurant);
                     if(builder.time.isBefore(LocalTime.NOON) && !input.end().isBefore(LocalTime.of(13,0)))
                         builder.add("FREE",restaurant,"식사 전 자유시간",(int)Duration.between(builder.time,LocalTime.NOON).toMinutes(),"주변 휴식·자유시간",null,null);
-                    builder.visit(restaurant,"MEAL",60,"식사 (영업시간·가격 확인 필요)"); builder.meal=true;
+                    builder.visit(restaurant,"MEAL",60,"식사 (가격 확인 필요)"); builder.meal=true;
                 }
             }
             if(hotel!=null && day<dayCount) builder.visit(hotel,"STAY",30,"숙소 도착·휴식 (체크인 시간·예약 확인 필요)");
@@ -128,6 +128,11 @@ public class ItineraryGenerator {
                         case "FREE" -> { }
                         default -> throw invalid();
                     }
+                    if(Set.of("VISIT","MEAL","STAY").contains(item.type())) {
+                        var pool=new ArrayList<>(input.places().attractions()); pool.addAll(input.places().restaurants()); pool.addAll(input.places().accommodations());
+                        var place=pool.stream().filter(p->p.placeId().equals(item.placeId())).findFirst().orElseThrow(ItineraryGenerator::invalid);
+                        OperatingHoursValidator.check(place.operatingInfo(),date,item.start(),item.end());
+                    }
                 }
                 end=item.end();
             }
@@ -143,8 +148,10 @@ public class ItineraryGenerator {
         final Input input; final Map<Long,KakaoMapClient.Location> locations;
         final Map<String,KakaoMapClient.TravelTime> routes; final Instant deadline;
         final List<Item> items=new ArrayList<>(); LocalTime time; PlaceCandidate previous; boolean meal;
-        DayBuilder(Input input,Map<Long,KakaoMapClient.Location> locations,Map<String,KakaoMapClient.TravelTime> routes,Instant deadline,PlaceCandidate previous) {
+        final LocalDate date;
+        DayBuilder(Input input,Map<Long,KakaoMapClient.Location> locations,Map<String,KakaoMapClient.TravelTime> routes,Instant deadline,PlaceCandidate previous,int day) {
             this.input=input; this.locations=locations; this.routes=routes; this.deadline=deadline; this.previous=previous; time=input.start();
+            date=input.conditions().startDate()==null?null:input.conditions().startDate().plusDays(day-1);
         }
         void visit(PlaceCandidate place,String type,int minutes,String note) {
             move(place); add(type,place,place.name(),minutes,note,null,null);
@@ -168,6 +175,7 @@ public class ItineraryGenerator {
             if(minutes<=0 || time.toSecondOfDay()+minutes*60>input.end().toSecondOfDay())
                 throw failure("TIME_OVERLAP","방문·식사·이동 시간이 하루 종료 시간을 넘어요. 이용 시간을 늘리거나 관광지 체류시간을 줄여 주세요.");
             var location=locations.get(place.placeId());
+            if(Set.of("VISIT","MEAL","STAY").contains(type)) note += "\n" + OperatingHoursValidator.note(place.operatingInfo(),date,time,time.plusMinutes(minutes));
             String map="https://map.kakao.com/link/map/"+URLEncoder.encode(place.name(),StandardCharsets.UTF_8).replace("+","%20")+","+location.latitude()+","+location.longitude();
             items.add(new Item(type,place.placeId(),name,time,time.plusMinutes(minutes),note,map,place.sourceUrl(),seconds,checkedAt));
             time=time.plusMinutes(minutes);
