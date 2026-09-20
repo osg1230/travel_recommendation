@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>내 정보 조회 · 여행 일정</title>
-    <link rel="stylesheet" th:href="@{/css/account.css}">
+    <link rel="stylesheet" th:href="@{/css/app.css}">
 </head>
 <body>
-<header class="site-header"><a th:href="@{/}">여행 일정</a></header>
+<header th:replace="~{fragments/layout :: header}"></header>
 <main class="account">
     <h1>정보를 불러오지 못했습니다</h1>
     <p class="intro">일시적인 오류입니다. 잠시 후 다시 시도해 주세요.</p>

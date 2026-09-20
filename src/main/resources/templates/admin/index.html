@@ -1,20 +1,23 @@
 <!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>관리자 · 여행 일정</title>
-    <link rel="stylesheet" th:href="@{/css/account.css}">
-</head>
+<head th:replace="~{fragments/layout :: head('관리자 · 여행 일정')}"></head>
 <body>
-<header class="site-header"><a th:href="@{/}">여행 일정</a></header>
-<main class="account">
-    <h1>관리자</h1>
-    <p><a th:href="@{/account}">내 정보</a></p>
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="page">
+    <p class="eyebrow">관리자</p>
+    <h1>관리자 시작 화면</h1>
     <p class="intro">관리자로 로그인했습니다. 관리 기능은 회원 관리로 한정합니다.</p>
-    <p><a th:href="@{/admin/members}">회원 관리 (검색·상세·상태 변경) →</a></p>
-    <form th:action="@{/logout}" method="post"><button type="submit">로그아웃</button></form>
-    <p><a th:href="@{/}">처음으로</a></p>
+
+    <section class="card">
+        <h2>회원 관리</h2>
+        <p>회원을 검색하고 상세 정보를 확인하며, 상태를 정상 또는 이용 제한으로 바꿀 수 있습니다.</p>
+        <div class="form-actions">
+            <a class="button" th:href="@{/admin/members}">회원 관리 열기 →</a>
+            <a class="button button-quiet" th:href="@{/account}">내 정보</a>
+        </div>
+    </section>
+
+    <p class="guide-note">여행지·관광지·숙소·음식점 데이터와 키워드는 관리자가 직접 등록·수정하지 않습니다. 회원 탈퇴·삭제도 이 화면의 기능이 아닙니다.</p>
 </main>
 </body>
 </html>

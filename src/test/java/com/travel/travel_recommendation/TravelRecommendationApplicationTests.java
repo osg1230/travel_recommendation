@@ -22,8 +22,8 @@ class TravelRecommendationApplicationTests {
         mockMvc.perform(get("/"))
                 .andExpect(status().isOk())
                 .andExpect(view().name("index"))
-                .andExpect(content().string(containsString("<h1>travel_recommendation</h1>")))
-                .andExpect(content().string(containsString("Spring Boot 애플리케이션이 정상 실행되었습니다.")));
+                .andExpect(content().string(containsString("하루 단위 여행 일정을 만들어 드려요")))
+                .andExpect(content().string(containsString("여행 계획 시작하기")));
 	}
 
 }

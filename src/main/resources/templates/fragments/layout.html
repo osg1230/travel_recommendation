@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<!-- 모든 화면이 같은 머리말과 상단 바를 쓰도록 공통 조각으로 둔다. -->
+<head th:fragment="head(pageTitle)">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${pageTitle}">국내여행</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body>
+<!-- 상단 바의 메뉴는 로그인 여부와 관리자 권한에 따라 달라진다. -->
+<header th:fragment="header" class="site-header">
+    <a class="brand" th:href="@{/}">국내여행</a>
+    <nav class="site-nav" aria-label="주요 메뉴">
+        <a th:href="@{/travel/conditions}">여행 계획</a>
+        <th:block th:if="${loggedIn}">
+            <a th:href="@{/my/itineraries}">내 일정</a>
+            <a th:href="@{/my/favorites}">즐겨찾기</a>
+            <a th:href="@{/account}">내 정보</a>
+            <a th:if="${admin}" th:href="@{/admin/members}">회원 관리</a>
+            <span class="nav-user" th:if="${loginId != null and !#strings.isEmpty(loginId)}" th:text="${loginId + '님'}"></span>
+            <form th:action="@{/logout}" method="post"><button type="submit">로그아웃</button></form>
+        </th:block>
+        <th:block th:unless="${loggedIn}">
+            <a th:href="@{/login}">로그인</a>
+            <a class="nav-primary" th:if="${signupEnabled}" th:href="@{/signup}">회원가입</a>
+        </th:block>
+    </nav>
+</header>
+</body>
+</html>

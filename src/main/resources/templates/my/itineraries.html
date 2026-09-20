@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <title>내 일정 | 국내여행</title>
-    <link rel="stylesheet" th:href="@{/css/account.css}"><link rel="stylesheet" th:href="@{/css/travel.css}">
+    <link rel="stylesheet" th:href="@{/css/app.css}">
 </head>
 <body>
-<header class="site-header"><a th:href="@{/}">국내여행</a></header>
+<header th:replace="~{fragments/layout :: header}"></header>
 <main class="travel">
     <a class="back-link" th:href="@{/}">← 처음으로</a>
     <p class="eyebrow">내 여행 · 저장한 일정</p>
@@ -20,7 +20,7 @@
         <p th:text="${itinerary.destination + ' · ' + itinerary.startDate + ' ~ ' + itinerary.endDate + ' (' + itinerary.dayCount + '일)'}"></p>
         <p class="help" th:text="${'저장: ' + itinerary.savedAt + ' (UTC)'}"></p>
     </article>
-    <p class="help">영업시간·휴무일·예산·예약 가능 여부는 저장 이후에도 확인이 필요해요. 방문 전 각 장소의 출처에서 다시 확인해 주세요.</p>
+    <p class="guide-note">영업시간·휴무일·예산·예약 가능 여부는 저장 이후에도 확인이 필요해요. 방문 전 각 장소의 출처에서 다시 확인해 주세요.</p>
 </main>
 </body>
 </html>

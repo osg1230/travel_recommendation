@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>여행 조건 보완 | 국내여행</title><link rel="stylesheet" th:href="@{/css/account.css}"><link rel="stylesheet" th:href="@{/css/travel.css}"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>여행 조건 보완 | 국내여행</title><link rel="stylesheet" th:href="@{/css/app.css}"></head>
 <body>
-<header class="site-header"><a th:href="@{/}">국내여행</a></header>
+<header th:replace="~{fragments/layout :: header}"></header>
 <main class="travel">
     <p class="eyebrow">여행 준비 · 조건 보완</p>
     <h1>여행 조건이 맞는지 확인해 주세요</h1>

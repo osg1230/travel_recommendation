@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <title th:text="${places.destination.name + ' 방문 장소 | 국내여행'}">방문 장소 | 국내여행</title>
-    <link rel="stylesheet" th:href="@{/css/account.css}"><link rel="stylesheet" th:href="@{/css/travel.css}">
+    <link rel="stylesheet" th:href="@{/css/app.css}">
     <script defer th:src="@{/js/place-discovery.js}"></script>
 </head>
 <body>
-<header class="site-header"><a th:href="@{/}">국내여행</a></header>
+<header th:replace="~{fragments/layout :: header}"></header>
 <main class="travel">
     <a class="back-link" th:href="@{/travel/recommendations/{id}(id=${places.jobId})}">← 추천 결과에서 다른 지역 선택</a>
     <p class="eyebrow">여행 준비 · 방문 장소</p>

@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <title th:text="${member.summary.loginId + ' 회원 정보 | 관리자'}">회원 정보 | 관리자</title>
-    <link rel="stylesheet" th:href="@{/css/account.css}">
+    <link rel="stylesheet" th:href="@{/css/app.css}">
 </head>
 <body>
-<header class="site-header"><a th:href="@{/}">여행 일정</a></header>
-<main class="account">
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="page">
     <a class="back-link" th:href="@{/admin/members}">← 회원 목록</a>
     <h1 th:text="${member.summary.loginId}"></h1>
     <p role="status" th:if="${adminMessage != null}" th:text="${adminMessage}"></p>

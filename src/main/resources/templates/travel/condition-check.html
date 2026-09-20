@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>입력 내용 확인 | 국내여행</title><link rel="stylesheet" th:href="@{/css/account.css}"><link rel="stylesheet" th:href="@{/css/travel.css}"><script defer th:src="@{/js/travel-analysis.js}"></script></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>입력 내용 확인 | 국내여행</title><link rel="stylesheet" th:href="@{/css/app.css}"><script defer th:src="@{/js/travel-analysis.js}"></script></head>
 <body>
-<header class="site-header"><a th:href="@{/}">국내여행</a></header>
+<header th:replace="~{fragments/layout :: header}"></header>
 <main class="travel confirmation" th:object="${travelForm}">
     <p class="eyebrow">여행 준비 · 입력 내용 확인</p>
     <h1>입력한 내용을 확인해 주세요</h1>
