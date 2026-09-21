@@ -190,6 +190,15 @@ tbody tr:last-child td { border-bottom: 0; }
 .status-needs_check { background: #fffbeb; color: #92400e; border-color: #fde68a; }
 .status-not_applicable { background: #f8fafc; color: var(--text-muted); border-color: var(--line); }
 
+/* 지도: 번호 표시는 일차 색을 쓰고, 주소로 찾은 대략 위치는 점선 테두리로 구분한다. */
+.trip-map-canvas { width: 100%; height: 380px; margin-top: 12px; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.map-badge {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 30px; padding: 0 7px;
+    border-radius: 999px; background: var(--badge, var(--brand)); color: #fff; font-size: 12.5px; font-weight: 700;
+    border: 2px solid #fff; box-shadow: 0 1px 4px rgba(15, 23, 42, .35); cursor: default; white-space: nowrap;
+}
+.map-badge-approx { background: #fff; color: var(--badge, var(--brand)); border: 2px dashed var(--badge, var(--brand)); }
+
 @media (max-width: 600px) {
     h1 { font-size: 25px; }
     .page, .account, .travel { margin-top: 20px; }
@@ -197,6 +206,7 @@ tbody tr:last-child td { border-bottom: 0; }
     .condition-summary { grid-template-columns: 1fr; }
     .condition-summary dt { border-bottom: 0; padding-bottom: 0; background: var(--surface); }
     .schedule-item { grid-template-columns: 1fr; }
+    .trip-map-canvas { height: 300px; }
     .form-actions button, .form-actions .button { width: 100%; }
     table, thead, tbody, tr, th, td { display: block; }
     thead { display: none; }

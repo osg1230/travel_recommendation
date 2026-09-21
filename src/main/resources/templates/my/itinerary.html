@@ -4,6 +4,7 @@
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <title th:text="${itinerary.summary.title + ' | 국내여행'}">저장한 일정 | 국내여행</title>
     <link rel="stylesheet" th:href="@{/css/app.css}">
+    <script defer th:src="@{/js/trip-map.js}"></script>
 </head>
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
@@ -16,9 +17,11 @@
         + ' (' + itinerary.summary.dayCount + '일) · 이동수단 ' + itinerary.transportName}"></p>
     <p class="guide-note">저장할 때의 일정 초안이에요. 체류시간은 계획값이고 이동시간은 저장 당시의 예상값이에요. 영업시간·휴무일·예산·예약 가능 여부는 방문 전에 각 장소의 출처에서 확인해 주세요.</p>
 
+    <section th:replace="~{fragments/map :: tripMap('지도로 보는 방문 순서', ${route.missing > 0 ? '좌표가 저장되지 않은 장소 ' + route.missing + '곳은 지도에서 빠져 있어요.' : '저장 당시 좌표로 일차별 방문 순서를 표시해요.'})}"></section>
+
     <section class="condition-section" th:each="day : ${itinerary.days}">
         <h2 th:text="${day.number + '일차 · ' + day.date}"></h2>
-        <article class="place-row schedule-item" th:each="item : ${day.items}">
+        <article class="place-row schedule-item" th:each="item, st : ${day.items}">
             <p class="schedule-time" th:text="${#temporals.format(item.start, 'HH:mm') + '–' + #temporals.format(item.end, 'HH:mm')}"></p>
             <div class="schedule-body">
             <p class="help" th:text="${item.typeName}"></p>
@@ -27,6 +30,8 @@
             <p class="help" th:if="${item.travelMinutes != null}" th:text="${'저장 당시 예상 이동시간 약 ' + item.travelMinutes + '분'}"></p>
             <div class="place-links">
                 <a th:if="${!#strings.isEmpty(item.mapUrl)}" th:href="${item.mapUrl}" target="_blank" rel="noopener noreferrer">위치 보기 (새 창)</a>
+                <a th:if="${route.links.get(day.number + '-' + st.index) != null}" th:href="${route.links.get(day.number + '-' + st.index)}"
+                   target="_blank" rel="noopener noreferrer">이 구간 길찾기 · 카카오맵 (새 창)</a>
                 <a th:if="${item.type != 'TRANSIT' and !#strings.isEmpty(item.sourceUrl)}" th:href="${item.sourceUrl}"
                    target="_blank" rel="noopener noreferrer">장소 출처 확인 (새 창)</a>
             </div>

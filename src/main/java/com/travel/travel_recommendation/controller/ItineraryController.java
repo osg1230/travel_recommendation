@@ -21,6 +21,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class ItineraryController {
     private final ObjectProvider<ItineraryJobService> services;
     private final ObjectProvider<SavedItineraryService> savedItineraries;
+    private final tools.jackson.databind.ObjectMapper mapper;
     private record Submission(UUID parent,long destination,String login,String token,UUID job) {}
     private static final String SESSION_KEY="itinerarySubmission";
 
@@ -63,7 +64,14 @@ public class ItineraryController {
         var job=service().view(id,login(principal),hash(session));
         model.addAttribute("job",job);
         // 확정 조건과 일정을 서버가 비교한 결과를 함께 보여 준다.
-        if(job.result()!=null) model.addAttribute("report",ItineraryConditionReport.evaluate(job.input(),job.result()));
+        if(job.result()!=null) {
+            model.addAttribute("report",ItineraryConditionReport.evaluate(job.input(),job.result()));
+            // 일차별 방문 순서와 구간별 길찾기 링크(SFR-11-02·03).
+            var route=TripMap.route(job.result().days().stream().map(d->new TripMap.Day(d.number(),
+                d.items().stream().map(i->new TripMap.Stop(i.type(),i.name(),i.mapUrl())).toList())).toList(),
+                job.result().transport()==KakaoMapClient.Transport.CAR);
+            model.addAttribute("route",route); model.addAttribute("mapJson",mapper.writeValueAsString(route));
+        }
         // 내 일정 저장은 회원만 할 수 있어 화면에서 로그인 여부를 구분한다.
         model.addAttribute("loggedIn",principal!=null);
         // 수정안이면 이어진 저장 일정에 덮어쓸 수 있게 대상 일정을 함께 보여 준다.

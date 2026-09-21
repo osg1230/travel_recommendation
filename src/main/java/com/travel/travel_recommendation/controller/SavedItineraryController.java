@@ -20,6 +20,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 @RequestMapping("/my/itineraries")
 public class SavedItineraryController {
     private final ObjectProvider<SavedItineraryService> services;
+    private final tools.jackson.databind.ObjectMapper mapper;
 
     @PostMapping
     String save(@RequestParam UUID jobId, Principal principal, RedirectAttributes redirect) {
@@ -40,7 +41,14 @@ public class SavedItineraryController {
     @GetMapping("/{id}")
     String detail(@PathVariable long id, Principal principal, HttpServletResponse response, Model model) {
         response.setHeader("Cache-Control","no-store");
-        model.addAttribute("itinerary",service().detail(id,login(principal)));
+        var itinerary=service().detail(id,login(principal));
+        model.addAttribute("itinerary",itinerary);
+        // 저장 당시 좌표로 방문 순서와 구간별 길찾기 링크를 보여 준다(SFR-11-02·03).
+        var route=com.travel.travel_recommendation.service.TripMap.route(itinerary.days().stream()
+            .map(d->new com.travel.travel_recommendation.service.TripMap.Day(d.number(),d.items().stream()
+                .map(i->new com.travel.travel_recommendation.service.TripMap.Stop(i.type(),i.name(),i.mapUrl())).toList())).toList(),
+            "자동차".equals(itinerary.transportName()));
+        model.addAttribute("route",route); model.addAttribute("mapJson",mapper.writeValueAsString(route));
         return "my/itinerary";
     }
 

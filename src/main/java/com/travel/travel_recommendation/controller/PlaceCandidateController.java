@@ -26,6 +26,7 @@ public class PlaceCandidateController {
     private final ObjectProvider<PlaceDiscoveryService> discoveries;
     private final ObjectProvider<PlaceOperatingService> operatingServices;
     private final ObjectProvider<com.travel.travel_recommendation.service.FavoriteService> favoriteServices;
+    private final tools.jackson.databind.ObjectMapper mapper;
 
     @PostMapping("/{id}/destinations/{destinationId}/places/{placeId}/operating-info")
     @ResponseStatus(HttpStatus.SEE_OTHER)
@@ -90,8 +91,11 @@ public class PlaceCandidateController {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                 "장소 정보를 불러올 수 없어요. 잠시 후 다시 시도해 주세요.");
         }
-        model.addAttribute("places", service.find(id, destinationId,
-            principal == null ? null : principal.getName(), RecommendationJobController.guestHash(session, false)));
+        var places = service.find(id, destinationId,
+            principal == null ? null : principal.getName(), RecommendationJobController.guestHash(session, false));
+        model.addAttribute("places", places);
+        // 관광지·숙소 위치를 지도에 표시한다(SFR-11-01).
+        model.addAttribute("mapJson", mapper.writeValueAsString(com.travel.travel_recommendation.service.TripMap.places(places)));
         // 즐겨찾기는 회원 기능이라 로그인 여부와 이미 등록한 장소만 화면에 전달한다.
         var favorites = favoriteServices.getIfAvailable();
         model.addAttribute("loggedIn", principal != null);

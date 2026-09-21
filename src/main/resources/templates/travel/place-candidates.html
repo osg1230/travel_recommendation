@@ -5,6 +5,7 @@
     <title th:text="${places.destination.name + ' 방문 장소 | 국내여행'}">방문 장소 | 국내여행</title>
     <link rel="stylesheet" th:href="@{/css/app.css}">
     <script defer th:src="@{/js/place-discovery.js}"></script>
+    <script defer th:src="@{/js/trip-map.js}"></script>
 </head>
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
@@ -33,6 +34,7 @@
         <p data-lookup-status class="help" role="status">세 종류를 조회하며 최대 약 30초가 걸릴 수 있어요. 실패해도 기존 후보는 유지해요.</p>
     </form>
     <p><a th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${places.jobId},dest=${places.destination.placeId})}">하루 시간을 정하고 일정 초안 만들기 →</a></p>
+    <section th:replace="~{fragments/map :: tripMap('관광지·숙소 위치', '카카오 검색으로 확인한 장소는 좌표로, 기존 후보는 주소로 찾아 표시해요. 음식점은 일정에서 식사 위치로 보여 줘요.')}"></section>
     <nav class="category-nav" aria-label="장소 종류">
         <a href="#attractions">관광지</a><a href="#restaurants">음식점</a><a href="#accommodations">숙소</a>
     </nav>

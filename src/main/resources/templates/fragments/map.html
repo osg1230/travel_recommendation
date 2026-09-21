@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- 지도 영역. 키가 없거나 불러오기에 실패해도 아래 목록과 링크로 같은 정보를 볼 수 있다. -->
+<section th:fragment="tripMap(heading, help)" class="condition-section trip-map" data-trip-map
+         th:attr="data-key=${kakaoMapKey},data-map=${mapJson}" aria-labelledby="map-title">
+    <h2 id="map-title" th:text="${heading}"></h2>
+    <p class="help" th:text="${help}"></p>
+    <div data-map-canvas class="trip-map-canvas" hidden role="region" aria-label="지도"></div>
+    <p class="help" role="status" data-map-status
+       th:text="${#strings.isEmpty(kakaoMapKey) ? '지도를 보려면 카카오 JavaScript 키(KAKAO_JAVASCRIPT_KEY) 설정이 필요해요. 아래 목록과 위치·길찾기 링크는 그대로 쓸 수 있어요.' : '지도를 불러오고 있어요.'}"></p>
+</section>
+</body>
+</html>

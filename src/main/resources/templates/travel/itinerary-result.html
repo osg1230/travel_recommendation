@@ -3,6 +3,7 @@
 <head th:replace="~{fragments/layout :: head('일정 초안 | 국내여행')}"></head>
 <body>
 <script defer th:src="@{/js/recommendation-job.js}"></script>
+<script defer th:src="@{/js/trip-map.js}"></script>
 <header th:replace="~{fragments/layout :: header}"></header>
 <main class="travel">
 <a class="back-link" th:href="@{/travel/recommendations/{id}/destinations/{dest}/places(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">← 장소 목록</a>
@@ -44,17 +45,20 @@
 <p class="help">AI가 위 초안을 읽고 쓴 준비 안내예요. 일정의 시각·장소·순서는 서버가 만든 초안 그대로예요. 영업시간·가격·예약 가능 여부를 확인한 내용이 아니니 방문 전 출처에서 확인해 주세요.</p>
 </section>
 
+<section th:replace="~{fragments/map :: tripMap('지도로 보는 방문 순서', ${route.missing > 0 ? '좌표를 확인하지 못한 장소 ' + route.missing + '곳은 지도에서 빠져 있어요. 아래 일정 목록을 함께 봐 주세요.' : '일차별 색으로 방문 순서를 표시해요. 구간별 길찾기는 아래 이동 항목에서 열 수 있어요.'})}"></section>
+
 <section class="condition-section" th:each="day : ${job.result.days}">
 <h2 th:text="${day.number + '일차' + (day.date == null ? ' · 날짜 미정' : ' · ' + day.date)}"></h2>
 <th:block th:if="${job.result.assist != null}" th:each="advice : ${job.result.assist.days}">
 <p class="notice" th:if="${advice.number == day.number}" style="white-space: pre-line" th:text="${'AI 준비 안내 · ' + advice.advice}"></p>
 </th:block>
-<article class="place-row schedule-item" th:each="item : ${day.items}">
+<article class="place-row schedule-item" th:each="item, st : ${day.items}">
 <p class="schedule-time" th:text="${#temporals.format(item.start, 'HH:mm') + '–' + #temporals.format(item.end, 'HH:mm')}"></p>
 <div class="schedule-body">
 <h3 th:text="${item.name}"></h3><p style="white-space: pre-line" th:text="${item.note}"></p>
 <p class="help" th:if="${item.checkedAt != null}" th:text="${'이동시간 조회: ' + item.checkedAt + ' (UTC)'}"></p>
 <div class="place-links"><a th:href="${item.mapUrl}" target="_blank" rel="noopener noreferrer">위치 보기 (새 창)</a>
+<a th:if="${route.links.get(day.number + '-' + st.index) != null}" th:href="${route.links.get(day.number + '-' + st.index)}" target="_blank" rel="noopener noreferrer">이 구간 길찾기 · 카카오맵 (새 창)</a>
 <a th:if="${item.type != 'TRANSIT'}" th:href="${item.sourceUrl}" target="_blank" rel="noopener noreferrer">장소 출처 확인 (새 창)</a></div>
 </div>
 </article></section>
