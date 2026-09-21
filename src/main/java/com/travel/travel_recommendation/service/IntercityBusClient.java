@@ -25,6 +25,7 @@ public class IntercityBusClient {
         public int minutes() { return (int) Duration.between(departure, arrival).toMinutes(); }
     }
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
+    static final int TRIP_PAGE_SIZE = 100, MAX_TRIP_PAGES = 5;
     // 실제 응답은 초까지 붙은 14자리 숫자(20260921071000)다. 12자리도 함께 받는다.
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyyMMddHHmm");
     private static final DateTimeFormatter TIME_SECONDS = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
@@ -54,11 +55,14 @@ public class IntercityBusClient {
         String cached = terminalIds.get(terminalName);
         if (cached != null) return cached;
         String found = null;
-        for (var item : items(get("GetSuberbsBusTrminlList", "&numOfRows=20&terminalNm="
+        for (var item : items(get("GetSuberbsBusTrminlList", "&pageNo=1&numOfRows=20&terminalNm="
                 + URLEncoder.encode(terminalName, StandardCharsets.UTF_8)))) {
             if (!terminalName.equals(text(item, "terminalNm"))) continue;
             String id = text(item, "terminalId");
-            if (!id.matches("[A-Za-z0-9]{1,20}") || (found != null && !found.equals(id))) throw invalid();
+            if (!id.matches("[A-Za-z0-9]{1,20}")) throw invalid();
+            // 같은 이름이 다른 ID로 여러 개면 어느 터미널인지 고를 수 없다. 응답 오류와 구분해 호출한 쪽이 판단하게 한다.
+            if (found != null && !found.equals(id))
+                throw failure("BUS_TERMINAL_AMBIGUOUS", terminalName + " 이름의 시외버스 터미널이 여러 곳이라 하나로 정하지 못했어요.");
             found = id;
         }
         if (found == null) throw failure("BUS_TERMINAL_NOT_FOUND", terminalName + "의 시외버스 터미널 정보를 찾지 못했어요.");
@@ -70,14 +74,25 @@ public class IntercityBusClient {
     public List<Trip> trips(String departureId, String arrivalId, LocalDate date) {
         if (departureId == null || arrivalId == null || date == null || departureId.equals(arrivalId)) throw invalid();
         List<Trip> result = new ArrayList<>();
-        for (var item : items(get("GetStrtpntAlocFndSuberbsBusInfo", "&numOfRows=100&depTerminalId=" + departureId
-                + "&arrTerminalId=" + arrivalId + "&depPlandTime=" + date.format(DATE)))) {
-            var departure = time(item, "depPlandTime");
-            var arrival = time(item, "arrPlandTime");
-            // 날짜가 다르거나 도착이 출발보다 이르거나 하루를 넘는 배차는 잘못된 값으로 보고 쓰지 않는다.
-            if (departure == null || arrival == null || !departure.toLocalDate().equals(date)
-                    || !arrival.isAfter(departure) || arrival.isAfter(departure.plusHours(12))) continue;
-            result.add(new Trip(departure, arrival, text(item, "gradeNm"), number(item, "charge")));
+        // 배차가 한 페이지(100건)를 넘으면 뒤 페이지까지 읽어야 첫차·막차·횟수가 맞다. 무한 반복을 막으려고 페이지 수를 제한한다.
+        int read = 0;
+        for (int page = 1; page <= MAX_TRIP_PAGES; page++) {
+            var body = get("GetStrtpntAlocFndSuberbsBusInfo", "&pageNo=" + page + "&numOfRows=" + TRIP_PAGE_SIZE
+                + "&depTerminalId=" + departureId + "&arrTerminalId=" + arrivalId + "&depPlandTime=" + date.format(DATE));
+            var items = items(body);
+            for (var item : items) {
+                var departure = time(item, "depPlandTime");
+                var arrival = time(item, "arrPlandTime");
+                // 날짜가 다르거나 도착이 출발보다 이르거나 하루를 넘는 배차는 잘못된 값으로 보고 쓰지 않는다.
+                if (departure == null || arrival == null || !departure.toLocalDate().equals(date)
+                        || !arrival.isAfter(departure) || arrival.isAfter(departure.plusHours(12))) continue;
+                result.add(new Trip(departure, arrival, text(item, "gradeNm"), number(item, "charge")));
+            }
+            read += items.size();
+            int total = body.path("totalCount").asInt(read);
+            if (items.isEmpty() || read >= total) break;
+            // 제한 페이지까지 읽고도 남아 있으면 일부만 보고 요약하지 않는다.
+            if (page == MAX_TRIP_PAGES) throw failure("BUS_TOO_MANY", "시외버스 배차가 너무 많아 요약하지 못했어요.");
         }
         result.sort(Comparator.comparing(Trip::departure));
         return List.copyOf(result);
@@ -87,7 +102,7 @@ public class IntercityBusClient {
         if (!properties.isConfigured()) throw failure("BUS_NOT_CONFIGURED", "시외버스 정보 인증키 설정이 필요해요.");
         // Decoding 키를 한 번만 인코딩한다. 요청 URL에는 키가 있어 로그에 남기지 않는다.
         String query = "?serviceKey=" + URLEncoder.encode(properties.serviceKey().trim(), StandardCharsets.UTF_8)
-            + "&_type=json&pageNo=1" + parameters;
+            + "&_type=json" + parameters;
         try {
             var request = HttpRequest.newBuilder(URI.create(endpoint.resolve(operation) + query)).timeout(timeout).GET().build();
             var response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));

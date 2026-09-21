@@ -15,12 +15,16 @@ class IntercityBusClientTests {
     private final AtomicReference<String> body = new AtomicReference<>(), path = new AtomicReference<>(), query = new AtomicReference<>();
     private final AtomicInteger status = new AtomicInteger(200), calls = new AtomicInteger();
     private static final LocalDate TODAY = LocalDate.of(2026, 9, 21);
+    private final java.util.Map<Integer, String> pages = new java.util.concurrent.ConcurrentHashMap<>();
 
     @BeforeEach void setup() throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
             calls.incrementAndGet(); path.set(exchange.getRequestURI().getPath()); query.set(exchange.getRequestURI().getRawQuery());
-            byte[] bytes = body.get().getBytes(StandardCharsets.UTF_8);
+            // 페이지별 응답이 있으면 요청한 pageNo의 응답을 준다.
+            var matcher = java.util.regex.Pattern.compile("pageNo=(\\d+)").matcher(query.get());
+            String text = matcher.find() && pages.containsKey(Integer.valueOf(matcher.group(1))) ? pages.get(Integer.valueOf(matcher.group(1))) : body.get();
+            byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(status.get(), bytes.length);
             exchange.getResponseBody().write(bytes); exchange.close();
         });
@@ -70,6 +74,35 @@ class IntercityBusClientTests {
         assertThat(query.get()).contains("depTerminalId=A1", "arrTerminalId=B2", "depPlandTime=20260921");
         body.set("{\"response\":{\"header\":{\"resultCode\":\"00\"},\"body\":{\"items\":\"\",\"totalCount\":0}}}");
         assertThat(client("key").trips("A1", "B2", TODAY)).isEmpty();
+    }
+
+    @Test void ambiguousTerminalNameHasItsOwnCode() {
+        items("[{\"terminalId\":\"NAI1\",\"terminalNm\":\"울산\"},{\"terminalId\":\"NAI2\",\"terminalNm\":\"울산\"}]");
+        assertCode("BUS_TERMINAL_AMBIGUOUS", () -> client("key").terminalId("울산"));
+        items("[{\"terminalId\":\"bad id!\",\"terminalNm\":\"울산\"}]");
+        assertCode("BUS_RESPONSE", () -> client("key").terminalId("울산"));
+    }
+
+    @Test void readsEveryPageSoLastDepartureAndCountAreComplete() {
+        // 첫 페이지 100건(06:00부터 1분 간격), 둘째 페이지 1건(22:30). 둘째 페이지를 빼면 막차가 틀린다.
+        StringBuilder first = new StringBuilder("[");
+        for (int i = 0; i < 100; i++) {
+            var dep = LocalDateTime.of(2026, 9, 21, 6, 0).plusMinutes(i);
+            if (i > 0) first.append(',');
+            first.append("{\"depPlandTime\":").append(dep.format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss")))
+                .append(",\"arrPlandTime\":").append(dep.plusMinutes(50).format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))).append('}');
+        }
+        pages.put(1, "{\"response\":{\"header\":{\"resultCode\":\"00\"},\"body\":{\"items\":{\"item\":" + first + "]},\"totalCount\":101}}}");
+        pages.put(2, "{\"response\":{\"header\":{\"resultCode\":\"00\"},\"body\":{\"items\":{\"item\":{\"depPlandTime\":20260921223000,\"arrPlandTime\":20260921232000}},\"totalCount\":101}}}");
+        var trips = client("key").trips("A", "B", TODAY);
+        assertThat(trips).hasSize(101);
+        assertThat(trips.getLast().departure()).isEqualTo(LocalDateTime.of(2026, 9, 21, 22, 30));
+        assertThat(calls.get()).isEqualTo(2);
+        // 제한 페이지를 다 읽어도 남아 있으면 일부만으로 요약하지 않는다.
+        pages.clear(); calls.set(0);
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"00\"},\"body\":{\"items\":{\"item\":" + first + "]},\"totalCount\":900}}}");
+        assertCode("BUS_TOO_MANY", () -> client("key").trips("A", "B", TODAY));
+        assertThat(calls.get()).isEqualTo(IntercityBusClient.MAX_TRIP_PAGES);
     }
 
     @Test void mapsGatewayErrorsWithoutLeakingKey() {

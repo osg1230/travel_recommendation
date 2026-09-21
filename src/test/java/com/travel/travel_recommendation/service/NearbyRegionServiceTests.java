@@ -119,6 +119,18 @@ class NearbyRegionServiceTests {
         assertThat(none.decision()).isEqualTo("NONE_FOUND");
         assertThat(none.reason()).contains("확인한 주변 지역이 없어요");
         assertThat(none.notice()).contains("판단하지 못한 지역: 속초, 양양.");
+        // 도착 터미널 이름이 겹쳐도 그 지역만 판단하지 못하고 다른 지역은 계속 조회한다.
+        reset(buses);
+        LocalDate today=LocalDate.now(ZoneId.of("Asia/Seoul"));
+        when(buses.terminalId("강릉")).thenReturn("T-강릉");
+        when(buses.terminalId("속초")).thenThrow(new RecommendationException("BUS_TERMINAL_AMBIGUOUS","이름 중복"));
+        when(buses.terminalId("양양")).thenReturn("T-양양");
+        when(buses.trips(eq("T-강릉"),eq("T-양양"),eq(today))).thenReturn(List.of(
+            new IntercityBusClient.Trip(today.atTime(9,0),today.atTime(9,40),"일반",4000)));
+        var partial=service.recommend(input(true,Transport.PUBLIC_TRANSIT),plan(LocalTime.of(12,0)));
+        assertThat(partial.decision()).isEqualTo("RECOMMENDED");
+        assertThat(partial.regions()).extracting(NearbyRegion::name).containsExactly("양양");
+        assertThat(partial.notice()).contains("판단하지 못한 지역: 속초.");
         reset(buses);
         when(buses.terminalId(anyString())).thenThrow(new RecommendationException("BUS_TERMINAL_NOT_FOUND","출발 터미널 없음"));
         assertThat(service.recommend(input(true,Transport.PUBLIC_TRANSIT),plan(LocalTime.of(12,0))).decision()).isEqualTo("LOOKUP_FAILED");

@@ -115,15 +115,17 @@ public class NearbyRegionService {
         return region(destination,time.minutes(),origin.name()+" → "+target.name()+" (카카오 자동차 예상)",null);
     }
 
-    /** 오늘 직행 배차. 출발지 터미널을 찾지 못하면 전체 조회 실패로, 도착지 터미널만 없으면 배차 없음으로 본다. */
+    /** 이 지역 하나만 판단하지 못하게 만드는 오류. 인증·연결 오류처럼 모든 지역에 같은 오류는 전체 실패로 둔다. */
+    private static final Set<String> TARGET_ONLY_ERRORS=Set.of("BUS_TERMINAL_NOT_FOUND","BUS_TERMINAL_AMBIGUOUS","BUS_TOO_MANY");
+
+    /** 오늘 직행 배차. 출발지 터미널을 정하지 못하면 전체 조회 실패로, 도착지 쪽 문제면 그 지역만 배차 없음(판단 못 함)으로 본다. */
     private List<IntercityBusClient.Trip> busTrips(Terminal origin,Terminal target) {
-        String from=buses.terminalId(origin.busName()), to;
-        try { to=buses.terminalId(target.busName()); }
+        String from=buses.terminalId(origin.busName());
+        try { return buses.trips(from,buses.terminalId(target.busName()),LocalDate.now(ZoneId.of("Asia/Seoul"))); }
         catch(RecommendationException error) {
-            if("BUS_TERMINAL_NOT_FOUND".equals(error.getCode())) return List.of();
+            if(TARGET_ONLY_ERRORS.contains(error.getCode())) return List.of();
             throw error;
         }
-        return buses.trips(from,to,LocalDate.now(ZoneId.of("Asia/Seoul")));
     }
 
     private NearbyRegion byBus(Terminal origin,Terminal target,Place destination,List<IntercityBusClient.Trip> trips) {
