@@ -90,7 +90,7 @@
 </section>
 
 <section class="condition-section" aria-labelledby="bus-title">
-<h2 id="bus-title">버스로 가는 방법 (시외버스)</h2>
+<h2 id="bus-title">버스로 가는 방법 (시외·고속버스)</h2>
 <p class="help">필요할 때만 조회해요. 여행지로 갈 때는 출발 도시를 적거나 내 위치로 찾고, 주변 지역으로 갈 때는 비워 두면 지금 여행지에서 출발하는 버스를 찾아요.</p>
 <p role="alert" th:if="${busError != null}" th:text="${busError}"></p>
 <div th:if="${busGuide != null}" class="bus-guide-result">
@@ -100,7 +100,7 @@
 <p th:if="${busGuide.message != null}" th:text="${busGuide.message}"></p>
 <article class="place-row" th:each="bus : ${busGuide.routes}">
 <h4 th:text="${bus.kind + ' · ' + bus.fromTerminal + ' → ' + bus.toTerminal}"></h4>
-<p th:text="${'직행 ' + bus.trips + '회 · 첫차 ' + #temporals.format(bus.firstDeparture, 'HH:mm') + ' · 막차 ' + #temporals.format(bus.lastDeparture, 'HH:mm') + ' · 가장 빠른 배차 약 ' + bus.fastestMinutes + '분'
+<p th:text="${'직행 ' + bus.trips + '회 · 첫차 ' + bus.firstDeparture + ' · 막차 ' + bus.lastDeparture + ' · 가장 빠른 배차 약 ' + bus.fastestMinutes + '분'
     + (bus.minCharge == null ? '' : ' · 요금 ' + #numbers.formatInteger(bus.minCharge, 1, 'COMMA') + '원부터')}"></p>
 </article>
 </div>
@@ -121,7 +121,7 @@
 </div>
 <p class="help" data-bus-status>'내 위치로 찾기'를 누르면 브라우저가 위치 권한을 물어요. 위치는 카카오 지도로 가까운 도시 이름을 확인하는 데만 쓰고 저장하지 않아요.</p>
 </form>
-<p class="help">국토교통부 TAGO 시외버스 정보의 오늘 배차예요. 등록되지 않은 노선도 있어 버스가 없다고 단정하지 않아요. 환승 경로와 좌석 여부는 안내하지 않아요.</p>
+<p class="help">국토교통부 TAGO 시외버스·고속버스 정보의 오늘 배차예요. 등록되지 않은 노선도 있어 버스가 없다고 단정하지 않아요. 환승 경로와 좌석 여부는 안내하지 않아요.</p>
 </section>
 </th:block>
 

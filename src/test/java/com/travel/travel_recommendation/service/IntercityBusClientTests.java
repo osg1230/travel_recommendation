@@ -33,7 +33,7 @@ class IntercityBusClientTests {
     @AfterEach void stop() { server.stop(0); }
     private IntercityBusClient client(String key) {
         return new IntercityBusClient(new TagoProperties(key), new JsonMapper(),
-            URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/SuburbsBusInfo/"), Duration.ofSeconds(1));
+            URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/"), Duration.ofSeconds(1));
     }
     private void items(String items) {
         body.set("{\"response\":{\"header\":{\"resultCode\":\"00\"},\"body\":{\"items\":{\"item\":" + items + "}}}}");
@@ -74,6 +74,21 @@ class IntercityBusClientTests {
         assertThat(query.get()).contains("depTerminalId=A1", "arrTerminalId=B2", "depPlandTime=20260921");
         body.set("{\"response\":{\"header\":{\"resultCode\":\"00\"},\"body\":{\"items\":\"\",\"totalCount\":0}}}");
         assertThat(client("key").trips("A1", "B2", TODAY)).isEmpty();
+    }
+
+    @Test void expressUsesItsOwnPathKeepsDuplicateIdsAndReadsMidnightDeparture() {
+        items("[{\"terminalId\":\"NAEK030\",\"terminalNm\":\"동서울\"},{\"terminalId\":\"NAEK032\",\"terminalNm\":\"동서울\"},{\"terminalId\":\"NAEK050\",\"terminalNm\":\"서울남부\"}]");
+        // 고속버스는 같은 이름이 여러 ID라 모두 돌려준다.
+        assertThat(client("key").terminalIds(IntercityBusClient.Service.EXPRESS, "동서울")).containsExactly("NAEK030", "NAEK032");
+        assertThat(path.get()).isEqualTo("/ExpBusInfo/GetExpBusTrminlList");
+        // 막차 "2400"은 다음 날 00:00으로 읽고 조회일의 배차로 인정한다.
+        items("[{\"depPlandTime\":202609210650,\"arrPlandTime\":202609210900,\"gradeNm\":\"우등\",\"charge\":22300},"
+            + "{\"depPlandTime\":202609212400,\"arrPlandTime\":202609220220,\"gradeNm\":\"심야우등\",\"charge\":27000}]");
+        var trips = client("key").trips(IntercityBusClient.Service.EXPRESS, "NAEK032", "NAEK200", TODAY);
+        assertThat(path.get()).isEqualTo("/ExpBusInfo/GetStrtpntAlocFndExpbusInfo");
+        assertThat(trips).hasSize(2);
+        assertThat(trips.getLast().departure()).isEqualTo(LocalDateTime.of(2026, 9, 22, 0, 0));
+        assertThat(trips.getLast().minutes()).isEqualTo(140);
     }
 
     @Test void ambiguousTerminalNameHasItsOwnCode() {
