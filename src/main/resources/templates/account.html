@@ -56,6 +56,24 @@
         <p class="help">비밀번호를 변경하면 현재 화면에서 로그아웃됩니다.</p>
         <button type="submit">변경 사항 저장</button>
     </form>
+
+    <section class="card danger-zone" aria-labelledby="withdraw-title">
+        <h2 id="withdraw-title">회원 탈퇴</h2>
+        <p role="alert" th:if="${withdrawError != null}" th:text="${withdrawError}"></p>
+        <ul class="help">
+            <li>저장한 일정, 즐겨찾기, 추천 이력, 장소 평가가 모두 삭제되며 되돌릴 수 없어요.</li>
+            <li>탈퇴한 아이디로는 다시 로그인하거나 새로 가입할 수 없어요.</li>
+            <li>관리자가 남긴 이용 제한 처리 기록은 운영 기록으로 보관돼요.</li>
+        </ul>
+        <form th:action="@{/account/withdraw}" method="post">
+            <div class="field">
+                <label for="withdrawPassword">현재 비밀번호 (필수)</label>
+                <input id="withdrawPassword" name="currentPassword" type="password" required maxlength="64" autocomplete="current-password">
+            </div>
+            <label class="check-line"><input type="checkbox" name="confirm" value="true" required> 위 내용을 확인했고 탈퇴에 동의합니다.</label>
+            <div class="form-actions"><button type="submit" class="button-danger">회원 탈퇴</button></div>
+        </form>
+    </section>
 </main>
 </body>
 </html>

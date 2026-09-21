@@ -70,6 +70,14 @@ public class User {
         this.status = status;
     }
 
+    /** 회원 본인 탈퇴. 정의서 CHECK에 맞춰 상태와 탈퇴 시각을 함께 바꾸고 닉네임은 공통 익명 이름으로 바꾼다. */
+    public void withdraw(String anonymousNickname, String unusablePasswordHash) {
+        this.status = UserStatus.WITHDRAWN;
+        this.withdrawnAt = LocalDateTime.now(ZoneOffset.UTC);
+        this.nickname = anonymousNickname;
+        this.passwordHash = unusablePasswordHash;
+    }
+
     @PrePersist
     private void recordCreationTime() {
         // DB 기본값과 동일하게 UTC로 저장한다. 화면 표시는 이후 KST로 변환한다.

@@ -24,6 +24,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 @RequiredArgsConstructor
 public class ProfileController {
     private final ProfileService profiles;
+    private final org.springframework.beans.factory.ObjectProvider<com.travel.travel_recommendation.service.WithdrawalService> withdrawals;
 
     @InitBinder("profileForm")
     void bindProfile(WebDataBinder binder) {
@@ -42,6 +43,30 @@ public class ProfileController {
         }
         model.addAttribute("profileForm", form);
         return "account";
+    }
+
+    /** 회원 본인 탈퇴(SFR-01-05). 현재 비밀번호와 동의를 확인한 뒤 처리하고 바로 로그아웃한다. */
+    @PostMapping("/account/withdraw")
+    public String withdraw(@RequestParam(required = false) String currentPassword,
+                           @RequestParam(defaultValue = "false") boolean confirm,
+                           Authentication authentication, RedirectAttributes redirect,
+                           HttpServletRequest request, HttpServletResponse response) {
+        var service = withdrawals.getIfAvailable();
+        if (service == null) {
+            redirect.addFlashAttribute("withdrawError", "지금은 탈퇴를 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.");
+            return "redirect:/account#withdraw-title";
+        }
+        try {
+            service.withdraw(authentication.getName(), currentPassword, confirm);
+        } catch (ProfileUpdateException ex) {
+            redirect.addFlashAttribute("withdrawError", ex.getMessage());
+            return "redirect:/account#withdraw-title";
+        } catch (DataAccessException ex) {
+            redirect.addFlashAttribute("withdrawError", "일시적으로 탈퇴를 처리하지 못했습니다. 계정과 기록은 그대로입니다. 잠시 후 다시 시도해 주세요.");
+            return "redirect:/account#withdraw-title";
+        }
+        new SecurityContextLogoutHandler().logout(request, response, authentication);
+        return "redirect:/?withdrawn";
     }
 
     @PostMapping("/account")

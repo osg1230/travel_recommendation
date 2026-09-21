@@ -28,7 +28,7 @@ public class SecurityConfig {
                             "/travel/recommendations", "/travel/recommendations/**").permitAll()
                     .requestMatchers("/signup", "/signup/complete").anonymous()
                     .requestMatchers("/admin", "/admin/**").hasRole("ADMIN")
-                    .requestMatchers("/account").authenticated()
+                    .requestMatchers("/account", "/account/withdraw").authenticated()
                     .requestMatchers("/my", "/my/**").authenticated()
                     .anyRequest().denyAll())
                 .formLogin(form -> form.loginPage("/login").usernameParameter("loginId")
