@@ -1,43 +1,67 @@
 <!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
-<head th:replace="~{fragments/layout :: head('국내여행 · AI 여행 일정 추천')}"></head>
+<head th:replace="~{fragments/layout :: head('다녀올게 · 국내 여행 일정 만들기')}"></head>
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
-<main class="page">
-    <p role="status" th:if="${param.logout}">로그아웃되었습니다.</p>
 
-    <section class="card">
-        <p class="eyebrow">AI 기반 국내 여행 일정 추천</p>
-        <h1>조건만 알려 주시면<br>하루 단위 여행 일정을 만들어 드려요</h1>
-        <p class="intro">여행 기간·취향·이동수단을 고르거나 문장으로 적어 주세요. 여행지 후보를 추천하고, 이동시간을 반영한 시간대별 일정 초안까지 만들어 드려요.</p>
-        <div class="form-actions">
-            <a class="button" th:href="@{/travel/conditions}">여행 계획 시작하기 →</a>
-            <a class="button button-quiet" th:if="${loggedIn}" th:href="@{/my/itineraries}">저장한 일정 보기</a>
-            <a class="button button-quiet" th:if="${signupEnabled and !loggedIn}" th:href="@{/signup}">회원가입</a>
-        </div>
-        <p class="help" th:unless="${loggedIn}">비회원도 추천과 일정 초안을 만들어 볼 수 있어요. 회원가입하면 만든 일정을 저장하고 즐겨찾기를 쓸 수 있어요.</p>
-    </section>
+<!-- 첫 화면: 떠나고 싶은 마음을 문장으로 바로 적거나 조건을 골라 시작한다. -->
+<section class="hero" aria-labelledby="hero-title">
+    <svg class="hero-art" viewBox="0 0 1200 320" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false">
+        <circle cx="930" cy="92" r="46" fill="#fde68a" opacity=".9"/>
+        <path d="M0 250 L180 150 L300 215 L470 110 L640 225 L800 160 L960 230 L1200 140 L1200 320 L0 320 Z" fill="#c7d7fe"/>
+        <path d="M0 275 C 200 240, 380 300, 600 268 S 1000 240, 1200 272 L1200 320 L0 320 Z" fill="#93b4fd"/>
+        <path d="M0 300 C 240 282, 460 318, 700 298 S 1040 286, 1200 302 L1200 320 L0 320 Z" fill="#6f95f8"/>
+    </svg>
+    <div class="hero-inner">
+        <p role="status" class="hero-status" th:if="${param.logout}">로그아웃되었습니다.</p>
+        <p class="eyebrow">강릉 · 부산 · 경주 여행 일정 만들기</p>
+        <h1 id="hero-title">떠나고 싶은 마음만 알려 주세요.<br>여행지와 하루 일정은 같이 짜 드릴게요.</h1>
+        <form class="hero-search" th:action="@{/travel/conditions}" method="post">
+            <input type="hidden" name="inputMode" value="TEXT">
+            <label for="hero-text" class="visually-hidden">어떤 여행을 하고 싶은지 적어 주세요</label>
+            <input id="hero-text" name="originalText" type="text" maxlength="500" required
+                   placeholder="예) 바다 보면서 이틀 쉬고 싶어요, 사람 많은 곳은 피하고 싶어요">
+            <button type="submit">이 문장으로 시작하기</button>
+        </form>
+        <p class="hero-help">문장 대신 조건을 고르고 싶다면 <a th:href="@{/travel/conditions}">조건 고르기</a>, 무엇을 원하는지 아직 모르겠다면 <a th:href="@{/travel/conditions/discover}">여행 장면 고르기</a>로 시작해 보세요.</p>
+    </div>
+</section>
 
-    <section class="card">
-        <h2>이렇게 진행돼요</h2>
-        <ol>
-            <li><strong>여행 조건 입력</strong> — 기간·지역·취향을 고르거나 문장으로 적어요.</li>
-            <li><strong>여행지 추천</strong> — 확정한 조건으로 여행지 후보와 추천 이유를 받아요.</li>
-            <li><strong>장소 확인</strong> — 선택한 지역의 관광지·음식점·숙소를 출처와 함께 살펴봐요.</li>
-            <li><strong>일정 초안</strong> — 하루 시간을 정하면 이동시간을 반영해 시간대별로 배치해요.</li>
+<main class="page home">
+    <nav class="shortcuts" aria-label="바로가기">
+        <a class="shortcut" th:href="@{/travel/conditions/discover}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.6-7 10-7 10z"/></svg>
+            <strong>취향 찾기</strong><span>장면 5개로 이번 여행의 취향 찾기</span></a>
+        <a class="shortcut" th:href="@{/travel/conditions}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>
+            <strong>여행지 추천</strong><span>조건에 맞는 지역과 추천 이유</span></a>
+        <a class="shortcut" th:href="@{/my/itineraries}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>
+            <strong>내 일정</strong><span th:text="${loggedIn ? '저장한 일정 보고 고치기' : '로그인하면 일정을 저장해요'}"></span></a>
+        <a class="shortcut" th:href="@{/my/recommendations}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
+            <strong>추천 이력</strong><span th:text="${loggedIn ? '지난 추천 다시 보기' : '로그인하면 추천이 남아요'}"></span></a>
+    </nav>
+
+    <section class="card how-it-works" aria-labelledby="how-title">
+        <h2 id="how-title">이렇게 진행돼요</h2>
+        <ol class="steps-list">
+            <li><strong>여행 조건</strong><span>기간·취향을 고르거나 문장으로 적어요.</span></li>
+            <li><strong>여행지 추천</strong><span>조건에 맞는 지역과 추천 이유를 받아요.</span></li>
+            <li><strong>장소 확인</strong><span>관광지·음식점·숙소를 출처와 함께 봐요.</span></li>
+            <li><strong>하루 일정</strong><span>이동시간을 넣어 시간대별로 배치해요.</span></li>
         </ol>
-        <p class="help">현재 추천할 수 있는 지역은 강릉·부산·경주예요.</p>
     </section>
 
     <section class="card" th:if="${loggedIn}">
-        <h2 th:text="${loginId + '님, 안녕하세요'}"></h2>
-        <p class="help">상단 메뉴에서 내 일정과 즐겨찾기를 바로 열 수 있어요.</p>
+        <h2 th:text="${loginId + '님, 다음 여행은 어디로 갈까요?'}"></h2>
         <div class="form-actions">
             <a class="button button-quiet" th:href="@{/my/favorites}">즐겨찾기</a>
             <a class="button button-quiet" th:href="@{/account}">내 정보</a>
             <a class="button button-quiet" th:if="${admin}" th:href="@{/admin}">관리자 시작 화면</a>
         </div>
     </section>
+    <p class="help" th:unless="${loggedIn}">비회원도 추천과 일정 초안을 만들 수 있어요. <a th:if="${signupEnabled}" th:href="@{/signup}">회원가입</a>하면 일정 저장·추천 이력·즐겨찾기를 쓸 수 있어요.</p>
 
     <p class="guide-note">추천과 일정은 저장된 지역·장소 정보와 지도 이동시간을 바탕으로 만들어요. 영업시간·휴무일·가격·예약 가능 여부는 방문 전에 각 장소의 출처에서 확인해 주세요.</p>
 </main>

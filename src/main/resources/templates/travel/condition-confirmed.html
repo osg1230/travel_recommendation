@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>여행 조건 확정 | 국내여행</title><link rel="stylesheet" th:href="@{/css/app.css}"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>여행 조건 확정 | 다녀올게</title><link rel="stylesheet" th:href="@{/css/app.css}"></head>
 <body><header th:replace="~{fragments/layout :: header}"></header>
 <main class="travel confirmation" th:object="${conditions}">
+<nav th:replace="~{fragments/layout :: flowSteps(2)}"></nav>
     <p class="eyebrow">여행 준비 · 조건 확정</p><h1>여행 조건을 확정했어요</h1>
     <p class="intro">확정한 조건으로 여행지 후보를 찾아보세요. 현재 강릉·부산·경주를 지원해요.</p>
     <dl class="condition-summary">

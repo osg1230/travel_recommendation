@@ -2,7 +2,7 @@
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>여행 조건 입력 | 국내여행</title>
+    <title>여행 조건 입력 | 다녀올게</title>
     <link rel="stylesheet" th:href="@{/css/app.css}">
 
     <script defer th:src="@{/js/travel-conditions.js}"></script>
@@ -10,6 +10,7 @@
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
 <main class="travel">
+<nav th:replace="~{fragments/layout :: flowSteps(1)}"></nav>
     <a class="back-link" th:href="@{/}">홈으로</a>
     <p class="eyebrow">여행 준비 · 조건 입력</p>
     <h1>어떤 여행을 생각하고 있나요?</h1>

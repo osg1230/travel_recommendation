@@ -1,11 +1,12 @@
 <!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
-<head th:replace="~{fragments/layout :: head('일정 초안 | 국내여행')}"></head>
+<head th:replace="~{fragments/layout :: head('일정 초안 | 다녀올게')}"></head>
 <body>
 <script defer th:src="@{/js/recommendation-job.js}"></script>
 <script defer th:src="@{/js/trip-map.js}"></script>
 <header th:replace="~{fragments/layout :: header}"></header>
 <main class="travel">
+<nav th:replace="~{fragments/layout :: flowSteps(5)}"></nav>
 <a class="back-link" th:href="@{/travel/recommendations/{id}/destinations/{dest}/places(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">← 장소 목록</a>
 <p class="eyebrow">여행 준비 · 일정 초안</p>
 <h1 th:text="${job.input.places.destination.name + (job.input.revision == null ? ' 일정 초안' : ' 일정 수정안')}"></h1>
@@ -47,12 +48,12 @@
 
 <section th:replace="~{fragments/map :: tripMap('지도로 보는 방문 순서', ${route.missing > 0 ? '좌표를 확인하지 못한 장소 ' + route.missing + '곳은 지도에서 빠져 있어요. 아래 일정 목록을 함께 봐 주세요.' : '일차별 색으로 방문 순서를 표시해요. 구간별 길찾기는 아래 이동 항목에서 열 수 있어요.'})}"></section>
 
-<section class="condition-section" th:each="day : ${job.result.days}">
+<section class="condition-section timeline" th:each="day : ${job.result.days}">
 <h2 th:text="${day.number + '일차' + (day.date == null ? ' · 날짜 미정' : ' · ' + day.date)}"></h2>
 <th:block th:if="${job.result.assist != null}" th:each="advice : ${job.result.assist.days}">
 <p class="notice" th:if="${advice.number == day.number}" style="white-space: pre-line" th:text="${'AI 준비 안내 · ' + advice.advice}"></p>
 </th:block>
-<article class="place-row schedule-item" th:each="item, st : ${day.items}">
+<article class="place-row schedule-item" th:each="item, st : ${day.items}" th:classappend="${'item-' + #strings.toLowerCase(item.type)}">
 <p class="schedule-time" th:text="${#temporals.format(item.start, 'HH:mm') + '–' + #temporals.format(item.end, 'HH:mm')}"></p>
 <div class="schedule-body">
 <h3 th:text="${item.name}"></h3><p style="white-space: pre-line" th:text="${item.note}"></p>

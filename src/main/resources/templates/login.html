@@ -3,30 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>로그인 · 여행 일정</title>
+    <title>로그인 | 다녀올게</title>
     <link rel="stylesheet" th:href="@{/css/app.css}">
 </head>
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
-<main class="account">
-    <a class="back-link" th:href="@{/}">← 처음으로</a>
-    <h1>로그인</h1>
-    <p role="status" th:if="${param.passwordChanged}">비밀번호를 변경했습니다. 새 비밀번호로 다시 로그인해 주세요.</p>
-    <p class="intro">가입한 아이디로 로그인해 주세요.</p>
-    <p class="notice" role="alert" th:if="${param.error}">로그인할 수 없습니다. 아이디와 비밀번호를 확인해 주세요. 이용 제한 또는 탈퇴한 계정은 로그인할 수 없습니다.</p>
-    <p class="notice" role="alert" th:if="${param.unavailable}">일시적으로 로그인하지 못했습니다. 잠시 후 다시 시도해 주세요.</p>
-    <form th:action="@{/login}" method="post">
-        <div class="field">
-            <label for="loginId">아이디</label>
-            <input id="loginId" name="loginId" type="text" autocomplete="username" required maxlength="50">
-        </div>
-        <div class="field">
-            <label for="password">비밀번호</label>
-            <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="64">
-        </div>
-        <button type="submit">로그인</button>
-    </form>
-    <p class="help">아직 계정이 없나요? <a th:href="@{/signup}">회원가입</a></p>
+<main class="auth-split">
+    <section class="auth-intro" aria-hidden="true">
+        <p class="eyebrow">다녀올게</p>
+        <p class="auth-intro-title">다음 여행을<br>지금 시작해 보세요</p>
+        <p class="auth-intro-text">로그인하면 만든 일정을 저장하고, 지난 추천과 즐겨찾기를 다시 볼 수 있어요.</p>
+        <svg class="auth-art" viewBox="0 0 220 170" focusable="false">
+            <path d="M0 150 L60 95 L100 125 L150 70 L220 140 L220 170 L0 170 Z" fill="#c7d7fe"/>
+            <rect x="72" y="58" width="76" height="92" rx="12" fill="#1d4ed8"/>
+            <rect x="96" y="44" width="28" height="18" rx="6" fill="none" stroke="#1d4ed8" stroke-width="6"/>
+            <path d="M90 78v56M110 78v56M130 78v56" stroke="#93b4fd" stroke-width="5" stroke-linecap="round"/>
+            <circle cx="88" cy="154" r="7" fill="#1f2937"/><circle cx="132" cy="154" r="7" fill="#1f2937"/>
+        </svg>
+    </section>
+    <section class="auth-form">
+        <a class="back-link" th:href="@{/}">← 처음으로</a>
+        <h1>로그인</h1>
+        <p role="status" th:if="${param.passwordChanged}">비밀번호를 변경했습니다. 새 비밀번호로 다시 로그인해 주세요.</p>
+        <p class="notice" role="alert" th:if="${param.error}">로그인할 수 없습니다. 아이디와 비밀번호를 확인해 주세요. 이용 제한 또는 탈퇴한 계정은 로그인할 수 없습니다.</p>
+        <p class="notice" role="alert" th:if="${param.unavailable}">일시적으로 로그인하지 못했습니다. 잠시 후 다시 시도해 주세요.</p>
+        <form th:action="@{/login}" method="post">
+            <div class="field">
+                <label for="loginId">아이디</label>
+                <input id="loginId" name="loginId" type="text" autocomplete="username" required maxlength="50" placeholder="아이디를 입력하세요">
+            </div>
+            <div class="field">
+                <label for="password">비밀번호</label>
+                <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="64" placeholder="비밀번호를 입력하세요">
+            </div>
+            <button type="submit">로그인</button>
+        </form>
+        <p class="auth-divider"><span>또는</span></p>
+        <a class="button button-quiet auth-signup" th:href="@{/signup}">회원가입하기</a>
+    </section>
 </main>
 </body>
 </html>

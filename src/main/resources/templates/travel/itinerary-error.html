@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>일정 생성 안내 | 국내여행</title><link rel="stylesheet" th:href="@{/css/app.css}"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>일정 생성 안내 | 다녀올게</title><link rel="stylesheet" th:href="@{/css/app.css}"></head>
 <body><header th:replace="~{fragments/layout :: header}"></header><main class="travel">
 <h1>일정을 만들 수 없어요</h1><p class="intro" role="alert" th:text="${message}"></p>
 <p th:if="${sourceUrl != null}"><a th:href="${sourceUrl}">원래 일정 초안으로 돌아가기</a> · 원래 초안은 바뀌지 않았어요.</p>

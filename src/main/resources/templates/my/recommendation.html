@@ -2,12 +2,13 @@
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>추천 이력 상세 | 국내여행</title>
+    <title>추천 이력 상세 | 다녀올게</title>
     <link rel="stylesheet" th:href="@{/css/app.css}">
 </head>
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
 <main class="travel">
+    <nav th:replace="~{fragments/layout :: myNav('recommendations')}"></nav>
     <a class="back-link" th:href="@{/my/recommendations}">← 추천 이력 목록</a>
     <p class="eyebrow">내 여행 · 추천 이력</p>
     <h1 th:text="${history.summary.region + ' · ' + history.summary.period}"></h1>

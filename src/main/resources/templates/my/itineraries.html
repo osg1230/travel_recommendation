@@ -2,12 +2,13 @@
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>내 일정 | 국내여행</title>
+    <title>내 일정 | 다녀올게</title>
     <link rel="stylesheet" th:href="@{/css/app.css}">
 </head>
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
 <main class="travel">
+    <nav th:replace="~{fragments/layout :: myNav('itineraries')}"></nav>
     <a class="back-link" th:href="@{/}">← 처음으로</a>
     <p class="eyebrow">내 여행 · 저장한 일정</p>
     <h1>내 일정</h1>

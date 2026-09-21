@@ -22,8 +22,8 @@ class TravelRecommendationApplicationTests {
         mockMvc.perform(get("/"))
                 .andExpect(status().isOk())
                 .andExpect(view().name("index"))
-                .andExpect(content().string(containsString("하루 단위 여행 일정을 만들어 드려요")))
-                .andExpect(content().string(containsString("여행 계획 시작하기")));
+                .andExpect(content().string(containsString("떠나고 싶은 마음만 알려 주세요")))
+                .andExpect(content().string(containsString("이 문장으로 시작하기")));
 	}
 
 }

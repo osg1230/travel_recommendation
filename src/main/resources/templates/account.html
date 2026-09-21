@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>내 정보 · 여행 일정</title>
+    <title>내 정보 | 다녀올게</title>
     <link rel="stylesheet" th:href="@{/css/app.css}">
 </head>
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
 <main class="account">
+    <nav th:replace="~{fragments/layout :: myNav('account')}"></nav>
     <a class="back-link" th:href="@{/}">← 처음으로</a>
     <h1>내 정보</h1>
     <p class="intro">닉네임과 비밀번호를 변경할 수 있습니다.</p>

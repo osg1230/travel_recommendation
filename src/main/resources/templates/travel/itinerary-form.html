@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>하루 시간 정하기 | 국내여행</title><link rel="stylesheet" th:href="@{/css/app.css}"></head>
+<title>하루 시간 정하기 | 다녀올게</title><link rel="stylesheet" th:href="@{/css/app.css}"></head>
 <body><header th:replace="~{fragments/layout :: header}"></header><main class="travel">
+<nav th:replace="~{fragments/layout :: flowSteps(5)}"></nav>
 <a th:href="@{/travel/recommendations/{id}/destinations/{dest}/places(id=${options.recommendationId},dest=${options.places.destination.placeId})}">← 장소 목록</a>
 <h1>하루 시간 정하기</h1>
 <p th:text="${options.places.destination.name + ' · ' + (options.conditions.durationDays == null ? '기간 미정' : options.conditions.durationDays + '일')}"></p>

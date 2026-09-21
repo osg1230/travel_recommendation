@@ -2,7 +2,7 @@
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title th:text="${places.destination.name + ' 방문 장소 | 국내여행'}">방문 장소 | 국내여행</title>
+    <title th:text="${places.destination.name + ' 방문 장소 | 다녀올게'}">방문 장소 | 다녀올게</title>
     <link rel="stylesheet" th:href="@{/css/app.css}">
     <script defer th:src="@{/js/place-discovery.js}"></script>
     <script defer th:src="@{/js/trip-map.js}"></script>
@@ -10,6 +10,7 @@
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
 <main class="travel">
+<nav th:replace="~{fragments/layout :: flowSteps(4)}"></nav>
     <a class="back-link" th:href="@{/travel/recommendations/{id}(id=${places.jobId})}">← 추천 결과에서 다른 지역 선택</a>
     <p class="eyebrow">여행 준비 · 방문 장소</p>
     <h1 th:text="${places.destination.name + '에서 방문할 곳을 살펴보세요'}"></h1>
