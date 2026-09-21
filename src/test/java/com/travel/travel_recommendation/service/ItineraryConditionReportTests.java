@@ -76,6 +76,34 @@ class ItineraryConditionReportTests {
         var late=new Result(result.destination(),List.of(new Day(1,result.days().getFirst().date(),overlap)),result.transport(),result.createdAt());
         assertThat(status(ItineraryConditionReport.evaluate(input,late),"시간 충돌")).isEqualTo(Status.UNMET);
     }
+    @Test void requiredPlacesAndDailyVisitsFollowRequiredOrPreferred() {
+        var base=input(2,LocalDate.of(2026,10,1),new BigDecimal("300000"));
+        var result=generator.generate(base);
+        var required=new Input(base.recommendationId(),base.places(),base.conditions(),base.start(),base.end(),base.transport(),base.visitMinutes(),null,
+            new Constraints(List.of(2L),1,true,"PER_PERSON",List.of("MEAL","LODGING")));
+        var report=ItineraryConditionReport.evaluate(required,result);
+        assertThat(status(report,"필수 방문 장소")).isEqualTo(Status.MET);
+        assertThat(status(report,"하루 방문 수")).isEqualTo(Status.MET);
+        assertThat(report.checks()).anySatisfy(c->{ assertThat(c.name()).isEqualTo("예산"); assertThat(c.detail()).contains("1인 기준").contains("식사").contains("숙박"); });
+        // 하루 2곳을 필수로 요구했는데 1곳씩이면 미충족, 선호였다면 확인 필요로 구분한다.
+        var strict=new Input(base.recommendationId(),base.places(),base.conditions(),base.start(),base.end(),base.transport(),base.visitMinutes(),null,
+            new Constraints(List.of(),2,true,null,List.of()));
+        assertThat(status(ItineraryConditionReport.evaluate(strict,result),"하루 방문 수")).isEqualTo(Status.UNMET);
+        var soft=new Input(base.recommendationId(),base.places(),base.conditions(),base.start(),base.end(),base.transport(),base.visitMinutes(),null,
+            new Constraints(List.of(),2,false,null,List.of()));
+        assertThat(status(ItineraryConditionReport.evaluate(soft,result),"하루 방문 수")).isEqualTo(Status.NEEDS_CHECK);
+        assertThat(ItineraryConditionReport.evaluate(soft,result).complete()).isTrue();
+        assertThat(status(ItineraryConditionReport.evaluate(base,result),"필수 방문 장소")).isEqualTo(Status.NOT_APPLICABLE);
+    }
+    @Test void missingRequiredPlaceIsUnmet() {
+        var base=input(1,LocalDate.of(2026,10,1),null);
+        var result=generator.generate(base);
+        var items=result.days().getFirst().items().stream().filter(i->!(i.type().equals("VISIT") && i.placeId()==2L)).toList();
+        var withoutTwo=new Result(result.destination(),List.of(new Day(1,result.days().getFirst().date(),items)),result.transport(),result.createdAt());
+        var required=new Input(base.recommendationId(),base.places(),base.conditions(),base.start(),base.end(),base.transport(),base.visitMinutes(),null,
+            new Constraints(List.of(2L),null,false,null,List.of()));
+        assertThat(status(ItineraryConditionReport.evaluate(required,withoutTwo),"필수 방문 장소")).isEqualTo(Status.UNMET);
+    }
     @Test void periodMismatchIsUnmet() {
         var input=input(2,LocalDate.of(2026,10,1),null);
         var result=generator.generate(input);

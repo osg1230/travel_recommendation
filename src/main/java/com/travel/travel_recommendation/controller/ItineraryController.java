@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation.controller;
 
+import com.travel.travel_recommendation.dto.ItineraryPlan;
 import com.travel.travel_recommendation.service.*;
 import jakarta.servlet.http.*;
 import java.net.URI;
@@ -24,12 +25,25 @@ public class ItineraryController {
     private final tools.jackson.databind.ObjectMapper mapper;
     private record Submission(UUID parent,long destination,String login,String token,UUID job) {}
     private static final String SESSION_KEY="itinerarySubmission";
+    private static final String CONFLICT_KEY="itineraryConstraintConflict";
+    /** 일정 입력 화면의 값. 필수 조건 충돌로 돌아갈 때 입력을 잃지 않도록 세션에 잠시 둔다. */
+    public record ConstraintInput(UUID parent,LocalTime start,LocalTime end,KakaoMapClient.Transport transport,int visitMinutes,
+                                  List<Long> required,Integer dailyVisits,boolean dailyRequired,String budgetBasis,
+                                  List<String> budgetIncludes,List<TripConstraints.Conflict> conflicts) {}
 
     @GetMapping("/{id}/destinations/{destinationId}/schedule")
     String form(@PathVariable UUID id,@PathVariable long destinationId,Principal principal,HttpSession session,
                 HttpServletResponse response,Model model) {
         response.setHeader("Cache-Control","no-store");
-        model.addAttribute("options",service().options(id,destinationId,login(principal),hash(session)));
+        var options=service().options(id,destinationId,login(principal),hash(session));
+        model.addAttribute("options",options);
+        model.addAttribute("pool",service().attractionPool(id,destinationId,login(principal),hash(session)));
+        model.addAttribute("budgetItems",TripConstraints.BUDGET_ITEMS);
+        // 필수 조건이 모순돼 돌아온 경우 이유·선택지와 입력했던 값을 다시 보여 준다(한 번만).
+        var conflict=session.getAttribute(CONFLICT_KEY) instanceof ConstraintInput previous && previous.parent().equals(id) ? previous : null;
+        session.removeAttribute(CONFLICT_KEY);
+        model.addAttribute("values",conflict!=null?conflict:new ConstraintInput(id,options.start(),options.end(),options.transport(),
+            options.visitMinutes(),List.of(),null,false,null,List.of(),List.of()));
         synchronized(session) {
             var submission=new Submission(id,destinationId,login(principal),UUID.randomUUID().toString(),null);
             session.setAttribute(SESSION_KEY,submission); model.addAttribute("submissionToken",submission.token());
@@ -39,8 +53,14 @@ public class ItineraryController {
     @PostMapping("/{id}/destinations/{destinationId}/schedule")
     ResponseEntity<?> create(@PathVariable UUID id,@PathVariable long destinationId,@RequestParam String submissionToken,
             @RequestParam LocalTime start,@RequestParam LocalTime end,@RequestParam KakaoMapClient.Transport transport,
-            @RequestParam int visitMinutes,Principal principal,HttpSession session,
+            @RequestParam int visitMinutes,@RequestParam(required=false) List<Long> required,
+            @RequestParam(required=false) Integer dailyVisits,@RequestParam(defaultValue="PREFERRED") String dailyMode,
+            @RequestParam(required=false) String budgetBasis,@RequestParam(required=false) List<String> budgetIncludes,
+            Principal principal,HttpSession session,
             @RequestHeader(value="Accept",defaultValue="") String accept) {
+        if(!Set.of("REQUIRED","PREFERRED").contains(dailyMode)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"하루 방문 수의 구분을 다시 골라 주세요.");
+        String basis=budgetBasis==null || budgetBasis.isBlank()?null:budgetBasis;
+        var constraints=new ItineraryPlan.Constraints(required,dailyVisits,dailyVisits!=null && "REQUIRED".equals(dailyMode),basis,budgetIncludes);
         UUID job;
         synchronized(session) {
             var submission=(Submission)session.getAttribute(SESSION_KEY);
@@ -50,7 +70,16 @@ public class ItineraryController {
             if(submission.job()!=null) {
                 job=submission.job(); service().view(job,login(principal),hash(session));
             } else {
-                job=service().create(id,destinationId,login(principal),hash(session),start,end,transport,visitMinutes);
+                try {
+                    job=service().create(id,destinationId,login(principal),hash(session),start,end,transport,visitMinutes,constraints);
+                } catch(TripConstraints.ConflictException conflict) {
+                    // 모순된 필수 조건은 임의로 완화하지 않고 입력 화면으로 돌아가 이유와 선택지를 보여 준다.
+                    session.setAttribute(CONFLICT_KEY,new ConstraintInput(id,start,end,transport,visitMinutes,constraints.requiredPlaceIds(),
+                        dailyVisits,constraints.dailyVisitsRequired(),basis,constraints.budgetIncludes(),conflict.conflicts()));
+                    session.removeAttribute(SESSION_KEY);
+                    return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create("/travel/recommendations/"+id+"/destinations/"+destinationId+"/schedule"))
+                        .cacheControl(CacheControl.noStore()).build();
+                }
                 session.setAttribute(SESSION_KEY,new Submission(id,destinationId,login(principal),submissionToken,job));
             }
         }

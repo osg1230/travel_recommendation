@@ -8,11 +8,27 @@ import java.util.*;
 public final class ItineraryPlan {
     private ItineraryPlan() {}
     public record Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
-                        LocalTime start, LocalTime end, Transport transport, int visitMinutes, Revision revision) {
-        // 처음 만드는 초안과 이전 작업 JSON은 수정 정보 없이 그대로 사용한다.
+                        LocalTime start, LocalTime end, Transport transport, int visitMinutes, Revision revision,
+                        Constraints constraints) {
+        // 처음 만드는 초안과 이전 작업 JSON은 수정 정보·조건 구분 없이 그대로 사용한다.
         public Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
                      LocalTime start, LocalTime end, Transport transport, int visitMinutes) {
-            this(recommendationId, places, conditions, start, end, transport, visitMinutes, null);
+            this(recommendationId, places, conditions, start, end, transport, visitMinutes, null, null);
+        }
+        public Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
+                     LocalTime start, LocalTime end, Transport transport, int visitMinutes, Revision revision) {
+            this(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, null);
+        }
+    }
+    /**
+     * 필수·선호 조건 구분(SFR-02-07). 필수 장소는 반드시 넣고, 하루 방문 수는 required이면 반드시 지키고
+     * 아니면 가능한 경우에만 반영한다. 예산 기준·포함 비용은 가격 자료가 없어 확인 필요 표시에만 쓴다.
+     */
+    public record Constraints(List<Long> requiredPlaceIds, Integer dailyVisits, boolean dailyVisitsRequired,
+                              String budgetBasis, List<String> budgetIncludes) {
+        public Constraints {
+            requiredPlaceIds = requiredPlaceIds == null ? List.of() : List.copyOf(requiredPlaceIds);
+            budgetIncludes = budgetIncludes == null ? List.of() : List.copyOf(budgetIncludes);
         }
     }
     public record PlaceRef(Long placeId, String name) {}

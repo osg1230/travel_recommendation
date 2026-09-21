@@ -101,6 +101,9 @@ public class ItineraryGenerator {
         if(input.revision()!=null && (input.revision().kept().isEmpty()
                 || !expected.containsAll(input.revision().kept().stream().map(PlaceRef::placeId).toList())
                 || !expected.containsAll(input.revision().added().stream().map(PlaceRef::placeId).toList()))) throw invalid();
+        // 필수 방문 장소는 배치 대상에 모두 있어야 한다(SFR-02-07).
+        var constraints=input.constraints();
+        if(constraints!=null && !expected.containsAll(constraints.requiredPlaceIds())) throw invalid();
         Set<Long> seen=new HashSet<>(); Set<Long> allowed=new HashSet<>(expected);
         input.places().restaurants().forEach(p->allowed.add(p.placeId()));
         input.places().accommodations().forEach(p->allowed.add(p.placeId()));
@@ -142,6 +145,8 @@ public class ItineraryGenerator {
                 end=item.end();
             }
             if(meals!=1 || visits==0 || transferred) throw invalid();
+            // 하루 방문 수가 필수 조건이면 매일 그 수를 지켜야 한다.
+            if(constraints!=null && constraints.dailyVisitsRequired() && visits!=constraints.dailyVisits()) throw invalid();
             if(input.places().accommodationNeeded() && dayNumber<result.days().size()
                 && (!"STAY".equals(day.items().getLast().type())
                     || !input.places().accommodations().getFirst().placeId().equals(day.items().getLast().placeId()))) throw invalid();

@@ -24,10 +24,10 @@ public final class ItineraryConditionReport {
     }
 
     public static Report evaluate(Input input, Result result) {
-        var checks = new ArrayList<>(List.of(period(input, result), attractions(input, result), duplicates(result),
-            dailyVisits(result), timeline(input, result), travelTimes(result), operating(input, result),
+        var checks = new ArrayList<>(List.of(period(input, result), required(input, result), attractions(input, result), duplicates(result),
+            dailyVisits(input, result), timeline(input, result), travelTimes(result), operating(input, result),
             accommodation(input, result), budget(input)));
-        if (input.revision() != null) checks.add(1, kept(input, result));
+        if (input.revision() != null) checks.add(2, kept(input, result));
         return new Report(List.copyOf(checks), checks.stream().noneMatch(c -> c.status() == Status.UNMET));
     }
 
@@ -52,12 +52,25 @@ public final class ItineraryConditionReport {
             + "곳을 모두 포함했어요. 방문 시각은 동선에 맞춰 다시 계산했어요.");
     }
 
-    // 필수 장소 입력은 아직 없으므로, 일정에 쓰기로 고른 관광지가 빠짐없이 들어갔는지 확인한다.
+    // 일정에 쓰기로 고른 관광지(필수 장소 포함)가 빠짐없이 들어갔는지 확인한다.
     private static Check attractions(Input input, Result result) {
         var visited = visits(result).stream().map(Item::placeId).toList();
         var missing = input.places().attractions().stream().filter(p -> !visited.contains(p.placeId())).map(p -> p.name()).toList();
         if (!missing.isEmpty()) return new Check("선택한 관광지 포함", Status.UNMET, "빠진 관광지: " + String.join(", ", missing));
-        return new Check("선택한 관광지 포함", Status.MET, "후보 관광지 " + input.places().attractions().size() + "곳을 모두 배치했어요. 필수 방문 장소 지정은 아직 지원하지 않아요.");
+        return new Check("선택한 관광지 포함", Status.MET, "일정에 쓰기로 고른 관광지 " + input.places().attractions().size() + "곳을 모두 배치했어요.");
+    }
+
+    // 사용자가 필수로 지정한 방문 장소가 모두 들어갔는지 확인한다(SFR-02-07).
+    private static Check required(Input input, Result result) {
+        var c = input.constraints();
+        if (c == null || c.requiredPlaceIds().isEmpty()) return new Check("필수 방문 장소", Status.NOT_APPLICABLE, "필수로 지정한 장소가 없어요.");
+        var visited = visits(result).stream().map(Item::placeId).toList();
+        var names = new LinkedHashMap<Long, String>();
+        input.places().attractions().forEach(p -> names.put(p.placeId(), p.name()));
+        var missing = c.requiredPlaceIds().stream().filter(id -> !visited.contains(id)).map(id -> names.getOrDefault(id, "장소 " + id)).toList();
+        if (!missing.isEmpty()) return new Check("필수 방문 장소", Status.UNMET, "빠진 필수 장소: " + String.join(", ", missing));
+        return new Check("필수 방문 장소", Status.MET, "필수로 지정한 " + c.requiredPlaceIds().size() + "곳("
+            + String.join(", ", c.requiredPlaceIds().stream().map(id -> names.getOrDefault(id, "장소 " + id)).toList()) + ")을 모두 넣었어요.");
     }
 
     private static Check duplicates(Result result) {
@@ -67,15 +80,22 @@ public final class ItineraryConditionReport {
         return new Check("방문 중복", Status.MET, "같은 관광지를 두 번 배치하지 않았어요.");
     }
 
-    // 하루 방문 수는 사용자 입력 조건이 아니라 이동시간 계산 결과라서 비어 있는 날만 미충족으로 본다.
-    private static Check dailyVisits(Result result) {
+    // 하루 방문 수를 정하지 않았으면 비어 있는 날만 미충족으로 본다. 정했으면 필수는 미충족, 선호는 확인 필요로 구분한다.
+    private static Check dailyVisits(Input input, Result result) {
         var counts = new ArrayList<String>();
         for (var day : result.days()) {
             long visits = day.items().stream().filter(i -> "VISIT".equals(i.type())).count();
             if (visits == 0) return new Check("하루 방문 수", Status.UNMET, day.number() + "일차에 관광지가 없어요.");
             counts.add(day.number() + "일차 " + visits + "곳");
         }
-        return new Check("하루 방문 수", Status.MET, String.join(" · ", counts) + " (하루 방문 수 지정은 아직 지원하지 않아요)");
+        var c = input.constraints();
+        if (c == null || c.dailyVisits() == null)
+            return new Check("하루 방문 수", Status.MET, String.join(" · ", counts) + " (따로 정하지 않아 이동시간에 맞춰 나눴어요)");
+        int want = c.dailyVisits();
+        boolean every = result.days().stream().allMatch(d -> d.items().stream().filter(i -> "VISIT".equals(i.type())).count() == want);
+        if (every) return new Check("하루 방문 수", Status.MET, "하루 " + want + "곳 (" + (c.dailyVisitsRequired() ? "필수" : "선호") + ") · " + String.join(" · ", counts));
+        if (c.dailyVisitsRequired()) return new Check("하루 방문 수", Status.UNMET, "필수 조건 하루 " + want + "곳과 달라요 · " + String.join(" · ", counts));
+        return new Check("하루 방문 수", Status.NEEDS_CHECK, "선호 조건 하루 " + want + "곳은 시간·후보에 맞춰 가능한 만큼만 반영했어요 · " + String.join(" · ", counts));
     }
 
     private static Check timeline(Input input, Result result) {
@@ -134,8 +154,12 @@ public final class ItineraryConditionReport {
     private static Check budget(Input input) {
         var budget = input.conditions().budget();
         if (budget == null) return new Check("예산", Status.NOT_APPLICABLE, "예산을 입력하지 않았어요.");
-        return new Check("예산", Status.NEEDS_CHECK, "입력 예산 " + String.format("%,d원", budget.longValue())
-            + " · 식사·숙박·입장료 가격 자료가 없어 충족 여부를 판단하지 않았어요.");
+        var c = input.constraints();
+        String basis = c == null || c.budgetBasis() == null ? "기준 미확인" : "PER_PERSON".equals(c.budgetBasis()) ? "1인 기준" : "전체 기준";
+        String scope = c == null || c.budgetIncludes().isEmpty() ? "포함 비용 미확인"
+            : "포함: " + String.join("·", c.budgetIncludes().stream().map(TripConstraints.BUDGET_ITEMS::get).toList());
+        return new Check("예산", Status.NEEDS_CHECK, "입력 예산 " + String.format("%,d원", budget.longValue()) + " (" + basis + ", " + scope
+            + ") · 가격 자료가 없어 충족 여부를 판단하지 않았어요.");
     }
 
     private static List<Item> visits(Result result) {

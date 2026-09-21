@@ -42,13 +42,44 @@ public class ItineraryJobService {
             transport==null?KakaoMapClient.Transport.CAR:transport,90);
     }
 
+    /** 필수 방문 장소로 고를 수 있는 전체 관광지 후보(최대 16곳). */
+    @Transactional(readOnly=true,timeout=10)
+    public List<PlaceCandidate> attractionPool(UUID parentId,long destinationId,String login,byte[] hash) {
+        return candidates.find(parentId,destinationId,login,hash).attractions();
+    }
+
     @Transactional(timeout=10)
     public UUID create(UUID parentId,long destinationId,String login,byte[] hash,LocalTime start,LocalTime end,
                        KakaoMapClient.Transport transport,int visitMinutes) {
+        return create(parentId,destinationId,login,hash,start,end,transport,visitMinutes,null);
+    }
+
+    /**
+     * 필수·선호 조건(SFR-02-07)을 반영해 일정 작업을 만든다. 필수 조건끼리 모순되면 작업을 만들지 않고
+     * {@link TripConstraints.ConflictException}으로 이유와 선택지를 알린다.
+     */
+    @Transactional(timeout=10)
+    public UUID create(UUID parentId,long destinationId,String login,byte[] hash,LocalTime start,LocalTime end,
+                       KakaoMapClient.Transport transport,int visitMinutes,Constraints constraints) {
         var current=options(parentId,destinationId,login,hash);
         var fixed=confirmedTransport(current.conditions());
         if(fixed!=null && fixed!=transport) throw new ResponseStatusException(HttpStatus.CONFLICT,"확정한 이동수단과 달라요. 여행 조건에서 먼저 수정해 주세요.");
-        var input=new Input(parentId,current.places(),current.conditions(),start,end,transport,visitMinutes);
+        if(constraints!=null && constraints.budgetBasis()!=null && current.conditions().budget()==null)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"예산을 정하지 않아 예산 기준은 고를 수 없어요.");
+        var places=current.places();
+        if(constraints!=null) {
+            int days=current.conditions().durationDays()==null?1:current.conditions().durationDays();
+            if(start==null || end==null || !end.isAfter(start)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"하루 시작·종료 시간을 확인해 주세요.");
+            List<PlaceCandidate> selected;
+            try {
+                selected=TripConstraints.select(attractionPool(parentId,destinationId,login,hash),days,start,end,visitMinutes,constraints);
+            } catch(IllegalArgumentException invalid) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"화면에 있는 장소와 값으로 조건을 다시 골라 주세요.");
+            }
+            places=new PlaceCandidateView(places.jobId(),places.destination(),places.durationDays(),places.accommodationNeeded(),
+                selected,places.accommodations(),places.restaurants());
+        }
+        var input=new Input(parentId,places,current.conditions(),start,end,transport,visitMinutes,null,constraints);
         generator.checkInput(input);
         var parent=access.owned(parentId,login,hash,"RECOMMENDATION");
         return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();
@@ -82,6 +113,9 @@ public class ItineraryJobService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"유지할 관광지를 한 곳 이상 남겨 주세요. 모두 바꾸려면 일정을 새로 만들어 주세요.");
         if(!chosen.isEmpty() && reason==null)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"교체 이유를 골라 주세요.");
+        // 필수 방문 장소는 이 일정의 필수 조건이라 교체 대상이 아니다.
+        if(original.constraints()!=null && chosen.stream().anyMatch(original.constraints().requiredPlaceIds()::contains))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"필수 방문 장소로 지정한 관광지는 바꿀 수 없어요. 새 일정에서 필수 조건을 바꿔 주세요.");
         long destinationId=original.places().destination().placeId();
         // 현재 확인된 후보 전체를 다시 읽는다. 오래된 초안의 장소 정보로 수정안을 만들지 않는다.
         var pool=candidates.find(original.recommendationId(),destinationId,login,hash);
@@ -103,7 +137,7 @@ public class ItineraryJobService {
             current.places().accommodationNeeded(),List.copyOf(attractions),current.places().accommodations(),current.places().restaurants());
         var revision=new Revision(sourceId,refs(kept),refs(original.places().attractions().stream().filter(p->chosen.contains(p.placeId())).toList()),
             refs(added),chosen.isEmpty()?null:reason.name(),Instant.now());
-        var input=new Input(original.recommendationId(),places,current.conditions(),start,end,original.transport(),visitMinutes,revision);
+        var input=new Input(original.recommendationId(),places,current.conditions(),start,end,original.transport(),visitMinutes,revision,original.constraints());
         generator.checkInput(input);
         var parent=access.owned(original.recommendationId(),login,hash,"RECOMMENDATION");
         return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();
