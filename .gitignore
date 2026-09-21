@@ -23,3 +23,9 @@ application-secret.properties
 Thumbs.db
 # Claude Code 실행 설정 (PC별 경로 포함)
 .claude/
+
+# 발표 자료 (PPT, 이미지, 대본은 로컬에서만 관리)
+docs/presentations/
+
+# Eclipse 빌드 출력물
+bin/
