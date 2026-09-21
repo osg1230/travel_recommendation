@@ -30,6 +30,28 @@
         </section>
         <p class="help">여행지를 선택해 장소를 살펴본 뒤, 하루 시간을 정하고 일정 초안을 만들 수 있어요.</p>
     </div>
+    <section class="condition-section" th:if="${spending != null and (!job.candidates.isEmpty() or job.status == 'COMPLETED')}" aria-labelledby="budget-title">
+        <h2 id="budget-title">예산을 정하지 않았어요</h2>
+        <p>예산 범위를 가늠할 수 있도록 공식 통계의 전국 평균과, 여행지별로 확인된 숙소를 유형에 따라 나눠 보여 드려요.</p>
+        <p class="notice" th:text="${spending.surveyName + ' 기준, 국내여행 경험자 1인이 여행 1회에 쓴 평균은 당일여행 약 '
+            + #numbers.formatInteger(spending.dayTripWon, 1, 'COMMA') + '원, 숙박여행 약 ' + #numbers.formatInteger(spending.overnightWon, 1, 'COMMA') + '원이에요.'}"></p>
+        <p class="help">전국 평균이며 이 여행지나 일정의 비용이 아니에요. 여행 일수·인원·숙소에 따라 크게 달라져요.
+            <a th:href="${spending.sourceUrl}" target="_blank" rel="noopener noreferrer" th:text="${spending.sourceName + ' (새 창)'}"></a></p>
+        <th:block th:if="${budgetTiers != null}">
+            <article class="place-row" th:each="destination : ${budgetTiers}">
+                <h3 th:text="${destination.destination + ' 숙소 예산대'}"></h3>
+                <ul class="nearby-attractions">
+                    <li th:each="group : ${destination.tiers}">
+                        <strong th:text="${group.tier.label + ' · ' + group.count + '곳'}"></strong>
+                        <span class="help" th:text="${group.tier.description}"></span>
+                        <p th:if="${group.count > 0}" th:text="${'예: ' + #strings.listJoin(group.examples, ', ') + (group.count > group.examples.size() ? ' 외 ' + (group.count - group.examples.size()) + '곳' : '')}"></p>
+                        <p class="help" th:if="${group.count == 0}">지금 확인된 후보가 없어요. 장소 목록에서 카카오 후보를 더 찾아볼 수 있어요.</p>
+                    </li>
+                </ul>
+            </article>
+            <p class="help">숙소 유형 기준이라 실제 요금은 아니에요. 같은 유형이어도 요금 차이가 크니 예약 전 숙소 출처에서 확인해 주세요. 일정 입력 화면에서 숙소 예산대를 고르면 그 유형을 먼저 골라요.</p>
+        </th:block>
+    </section>
     <form th:if="${job.canRecommend}" th:action="@{/travel/recommendations/{id}/recommend(id=${job.jobId})}" method="post" data-recommendation-form>
         <input type="hidden" name="attempt" th:value="${job.attemptCount}">
         <button class="button" type="submit" th:text="${job.attemptCount == 0 ? 'GPT 추천 받기' : 'GPT 추천 다시 받기'}"></button>

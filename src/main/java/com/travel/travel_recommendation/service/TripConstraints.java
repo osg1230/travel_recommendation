@@ -48,6 +48,9 @@ public final class TripConstraints {
         if (c.dailyVisitsRequired() && c.dailyVisits() == null) throw new IllegalArgumentException("Required daily visits missing");
         if (c.budgetBasis() != null && !BUDGET_BASES.contains(c.budgetBasis())) throw new IllegalArgumentException("Unknown budget basis");
         if (!BUDGET_ITEMS.keySet().containsAll(c.budgetIncludes())) throw new IllegalArgumentException("Unknown budget item");
+        // 숙소 예산대는 정해진 세 값만 받는다(SFR-03-03).
+        if (c.stayTier() != null && java.util.Arrays.stream(BudgetGuide.StayTier.values()).noneMatch(t -> t.name().equals(c.stayTier())))
+            throw new IllegalArgumentException("Unknown stay tier");
 
         int required = c.requiredPlaceIds().size(), capacity = estimatedDailyCapacity(start, end, visitMinutes);
         var conflicts = new ArrayList<Conflict>();

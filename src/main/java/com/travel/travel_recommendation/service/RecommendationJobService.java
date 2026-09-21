@@ -99,6 +99,12 @@ public class RecommendationJobService {
     @Transactional(timeout=10)
     public void cleanup() { jobs.deleteExpiredGuests(now()); }
 
+    /** 추천 요청의 확정 조건. 예산 미입력 안내(SFR-03-03)처럼 결과 화면에서 조건에 따라 달리 보여 줄 때 쓴다. */
+    @Transactional(readOnly=true, timeout=10)
+    public ConfirmedTravelConditions conditions(UUID id,String loginId,byte[] guestHash) {
+        return mapper.readValue(owned(id,loginId,guestHash,"RECOMMENDATION").getRequestJson(),ConfirmedTravelConditions.class);
+    }
+
     /** 추천에 전달한 여행 취향 이름. 결과 화면에서 추천 이유와 연결해 보여 준다(SFR-02-06). */
     @Transactional(readOnly=true, timeout=10)
     public List<String> themes(UUID id,String loginId,byte[] guestHash) {
