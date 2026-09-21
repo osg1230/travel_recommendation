@@ -47,6 +47,7 @@ class ItineraryRevisionIntegrationTests {
     @Autowired MockMvc mvc;
     @MockitoBean KakaoMapClient maps;
     @MockitoBean TourApiClient tour;
+    @MockitoBean OpenAiRevisionClient ai;
     private MockHttpSession session;
     private byte[] hash;
     private UUID parent;
@@ -118,6 +119,79 @@ class ItineraryRevisionIntegrationTests {
             .andExpect(content().string(containsString("일정 수정안")))
             .andExpect(content().string(containsString("원래 초안 보기")))
             .andExpect(content().string(containsString("허브 테스트 실내 체험관")));
+    }
+
+    private OpenAiRevisionClient.Proposal revise(List<Long> replace,List<Long> add,LocalTime start) {
+        return new OpenAiRevisionClient.Proposal(false,null,replace,add,start,null,null,"박물관 대신 바다 쪽 장소로 바꿨어요.");
+    }
+    private long spareId(String name) {
+        return schedules.attractionPool(parent,destination,null,hash).stream().filter(p->p.name().equals(name)).findFirst().orElseThrow().placeId();
+    }
+
+    @Test void naturalLanguageRequestCreatesRevisionFromChosenCandidates() {
+        var original=completedDraft();
+        var target=attractionIds(original).getFirst();
+        long herb=spareId("허브 테스트 실내 체험관");
+        when(ai.configured()).thenReturn(true);
+        when(ai.propose(any(),any(),any(),any(),any(),any(),eq("첫 번째 곳 빼고 실내로, 10시 시작"),any()))
+            .thenReturn(revise(List.of(target),List.of(herb),LocalTime.of(10,0)));
+        var result=schedules.aiRevise(original,null,hash,"첫 번째 곳 빼고 실내로, 10시 시작");
+        assertThat(result.question()).isNull();
+        var input=schedules.view(result.job(),null,hash).input();
+        assertThat(input.start()).isEqualTo(LocalTime.of(10,0));
+        assertThat(input.revision().reason()).isEqualTo("AI_REQUEST");
+        assertThat(input.revision().request()).isEqualTo("첫 번째 곳 빼고 실내로, 10시 시작");
+        assertThat(input.revision().explanation()).contains("바다");
+        assertThat(input.revision().added()).extracting(PlaceRef::placeId).containsExactly(herb);
+        assertThat(attractionIds(result.job())).doesNotContain(target).contains(herb);
+        finish(result.job());
+    }
+
+    @Test void ambiguousRequestReturnsQuestionAndFormatFailuresAreRetriedAtMostTwice() {
+        var original=completedDraft();
+        long before=jobs.count();
+        when(ai.configured()).thenReturn(true);
+        when(ai.propose(any(),any(),any(),any(),any(),any(),eq("좀 바꿔 줘"),any()))
+            .thenReturn(new OpenAiRevisionClient.Proposal(true,"어느 관광지를 바꿀까요?",List.of(),List.of(),null,null,null,null));
+        var clarify=schedules.aiRevise(original,null,hash,"좀 바꿔 줘");
+        assertThat(clarify.job()).isNull();
+        assertThat(clarify.question()).isEqualTo("어느 관광지를 바꿀까요?");
+        assertThat(jobs.count()).isEqualTo(before);
+
+        // 형식 오류는 사유를 붙여 다시 요청하고, 세 번째도 실패하면 그대로 알린다.
+        when(ai.propose(any(),any(),any(),any(),any(),any(),eq("형식 오류"),any()))
+            .thenThrow(new RecommendationException("AI_INVALID_RESPONSE","replace와 add의 개수가 같아야 해요."));
+        assertThatThrownBy(()->schedules.aiRevise(original,null,hash,"형식 오류")).isInstanceOf(RecommendationException.class);
+        verify(ai,times(3)).propose(any(),any(),any(),any(),any(),any(),eq("형식 오류"),any());
+        verify(ai,times(2)).propose(any(),any(),any(),any(),any(),any(),eq("형식 오류"),eq("replace와 add의 개수가 같아야 해요."));
+        // 인증 실패처럼 형식 문제가 아니면 다시 요청하지 않는다.
+        when(ai.propose(any(),any(),any(),any(),any(),any(),eq("인증"),any())).thenThrow(new RecommendationException("AI_AUTH","설정 확인"));
+        assertThatThrownBy(()->schedules.aiRevise(original,null,hash,"인증")).isInstanceOf(RecommendationException.class);
+        verify(ai,times(1)).propose(any(),any(),any(),any(),any(),any(),eq("인증"),any());
+        // 바꿀 내용이 없는 수정안은 새 작업을 만들지 않는다.
+        when(ai.propose(any(),any(),any(),any(),any(),any(),eq("그대로"),any())).thenReturn(revise(List.of(),List.of(),null));
+        assertThat(schedules.aiRevise(original,null,hash,"그대로").question()).contains("바꿀 내용을 찾지 못했어요");
+        assertThat(jobs.count()).isEqualTo(before);
+        assertThatThrownBy(()->schedules.aiRevise(original,null,hash," ")).isInstanceOf(ResponseStatusException.class);
+    }
+
+    @Test void aiRequestScreenShowsQuestionOrUnavailableNotice() throws Exception {
+        var original=completedDraft();
+        var url="/travel/recommendations/itineraries/"+original+"/ai-revisions";
+        when(ai.configured()).thenReturn(false);
+        mvc.perform(post(url).session(session).with(csrf()).param("request","바다로 바꿔 줘"))
+            .andExpect(status().is3xxRedirection())
+            .andExpect(flash().attribute("aiError",containsString("OpenAI 연결 설정")));
+        mvc.perform(post(url).session(session).with(csrf()).param("request","다시"))
+            .andExpect(flash().attribute("aiError",containsString("잠시 후")));
+        session.removeAttribute("itineraryAiRevisionNext");
+        when(ai.configured()).thenReturn(true);
+        when(ai.propose(any(),any(),any(),any(),any(),any(),eq("좀 바꿔 줘"),any()))
+            .thenReturn(new OpenAiRevisionClient.Proposal(true,"어느 관광지를 바꿀까요?",List.of(),List.of(),null,null,null,null));
+        mvc.perform(post(url).session(session).with(csrf()).param("request","좀 바꿔 줘"))
+            .andExpect(flash().attribute("aiQuestion","어느 관광지를 바꿀까요?"));
+        mvc.perform(get("/travel/recommendations/itineraries/"+original).session(session))
+            .andExpect(content().string(containsString("문장으로 수정 요청하기")));
     }
 
     @Test void timeOnlyRevisionKeepsEveryPlace() {

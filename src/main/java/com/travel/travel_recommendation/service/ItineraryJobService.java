@@ -25,6 +25,9 @@ public class ItineraryJobService {
     private final PlaceRepository places;
     private final ItineraryGenerator generator;
     private final ItineraryAssistant assistant;
+    private final OpenAiRevisionClient revisions;
+    // 트랜잭션이 걸린 공개 메서드를 같은 객체 안에서 부를 때 프록시를 거치게 한다.
+    private final org.springframework.beans.factory.ObjectProvider<ItineraryJobService> selfProvider;
     private final ObjectMapper mapper;
     public record Work(UUID id,Input input) {}
 
@@ -87,7 +90,8 @@ public class ItineraryJobService {
 
     /** 교체 사유. 실내 변경만 후보 선택 순서에 반영하고 나머지는 기록·안내에만 사용한다. */
     public enum ReplaceReason {
-        TASTE("취향과 맞지 않아요"), INDOOR("실내 장소로 바꾸고 싶어요"), VISITED("이미 가 본 곳이에요"), OTHER("기타");
+        TASTE("취향과 맞지 않아요"), INDOOR("실내 장소로 바꾸고 싶어요"), VISITED("이미 가 본 곳이에요"), OTHER("기타"),
+        AI_REQUEST("문장으로 요청");
         private final String label;
         ReplaceReason(String label) { this.label=label; }
         public String getLabel() { return label; }
@@ -101,6 +105,13 @@ public class ItineraryJobService {
     @Transactional(timeout=10)
     public UUID revise(UUID sourceId,String login,byte[] hash,List<Long> replace,ReplaceReason reason,
                        LocalTime start,LocalTime end,int visitMinutes) {
+        if(reason==ReplaceReason.AI_REQUEST) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"교체 이유를 다시 골라 주세요.");
+        return revise(sourceId,login,hash,replace,null,reason,start,end,visitMinutes,null,null);
+    }
+
+    /** add가 있으면 그 후보로 순서대로 바꾸고, 없으면 기존 규칙(후보 순서·실내 우선)으로 고른다. */
+    private UUID revise(UUID sourceId,String login,byte[] hash,List<Long> replace,List<Long> add,ReplaceReason reason,
+                        LocalTime start,LocalTime end,int visitMinutes,String request,String explanation) {
         var source=access.owned(sourceId,login,hash,"ITINERARY");
         if(!"COMPLETED".equals(source.getStatus()) || source.getResultJson()==null)
             throw new ResponseStatusException(HttpStatus.CONFLICT,"완성된 일정 초안에서만 수정안을 만들 수 있어요.");
@@ -129,6 +140,13 @@ public class ItineraryJobService {
         var spare=pool.attractions().stream().filter(p->!originalIds.contains(p.placeId())).toList();
         if(reason==ReplaceReason.INDOOR)
             spare=spare.stream().sorted(Comparator.comparingInt(p->indoor(p)?0:1)).toList();
+        if(add!=null) {
+            // AI가 고른 후보는 현재 확인된 후보 중 원본에 없던 곳이어야 한다.
+            var byId=new LinkedHashMap<Long,PlaceCandidate>(); spare.forEach(p->byId.put(p.placeId(),p));
+            if(add.size()!=chosen.size() || !byId.keySet().containsAll(add) || new HashSet<>(add).size()!=add.size())
+                throw new ResponseStatusException(HttpStatus.CONFLICT,"수정안의 후보가 바뀌었어요. 다시 요청해 주세요.");
+            spare=add.stream().map(byId::get).toList();
+        }
         if(spare.size()<chosen.size())
             throw new ResponseStatusException(HttpStatus.CONFLICT,"바꿀 수 있는 다른 관광지 후보가 부족해요. 장소 목록에서 후보를 더 찾아본 뒤 다시 시도해 주세요.");
         var added=spare.subList(0,chosen.size());
@@ -136,12 +154,69 @@ public class ItineraryJobService {
         var places=new PlaceCandidateView(current.places().jobId(),current.places().destination(),current.places().durationDays(),
             current.places().accommodationNeeded(),List.copyOf(attractions),current.places().accommodations(),current.places().restaurants());
         var revision=new Revision(sourceId,refs(kept),refs(original.places().attractions().stream().filter(p->chosen.contains(p.placeId())).toList()),
-            refs(added),chosen.isEmpty()?null:reason.name(),Instant.now());
+            refs(added),chosen.isEmpty() && reason!=ReplaceReason.AI_REQUEST?null:reason.name(),Instant.now(),request,explanation);
         var input=new Input(original.recommendationId(),places,current.conditions(),start,end,original.transport(),visitMinutes,revision,original.constraints());
         generator.checkInput(input);
         var parent=access.owned(original.recommendationId(),login,hash,"RECOMMENDATION");
         return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();
     }
+    /** AI 수정 결과. job이 있으면 새 수정안 작업, question이 있으면 일정을 바꾸지 않고 확인할 질문이다. */
+    public record AiRevision(UUID job,String question) {}
+
+    /**
+     * 자연어 수정 요청(SFR-08-04)을 GPT로 수정안 형식으로 바꾼 뒤 기존 수정안 흐름으로 새 초안을 만든다.
+     * 형식이 틀린 응답은 사유를 알려 최대 2회 다시 요청하고, 모호하면 질문만 돌려준다. 원본 초안은 바꾸지 않는다.
+     * 외부 호출 동안 트랜잭션을 잡지 않도록 이 메서드 자체에는 트랜잭션을 두지 않는다.
+     */
+    public AiRevision aiRevise(UUID sourceId,String login,byte[] hash,String request) {
+        String text=request==null?"":request.strip();
+        if(text.isEmpty() || text.length()>300) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"수정 요청을 1~300자로 적어 주세요.");
+        var context=self().aiContext(sourceId,login,hash);
+        OpenAiRevisionClient.Proposal proposal=null; String failure=null;
+        for(int attempt=0;attempt<3 && proposal==null;attempt++) {
+            try {
+                proposal=revisions.propose(context.input().conditions(),context.input(),context.result(),context.current(),
+                    context.spare(),context.fixed(),text,failure);
+            } catch(RecommendationException e) {
+                if(!"AI_INVALID_RESPONSE".equals(e.getCode()) || attempt==2) throw e;
+                failure=e.getMessage();
+            }
+        }
+        if(proposal.clarify()) return new AiRevision(null,proposal.question());
+        var original=context.input();
+        LocalTime start=proposal.start()==null?original.start():proposal.start();
+        LocalTime end=proposal.end()==null?original.end():proposal.end();
+        int visit=proposal.visitMinutes()==null?original.visitMinutes():proposal.visitMinutes();
+        if(proposal.replace().isEmpty() && start.equals(original.start()) && end.equals(original.end()) && visit==original.visitMinutes())
+            return new AiRevision(null,"바꿀 내용을 찾지 못했어요. 어떤 관광지나 시간을 바꾸고 싶은지 조금 더 구체적으로 적어 주세요.");
+        return new AiRevision(self().reviseAi(sourceId,login,hash,proposal.replace(),proposal.add(),start,end,visit,text,proposal.explanation()),null);
+    }
+    @Transactional(timeout=10)
+    public UUID reviseAi(UUID sourceId,String login,byte[] hash,List<Long> replace,List<Long> add,
+                         LocalTime start,LocalTime end,int visitMinutes,String request,String explanation) {
+        return revise(sourceId,login,hash,replace,add,ReplaceReason.AI_REQUEST,start,end,visitMinutes,request,explanation);
+    }
+    public record AiContext(Input input,Result result,List<OpenAiRevisionClient.Candidate> current,
+                            List<OpenAiRevisionClient.Candidate> spare,Set<Long> fixed) {}
+    /** GPT에 보낼 현재 일정·후보를 읽는다. 외부 호출 전에 끝나는 짧은 읽기 트랜잭션이다. */
+    @Transactional(readOnly=true,timeout=10)
+    public AiContext aiContext(UUID sourceId,String login,byte[] hash) {
+        var source=access.owned(sourceId,login,hash,"ITINERARY");
+        if(!"COMPLETED".equals(source.getStatus()) || source.getResultJson()==null)
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"완성된 일정 초안에서만 수정을 요청할 수 있어요.");
+        if(!revisions.configured())
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"AI 수정 요청은 OpenAI 연결 설정 후 이용할 수 있어요. 위의 '장소 바꿔서 수정안 만들기'는 그대로 쓸 수 있어요.");
+        var input=mapper.readValue(source.getRequestJson(),Input.class);
+        var result=mapper.readValue(source.getResultJson(),Result.class);
+        var pool=candidates.find(input.recommendationId(),input.places().destination().placeId(),login,hash);
+        var currentIds=input.places().attractions().stream().map(PlaceCandidate::placeId).toList();
+        var current=input.places().attractions().stream().map(OpenAiRevisionClient::candidate).toList();
+        var spare=pool.attractions().stream().filter(p->!currentIds.contains(p.placeId())).map(OpenAiRevisionClient::candidate).toList();
+        Set<Long> fixed=input.constraints()==null?Set.of():Set.copyOf(input.constraints().requiredPlaceIds());
+        return new AiContext(input,result,current,spare,fixed);
+    }
+    private ItineraryJobService self() { return selfProvider.getObject(); }
+
     private static boolean indoor(PlaceCandidate place) {
         return INDOOR.matcher(Objects.toString(place.name(),"")+" "+Objects.toString(place.subtype(),"")+" "+Objects.toString(place.description(),"")).find();
     }

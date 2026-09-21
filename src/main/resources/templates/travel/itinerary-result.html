@@ -14,7 +14,9 @@
 <p th:if="${!rev.replaced.isEmpty()}" th:text="${'바꾼 관광지: ' + #strings.listJoin(rev.replaced.![name], ', ') + ' → ' + #strings.listJoin(rev.added.![name], ', ')}"></p>
 <p th:if="${rev.replaced.isEmpty()}">관광지는 그대로 두고 하루 시간과 체류시간만 바꾼 수정안이에요.</p>
 <p th:text="${'유지한 관광지: ' + #strings.listJoin(rev.kept.![name], ', ') + ' (장소만 유지하고 방문 시각은 다시 계산해요)'}"></p>
-<p th:if="${rev.reason != null}" th:text="${'교체 이유: ' + T(com.travel.travel_recommendation.service.ItineraryJobService.ReplaceReason).valueOf(rev.reason).label}"></p>
+<p th:if="${rev.reason != null and rev.request == null}" th:text="${'교체 이유: ' + T(com.travel.travel_recommendation.service.ItineraryJobService.ReplaceReason).valueOf(rev.reason).label}"></p>
+<p th:if="${rev.request != null}" th:text="${'요청한 내용: ' + rev.request}"></p>
+<p th:if="${rev.explanation != null}" th:text="${'AI 설명: ' + rev.explanation + ' (배치와 조건 확인은 서버가 다시 했어요)'}"></p>
 <p>원래 초안은 바뀌지 않았어요. <a th:href="@{/travel/recommendations/itineraries/{id}(id=${rev.sourceJobId})}">원래 초안 보기</a> · 이 수정안이 마음에 들면 저장해서 적용해 주세요.</p>
 </div>
 <div role="status" data-poll-seconds="120" th:attr="data-job-pending=${job.pending},data-status-url=@{/travel/recommendations/itineraries/{id}/status(id=${job.id})}">
@@ -64,6 +66,21 @@
 </div>
 </article></section>
 </th:block>
+
+<section class="condition-section" th:if="${job.result != null}" aria-labelledby="ai-revise-title">
+<h2 id="ai-revise-title">문장으로 수정 요청하기</h2>
+<p class="help">바꾸고 싶은 점을 문장으로 적으면 AI가 확인된 후보 안에서 바꿀 관광지와 시간을 골라 새 수정안을 만들어요. 서버가 다시 배치·검증하며, 이 초안은 바뀌지 않아요.</p>
+<p class="notice" role="status" th:if="${aiQuestion != null}" th:text="${'확인이 필요해요 · ' + aiQuestion}"></p>
+<p role="alert" th:if="${aiError != null}" th:text="${aiError}"></p>
+<form method="post" th:action="@{/travel/recommendations/itineraries/{id}/ai-revisions(id=${job.id})}">
+<label for="ai-request">수정 요청 (1~300자)</label>
+<textarea id="ai-request" name="request" maxlength="300" required rows="3"
+          placeholder="예) 첫째 날 박물관은 빼고 바다가 보이는 곳으로 바꿔 줘. 아침은 10시부터 시작하고 싶어요."
+          th:text="${aiRequest}"></textarea>
+<p class="help">할 수 있는 것: 관광지 바꾸기(확인된 후보 안에서), 하루 시작·종료 시간, 관광지 체류시간. 식사·숙소·날짜 변경은 아직 할 수 없어요. 이름·연락처 같은 개인정보는 적지 마세요. 요청 문장은 OpenAI로 보내지고 사용량이 발생해요.</p>
+<div class="form-actions"><button type="submit">AI에게 수정안 요청하기</button></div>
+</form>
+</section>
 
 <section class="condition-section" th:if="${job.result != null}" aria-labelledby="revise-title">
 <h2 id="revise-title">장소 바꿔서 수정안 만들기</h2>

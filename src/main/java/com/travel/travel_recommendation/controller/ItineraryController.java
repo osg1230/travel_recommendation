@@ -117,6 +117,38 @@ public class ItineraryController {
         return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create("/travel/recommendations/itineraries/"+job))
             .cacheControl(CacheControl.noStore()).build();
     }
+    private static final String AI_COOLDOWN_KEY="itineraryAiRevisionNext";
+
+    /**
+     * 문장으로 받은 수정 요청을 AI로 수정안 형식으로 바꿔 새 수정안 작업을 만든다(SFR-08-04).
+     * 되묻는 질문이나 실패 사유는 원래 초안 화면에 그대로 보여 주고, 원래 초안은 바꾸지 않는다.
+     */
+    @PostMapping("/itineraries/{id}/ai-revisions")
+    String aiRevise(@PathVariable UUID id,@RequestParam(defaultValue="") String request,Principal principal,HttpSession session,
+                    org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
+        String back="redirect:/travel/recommendations/itineraries/"+id+"#ai-revise-title";
+        redirect.addFlashAttribute("aiRequest",request.length()>300?request.substring(0,300):request);
+        // 유료 호출이므로 같은 세션에서 연달아 누르지 않도록 20초 간격을 둔다.
+        synchronized(session) {
+            var next=session.getAttribute(AI_COOLDOWN_KEY) instanceof java.time.Instant at?at:null;
+            if(next!=null && next.isAfter(java.time.Instant.now())) {
+                redirect.addFlashAttribute("aiError","방금 요청을 처리했어요. 잠시 후 다시 시도해 주세요.");
+                return back;
+            }
+            session.setAttribute(AI_COOLDOWN_KEY,java.time.Instant.now().plusSeconds(20));
+        }
+        try {
+            var result=service().aiRevise(id,login(principal),hash(session),request);
+            if(result.job()!=null) return "redirect:/travel/recommendations/itineraries/"+result.job();
+            redirect.addFlashAttribute("aiQuestion",result.question());
+        } catch(RecommendationException e) {
+            redirect.addFlashAttribute("aiError",e.getMessage()+" 원래 초안은 그대로예요.");
+        } catch(ResponseStatusException e) {
+            if(e.getStatusCode().value()==404) throw e;
+            redirect.addFlashAttribute("aiError",e.getReason());
+        }
+        return back;
+    }
     @GetMapping("/itineraries/{id}/status")
     @ResponseBody
     ResponseEntity<?> status(@PathVariable UUID id,Principal principal,HttpSession session) {

@@ -37,7 +37,13 @@ public final class ItineraryPlan {
      * kept는 사용자가 유지한 관광지이며 시각 고정이 아니라 장소 유지만 뜻한다.
      */
     public record Revision(UUID sourceJobId, List<PlaceRef> kept, List<PlaceRef> replaced, List<PlaceRef> added,
-                           String reason, Instant requestedAt) {}
+                           String reason, Instant requestedAt, String request, String explanation) {
+        // 직접 고른 수정안과 이전 작업 JSON은 자연어 요청·AI 설명 없이 그대로 사용한다.
+        public Revision(UUID sourceJobId, List<PlaceRef> kept, List<PlaceRef> replaced, List<PlaceRef> added,
+                        String reason, Instant requestedAt) {
+            this(sourceJobId, kept, replaced, added, reason, requestedAt, null, null);
+        }
+    }
     public record Item(String type, Long placeId, String name, LocalTime start, LocalTime end,
                        String note, String mapUrl, String sourceUrl, Integer travelSeconds, Instant checkedAt) {}
     public record Day(int number, LocalDate date, List<Item> items) {}
