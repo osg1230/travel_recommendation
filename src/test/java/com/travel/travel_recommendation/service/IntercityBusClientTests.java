@@ -54,7 +54,8 @@ class IntercityBusClientTests {
     }
 
     @Test void readsTodayTripsInDepartureOrderAndSkipsBrokenRows() {
-        items("[{\"depPlandTime\":202609211530,\"arrPlandTime\":202609211630,\"gradeNm\":\"일반\",\"charge\":7400},"
+        // 실제 응답처럼 초까지 붙은 14자리 숫자와 12자리 문자열을 섞어 보낸다.
+        items("[{\"depPlandTime\":20260921153000,\"arrPlandTime\":20260921163000,\"gradeNm\":\"일반\",\"charge\":7400},"
             + "{\"depPlandTime\":\"202609210700\",\"arrPlandTime\":\"202609210805\",\"gradeNm\":\"우등\",\"charge\":\"9500\"},"
             + "{\"depPlandTime\":\"202609220700\",\"arrPlandTime\":\"202609220800\"},"      // 다른 날짜
             + "{\"depPlandTime\":\"202609211000\",\"arrPlandTime\":\"202609210900\"},"      // 도착이 출발보다 이름

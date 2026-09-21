@@ -24,18 +24,21 @@ public class NearbyRegionService {
     /** 사용자가 정하지 않았을 때 주변 지역을 권할 만큼 비는 시간. 편도 1시간 이동을 왕복하고 1시간 둘러보는 정도다. */
     static final int SPARE_MINUTES=180;
     private static final int MAX_REGIONS=3, MAX_ATTRACTIONS=3;
+    /** 터미널 사이 직선거리 상한. 고속도로 평균 시속을 넉넉히 잡아도 2시간 안에 갈 수 없는 거리다. */
+    static final double MAX_STRAIGHT_KM=150;
 
     /**
      * 지역마다 이동시간을 재는 기준 터미널. 2026-09-21 카카오 장소 검색으로 이름·주소·좌표를 확인했다.
-     * busName은 TAGO 시외버스정보에서 쓰는 터미널 이름이다.
+     * busName은 TAGO 시외버스정보의 터미널 이름이다(같은 날 터미널 목록 조회로 확인). 부산종합버스터미널은
+     * TAGO에 '부산동부'로 등록되어 있다(카카오에서도 같은 주소).
      */
     record Terminal(String name, String busName, String address, double longitude, double latitude) {}
     static final Map<String,Terminal> TERMINALS=Map.of(
         "강릉",new Terminal("강릉시외버스터미널","강릉","강원특별자치도 강릉시 하슬라로 27",128.878876,37.754680),
         "속초",new Terminal("속초시외버스터미널","속초","강원특별자치도 속초시 장안로 16",128.590814,38.211223),
         "양양",new Terminal("양양종합여객터미널","양양","강원특별자치도 양양군 양양읍 동해대로 2700",128.629777,38.085294),
-        "부산",new Terminal("부산종합버스터미널","부산종합버스터미널","부산광역시 금정구 중앙대로 2238",129.095472,35.284773),
-        "경주",new Terminal("경주시외버스터미널","경주","경상북도 경주시 강변로 184",129.202469,35.839800),
+        "부산",new Terminal("부산종합버스터미널","부산동부","부산광역시 금정구 중앙대로 2238",129.095472,35.284773),
+        "경주",new Terminal("경주시외버스터미널","경주시외","경상북도 경주시 강변로 184",129.202469,35.839800),
         "울산",new Terminal("울산시외버스터미널","울산","울산광역시 남구 화합로 133",129.339729,35.536562));
 
     private final PlaceRepository places;
@@ -58,23 +61,38 @@ public class NearbyRegionService {
         if(origin==null) return new Nearby("UNSUPPORTED","이 여행지는 이동시간을 잴 기준 터미널이 없어 주변 지역을 찾지 못했어요.",basis,List.of(),null,checkedAt);
         // 2) 탐색: 확인된 여행지 중 기준 시간 안에 닿는 곳만 남긴다.
         List<NearbyRegion> found=new ArrayList<>();
+        // 시외버스 정보에 배차가 아예 없는 지역. 실제로 버스가 없다는 뜻이 아니라 판단하지 못한 곳이다.
+        List<String> unchecked=new ArrayList<>();
         String notice=null;
         try {
             for(Place destination:places.findDestinations()) {
                 var target=TERMINALS.get(destination.getName());
                 if(target==null || target==origin || destination.getId().equals(input.places().destination().placeId())) continue;
-                var region="CAR".equals(basis)?byCar(origin,target,destination):byBus(origin,target,destination);
+                // 직선거리만으로도 2시간 안에 닿을 수 없는 곳은 외부 조회 없이 뺀다.
+                if(straightKilometers(origin,target)>MAX_STRAIGHT_KM) continue;
+                if("CAR".equals(basis)) {
+                    var region=byCar(origin,target,destination);
+                    if(region!=null) found.add(region);
+                    continue;
+                }
+                var trips=busTrips(origin,target);
+                if(trips.isEmpty()) { unchecked.add(destination.getName()); continue; }
+                var region=byBus(origin,target,destination,trips);
                 if(region!=null) found.add(region);
             }
         } catch(RecommendationException error) {
             // 주변 지역은 참고 기능이라 조회에 실패해도 일정 초안은 그대로 제공한다.
             return new Nearby("LOOKUP_FAILED",error.getMessage(),basis,List.of(),null,checkedAt);
         }
-        if("INTERCITY_BUS".equals(basis)) notice="시외버스 시간은 오늘 운행 기준이에요. 여행 날짜의 배차·요금은 다를 수 있으니 이용 전에 터미널이나 예매처에서 확인해 주세요.";
+        if("INTERCITY_BUS".equals(basis)) {
+            notice="시외버스 시간은 오늘 운행 기준이에요. 여행 날짜의 배차·요금은 다를 수 있으니 이용 전에 터미널이나 예매처에서 확인해 주세요.";
+            if(!unchecked.isEmpty()) notice+=" 시외버스 정보에 오늘 직행 배차가 등록되지 않아 판단하지 못한 지역: "+String.join(", ",unchecked)+".";
+        }
         found.sort(Comparator.comparingInt(NearbyRegion::minutes));
         if(found.isEmpty()) {
             String none="CAR".equals(basis)?"자동차로 "+MAX_MINUTES/60+"시간 안에 갈 수 있는 주변 지역이 없어요."
-                :"오늘 운행하는 직행 시외버스로 "+MAX_MINUTES/60+"시간 안에 갈 수 있는 주변 지역이 없어요.";
+                :unchecked.isEmpty()?"오늘 운행하는 직행 시외버스로 "+MAX_MINUTES/60+"시간 안에 갈 수 있는 주변 지역이 없어요."
+                :"시외버스 정보로 "+MAX_MINUTES/60+"시간 안에 갈 수 있다고 확인한 주변 지역이 없어요.";
             return new Nearby("NONE_FOUND",reason+" "+none,basis,List.of(),notice,checkedAt);
         }
         // 3) 추천: 가까운 지역부터 관광지와 함께 보여 준다.
@@ -97,10 +115,19 @@ public class NearbyRegionService {
         return region(destination,time.minutes(),origin.name()+" → "+target.name()+" (카카오 자동차 예상)",null);
     }
 
-    private NearbyRegion byBus(Terminal origin,Terminal target,Place destination) {
+    /** 오늘 직행 배차. 출발지 터미널을 찾지 못하면 전체 조회 실패로, 도착지 터미널만 없으면 배차 없음으로 본다. */
+    private List<IntercityBusClient.Trip> busTrips(Terminal origin,Terminal target) {
+        String from=buses.terminalId(origin.busName()), to;
+        try { to=buses.terminalId(target.busName()); }
+        catch(RecommendationException error) {
+            if("BUS_TERMINAL_NOT_FOUND".equals(error.getCode())) return List.of();
+            throw error;
+        }
+        return buses.trips(from,to,LocalDate.now(ZoneId.of("Asia/Seoul")));
+    }
+
+    private NearbyRegion byBus(Terminal origin,Terminal target,Place destination,List<IntercityBusClient.Trip> trips) {
         LocalDate today=LocalDate.now(ZoneId.of("Asia/Seoul"));
-        String from=buses.terminalId(origin.busName()), to=buses.terminalId(target.busName());
-        var trips=buses.trips(from,to,today);
         // 직행 배차 중 기준 시간 안에 도착하는 것만 센다. 환승 경로는 찾지 않는다.
         var fast=trips.stream().filter(t->t.minutes()<=MAX_MINUTES).toList();
         if(fast.isEmpty()) return null;
@@ -119,6 +146,14 @@ public class NearbyRegionService {
             .toList();
         return new NearbyRegion(destination.getId(),destination.getName(),destination.getRegion(),destination.getDescription(),
             destination.getSourceUrl(),minutes,route,bus,attractions);
+    }
+
+    /** 위경도 두 점 사이의 직선거리(km, 하버사인 공식). */
+    static double straightKilometers(Terminal a,Terminal b) {
+        double lat1=Math.toRadians(a.latitude()), lat2=Math.toRadians(b.latitude());
+        double dLat=lat2-lat1, dLon=Math.toRadians(b.longitude()-a.longitude());
+        double h=Math.pow(Math.sin(dLat/2),2)+Math.cos(lat1)*Math.cos(lat2)*Math.pow(Math.sin(dLon/2),2);
+        return 2*6371*Math.asin(Math.sqrt(h));
     }
 
     private Location location(Terminal terminal) {

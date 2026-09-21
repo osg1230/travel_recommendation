@@ -25,7 +25,9 @@ public class IntercityBusClient {
         public int minutes() { return (int) Duration.between(departure, arrival).toMinutes(); }
     }
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
+    // 실제 응답은 초까지 붙은 14자리 숫자(20260921071000)다. 12자리도 함께 받는다.
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyyMMddHHmm");
+    private static final DateTimeFormatter TIME_SECONDS = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private final TagoProperties properties;
     private final ObjectMapper mapper;
     private final URI endpoint;
@@ -125,12 +127,15 @@ public class IntercityBusClient {
         if (item.isObject()) return List.of(item);
         return List.of();
     }
-    // 시각은 숫자(202609211430)나 문자열로 온다. 읽지 못하면 그 배차만 건너뛴다.
+    // 시각은 숫자(20260921143000)나 문자열로 온다. 읽지 못하면 그 배차만 건너뛴다.
     private LocalDateTime time(JsonNode item, String field) {
         var value = item.path(field);
         String raw = value.isNumber() ? value.asText() : value.isTextual() ? value.asText().trim() : "";
-        if (!raw.matches("[0-9]{12}")) return null;
-        try { return LocalDateTime.parse(raw, TIME); } catch (RuntimeException e) { return null; }
+        try {
+            if (raw.matches("[0-9]{14}")) return LocalDateTime.parse(raw, TIME_SECONDS);
+            if (raw.matches("[0-9]{12}")) return LocalDateTime.parse(raw, TIME);
+        } catch (RuntimeException e) { return null; }
+        return null;
     }
     private Integer number(JsonNode item, String field) {
         var value = item.path(field);

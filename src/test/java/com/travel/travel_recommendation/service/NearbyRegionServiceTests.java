@@ -104,7 +104,24 @@ class NearbyRegionServiceTests {
         assertThat(bus.minCharge()).isEqualTo(7400);
         assertThat(result.regions().getFirst().minutes()).isEqualTo(65);
         assertThat(result.notice()).contains("오늘 운행 기준");
+        // 배차 정보가 없는 지역은 버스가 없다고 단정하지 않고 판단하지 못한 지역으로 알린다.
+        // 울산은 직선거리 150km를 넘어 조회하지 않으므로 목록에도 없다.
+        assertThat(result.notice()).contains("판단하지 못한 지역: 양양.");
+        verify(buses,never()).trips(any(),eq("T-울산"),any());
         verifyNoInteractions(maps);
+    }
+
+    @Test void missingTargetTerminalIsUncheckedButMissingOriginFailsLookup() {
+        when(buses.terminalId("강릉")).thenReturn("T-강릉");
+        when(buses.terminalId(argThat(name->!"강릉".equals(name))))
+            .thenThrow(new RecommendationException("BUS_TERMINAL_NOT_FOUND","터미널 없음"));
+        var none=service.recommend(input(true,Transport.PUBLIC_TRANSIT),plan(LocalTime.of(12,0)));
+        assertThat(none.decision()).isEqualTo("NONE_FOUND");
+        assertThat(none.reason()).contains("확인한 주변 지역이 없어요");
+        assertThat(none.notice()).contains("판단하지 못한 지역: 속초, 양양.");
+        reset(buses);
+        when(buses.terminalId(anyString())).thenThrow(new RecommendationException("BUS_TERMINAL_NOT_FOUND","출발 터미널 없음"));
+        assertThat(service.recommend(input(true,Transport.PUBLIC_TRANSIT),plan(LocalTime.of(12,0))).decision()).isEqualTo("LOOKUP_FAILED");
     }
 
     @Test void lookupFailureAndNoRegionAreReportedWithoutBreakingPlan() {
@@ -117,6 +134,15 @@ class NearbyRegionServiceTests {
         var none=service.recommend(input(true,Transport.CAR),plan(LocalTime.of(12,0)));
         assertThat(none.decision()).isEqualTo("NONE_FOUND");
         assertThat(none.regions()).isEmpty();
+    }
+
+    @Test void straightDistanceKeepsNeighborsAndDropsFarRegions() {
+        var t=NearbyRegionService.TERMINALS;
+        assertThat(NearbyRegionService.straightKilometers(t.get("강릉"),t.get("속초"))).isBetween(45.0,60.0);
+        assertThat(NearbyRegionService.straightKilometers(t.get("부산"),t.get("울산"))).isLessThan(NearbyRegionService.MAX_STRAIGHT_KM);
+        assertThat(NearbyRegionService.straightKilometers(t.get("부산"),t.get("경주"))).isLessThan(NearbyRegionService.MAX_STRAIGHT_KM);
+        assertThat(NearbyRegionService.straightKilometers(t.get("강릉"),t.get("울산"))).isGreaterThan(NearbyRegionService.MAX_STRAIGHT_KM);
+        assertThat(NearbyRegionService.straightKilometers(t.get("강릉"),t.get("부산"))).isGreaterThan(NearbyRegionService.MAX_STRAIGHT_KM);
     }
 
     @Test void spareMinutesUsesLargestGapBeforeDayEnd() {
