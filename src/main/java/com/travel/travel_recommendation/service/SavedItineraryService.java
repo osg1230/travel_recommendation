@@ -40,6 +40,13 @@ public class SavedItineraryService {
         if(input.conditions().startDate()==null || result.days().stream().anyMatch(day->day.date()==null))
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "여행 날짜가 정해지지 않은 초안이에요. 여행 조건에서 출발일을 정하고 일정을 다시 만들어 주세요.");
+        // 미충족 조건이 남은 초안은 완료 일정으로 저장하지 않는다(SFR-04-06).
+        var report=ItineraryConditionReport.evaluate(input,result);
+        if(!report.complete()) {
+            var unmet=report.checks().stream().filter(c->c.status()==ItineraryConditionReport.Status.UNMET).findFirst().orElseThrow();
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "조건을 충족하지 못한 항목이 있어 저장할 수 없어요. "+unmet.name()+": "+unmet.detail());
+        }
         var destination=input.places().destination();
         var already=existing(userId,destination.placeId(),result.days().getFirst().date(),jobId);
         if(already!=null) return new Saved(already,false);

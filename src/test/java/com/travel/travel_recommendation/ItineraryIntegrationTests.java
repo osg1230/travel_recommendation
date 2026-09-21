@@ -102,6 +102,7 @@ class ItineraryIntegrationTests {
             .andExpect(header().string("Cache-Control","no-store"))
             .andExpect(content().string(containsString("일정 초안"))).andExpect(content().string(containsString("2일차")))
             .andExpect(content().string(containsString("확인이 필요해요")))
+            .andExpect(content().string(containsString("여행 조건 확인 결과")))
             .andDo(response->{ if(Boolean.getBoolean("travel.ui.capture")) {
                 var folder=java.nio.file.Path.of("target","ui-check"); java.nio.file.Files.createDirectories(folder);
                 java.nio.file.Files.writeString(folder.resolve("itinerary.html"),response.getResponse().getContentAsString(StandardCharsets.UTF_8));
