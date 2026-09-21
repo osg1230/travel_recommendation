@@ -22,22 +22,28 @@ public class ItineraryGenerator {
         Map<Long,KakaoMapClient.Location> locations=new HashMap<>();
         Map<String,KakaoMapClient.Location> addresses=new HashMap<>();
         var places=input.places();
-        var hotel=places.accommodationNeeded()?places.accommodations().getFirst():null;
-        var used=new ArrayList<>(places.attractions()); used.addAll(places.restaurants()); if(hotel!=null) used.add(hotel);
+        var used=new ArrayList<>(places.attractions()); used.addAll(places.restaurants());
         for(var place:used) {
             checkDeadline(deadline);
-            if("KAKAO".equals(place.sourceProvider()) && place.longitude()!=null && place.latitude()!=null) {
-                if(place.verifiedAt()==null || place.verifiedAt().isBefore(LocalDateTime.now(ZoneOffset.UTC).minusHours(24)))
-                    throw failure("PLACE_STALE","장소 조회 결과가 오래됐어요. 장소 목록에서 다시 조회해 주세요.");
-                locations.put(place.placeId(),new KakaoMapClient.Location(place.address(),place.longitude(),place.latitude(),place.verifiedAt().toInstant(ZoneOffset.UTC)));
-                continue;
-            }
-            var matcher=ROAD.matcher(place.address());
-            if(!matcher.matches()) throw failure("ADDRESS_REQUIRED","장소의 도로명 주소를 확인해야 해요.");
-            String address=matcher.group(1);
-            // 같은 건물의 음식점·숙소는 주소 좌표 조회를 한 번만 한다.
-            locations.put(place.placeId(),addresses.computeIfAbsent(address,maps::locate));
+            locations.put(place.placeId(),locate(place,addresses));
         }
+        // 숙소는 후보마다 위치를 확인해 관광지와 가까운 순서로 고른다(SFR-05-02). 위치를 못 찾은 후보만 뺀다.
+        Lodging lodging=null; PlaceCandidate hotel=null;
+        if(places.accommodationNeeded()) {
+            RecommendationException lastError=null;
+            for(var stay:places.accommodations()) {
+                checkDeadline(deadline);
+                try { locations.put(stay.placeId(),locate(stay,addresses)); }
+                catch(RecommendationException error) { if("SCHEDULE_TIMEOUT".equals(error.getCode())) throw error; lastError=error; }
+            }
+            lodging=rankLodging(places,locations);
+            if(lodging==null) throw lastError!=null?lastError:failure("INSUFFICIENT_PLACES","숙소 후보의 위치를 확인하지 못했어요. 다른 지역을 선택해 주세요.");
+            Long chosen=lodging.chosenPlaceId();
+            hotel=places.accommodations().stream().filter(p->p.placeId().equals(chosen)).findFirst().orElseThrow();
+        }
+        // 여러 날이면 같은 음식점이 반복되지 않도록 이미 고른 곳을 기억한다(SFR-17-01).
+        Set<Long> usedRestaurants=new HashSet<>();
+        var foods=RegionalFoods.of(places.destination().name());
         var remaining=new ArrayList<>(places.attractions());
         List<Day> days=new ArrayList<>();
         Map<String,KakaoMapClient.TravelTime> routes=new HashMap<>();
@@ -54,22 +60,64 @@ public class ItineraryGenerator {
                 remaining.remove(next);
                 builder.visit(next,"VISIT",input.visitMinutes(),"관광·관람 (계획한 체류시간)");
                 if(!builder.meal && (!builder.time.isBefore(LocalTime.NOON) || i==count-1)) {
-                    // 식사는 방금 방문한 관광지에서 가까운 후보를 고른다.
-                    var restaurant=places.restaurants().stream().min(order(builder.date,
+                    // 식사는 방금 방문한 관광지에서 가까운 후보를 고른다. 아직 가지 않은 음식점이 있으면 그중에서 고른다.
+                    var fresh=places.restaurants().stream().filter(p->!usedRestaurants.contains(p.placeId())).toList();
+                    var restaurant=(fresh.isEmpty()?places.restaurants():fresh).stream().min(order(builder.date,
                         p->distance(locations.get(next.placeId()),locations.get(p.placeId())))).orElseThrow();
+                    usedRestaurants.add(restaurant.placeId());
                     builder.move(restaurant);
                     if(builder.time.isBefore(LocalTime.NOON) && !input.end().isBefore(LocalTime.of(13,0)))
                         builder.add("FREE",restaurant,"식사 전 자유시간",(int)Duration.between(builder.time,LocalTime.NOON).toMinutes(),"주변 휴식·자유시간",null,null);
-                    builder.visit(restaurant,"MEAL",60,"식사 (가격 확인 필요)"); builder.meal=true;
+                    // 음식 분류와 고른 이유(직전 관광지와의 거리), 지역 대표 음식을 함께 적는다(SFR-17-01·02).
+                    String mealNote="식사 (가격 확인 필요)\n"
+                        +(restaurant.subtype()==null || restaurant.subtype().isBlank()?"":"음식 분류: "+restaurant.subtype()+" · ")
+                        +next.name()+"에서 직선 약 "+kilometersText(locations.get(next.placeId()),locations.get(restaurant.placeId()))+"라 골랐어요."
+                        +foods.map(g->"\n이 지역 대표 "+(g.snack()?"간식":"음식")+": "+g.joined()+" (이 음식점에서 파는지는 확인 필요)").orElse("");
+                    builder.visit(restaurant,"MEAL",60,mealNote); builder.meal=true;
                 }
             }
-            if(hotel!=null && day<dayCount) builder.visit(hotel,"STAY",30,"숙소 도착·휴식 (체크인 시간·예약 확인 필요)");
+            if(hotel!=null && day<dayCount) builder.visit(hotel,"STAY",30,"숙소 도착·휴식 (체크인 시간·예약 확인 필요)\n추천 이유: "+lodging.reason());
             days.add(new Day(day,input.conditions().startDate()==null?null:input.conditions().startDate().plusDays(day-1),List.copyOf(builder.items)));
             previous=hotel!=null?hotel:null;
         }
-        var result=new Result(places.destination().name(),List.copyOf(days),input.transport(),Instant.now());
+        var result=new Result(places.destination().name(),List.copyOf(days),input.transport(),Instant.now()).withLodging(lodging);
         validate(input,result);
         return result;
+    }
+
+    // 카카오 후보는 조회해 둔 좌표를, 그 밖에는 도로명 주소로 좌표를 찾는다. 같은 건물 주소는 한 번만 조회한다.
+    private KakaoMapClient.Location locate(PlaceCandidate place,Map<String,KakaoMapClient.Location> addresses) {
+        if("KAKAO".equals(place.sourceProvider()) && place.longitude()!=null && place.latitude()!=null) {
+            if(place.verifiedAt()==null || place.verifiedAt().isBefore(LocalDateTime.now(ZoneOffset.UTC).minusHours(24)))
+                throw failure("PLACE_STALE","장소 조회 결과가 오래됐어요. 장소 목록에서 다시 조회해 주세요.");
+            return new KakaoMapClient.Location(place.address(),place.longitude(),place.latitude(),place.verifiedAt().toInstant(ZoneOffset.UTC));
+        }
+        var matcher=ROAD.matcher(place.address());
+        if(!matcher.matches()) throw failure("ADDRESS_REQUIRED","장소의 도로명 주소를 확인해야 해요.");
+        return addresses.computeIfAbsent(matcher.group(1),maps::locate);
+    }
+
+    /**
+     * 숙소 후보를 이번 여행 관광지들과의 평균 직선거리가 짧은 순서로 정렬한다(SFR-05-02·03).
+     * 거리가 같으면 후보 목록 순서를 따른다. 위치를 확인한 후보가 없으면 null이다.
+     */
+    static Lodging rankLodging(PlaceCandidateView places,Map<Long,KakaoMapClient.Location> locations) {
+        List<StayOption> options=new ArrayList<>();
+        for(var stay:places.accommodations()) {
+            var at=locations.get(stay.placeId());
+            if(at==null) continue;
+            double total=0;
+            for(var attraction:places.attractions()) total+=kilometers(at,locations.get(attraction.placeId()));
+            double average=Math.round(total/places.attractions().size()*10)/10.0;
+            options.add(new StayOption(stay.placeId(),stay.name(),stay.subtype(),stay.address(),average,stay.sourceUrl(),stay.mapSearchUrl()));
+        }
+        if(options.isEmpty()) return null;
+        options.sort(Comparator.comparingDouble(StayOption::averageKilometers));
+        var best=options.getFirst();
+        String reason=options.size()==1
+            ?"확인된 숙소 후보가 1곳이라 골랐어요. 방문할 관광지 "+places.attractions().size()+"곳과의 평균 직선거리는 약 "+best.averageKilometers()+"km예요."
+            :"방문할 관광지 "+places.attractions().size()+"곳과의 평균 직선거리가 약 "+best.averageKilometers()+"km로 숙소 후보 "+options.size()+"곳 중 가장 가까워요.";
+        return new Lodging(best.placeId(),reason,options.subList(0,Math.min(3,options.size())));
     }
 
     public void checkInput(Input input) {
@@ -107,13 +155,21 @@ public class ItineraryGenerator {
         Set<Long> seen=new HashSet<>(); Set<Long> allowed=new HashSet<>(expected);
         input.places().restaurants().forEach(p->allowed.add(p.placeId()));
         input.places().accommodations().forEach(p->allowed.add(p.placeId()));
+        // 숙소는 첫 후보로 고정하지 않고 동선에 맞춰 고르므로, 첫날 마지막 숙소를 기준으로 모든 날이 같은 숙소인지 본다.
+        Long hotelId=null;
+        if(input.places().accommodationNeeded() && result.days().size()>1) {
+            var firstDay=result.days().getFirst().items();
+            if(firstDay.isEmpty() || !"STAY".equals(firstDay.getLast().type())) throw invalid();
+            hotelId=firstDay.getLast().placeId();
+            if(result.lodging()!=null && !hotelId.equals(result.lodging().chosenPlaceId())) throw invalid();
+        }
         int dayNumber=0;
         for(var day:result.days()) {
             if(day.number()!=++dayNumber || day.items().isEmpty()) throw invalid();
             LocalDate date=input.conditions().startDate()==null?null:input.conditions().startDate().plusDays(dayNumber-1);
             if(!Objects.equals(date,day.date())) throw invalid();
             LocalTime end=input.start();
-            Long previous=dayNumber>1 && input.places().accommodationNeeded()?input.places().accommodations().getFirst().placeId():null;
+            Long previous=dayNumber>1?hotelId:null;
             Long transferDestination=null; boolean transferred=false; int meals=0, visits=0;
             for(var item:day.items()) {
                 if(item.start()==null || item.end()==null || !item.start().equals(end) || !item.end().isAfter(item.start())
@@ -149,7 +205,7 @@ public class ItineraryGenerator {
             if(constraints!=null && constraints.dailyVisitsRequired() && visits!=constraints.dailyVisits()) throw invalid();
             if(input.places().accommodationNeeded() && dayNumber<result.days().size()
                 && (!"STAY".equals(day.items().getLast().type())
-                    || !input.places().accommodations().getFirst().placeId().equals(day.items().getLast().placeId()))) throw invalid();
+                    || !Objects.equals(hotelId,day.items().getLast().placeId()))) throw invalid();
         }
         if(!seen.equals(expected)) throw invalid();
     }
@@ -217,6 +273,14 @@ public class ItineraryGenerator {
     private static double distance(KakaoMapClient.Location a,KakaoMapClient.Location b) {
         double x=(a.longitude()-b.longitude())*Math.cos(Math.toRadians(a.latitude()));
         double y=a.latitude()-b.latitude(); return x*x+y*y;
+    }
+    /** 화면에 보여 줄 직선거리(km). 위도 1도를 약 111km로 보는 근사값이다. */
+    static double kilometers(KakaoMapClient.Location a,KakaoMapClient.Location b) {
+        return Math.sqrt(distance(a,b))*111.0;
+    }
+    private static String kilometersText(KakaoMapClient.Location a,KakaoMapClient.Location b) {
+        double km=kilometers(a,b);
+        return km<1?Math.max(100,Math.round(km*10)*100)+"m":(Math.round(km*10)/10.0)+"km";
     }
     private static void checkDeadline(Instant deadline) { if(Instant.now().isAfter(deadline)) throw failure("SCHEDULE_TIMEOUT","일정 처리 시간이 초과됐어요. 다시 요청해 주세요."); }
     private static RecommendationException invalid() { return failure("INVALID_SCHEDULE","일정의 시간과 장소를 검증하지 못했어요. 조건을 확인해 주세요."); }

@@ -46,6 +46,44 @@ class ItineraryGeneratorTests {
         assertThat(result.days().get(1).items().getFirst().name()).startsWith("장소4 →");
         assertThat(result.days().stream().flatMap(d->d.items().stream()).filter(i->i.type().equals("VISIT")).map(Item::placeId)).containsExactly(1L,2L);
     }
+    @Test void picksHotelNearestToAttractionsAndDoesNotRepeatRestaurants() {
+        // 관광지 1·2 근처의 숙소 5와 멀리 있는 숙소 40. 목록의 첫 후보(40)가 아니라 가까운 5를 골라야 한다.
+        var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,null,2,true,false,List.of(),"");
+        var pool=new PlaceCandidateView(UUID.randomUUID(),new DestinationCandidate(99L,"강릉","강원","소개","https://www.gn.go.kr/",LocalDateTime.of(2026,9,1,0,0)),2,true,
+            List.of(place(1),place(2)),List.of(place(40),place(5)),List.of(place(3),place(6)));
+        var input=new Input(pool.jobId(),pool,conditions,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90);
+        var result=generator.generate(input);
+        assertThat(result.lodging().chosenPlaceId()).isEqualTo(5L);
+        assertThat(result.lodging().options()).extracting(StayOption::placeId).containsExactly(5L,40L);
+        assertThat(result.lodging().reason()).contains("관광지 2곳").contains("숙소 후보 2곳 중 가장 가까워요");
+        var stay=result.days().getFirst().items().getLast();
+        assertThat(stay.placeId()).isEqualTo(5L);
+        assertThat(stay.note()).contains("추천 이유:");
+        // 이틀 동안 음식점 후보가 2곳이면 같은 곳을 반복하지 않는다.
+        var meals=result.days().stream().flatMap(d->d.items().stream()).filter(i->i.type().equals("MEAL")).toList();
+        assertThat(meals).extracting(Item::placeId).doesNotHaveDuplicates();
+        // 식사 항목에 음식 분류·고른 이유와 공식 자료의 지역 대표 음식을 적는다.
+        assertThat(meals.getFirst().note()).contains("음식 분류: 유형").contains("라 골랐어요").contains("초당두부").contains("확인 필요");
+        generator.validate(input,result);
+        // 날마다 다른 숙소로 바꾼 결과는 받지 않는다.
+        var days=new ArrayList<>(result.days());
+        var firstItems=new ArrayList<>(days.getFirst().items());
+        var last=firstItems.removeLast();
+        firstItems.add(new Item(last.type(),40L,last.name(),last.start(),last.end(),last.note(),last.mapUrl(),last.sourceUrl(),null,null));
+        days.set(0,new Day(1,days.getFirst().date(),firstItems));
+        var changed=new Result(result.destination(),days,result.transport(),result.createdAt()).withLodging(result.lodging());
+        assertThatThrownBy(()->generator.validate(input,changed)).isInstanceOf(RecommendationException.class);
+    }
+    @Test void hotelWithoutLocationIsSkippedWhenAnotherCanBeUsed() {
+        var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,null,2,true,false,List.of(),"");
+        var noRoad=new PlaceCandidate(41L,"주소 없는 숙소","강원 강릉시 어딘가","호텔","소개","https://www.gn.go.kr/","https://map.kakao.com/",LocalDateTime.of(2026,9,1,0,0));
+        var pool=new PlaceCandidateView(UUID.randomUUID(),new DestinationCandidate(99L,"강릉","강원","소개","https://www.gn.go.kr/",LocalDateTime.of(2026,9,1,0,0)),2,true,
+            List.of(place(1),place(2)),List.of(noRoad,place(5)),List.of(place(3)));
+        var input=new Input(pool.jobId(),pool,conditions,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90);
+        var result=generator.generate(input);
+        assertThat(result.lodging().chosenPlaceId()).isEqualTo(5L);
+        assertThat(result.lodging().reason()).contains("1곳이라");
+    }
     @Test void rejectsNotEnoughPlacesWithoutExternalCalls() {
         assertThatThrownBy(()->generator.generate(input(3,LocalTime.of(18,0)))).isInstanceOfSatisfying(RecommendationException.class,e->assertThat(e.getCode()).isEqualTo("INSUFFICIENT_PLACES"));
         verifyNoInteractions(maps);

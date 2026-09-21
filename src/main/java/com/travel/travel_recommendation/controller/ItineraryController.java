@@ -101,6 +101,8 @@ public class ItineraryController {
                 d.items().stream().map(i->new TripMap.Stop(i.type(),i.name(),i.mapUrl())).toList())).toList(),
                 job.result().transport()==KakaoMapClient.Transport.CAR);
             model.addAttribute("route",route); model.addAttribute("mapJson",mapper.writeValueAsString(route));
+            // 지역 대표 음식 안내(SFR-17-01). 공식 출처로 확인한 지역만 보여 준다.
+            model.addAttribute("foods",RegionalFoods.of(job.result().destination()).orElse(null));
         }
         // 내 일정 저장은 회원만 할 수 있어 화면에서 로그인 여부를 구분한다.
         model.addAttribute("loggedIn",principal!=null);
