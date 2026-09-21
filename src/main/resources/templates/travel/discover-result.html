@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>탐색한 여행 취향 | 국내여행</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="travel">
+    <a class="back-link" th:href="@{/travel/conditions/discover}">← 선택 다시 고르기</a>
+    <p class="eyebrow">여행 준비 · 취향 탐색 결과</p>
+    <h1>이번 여행에서 끌리는 취향이에요</h1>
+    <p class="help" th:text="${'답한 질문 ' + result.answered + '개 · 건너뛴 질문 ' + result.skipped + '개'}"></p>
+
+    <div class="notice" role="alert" th:if="${existingNames != null}">
+        <p th:text="${'조건 입력에서 직접 고른 여행 취향(' + (existingNames.isEmpty() ? '없음' : #strings.listJoin(existingNames, ', ')) + ')과 탐색 결과(' + (chosenNames.isEmpty() ? '없음' : #strings.listJoin(chosenNames, ', ')) + ')가 달라요. 어떻게 반영할까요?'}"></p>
+    </div>
+
+    <section class="condition-section" th:if="${result.empty()}">
+        <h2>도출된 취향이 없어요</h2>
+        <p>모든 질문을 건너뛰었거나 '상관없음'을 골라서 취향을 정하지 않았어요. 임의로 취향을 만들지 않고 기존 조건 입력으로 진행해요.</p>
+    </section>
+
+    <form method="post" th:action="@{/travel/conditions/discover/apply}">
+        <section class="condition-section" th:if="${!result.empty()}">
+            <h2>도출된 취향과 근거</h2>
+            <p class="help">고른 장면에 붙은 취향마다 1점씩 더했어요. 점수가 높은 순으로 최대 3개를 미리 골라 두었어요. 점수가 같으면 바다·자연·휴식·맛집·문화·역사·체험 순서로 골랐으니 확인하고 바꿔 주세요.</p>
+            <article class="place-row" th:each="p : ${result.preferences}">
+                <h3 th:text="${p.name + ' · ' + p.score + '점'}"></h3>
+                <ul class="help"><li th:each="r : ${p.reasons}" th:text="${'고른 장면: ' + r}"></li></ul>
+            </article>
+        </section>
+        <fieldset class="condition-section theme-choices">
+            <legend>이번 여행의 여행 취향으로 반영할 항목</legend>
+            <label th:each="t : ${themes}"><input type="checkbox" name="themes" th:value="${t.selectionValue}" th:checked="${preselected.contains(t.selectionValue)}"><span th:text="${t.name}"></span></label>
+        </fieldset>
+        <p class="help">확정한 취향은 조건 입력의 '여행 취향'으로 들어가고, 여행지 추천 이유에 어떻게 연결되는지 함께 보여 드려요. 성격을 판단하는 결과는 아니에요.</p>
+        <div class="form-actions" th:if="${existingNames == null}">
+            <button type="submit">이 취향으로 조건 입력 계속하기</button>
+        </div>
+        <div class="form-actions" th:if="${existingNames != null}">
+            <button type="submit" name="resolve" value="replace">탐색 결과로 바꾸기</button>
+            <button type="submit" name="resolve" value="merge" class="button-quiet">둘 다 반영하기</button>
+            <button type="submit" name="resolve" value="keep" class="button-quiet">직접 고른 취향 유지하기</button>
+        </div>
+    </form>
+    <form method="post" th:action="@{/travel/conditions/discover/reset}">
+        <div class="form-actions"><button type="submit" class="button-quiet">처음부터 다시 탐색하기</button></div>
+    </form>
+</main>
+</body>
+</html>

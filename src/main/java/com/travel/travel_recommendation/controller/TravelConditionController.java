@@ -22,6 +22,8 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/travel/conditions")
 public class TravelConditionController {
     public static final String DRAFT_KEY = "travelConditionDraft";
+    /** 취향 탐색 결과로 미리 채운 입력값. 검증 전이므로 초안(DRAFT_KEY)으로 쓰지 않는다. */
+    public static final String PREFILL_KEY = "travelConditionPrefill";
     private final TravelConditionOptions options;
     private final TravelConditionValidator validator;
     private final TravelConditionService service;
@@ -52,7 +54,8 @@ public class TravelConditionController {
 
     @GetMapping
     String input(HttpSession session, Model model) {
-        Object draft = session.getAttribute(DRAFT_KEY);
+        Object prefill = session.getAttribute(PREFILL_KEY);
+        Object draft = prefill != null ? prefill : session.getAttribute(DRAFT_KEY);
         model.addAttribute("travelForm", draft != null ? draft : new TravelConditionForm());
         return "travel/conditions";
     }
@@ -68,6 +71,7 @@ public class TravelConditionController {
         TravelConditionForm draft = service.createDraft(form, choices);
         synchronized (session) {
             session.setAttribute(DRAFT_KEY, draft);
+            session.removeAttribute(PREFILL_KEY);
             session.removeAttribute(TravelConditionReviewController.REVIEW_KEY);
             session.removeAttribute(TravelConditionReviewController.CONFIRMED_KEY);
         }
@@ -79,6 +83,7 @@ public class TravelConditionController {
         Object draft = session.getAttribute(DRAFT_KEY);
         if (draft == null) return "redirect:/travel/conditions";
         model.addAttribute("travelForm", draft);
+        model.addAttribute("discoveredThemes", session.getAttribute(PreferenceDiscoveryController.APPLIED_KEY));
         return "travel/condition-check";
     }
 }

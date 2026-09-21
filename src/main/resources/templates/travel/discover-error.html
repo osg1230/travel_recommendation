@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>취향 탐색 안내 | 국내여행</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="travel">
+    <h1>취향 탐색을 진행하지 못했어요</h1>
+    <p class="intro" role="alert" th:text="${message}"></p>
+    <p><a th:href="@{/travel/conditions/discover}">취향 탐색 다시 하기</a></p>
+    <a th:href="@{/travel/conditions}">조건 직접 입력하기</a>
+</main>
+</body>
+</html>

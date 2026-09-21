@@ -17,6 +17,8 @@
     </div>
     <div th:if="${job.status == 'COMPLETED'}">
         <p class="help">확정 조건과 지역 소개를 바탕으로 AI가 작성한 추천이에요. 실제 비용·영업시간·이동 가능 여부를 보장하지 않으며, 방문 전 공식 정보를 확인해 주세요.</p>
+        <p class="notice" th:if="${themes != null and !themes.isEmpty()}"
+           th:text="${'반영한 여행 취향: ' + #strings.listJoin(themes, ', ') + ' · 각 추천 이유에 취향과 지역이 어떻게 연결되는지 적었어요. 연결 근거가 부족하면 이유에 그렇게 밝혀요.'}"></p>
         <section class="destination-candidate" th:each="item : ${job.recommendations}">
             <h2 th:text="${item.rank + '순위 · ' + item.destination.name}"></h2>
             <p th:text="${item.destination.region}"></p>

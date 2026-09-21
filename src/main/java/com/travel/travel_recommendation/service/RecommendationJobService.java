@@ -99,6 +99,13 @@ public class RecommendationJobService {
     @Transactional(timeout=10)
     public void cleanup() { jobs.deleteExpiredGuests(now()); }
 
+    /** 추천에 전달한 여행 취향 이름. 결과 화면에서 추천 이유와 연결해 보여 준다(SFR-02-06). */
+    @Transactional(readOnly=true, timeout=10)
+    public List<String> themes(UUID id,String loginId,byte[] guestHash) {
+        var conditions=mapper.readValue(owned(id,loginId,guestHash,"RECOMMENDATION").getRequestJson(),ConfirmedTravelConditions.class);
+        return conditions.selectedKeywords().stream().filter(k->"THEME".equals(k.categoryCode())).map(TravelKeyword::name).toList();
+    }
+
     private Long activeUser(String loginId) {
         if(loginId==null) return null;
         return users.findByLoginId(loginId).filter(u->u.getStatus()==UserStatus.ACTIVE)

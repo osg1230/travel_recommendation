@@ -57,6 +57,7 @@ public class RecommendationJobController {
     @GetMapping("/{id}")
     String page(@PathVariable UUID id,Principal principal,HttpSession session,Model model) {
         model.addAttribute("job",service().view(id,principal==null?null:principal.getName(),guestHash(session,false)));
+        model.addAttribute("themes",service().themes(id,principal==null?null:principal.getName(),guestHash(session,false)));
         model.addAttribute("confirmationToken",session.getAttribute(CONFIRMATION_TOKEN));
         return "travel/recommendation-job";
     }
