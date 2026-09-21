@@ -67,6 +67,28 @@
 </div>
 </article></section>
 
+<section class="condition-section" th:if="${job.result.lodging != null}" aria-labelledby="lodging-title">
+<h2 id="lodging-title">숙소 추천</h2>
+<p th:text="${job.result.lodging.reason}"></p>
+<article class="place-row" th:each="stay, st : ${job.result.lodging.options}">
+<h3 th:text="${(st.index == 0 ? '일정에 넣은 숙소 · ' : (st.index + 1) + '순위 · ') + stay.name}"></h3>
+<p class="help" th:text="${(stay.subtype == null ? '' : stay.subtype + ' · ') + stay.address}"></p>
+<p th:text="${'관광지와 평균 직선거리 약 ' + stay.averageKilometers + 'km'}"></p>
+<div class="place-links">
+<a th:href="${stay.mapUrl}" target="_blank" rel="noopener noreferrer">지도에서 보기 (새 창)</a>
+<a th:href="${stay.sourceUrl}" target="_blank" rel="noopener noreferrer">숙소 출처 확인 (새 창)</a>
+</div>
+</article>
+<p class="help">직선거리는 동선을 가늠하기 위한 근사값이에요. 객실 요금·예약 가능 여부·체크인 시간은 숙소 출처에서 확인해 주세요.</p>
+</section>
+
+<section class="condition-section" th:if="${foods != null}" aria-labelledby="foods-title">
+<h2 id="foods-title" th:text="${foods.region + ' 대표 ' + (foods.snack ? '간식' : '음식')}"></h2>
+<p th:text="${foods.joined()}"></p>
+<p class="help">지역 공식 관광 자료에 소개된 음식이에요. 일정에 넣은 음식점에서 파는지는 음식점 출처에서 확인해 주세요.</p>
+<div class="place-links"><a th:each="source : ${foods.sources}" th:href="${source.url}" th:text="${source.name + ' (새 창)'}" target="_blank" rel="noopener noreferrer"></a></div>
+</section>
+
 <section class="condition-section" th:if="${job.result.nearby != null}" aria-labelledby="nearby-title">
 <h2 id="nearby-title">주변 지역도 둘러보기</h2>
 <p th:text="${job.result.nearby.reason}"></p>

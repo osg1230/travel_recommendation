@@ -65,16 +65,30 @@ public final class ItineraryPlan {
     /** 오늘 운행하는 직행 시외버스 요약. 여행 당일 시간표와 다를 수 있다(SFR-06-06). */
     public record BusInfo(LocalDate serviceDate, int trips, LocalTime firstDeparture, LocalTime lastDeparture, Integer minCharge) {}
     public record NearbyAttraction(Long placeId, String name, String subtype, String description, String address, String sourceUrl) {}
-    public record Result(String destination, List<Day> days, Transport transport, Instant createdAt, Assist assist, Nearby nearby) {
-        // 보조 안내를 붙이기 전의 초안과 이전 작업 JSON은 assist·nearby 없이 그대로 사용한다.
+    /**
+     * 숙소 추천(SFR-05-02·03). 관광지와의 평균 직선거리가 짧은 순서로 후보를 보여 주고, 첫 후보를 일정의 숙소로 쓴다.
+     * 직선거리는 동선 판단용 근사값이며 실제 이동시간·가격·예약 가능 여부를 뜻하지 않는다.
+     */
+    public record Lodging(Long chosenPlaceId, String reason, List<StayOption> options) {
+        public Lodging { options = options == null ? List.of() : List.copyOf(options); }
+    }
+    public record StayOption(Long placeId, String name, String subtype, String address, double averageKilometers,
+                             String sourceUrl, String mapUrl) {}
+    public record Result(String destination, List<Day> days, Transport transport, Instant createdAt, Assist assist, Nearby nearby,
+                         Lodging lodging) {
+        // 보조 안내를 붙이기 전의 초안과 이전 작업 JSON은 assist·nearby·lodging 없이 그대로 사용한다.
         public Result(String destination, List<Day> days, Transport transport, Instant createdAt) {
-            this(destination, days, transport, createdAt, null, null);
+            this(destination, days, transport, createdAt, null, null, null);
         }
         public Result(String destination, List<Day> days, Transport transport, Instant createdAt, Assist assist) {
-            this(destination, days, transport, createdAt, assist, null);
+            this(destination, days, transport, createdAt, assist, null, null);
         }
-        public Result withAssist(Assist assist) { return new Result(destination, days, transport, createdAt, assist, nearby); }
-        public Result withNearby(Nearby nearby) { return new Result(destination, days, transport, createdAt, assist, nearby); }
+        public Result(String destination, List<Day> days, Transport transport, Instant createdAt, Assist assist, Nearby nearby) {
+            this(destination, days, transport, createdAt, assist, nearby, null);
+        }
+        public Result withAssist(Assist assist) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging); }
+        public Result withNearby(Nearby nearby) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging); }
+        public Result withLodging(Lodging lodging) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging); }
     }
     public record View(UUID id, String status, String message, boolean pending, Input input, Result result) {}
 }
