@@ -7,6 +7,7 @@ import org.springframework.data.repository.Repository;
 public interface PlaceRepository extends Repository<Place,Long> {
     Place save(Place place);
     void flush();
+    List<Place> findAllById(Iterable<Long> ids);
     Optional<Place> findBySourceProviderAndSourcePlaceId(String provider,String sourceId);
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from Place p where p.id=:id and p.placeType='DESTINATION'")

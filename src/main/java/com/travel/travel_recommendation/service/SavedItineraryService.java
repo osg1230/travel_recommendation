@@ -204,7 +204,7 @@ public class SavedItineraryService {
         return new SavedItinerary.Item(item.getItemType(),typeName(item.getItemType()),
             item.getStartAt().toLocalTime(),item.getEndAt().toLocalTime(),
             snapshot.path("name").asText(item.getActivity()),snapshot.path("note").asText(""),
-            snapshot.path("mapUrl").asText(""),snapshot.path("sourceUrl").asText(""),item.getTravelMinutes());
+            snapshot.path("mapUrl").asText(""),snapshot.path("sourceUrl").asText(""),item.getTravelMinutes(),item.getPlaceId());
     }
     private Map<String,Object> snapshot(UUID jobId, Input input, Result result) {
         var destination=input.places().destination();

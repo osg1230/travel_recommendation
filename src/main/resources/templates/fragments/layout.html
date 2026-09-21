@@ -54,6 +54,7 @@
     <a th:href="@{/my/itineraries}" th:classappend="${current == 'itineraries' ? 'active' : ''}" th:attr="aria-current=${current == 'itineraries' ? 'page' : null}">저장한 일정</a>
     <a th:href="@{/my/recommendations}" th:classappend="${current == 'recommendations' ? 'active' : ''}" th:attr="aria-current=${current == 'recommendations' ? 'page' : null}">추천 이력</a>
     <a th:href="@{/my/favorites}" th:classappend="${current == 'favorites' ? 'active' : ''}" th:attr="aria-current=${current == 'favorites' ? 'page' : null}">즐겨찾기</a>
+    <a th:href="@{/my/ratings}" th:classappend="${current == 'ratings' ? 'active' : ''}" th:attr="aria-current=${current == 'ratings' ? 'page' : null}">내 평가</a>
 </nav>
 </body>
 </html>

@@ -69,6 +69,10 @@
         <p class="help" th:if="${place.sourceProvider == 'KAKAO'}">카카오 검색 · 주소와 좌표 확인 · 영업 여부 확인 필요</p>
         <p th:text="${place.description}"></p>
         <p th:text="${place.address}"></p>
+        <th:block th:with="summary=${ratingSummaries.get(place.placeId)}">
+        <p class="rating-summary" th:if="${summary != null}"
+           th:text="${'★ ' + summary.average + ' · 평가 ' + summary.count + '개' + (summary.topTags.isEmpty() ? '' : ' · ' + #strings.listJoin(summary.topTags.![name], ', '))}"></p>
+        </th:block>
         <div th:if="${place.operatingInfo != null}">
             <p class="help" th:text="${'한국관광공사 운영정보 · 조회 ' + place.operatingInfo.fetchedAt + ' · 24시간 이후 재조회 필요'}"></p>
             <p th:text="${'운영시간: ' + (#strings.isEmpty(place.operatingInfo.hours) ? '정보 없음' : place.operatingInfo.hours)}"></p>

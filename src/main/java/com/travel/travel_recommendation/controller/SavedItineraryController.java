@@ -20,6 +20,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 @RequestMapping("/my/itineraries")
 public class SavedItineraryController {
     private final ObjectProvider<SavedItineraryService> services;
+    private final ObjectProvider<com.travel.travel_recommendation.service.PlaceRatingService> ratings;
     private final tools.jackson.databind.ObjectMapper mapper;
 
     @PostMapping
@@ -49,6 +50,11 @@ public class SavedItineraryController {
                 .map(i->new com.travel.travel_recommendation.service.TripMap.Stop(i.type(),i.name(),i.mapUrl())).toList())).toList(),
             "자동차".equals(itinerary.transportName()));
         model.addAttribute("route",route); model.addAttribute("mapJson",mapper.writeValueAsString(route));
+        // 다녀온 장소마다 평가 요약과 평가하기 링크를 보여 준다(SFR-10).
+        var rating=ratings.getIfAvailable();
+        model.addAttribute("ratingSummaries",rating==null?java.util.Map.of():rating.summaries(itinerary.days().stream()
+            .flatMap(d->d.items().stream()).filter(i->i.placeId()!=null && java.util.Set.of("VISIT","MEAL","STAY").contains(i.type()))
+            .map(com.travel.travel_recommendation.dto.SavedItinerary.Item::placeId).toList()));
         return "my/itinerary";
     }
 

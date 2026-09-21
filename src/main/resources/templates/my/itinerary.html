@@ -29,8 +29,15 @@
             <h3 th:text="${item.name}"></h3>
             <p style="white-space: pre-line" th:text="${item.note}"></p>
             <p class="help" th:if="${item.travelMinutes != null}" th:text="${'저장 당시 예상 이동시간 약 ' + item.travelMinutes + '분'}"></p>
+            <th:block th:if="${item.placeId != null and (item.type == 'VISIT' or item.type == 'MEAL' or item.type == 'STAY')}"
+                      th:with="summary=${ratingSummaries.get(item.placeId)}">
+                <p class="rating-summary" th:if="${summary != null}"
+                   th:text="${'★ ' + summary.average + ' · 평가 ' + summary.count + '개' + (summary.topTags.isEmpty() ? '' : ' · ' + #strings.listJoin(summary.topTags.![name], ', '))}"></p>
+            </th:block>
             <div class="place-links">
                 <a th:if="${!#strings.isEmpty(item.mapUrl)}" th:href="${item.mapUrl}" target="_blank" rel="noopener noreferrer">위치 보기 (새 창)</a>
+                <a th:if="${item.placeId != null and (item.type == 'VISIT' or item.type == 'MEAL' or item.type == 'STAY')}"
+                   th:href="@{/my/ratings/{placeId}(placeId=${item.placeId},returnTo=${'/my/itineraries/' + itinerary.summary.id})}">이 장소 평가하기</a>
                 <a th:if="${route.links.get(day.number + '-' + st.index) != null}" th:href="${route.links.get(day.number + '-' + st.index)}"
                    target="_blank" rel="noopener noreferrer">이 구간 길찾기 · 카카오맵 (새 창)</a>
                 <a th:if="${item.type != 'TRANSIT' and !#strings.isEmpty(item.sourceUrl)}" th:href="${item.sourceUrl}"

@@ -9,7 +9,12 @@ public final class SavedItinerary {
     public record Summary(Long id, String title, String destination, LocalDate startDate, LocalDate endDate,
                           int dayCount, LocalDateTime savedAt) {}
     public record Item(String type, String typeName, LocalTime start, LocalTime end, String name,
-                       String note, String mapUrl, String sourceUrl, Integer travelMinutes) {}
+                       String note, String mapUrl, String sourceUrl, Integer travelMinutes, Long placeId) {
+        public Item(String type, String typeName, LocalTime start, LocalTime end, String name,
+                    String note, String mapUrl, String sourceUrl, Integer travelMinutes) {
+            this(type, typeName, start, end, name, note, mapUrl, sourceUrl, travelMinutes, null);
+        }
+    }
     public record Day(int number, LocalDate date, List<Item> items) {}
     /** editableJobId는 수정안을 만들 수 있는 원래 초안(만료 전)이다. version은 수정안 적용 시 덮어쓰기 충돌을 막는 값이다. */
     public record Detail(Summary summary, String transportName, List<Day> days, java.util.UUID editableJobId, String version) {

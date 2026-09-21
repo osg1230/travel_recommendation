@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${form.place.name + ' 평가 | 다녀올게'}">장소 평가 | 다녀올게</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+    <script defer th:src="@{/js/rating-form.js}"></script>
+</head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="travel">
+    <nav th:replace="~{fragments/layout :: myNav('ratings')}"></nav>
+    <a class="back-link" th:href="${returnTo != null ? returnTo : '/my/ratings'}">← 돌아가기</a>
+    <p class="eyebrow">내 여행 · 장소 평가</p>
+    <h1>장소 평가</h1>
+    <p class="intro">다녀온 장소에 별점과 태그를 남겨 다른 사람이 여행을 고를 때 참고할 수 있게 해 주세요.</p>
+    <p role="status" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
+
+    <section class="card rating-place">
+        <p class="help"><span class="type-chip" th:text="${form.place.typeName}"></span></p>
+        <h2 th:text="${form.place.name}"></h2>
+        <p class="help" th:text="${form.place.address}"></p>
+        <p class="rating-summary" th:if="${form.summary.count > 0}"
+           th:text="${'★ ' + form.summary.average + ' · 평가 ' + form.summary.count + '개' + (form.summary.topTags.isEmpty() ? '' : ' · 많이 고른 태그: ' + #strings.listJoin(form.summary.topTags.![name], ', '))}"></p>
+        <p class="help" th:unless="${form.summary.count > 0}">아직 이 장소의 평가가 없어요.</p>
+    </section>
+
+    <form class="card" method="post" th:action="@{/my/ratings/{id}(id=${form.place.placeId})}">
+        <input type="hidden" name="returnTo" th:value="${returnTo}" th:if="${returnTo != null}">
+        <p class="notice" th:if="${form.mine != null}" th:text="${'이미 평가한 장소예요. 저장하면 이전 평가(' + form.mine.score + '점)를 새 선택으로 바꿔요.'}"></p>
+        <fieldset class="star-input">
+            <legend>1. 별점 (필수)</legend>
+            <th:block th:each="n : ${#numbers.sequence(5,1,-1)}">
+                <input type="radio" name="score" th:id="${'score-' + n}" th:value="${n}" th:checked="${form.mine != null and form.mine.score == n}" required>
+                <label th:for="${'score-' + n}" th:title="${n + '점'}"><span aria-hidden="true">★</span><span class="visually-hidden" th:text="${n + '점'}"></span></label>
+            </th:block>
+        </fieldset>
+        <fieldset class="tag-choices" th:attr="data-max-tags=${maxTags}">
+            <legend th:text="${'2. 태그 (선택, 최대 ' + maxTags + '개)'}"></legend>
+            <label th:each="t : ${form.tags}"><input type="checkbox" name="tags" th:value="${t.id}"
+                   th:checked="${form.mine != null and form.mine.tagIds.contains(t.id)}"><span th:text="${t.name}"></span></label>
+        </fieldset>
+        <p class="help">제목이나 글은 남기지 않고 별점과 태그만 저장해요. 다른 사람에게는 평균 별점과 많이 고른 태그만 보이고 누가 평가했는지는 보이지 않아요.</p>
+        <div class="form-actions">
+            <button type="submit" th:text="${form.mine == null ? '평가 등록' : '평가 바꾸기'}"></button>
+            <a class="button button-quiet" th:href="${returnTo != null ? returnTo : '/my/ratings'}">취소</a>
+        </div>
+    </form>
+    <form th:if="${form.mine != null}" method="post" th:action="@{/my/ratings/{id}/delete(id=${form.place.placeId})}"
+          onsubmit="return confirm('이 장소 평가를 삭제할까요?');">
+        <div class="form-actions"><button type="submit" class="button-quiet">내 평가 삭제</button></div>
+    </form>
+</main>
+</body>
+</html>

@@ -27,6 +27,7 @@ public class PlaceCandidateController {
     private final ObjectProvider<PlaceOperatingService> operatingServices;
     private final ObjectProvider<com.travel.travel_recommendation.service.FavoriteService> favoriteServices;
     private final tools.jackson.databind.ObjectMapper mapper;
+    private final ObjectProvider<com.travel.travel_recommendation.service.PlaceRatingService> ratings;
 
     @PostMapping("/{id}/destinations/{destinationId}/places/{placeId}/operating-info")
     @ResponseStatus(HttpStatus.SEE_OTHER)
@@ -96,6 +97,12 @@ public class PlaceCandidateController {
         model.addAttribute("places", places);
         // 관광지·숙소 위치를 지도에 표시한다(SFR-11-01).
         model.addAttribute("mapJson", mapper.writeValueAsString(com.travel.travel_recommendation.service.TripMap.places(places)));
+        // 장소별 평균 별점·평가 수·많이 고른 태그(SFR-10-02). 비회원도 볼 수 있다.
+        var rating = ratings.getIfAvailable();
+        var ids = new java.util.ArrayList<Long>();
+        places.attractions().forEach(p -> ids.add(p.placeId())); places.restaurants().forEach(p -> ids.add(p.placeId()));
+        places.accommodations().forEach(p -> ids.add(p.placeId()));
+        model.addAttribute("ratingSummaries", rating == null ? java.util.Map.of() : rating.summaries(ids));
         // 즐겨찾기는 회원 기능이라 로그인 여부와 이미 등록한 장소만 화면에 전달한다.
         var favorites = favoriteServices.getIfAvailable();
         model.addAttribute("loggedIn", principal != null);

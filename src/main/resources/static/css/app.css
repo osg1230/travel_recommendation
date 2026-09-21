@@ -254,6 +254,23 @@ tbody tr:last-child td { border-bottom: 0; }
 .steps-list li::before { content: counter(step); display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-bottom: 6px; border-radius: 50%; background: var(--brand-soft); color: var(--brand-strong); font-weight: 800; }
 .steps-list strong { color: var(--text); font-size: 15px; }
 
+/* 장소 평가: 별 모양 라디오(DOM은 5점부터, 화면은 1~5점 순), 태그 칩, 요약 */
+.star-input { display: flex; flex-wrap: wrap; flex-direction: row-reverse; justify-content: flex-end; gap: 4px; border: 0; padding: 0; margin: 0 0 18px; }
+.star-input legend { width: 100%; font-weight: 700; margin-bottom: 8px; }
+.star-input input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.star-input label { margin: 0; font-size: 36px; line-height: 1; color: var(--line-strong); cursor: pointer; }
+.star-input input:checked ~ label, .star-input label:hover, .star-input label:hover ~ label { color: #f59e0b; }
+.star-input input:focus-visible + label { outline: 3px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
+.tag-choices { display: flex; flex-wrap: wrap; gap: 8px; border: 0; padding: 0; margin: 0 0 12px; }
+.tag-choices legend { width: 100%; font-weight: 700; margin-bottom: 8px; }
+.tag-choices label { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 8px 14px; border: 1px solid var(--line-strong); border-radius: 999px; font-size: 14px; font-weight: 600; cursor: pointer; background: var(--surface); }
+.tag-choices label:has(input:checked) { background: var(--brand-strong); border-color: var(--brand-strong); color: #fff; }
+.tag-choices label:has(input:disabled) { opacity: .45; cursor: not-allowed; }
+.type-chip { display: inline-block; padding: 2px 10px; border-radius: 999px; background: var(--brand-soft); color: var(--brand-strong); font-size: 12px; font-weight: 700; }
+.rating-summary { margin: 8px 0 0; font-weight: 600; color: #92400e; }
+.rating-stars { color: #f59e0b; letter-spacing: 1px; }
+.rating-stars span + span { margin-left: 6px; color: var(--text-muted); letter-spacing: 0; font-size: 14px; }
+
 /* 여행 준비 단계 표시 */
 .flow-steps { margin: 0 0 18px; }
 .flow-steps ol { display: flex; gap: 6px; margin: 0; padding: 0; list-style: none; overflow-x: auto; }
