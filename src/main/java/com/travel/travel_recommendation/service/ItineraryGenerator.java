@@ -36,7 +36,7 @@ public class ItineraryGenerator {
                 try { locations.put(stay.placeId(),locate(stay,addresses)); }
                 catch(RecommendationException error) { if("SCHEDULE_TIMEOUT".equals(error.getCode())) throw error; lastError=error; }
             }
-            lodging=rankLodging(places,locations);
+            lodging=rankLodging(places,locations,input.constraints()==null?null:input.constraints().stayTier());
             if(lodging==null) throw lastError!=null?lastError:failure("INSUFFICIENT_PLACES","숙소 후보의 위치를 확인하지 못했어요. 다른 지역을 선택해 주세요.");
             Long chosen=lodging.chosenPlaceId();
             hotel=places.accommodations().stream().filter(p->p.placeId().equals(chosen)).findFirst().orElseThrow();
@@ -102,6 +102,34 @@ public class ItineraryGenerator {
      * 거리가 같으면 후보 목록 순서를 따른다. 위치를 확인한 후보가 없으면 null이다.
      */
     static Lodging rankLodging(PlaceCandidateView places,Map<Long,KakaoMapClient.Location> locations) {
+        return rankLodging(places,locations,null);
+    }
+
+    /**
+     * stayTier(숙소 예산대, SFR-03-03)를 골랐으면 그 유형의 숙소를 먼저 두고, 없으면 전체 후보에서 고른다.
+     * 예산대는 숙소 유형 기준이며 요금을 비교한 것이 아니다.
+     */
+    static Lodging rankLodging(PlaceCandidateView places,Map<Long,KakaoMapClient.Location> locations,String stayTier) {
+        var ranked=rankByDistance(places,locations);
+        if(ranked==null || stayTier==null) return ranked;
+        var tier=BudgetGuide.StayTier.valueOf(stayTier);
+        Set<Long> matching=new HashSet<>();
+        for(var stay:places.accommodations())
+            if(BudgetGuide.StayTier.of(stay.subtype(),stay.name()).filter(tier::equals).isPresent()) matching.add(stay.placeId());
+        // 전체 순위를 다시 계산하지 않고, 같은 거리 순서 안에서 예산대에 맞는 숙소를 앞으로 옮긴다.
+        var all=rankByDistance(places,locations,Integer.MAX_VALUE);
+        var preferred=all.stream().filter(o->matching.contains(o.placeId())).toList();
+        if(preferred.isEmpty())
+            return new Lodging(ranked.chosenPlaceId(),"고른 숙소 예산대("+tier.getLabel()+")의 숙소가 후보에 없어 전체 후보에서 골랐어요. "+ranked.reason(),ranked.options());
+        List<StayOption> ordered=new ArrayList<>(preferred);
+        all.stream().filter(o->!matching.contains(o.placeId())).forEach(ordered::add);
+        var best=ordered.getFirst();
+        String reason="고른 숙소 예산대("+tier.getLabel()+") 숙소 "+preferred.size()+"곳 중 방문할 관광지 "+places.attractions().size()
+            +"곳과의 평균 직선거리가 약 "+best.averageKilometers()+"km로 가장 가까워요.";
+        return new Lodging(best.placeId(),reason,ordered.subList(0,Math.min(3,ordered.size())));
+    }
+
+    private static List<StayOption> rankByDistance(PlaceCandidateView places,Map<Long,KakaoMapClient.Location> locations,int limit) {
         List<StayOption> options=new ArrayList<>();
         for(var stay:places.accommodations()) {
             var at=locations.get(stay.placeId());
@@ -111,8 +139,14 @@ public class ItineraryGenerator {
             double average=Math.round(total/places.attractions().size()*10)/10.0;
             options.add(new StayOption(stay.placeId(),stay.name(),stay.subtype(),stay.address(),average,stay.sourceUrl(),stay.mapSearchUrl()));
         }
-        if(options.isEmpty()) return null;
         options.sort(Comparator.comparingDouble(StayOption::averageKilometers));
+        return options.subList(0,Math.min(limit,options.size()));
+    }
+
+    // 예산대를 고르지 않았을 때: 거리 순서 그대로 첫 숙소를 쓴다. 위치를 확인한 후보가 없으면 null이다.
+    private static Lodging rankByDistance(PlaceCandidateView places,Map<Long,KakaoMapClient.Location> locations) {
+        var options=rankByDistance(places,locations,Integer.MAX_VALUE);
+        if(options.isEmpty()) return null;
         var best=options.getFirst();
         String reason=options.size()==1
             ?"확인된 숙소 후보가 1곳이라 골랐어요. 방문할 관광지 "+places.attractions().size()+"곳과의 평균 직선거리는 약 "+best.averageKilometers()+"km예요."

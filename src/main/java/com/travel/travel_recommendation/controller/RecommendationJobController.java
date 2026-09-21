@@ -2,6 +2,8 @@ package com.travel.travel_recommendation.controller;
 
 import com.travel.travel_recommendation.dto.*;
 import com.travel.travel_recommendation.service.RecommendationJobService;
+import com.travel.travel_recommendation.service.BudgetGuide;
+import com.travel.travel_recommendation.service.BudgetGuideService;
 import com.travel.travel_recommendation.service.DestinationRecommendationService;
 import jakarta.servlet.http.HttpSession;
 import java.nio.charset.StandardCharsets;
@@ -22,6 +24,7 @@ import static com.travel.travel_recommendation.controller.TravelConditionReviewC
 public class RecommendationJobController {
     private final ObjectProvider<RecommendationJobService> services;
     private final ObjectProvider<DestinationRecommendationService> recommendations;
+    private final ObjectProvider<BudgetGuideService> budgetGuides;
     private static final String GUEST_TOKEN="recommendationGuestToken";
     private static final String LAST_JOB="lastRecommendationJob";
     private record Submission(String token, String loginId, UUID jobId) {}
@@ -56,9 +59,23 @@ public class RecommendationJobController {
 
     @GetMapping("/{id}")
     String page(@PathVariable UUID id,Principal principal,HttpSession session,Model model) {
-        model.addAttribute("job",service().view(id,principal==null?null:principal.getName(),guestHash(session,false)));
-        model.addAttribute("themes",service().themes(id,principal==null?null:principal.getName(),guestHash(session,false)));
+        String login=principal==null?null:principal.getName();
+        var job=service().view(id,login,guestHash(session,false));
+        model.addAttribute("job",job);
+        model.addAttribute("themes",service().themes(id,login,guestHash(session,false)));
         model.addAttribute("confirmationToken",session.getAttribute(CONFIRMATION_TOKEN));
+        // 예산을 입력하지 않았으면 전국 평균 지출액과 여행지별 숙소 유형(예산대)을 함께 보여 준다(SFR-03-03).
+        var conditions=service().conditions(id,login,guestHash(session,false));
+        var guides=budgetGuides.getIfAvailable();
+        if(conditions.budget()==null && guides!=null) {
+            boolean overnight=(conditions.durationDays()!=null && conditions.durationDays()>1) || Boolean.TRUE.equals(conditions.accommodationNeeded());
+            model.addAttribute("spending",BudgetGuide.NATIONAL_AVERAGE);
+            model.addAttribute("overnight",overnight);
+            List<DestinationCandidate> shown="COMPLETED".equals(job.status())
+                ?job.recommendations().stream().map(RankedDestination::destination).toList():job.candidates();
+            // 숙박이 필요한 여행에서만 숙소 예산대를 보여 준다. 당일 여행은 전국 평균만 안내한다.
+            if(overnight) model.addAttribute("budgetTiers",shown.stream().map(d->guides.tiers(d.name(),d.region())).toList());
+        }
         return "travel/recommendation-job";
     }
     @PostMapping("/{id}/recommend")

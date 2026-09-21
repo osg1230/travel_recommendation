@@ -84,6 +84,32 @@ class ItineraryGeneratorTests {
         assertThat(result.lodging().chosenPlaceId()).isEqualTo(5L);
         assertThat(result.lodging().reason()).contains("1곳이라");
     }
+    @Test void chosenStayTierComesFirstAndFallsBackWhenMissing() {
+        var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,null,2,true,false,List.of(),"");
+        // 가까운 호텔(5)과 먼 캠핑장(40). 절약형을 고르면 멀어도 캠핑장을 먼저 쓴다.
+        var hotel=new PlaceCandidate(5L,"가까운 호텔","강원 강릉시 경포로 5","호텔","소개","https://www.gn.go.kr/","https://map.kakao.com/",LocalDateTime.of(2026,9,1,0,0));
+        var camp=new PlaceCandidate(40L,"먼 캠핑장","강원 강릉시 경포로 40","여행 > 숙박 > 야영,캠핑장","소개","https://www.gn.go.kr/","https://map.kakao.com/",LocalDateTime.of(2026,9,1,0,0));
+        var pool=new PlaceCandidateView(UUID.randomUUID(),new DestinationCandidate(99L,"강릉","강원","소개","https://www.gn.go.kr/",LocalDateTime.of(2026,9,1,0,0)),2,true,
+            List.of(place(1),place(2)),List.of(hotel,camp),List.of(place(3)));
+        var budget=new Input(pool.jobId(),pool,conditions,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90,null,
+            new Constraints(List.of(),null,false,null,List.of(),"BUDGET"));
+        var result=generator.generate(budget);
+        assertThat(result.lodging().chosenPlaceId()).isEqualTo(40L);
+        assertThat(result.lodging().options()).extracting(StayOption::placeId).containsExactly(40L,5L);
+        assertThat(result.lodging().reason()).contains("절약형");
+        generator.validate(budget,result);
+        // 여유형 숙소가 없으면 전체 후보에서 가장 가까운 곳을 쓰고 그 사실을 알린다.
+        var comfort=new Input(pool.jobId(),pool,conditions,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90,null,
+            new Constraints(List.of(),null,false,null,List.of(),"COMFORT"));
+        var fallback=generator.generate(comfort);
+        assertThat(fallback.lodging().chosenPlaceId()).isEqualTo(5L);
+        assertThat(fallback.lodging().reason()).contains("여유형").contains("후보에 없어");
+    }
+    @Test void unknownStayTierIsRejected() {
+        var pool=List.of(place(1),place(2));
+        assertThatThrownBy(()->TripConstraints.select(pool,1,LocalTime.of(9,0),LocalTime.of(18,0),90,
+            new Constraints(List.of(),null,false,null,List.of(),"LUXURY"))).isInstanceOf(IllegalArgumentException.class);
+    }
     @Test void rejectsNotEnoughPlacesWithoutExternalCalls() {
         assertThatThrownBy(()->generator.generate(input(3,LocalTime.of(18,0)))).isInstanceOfSatisfying(RecommendationException.class,e->assertThat(e.getCode()).isEqualTo("INSUFFICIENT_PLACES"));
         verifyNoInteractions(maps);

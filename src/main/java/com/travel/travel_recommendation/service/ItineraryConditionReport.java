@@ -153,8 +153,15 @@ public final class ItineraryConditionReport {
     // 가격 자료를 모으지 않으므로 예산은 충족으로 확정하지 않는다.
     private static Check budget(Input input) {
         var budget = input.conditions().budget();
-        if (budget == null) return new Check("예산", Status.NOT_APPLICABLE, "예산을 입력하지 않았어요.");
         var c = input.constraints();
+        if (budget == null) {
+            // 예산 대신 숙소 예산대를 골랐으면 함께 적는다(SFR-03-03). 유형 기준이라 요금 충족은 판단하지 않는다.
+            // 예산대 이름(절약형·보통·여유형)은 모두 받침으로 끝나 조사 '을'을 쓴다.
+            if (c != null && c.stayTier() != null)
+                return new Check("예산", Status.NOT_APPLICABLE, "예산을 입력하지 않았어요. 숙소 예산대 '"
+                    + BudgetGuide.StayTier.valueOf(c.stayTier()).getLabel() + "'을 골랐어요(숙소 유형 기준, 요금 확인 필요).");
+            return new Check("예산", Status.NOT_APPLICABLE, "예산을 입력하지 않았어요.");
+        }
         String basis = c == null || c.budgetBasis() == null ? "기준 미확인" : "PER_PERSON".equals(c.budgetBasis()) ? "1인 기준" : "전체 기준";
         String scope = c == null || c.budgetIncludes().isEmpty() ? "포함 비용 미확인"
             : "포함: " + String.join("·", c.budgetIncludes().stream().map(TripConstraints.BUDGET_ITEMS::get).toList());

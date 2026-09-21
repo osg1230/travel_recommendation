@@ -25,10 +25,15 @@ public final class ItineraryPlan {
      * 아니면 가능한 경우에만 반영한다. 예산 기준·포함 비용은 가격 자료가 없어 확인 필요 표시에만 쓴다.
      */
     public record Constraints(List<Long> requiredPlaceIds, Integer dailyVisits, boolean dailyVisitsRequired,
-                              String budgetBasis, List<String> budgetIncludes) {
+                              String budgetBasis, List<String> budgetIncludes, String stayTier) {
         public Constraints {
             requiredPlaceIds = requiredPlaceIds == null ? List.of() : List.copyOf(requiredPlaceIds);
             budgetIncludes = budgetIncludes == null ? List.of() : List.copyOf(budgetIncludes);
+        }
+        // stayTier는 예산을 입력하지 않았을 때 고르는 숙소 예산대(SFR-03-03)다. 이전 작업 JSON에는 없다.
+        public Constraints(List<Long> requiredPlaceIds, Integer dailyVisits, boolean dailyVisitsRequired,
+                           String budgetBasis, List<String> budgetIncludes) {
+            this(requiredPlaceIds, dailyVisits, dailyVisitsRequired, budgetBasis, budgetIncludes, null);
         }
     }
     public record PlaceRef(Long placeId, String name) {}
