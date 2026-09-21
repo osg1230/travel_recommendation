@@ -70,6 +70,25 @@ public class IntercityBusClient {
         return found;
     }
 
+    public record Terminal(String id, String name) {}
+
+    /**
+     * 이름 일부로 찾은 터미널 목록(예: "서울" → 동서울·서울남부). 사용자가 입력한 출발지를 터미널로 바꿀 때 쓴다.
+     * 너무 많으면 사용자가 더 구체적으로 적도록 limit개까지만 돌려준다.
+     */
+    public List<Terminal> searchTerminals(String keyword, int limit) {
+        if (keyword == null || keyword.isBlank() || keyword.length() > 30 || limit < 1) throw invalid();
+        List<Terminal> result = new ArrayList<>();
+        for (var item : items(get("GetSuberbsBusTrminlList", "&pageNo=1&numOfRows=50&terminalNm="
+                + URLEncoder.encode(keyword.strip(), StandardCharsets.UTF_8)))) {
+            String id = text(item, "terminalId"), name = text(item, "terminalNm");
+            if (!id.matches("[A-Za-z0-9]{1,20}") || name.isBlank() || !name.contains(keyword.strip())) continue;
+            if (result.stream().noneMatch(t -> t.id().equals(id))) result.add(new Terminal(id, name));
+            if (result.size() == limit) break;
+        }
+        return List.copyOf(result);
+    }
+
     /** 오늘(date) 출발하는 직행 배차. 출발 시각 순서로 돌려준다. */
     public List<Trip> trips(String departureId, String arrivalId, LocalDate date) {
         if (departureId == null || arrivalId == null || date == null || departureId.equals(arrivalId)) throw invalid();

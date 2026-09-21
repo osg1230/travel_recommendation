@@ -4,6 +4,7 @@
 <body>
 <script defer th:src="@{/js/recommendation-job.js}"></script>
 <script defer th:src="@{/js/trip-map.js}"></script>
+<script defer th:src="@{/js/bus-guide.js}"></script>
 <header th:replace="~{fragments/layout :: header}"></header>
 <main class="travel">
 <nav th:replace="~{fragments/layout :: flowSteps(5)}"></nav>
@@ -74,7 +75,7 @@
 <h3 th:text="${region.name + ' · ' + (job.result.nearby.basis == 'CAR' ? '자동차' : '직행 시외버스') + ' 약 ' + region.minutes + '분'}"></h3>
 <p class="help" th:text="${region.region + ' · ' + region.route}"></p>
 <p th:text="${region.description}"></p>
-<p class="help" th:if="${region.bus != null}" th:text="${region.bus.serviceDate + ' 운행 기준 · 2시간 안에 도착하는 직행 ' + region.bus.trips + '회 · 첫차 ' + #temporals.format(region.bus.firstDeparture, 'HH:mm') + ' · 막차 ' + #temporals.format(region.bus.lastDeparture, 'HH:mm') + (region.bus.minCharge == null ? '' : ' · 요금 ' + #numbers.formatInteger(region.bus.minCharge, 1, 'COMMA') + '원부터')}"></p>
+<p class="help" th:if="${region.bus != null}" th:text="${#temporals.format(region.bus.serviceDate, 'yyyy-MM-dd') + ' 운행 기준 · 2시간 안에 도착하는 직행 ' + region.bus.trips + '회 · 첫차 ' + #temporals.format(region.bus.firstDeparture, 'HH:mm') + ' · 막차 ' + #temporals.format(region.bus.lastDeparture, 'HH:mm') + (region.bus.minCharge == null ? '' : ' · 요금 ' + #numbers.formatInteger(region.bus.minCharge, 1, 'COMMA') + '원부터')}"></p>
 <ul class="nearby-attractions" th:unless="${region.attractions.isEmpty()}">
 <li th:each="spot : ${region.attractions}">
 <strong th:text="${spot.name}"></strong> <span class="help" th:text="${spot.subtype}"></span>
@@ -86,6 +87,41 @@
 <a th:href="${region.sourceUrl}" target="_blank" rel="noopener noreferrer">지역 공식 관광 정보 (새 창)</a>
 </article>
 <p class="help">주변 지역은 일정에 넣지 않은 참고 추천이에요. 이동시간은 터미널 사이의 조회 시점 예상값이며 실시간 교통을 반영하지 않아요. 가려면 하루 시간을 조정하거나 일정을 나눠 계획해 주세요.</p>
+</section>
+
+<section class="condition-section" aria-labelledby="bus-title">
+<h2 id="bus-title">버스로 가는 방법 (시외버스)</h2>
+<p class="help">필요할 때만 조회해요. 여행지로 갈 때는 출발 도시를 적거나 내 위치로 찾고, 주변 지역으로 갈 때는 비워 두면 지금 여행지에서 출발하는 버스를 찾아요.</p>
+<p role="alert" th:if="${busError != null}" th:text="${busError}"></p>
+<div th:if="${busGuide != null}" class="bus-guide-result">
+<h3 th:text="${busGuide.from + ' → ' + busGuide.to}"></h3>
+<p class="notice" th:text="${'오늘(' + #temporals.format(busGuide.serviceDate, 'yyyy-MM-dd') + ') 운행 기준 정보예요.'
+    + (busGuide.futureTrip() ? ' 여행 날짜(' + #temporals.format(busGuide.tripDate, 'yyyy-MM-dd') + ')에는 배차·요금이 달라질 수 있으니 이용 전에 터미널이나 예매처에서 꼭 확인해 주세요.' : ' 이용 전에 터미널이나 예매처에서 확인해 주세요.')}"></p>
+<p th:if="${busGuide.message != null}" th:text="${busGuide.message}"></p>
+<article class="place-row" th:each="bus : ${busGuide.routes}">
+<h4 th:text="${bus.kind + ' · ' + bus.fromTerminal + ' → ' + bus.toTerminal}"></h4>
+<p th:text="${'직행 ' + bus.trips + '회 · 첫차 ' + #temporals.format(bus.firstDeparture, 'HH:mm') + ' · 막차 ' + #temporals.format(bus.lastDeparture, 'HH:mm') + ' · 가장 빠른 배차 약 ' + bus.fastestMinutes + '분'
+    + (bus.minCharge == null ? '' : ' · 요금 ' + #numbers.formatInteger(bus.minCharge, 1, 'COMMA') + '원부터')}"></p>
+</article>
+</div>
+<form method="post" th:action="@{/travel/recommendations/itineraries/{id}/bus-guide(id=${job.id})}" data-bus-guide>
+<label for="bus-to">도착 지역</label>
+<select id="bus-to" name="to">
+<option th:value="${job.result.destination}" th:text="${job.result.destination + ' (여행지)'}" th:selected="${busTo == null or busTo == job.result.destination}"></option>
+<th:block th:if="${job.result.nearby != null}">
+<option th:each="region : ${job.result.nearby.regions}" th:value="${region.name}" th:text="${region.name + ' (주변 지역)'}" th:selected="${busTo == region.name}"></option>
+</th:block>
+</select>
+<label for="bus-from">출발 도시·터미널 (선택)</label>
+<input id="bus-from" name="from" maxlength="20" placeholder="예) 동서울, 대전, 강릉" th:value="${busFrom}">
+<input type="hidden" name="longitude" disabled><input type="hidden" name="latitude" disabled>
+<div class="form-actions">
+<button type="submit">버스 찾기</button>
+<button type="button" class="button-quiet" data-bus-locate>내 위치로 찾기</button>
+</div>
+<p class="help" data-bus-status>'내 위치로 찾기'를 누르면 브라우저가 위치 권한을 물어요. 위치는 카카오 지도로 가까운 도시 이름을 확인하는 데만 쓰고 저장하지 않아요.</p>
+</form>
+<p class="help">국토교통부 TAGO 시외버스 정보의 오늘 배차예요. 등록되지 않은 노선도 있어 버스가 없다고 단정하지 않아요. 환승 경로와 좌석 여부는 안내하지 않아요.</p>
 </section>
 </th:block>
 
