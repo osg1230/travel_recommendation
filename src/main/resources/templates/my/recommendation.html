@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>추천 이력 상세 | 국내여행</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="travel">
+    <a class="back-link" th:href="@{/my/recommendations}">← 추천 이력 목록</a>
+    <p class="eyebrow">내 여행 · 추천 이력</p>
+    <h1 th:text="${history.summary.region + ' · ' + history.summary.period}"></h1>
+    <p class="help" th:text="${'요청: ' + #temporals.format(history.summary.requestedAt, 'yyyy-MM-dd HH:mm') + ' (UTC) · ' + history.summary.inputMode}"></p>
+
+    <section class="condition-section" aria-labelledby="conditions-title">
+        <h2 id="conditions-title">입력한 조건</h2>
+        <p th:if="${!#strings.isEmpty(history.originalText)}" class="travel-story" th:text="${history.originalText}"></p>
+        <dl class="condition-summary">
+            <th:block th:each="c : ${history.conditions}"><dt th:text="${c.label}"></dt><dd th:text="${c.value}"></dd></th:block>
+        </dl>
+        <p class="help" th:if="${!#strings.isEmpty(history.interpretationSummary)}" th:text="${'조건 해석: ' + history.interpretationSummary}"></p>
+    </section>
+
+    <section class="condition-section" aria-labelledby="result-title">
+        <h2 id="result-title">추천 여행지와 이유</h2>
+        <p role="status" th:if="${history.destinations.isEmpty() and history.summary.status == 'PENDING'}">아직 추천을 처리하고 있어요. 잠시 후 다시 확인해 주세요.</p>
+        <p role="status" th:if="${history.destinations.isEmpty() and history.summary.status != 'PENDING'}">저장된 추천 결과가 없어요. 추천이 실패했거나 결과를 받기 전에 만료됐어요.</p>
+        <article class="place-row" th:each="d : ${history.destinations}">
+            <h3 th:text="${d.rank + '위 · ' + d.name}"></h3>
+            <p class="help" th:text="${d.region}"></p>
+            <p th:text="${d.reason}"></p>
+            <div class="place-links"><a th:href="${d.sourceUrl}" target="_blank" rel="noopener noreferrer">지역 출처 확인 (새 창)</a></div>
+        </article>
+        <p th:if="${history.resultJobId != null}"><a th:href="@{/travel/recommendations/{id}(id=${history.resultJobId})}">추천 결과 화면에서 장소 보고 일정 만들기 →</a></p>
+        <p class="help" th:if="${history.resultJobId == null and !history.destinations.isEmpty()}">추천 결과 화면의 보관 기간이 지나 여기서는 조회만 할 수 있어요. 일정을 만들려면 같은 조건으로 다시 추천받아 주세요.</p>
+        <p class="help">추천 이유는 AI가 작성한 설명이에요. 영업시간·가격·예약 가능 여부를 확인한 내용이 아니에요.</p>
+    </section>
+
+    <section class="condition-section">
+        <h2>이력 삭제</h2>
+        <p class="help">이 추천의 조건·결과와 임시 작업을 지워요. 이 추천에서 만들어 저장한 일정은 삭제되지 않아요.</p>
+        <form th:action="@{/my/recommendations/{id}/delete(id=${history.summary.id})}" method="post"
+              onsubmit="return confirm('이 추천 이력을 삭제할까요? 삭제하면 되돌릴 수 없어요.');">
+            <div class="form-actions"><button type="submit">이 추천 이력 삭제</button></div>
+        </form>
+    </section>
+</main>
+</body>
+</html>

@@ -12,6 +12,10 @@ public interface ItineraryRepository extends JpaRepository<Itinerary,Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select i from Itinerary i where i.id=:id and i.userId=:userId")
     Optional<Itinerary> lockByIdAndUserId(Long id, Long userId);
+    // 추천 이력을 지워도 저장 일정은 남기고 이력 연결만 끊는다.
+    @Modifying(clearAutomatically=true,flushAutomatically=true)
+    @Query("update Itinerary i set i.requestId=null where i.requestId=:requestId and i.userId=:userId")
+    int detachRequest(Long requestId, Long userId);
     // 같은 일정 초안을 두 번 저장했는지 확인할 때 후보를 좁힌다.
     List<Itinerary> findByUserIdAndDestinationPlaceIdAndStartDate(Long userId, Long destinationPlaceId, LocalDate startDate);
 }

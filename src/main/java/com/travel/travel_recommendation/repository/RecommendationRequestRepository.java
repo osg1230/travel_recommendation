@@ -1,4 +1,9 @@
 package com.travel.travel_recommendation.repository;
 import com.travel.travel_recommendation.entity.RecommendationRequest;
+import java.util.*;
 import org.springframework.data.jpa.repository.JpaRepository;
-public interface RecommendationRequestRepository extends JpaRepository<RecommendationRequest,Long> {}
+public interface RecommendationRequestRepository extends JpaRepository<RecommendationRequest,Long> {
+    // 추천 이력 목록은 최근 100건까지 최신순으로 보여 준다.
+    List<RecommendationRequest> findTop100ByUserIdOrderByCreatedAtDescIdDesc(Long userId);
+    Optional<RecommendationRequest> findByIdAndUserId(Long id, Long userId);
+}

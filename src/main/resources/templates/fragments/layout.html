@@ -15,6 +15,7 @@
         <a th:href="@{/travel/conditions}">여행 계획</a>
         <th:block th:if="${loggedIn}">
             <a th:href="@{/my/itineraries}">내 일정</a>
+            <a th:href="@{/my/recommendations}">추천 이력</a>
             <a th:href="@{/my/favorites}">즐겨찾기</a>
             <a th:href="@{/account}">내 정보</a>
             <a th:if="${admin}" th:href="@{/admin/members}">회원 관리</a>
