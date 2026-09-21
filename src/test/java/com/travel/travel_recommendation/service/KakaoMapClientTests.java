@@ -60,6 +60,24 @@ class KakaoMapClientTests {
         var result=client("key").travelTime(from,to,KakaoMapClient.Transport.PUBLIC_TRANSIT);
         assertThat(result.minutes()).isEqualTo(19); assertThat(result.transport()).isEqualTo(KakaoMapClient.Transport.PUBLIC_TRANSIT);
         assertThat(path.get()).startsWith("/v2/routing/publictraffic?");
+        // 구간 정보가 없는 응답은 요약 없이 시간만 쓴다.
+        assertThat(result.summary()).isNull();
+    }
+    @Test void transitSummaryListsRidesTransfersAndFareOfFastestRoute() {
+        String bus="{\"properties\":{\"type\":\"BUS\",\"vehicles\":[{\"name\":\"서구2\"},{\"name\":\"서구2\"}],\"stops\":[{\"name\":\"감천문화마을\"},{\"name\":\"중간\"},{\"name\":\"토성역\"}]}}";
+        String walk="{\"properties\":{\"type\":\"WALKING\",\"stops\":[{\"name\":\"a\"},{\"name\":\"b\"}]}}";
+        String subway="{\"properties\":{\"type\":\"SUBWAY\",\"vehicles\":[{\"name\":\"1호선\"}],\"stops\":[{\"name\":\"토성\"},{\"name\":\"서면\"}]}}";
+        body.set("{\"status\":\"OK\",\"routes\":[{\"properties\":{\"totalTime\":2000,\"totalDistance\":9000},\"steps\":[]},"
+            + "{\"properties\":{\"totalTime\":1500,\"totalDistance\":8000,\"transfers\":1,\"fare\":{\"value\":2100}},\"steps\":["+bus+","+walk+","+subway+"]}]}");
+        var result=client("key").travelTime(from,to,KakaoMapClient.Transport.PUBLIC_TRANSIT);
+        assertThat(result.minutes()).isEqualTo(25);
+        assertThat(result.summary()).isEqualTo("버스 서구2 (감천문화마을 → 토성역) → 지하철 1호선 (토성 → 서면) · 환승 1회 · 요금 2,100원");
+        // 탑승 구간의 노선이나 정류장이 비면 틀린 안내 대신 요약을 빼고 시간만 쓴다.
+        body.set("{\"status\":\"OK\",\"routes\":[{\"properties\":{\"totalTime\":900,\"totalDistance\":3000},\"steps\":[{\"properties\":{\"type\":\"BUS\",\"vehicles\":[],\"stops\":[]}}]}]}");
+        assertThat(client("key").travelTime(from,to,KakaoMapClient.Transport.PUBLIC_TRANSIT).summary()).isNull();
+        // 자동차 경로에는 요약이 없다.
+        body.set("{\"routes\":[{\"result_code\":0,\"summary\":{\"duration\":324,\"distance\":3800}}]}");
+        assertThat(client("key").travelTime(from,to,KakaoMapClient.Transport.CAR).summary()).isNull();
     }
     @Test void noRouteAndMalformedDurationsNeverBecomeEstimatedTimes() {
         body.set("{\"status\":\"NO_RESULTS\"}");

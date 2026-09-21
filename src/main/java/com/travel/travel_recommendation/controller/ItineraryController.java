@@ -22,6 +22,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class ItineraryController {
     private final ObjectProvider<ItineraryJobService> services;
     private final ObjectProvider<SavedItineraryService> savedItineraries;
+    private final ObjectProvider<BusGuideService> busGuides;
     private final tools.jackson.databind.ObjectMapper mapper;
     private record Submission(UUID parent,long destination,String login,String token,UUID job) {}
     private static final String SESSION_KEY="itinerarySubmission";
@@ -149,6 +150,38 @@ public class ItineraryController {
         }
         return back;
     }
+    private static final String BUS_COOLDOWN_KEY="itineraryBusGuideNext";
+
+    /**
+     * 요청 시 지역 간 버스 안내(SFR-06-05·06). 출발 위치에서 나온 결과라 저장하지 않고 다음 화면에 한 번만 보여 준다.
+     * 좌표는 도시 이름을 찾는 데만 쓰고 세션·로그·DB에 남기지 않는다.
+     */
+    @PostMapping("/itineraries/{id}/bus-guide")
+    String busGuide(@PathVariable UUID id,@RequestParam(defaultValue="") String to,@RequestParam(defaultValue="") String from,
+                    @RequestParam(required=false) Double longitude,@RequestParam(required=false) Double latitude,
+                    Principal principal,HttpSession session,
+                    org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
+        String back="redirect:/travel/recommendations/itineraries/"+id+"#bus-title";
+        redirect.addFlashAttribute("busTo",to.length()>40?"":to);
+        redirect.addFlashAttribute("busFrom",from.length()>20?from.substring(0,20):from);
+        synchronized(session) {
+            var next=session.getAttribute(BUS_COOLDOWN_KEY) instanceof java.time.Instant at?at:null;
+            if(next!=null && next.isAfter(java.time.Instant.now())) {
+                redirect.addFlashAttribute("busError","방금 조회했어요. 10초 후에 다시 찾아 주세요.");
+                return back;
+            }
+            session.setAttribute(BUS_COOLDOWN_KEY,java.time.Instant.now().plusSeconds(10));
+        }
+        var guides=busGuides.getIfAvailable();
+        if(guides==null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"버스 안내는 DB 연결 후 이용할 수 있어요.");
+        try {
+            redirect.addFlashAttribute("busGuide",guides.guide(id,login(principal),hash(session),to,from,longitude,latitude));
+        } catch(RecommendationException e) {
+            redirect.addFlashAttribute("busError",e.getMessage());
+        }
+        return back;
+    }
+
     @GetMapping("/itineraries/{id}/status")
     @ResponseBody
     ResponseEntity<?> status(@PathVariable UUID id,Principal principal,HttpSession session) {

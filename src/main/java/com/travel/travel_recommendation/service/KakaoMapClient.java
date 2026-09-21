@@ -25,7 +25,11 @@ public class KakaoMapClient {
                 throw new IllegalArgumentException("국내 장소 좌표를 확인해 주세요.");
         }
     }
-    public record TravelTime(Transport transport, int seconds, int meters, Instant checkedAt) {
+    /** summary는 대중교통일 때만 있는 노선 요약(SFR-06-04). 자동차 경로와 요약을 읽지 못한 경우는 null이다. */
+    public record TravelTime(Transport transport, int seconds, int meters, Instant checkedAt, String summary) {
+        public TravelTime(Transport transport, int seconds, int meters, Instant checkedAt) {
+            this(transport, seconds, meters, checkedAt, null);
+        }
         // 초 단위 응답을 올림하여 이동시간을 짧게 잡지 않는다.
         public int minutes() { return (seconds + 59) / 60; }
     }
@@ -121,6 +125,33 @@ public class KakaoMapClient {
         return value.asText().strip();
     }
 
+    /**
+     * 좌표가 속한 도시 이름을 버스 터미널 검색어로 돌려준다(예: 서울 송파구 → "서울", 강원 강릉시 → "강릉").
+     * 사용자가 '내 위치로 찾기'를 누른 경우에만 부르며, 좌표는 저장하지 않는다.
+     */
+    public String cityKeyword(double longitude, double latitude) {
+        if (!Double.isFinite(longitude) || !Double.isFinite(latitude) || longitude < 124 || longitude > 132 || latitude < 33 || latitude > 39)
+            throw failure("MAP_LOCATION", "국내 위치만 찾을 수 있어요. 출발 도시를 직접 입력해 주세요.");
+        var root=get(localEndpoint.resolve("/v2/local/geo/coord2regioncode.json?x="+longitude+"&y="+latitude));
+        for (var document:root.path("documents")) {
+            if (!"H".equals(document.path("region_type").asText())) continue;
+            String first=document.path("region_1depth_name").asText("").strip();
+            String second=document.path("region_2depth_name").asText("").strip();
+            String keyword=cityKeyword(first,second);
+            if (keyword!=null) return keyword;
+        }
+        throw failure("MAP_LOCATION", "현재 위치의 도시를 확인하지 못했어요. 출발 도시를 직접 입력해 주세요.");
+    }
+    // 특별시·광역시는 시 이름, 도 지역은 시·군 이름을 쓴다. "수원시 영통구"처럼 구가 붙으면 앞의 시만 쓴다.
+    static String cityKeyword(String first, String second) {
+        var metro=java.util.regex.Pattern.compile("^(.+?)(특별시|광역시|특별자치시)$").matcher(first);
+        if (metro.matches()) return metro.group(1);
+        if (second.isBlank()) return null;
+        String city=second.split("\\s+")[0];
+        var local=java.util.regex.Pattern.compile("^(.+?)[시군]$").matcher(city);
+        return local.matches() && local.group(1).length()>=1 ? local.group(1) : null;
+    }
+
     public TravelTime travelTime(Location from, Location to, Transport transport) {
         if (from==null || to==null || transport==null) throw invalid();
         if (from.longitude()==to.longitude() && from.latitude()==to.latitude())
@@ -149,11 +180,44 @@ public class KakaoMapClient {
             if (!seconds.isIntegralNumber() || !seconds.canConvertToInt() || seconds.intValue()<=0
                     || seconds.intValue()>86400 || !meters.isIntegralNumber() || !meters.canConvertToInt()
                     || meters.intValue()<=0 || meters.intValue()>2000000) throw invalid();
-            var candidate=new TravelTime(transport,seconds.intValue(),meters.intValue(),Instant.now());
+            var candidate=new TravelTime(transport,seconds.intValue(),meters.intValue(),Instant.now(),
+                transport==Transport.PUBLIC_TRANSIT ? transitSummary(route) : null);
             if (fastest==null || candidate.seconds()<fastest.seconds()) fastest=candidate;
         }
         if (fastest==null) throw noRoute();
         return fastest;
+    }
+
+    /**
+     * 대중교통 경로 한 개를 "버스 202-1 (경포대 → 오죽헌) · 환승 0회 · 요금 1,530원"처럼 요약한다.
+     * 걷는 구간은 빼고 탑승 구간만 순서대로 적는다. 형식이 예상과 다르면 요약 없이(null) 이동시간만 쓴다.
+     */
+    static String transitSummary(JsonNode route) {
+        try {
+            List<String> rides=new ArrayList<>();
+            for (var step:route.path("steps")) {
+                var p=step.path("properties");
+                String type=p.path("type").asText("");
+                if (!"BUS".equals(type) && !"SUBWAY".equals(type)) continue;
+                Set<String> names=new LinkedHashSet<>();
+                for (var vehicle:p.path("vehicles")) {
+                    String name=vehicle.path("name").asText("").strip();
+                    if (!name.isEmpty() && name.length()<=30) names.add(name);
+                }
+                var stops=p.path("stops");
+                if (names.isEmpty() || !stops.isArray() || stops.size()<2) return null;
+                String from=stops.get(0).path("name").asText("").strip(), to=stops.get(stops.size()-1).path("name").asText("").strip();
+                if (from.isEmpty() || to.isEmpty() || from.length()>60 || to.length()>60) return null;
+                rides.add(("BUS".equals(type)?"버스 ":"지하철 ")+String.join("·",names.stream().limit(3).toList())+" ("+from+" → "+to+")");
+            }
+            if (rides.isEmpty()) return null;
+            var summary=new StringBuilder(String.join(" → ",rides));
+            var transfers=route.path("properties").path("transfers");
+            if (transfers.isIntegralNumber() && transfers.intValue()>=0) summary.append(" · 환승 ").append(transfers.intValue()).append("회");
+            var fare=route.path("properties").path("fare").path("value");
+            if (fare.isIntegralNumber() && fare.intValue()>0) summary.append(" · 요금 ").append(String.format(Locale.ROOT,"%,d",fare.intValue())).append("원");
+            return summary.length()>500 ? null : summary.toString();
+        } catch (RuntimeException e) { return null; }
     }
 
     private JsonNode get(URI uri) {

@@ -15,11 +15,21 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.*;
 
 /**
- * 국토교통부 TAGO 시외버스정보(SFR-07-02·06-05). 출발·도착 터미널 사이의 직행 배차만 조회한다.
+ * 국토교통부 TAGO 시외버스정보·고속버스정보(SFR-07-02·06-05). 출발·도착 터미널 사이의 직행 배차만 조회한다.
  * TAGO는 당일 배차 정보만 제공하므로 여행 당일의 시간표로 취급하지 않는다(SFR-06-06).
  */
 @Component
 public class IntercityBusClient {
+    /** TAGO 버스 서비스 종류. 두 서비스는 주소·오퍼레이션 이름만 다르고 요청·응답 형식은 같다. */
+    public enum Service {
+        INTERCITY("시외버스", "SuburbsBusInfo/", "GetSuberbsBusTrminlList", "GetStrtpntAlocFndSuberbsBusInfo"),
+        EXPRESS("고속버스", "ExpBusInfo/", "GetExpBusTrminlList", "GetStrtpntAlocFndExpbusInfo");
+        private final String label, path, terminalOperation, tripOperation;
+        Service(String label, String path, String terminalOperation, String tripOperation) {
+            this.label = label; this.path = path; this.terminalOperation = terminalOperation; this.tripOperation = tripOperation;
+        }
+        public String label() { return label; }
+    }
     /** 직행 배차 한 건. 도착 시각은 운수사가 알린 예정 시각이다. */
     public record Trip(LocalDateTime departure, LocalDateTime arrival, String grade, Integer charge) {
         public int minutes() { return (int) Duration.between(departure, arrival).toMinutes(); }
@@ -39,7 +49,7 @@ public class IntercityBusClient {
 
     @Autowired
     public IntercityBusClient(TagoProperties properties, ObjectMapper mapper) {
-        this(properties, mapper, URI.create("https://apis.data.go.kr/1613000/SuburbsBusInfo/"), Duration.ofSeconds(8));
+        this(properties, mapper, URI.create("https://apis.data.go.kr/1613000/"), Duration.ofSeconds(8));
     }
     // 실제 서버 주소는 고정하며 테스트에서만 로컬 응답 서버로 바꾼다.
     IntercityBusClient(TagoProperties properties, ObjectMapper mapper, URI endpoint, Duration timeout) {
@@ -55,7 +65,7 @@ public class IntercityBusClient {
         String cached = terminalIds.get(terminalName);
         if (cached != null) return cached;
         String found = null;
-        for (var item : items(get("GetSuberbsBusTrminlList", "&pageNo=1&numOfRows=20&terminalNm="
+        for (var item : items(get(Service.INTERCITY, Service.INTERCITY.terminalOperation, "&pageNo=1&numOfRows=20&terminalNm="
                 + URLEncoder.encode(terminalName, StandardCharsets.UTF_8)))) {
             if (!terminalName.equals(text(item, "terminalNm"))) continue;
             String id = text(item, "terminalId");
@@ -70,21 +80,56 @@ public class IntercityBusClient {
         return found;
     }
 
-    /** 오늘(date) 출발하는 직행 배차. 출발 시각 순서로 돌려준다. */
-    public List<Trip> trips(String departureId, String arrivalId, LocalDate date) {
-        if (departureId == null || arrivalId == null || date == null || departureId.equals(arrivalId)) throw invalid();
+    public record Terminal(String id, String name) {}
+
+    /**
+     * 이름 일부로 찾은 터미널 목록(예: "서울" → 동서울·서울남부). 사용자가 입력한 출발지를 터미널로 바꿀 때 쓴다.
+     * 너무 많으면 사용자가 더 구체적으로 적도록 limit개까지만 돌려준다.
+     */
+    public List<Terminal> searchTerminals(String keyword, int limit) { return searchTerminals(Service.INTERCITY, keyword, limit); }
+
+    /**
+     * 이름이 정확히 같은 터미널의 ID 전부. 고속버스는 같은 이름이 승강장별로 여러 ID(예: 동서울 4개)로 등록되어
+     * 있어 하나만 고르지 않고 모두 조회한다. 없으면 빈 목록이다.
+     */
+    public List<String> terminalIds(Service service, String terminalName) {
+        if (terminalName == null || terminalName.isBlank() || terminalName.length() > 60) throw invalid();
+        return searchTerminals(service, terminalName, 20).stream().filter(t -> t.name().equals(terminalName)).map(Terminal::id).toList();
+    }
+
+    public List<Terminal> searchTerminals(Service service, String keyword, int limit) {
+        if (keyword == null || keyword.isBlank() || keyword.length() > 30 || limit < 1) throw invalid();
+        List<Terminal> result = new ArrayList<>();
+        for (var item : items(get(service, service.terminalOperation, "&pageNo=1&numOfRows=50&terminalNm="
+                + URLEncoder.encode(keyword.strip(), StandardCharsets.UTF_8)))) {
+            String id = text(item, "terminalId"), name = text(item, "terminalNm");
+            if (!id.matches("[A-Za-z0-9]{1,20}") || name.isBlank() || !name.contains(keyword.strip())) continue;
+            if (result.stream().noneMatch(t -> t.id().equals(id))) result.add(new Terminal(id, name));
+            if (result.size() == limit) break;
+        }
+        return List.copyOf(result);
+    }
+
+    /** 오늘(date) 출발하는 직행 시외버스 배차. 출발 시각 순서로 돌려준다. */
+    public List<Trip> trips(String departureId, String arrivalId, LocalDate date) { return trips(Service.INTERCITY, departureId, arrivalId, date); }
+
+    public List<Trip> trips(Service service, String departureId, String arrivalId, LocalDate date) {
+        if (departureId == null || arrivalId == null || date == null || departureId.equals(arrivalId)
+                || !departureId.matches("[A-Za-z0-9]{1,20}") || !arrivalId.matches("[A-Za-z0-9]{1,20}")) throw invalid();
         List<Trip> result = new ArrayList<>();
         // 배차가 한 페이지(100건)를 넘으면 뒤 페이지까지 읽어야 첫차·막차·횟수가 맞다. 무한 반복을 막으려고 페이지 수를 제한한다.
         int read = 0;
         for (int page = 1; page <= MAX_TRIP_PAGES; page++) {
-            var body = get("GetStrtpntAlocFndSuberbsBusInfo", "&pageNo=" + page + "&numOfRows=" + TRIP_PAGE_SIZE
+            var body = get(service, service.tripOperation, "&pageNo=" + page + "&numOfRows=" + TRIP_PAGE_SIZE
                 + "&depTerminalId=" + departureId + "&arrTerminalId=" + arrivalId + "&depPlandTime=" + date.format(DATE));
             var items = items(body);
             for (var item : items) {
                 var departure = time(item, "depPlandTime");
                 var arrival = time(item, "arrPlandTime");
                 // 날짜가 다르거나 도착이 출발보다 이르거나 하루를 넘는 배차는 잘못된 값으로 보고 쓰지 않는다.
-                if (departure == null || arrival == null || !departure.toLocalDate().equals(date)
+                // 막차가 "24:00"으로 오면 다음 날 00:00으로 읽으므로, 그 경우만 조회일의 배차로 인정한다.
+                boolean sameDay = departure != null && (departure.toLocalDate().equals(date) || departure.equals(date.plusDays(1).atStartOfDay()));
+                if (departure == null || arrival == null || !sameDay
                         || !arrival.isAfter(departure) || arrival.isAfter(departure.plusHours(12))) continue;
                 result.add(new Trip(departure, arrival, text(item, "gradeNm"), number(item, "charge")));
             }
@@ -92,19 +137,19 @@ public class IntercityBusClient {
             int total = body.path("totalCount").asInt(read);
             if (items.isEmpty() || read >= total) break;
             // 제한 페이지까지 읽고도 남아 있으면 일부만 보고 요약하지 않는다.
-            if (page == MAX_TRIP_PAGES) throw failure("BUS_TOO_MANY", "시외버스 배차가 너무 많아 요약하지 못했어요.");
+            if (page == MAX_TRIP_PAGES) throw failure("BUS_TOO_MANY", service.label() + " 배차가 너무 많아 요약하지 못했어요.");
         }
         result.sort(Comparator.comparing(Trip::departure));
         return List.copyOf(result);
     }
 
-    private JsonNode get(String operation, String parameters) {
-        if (!properties.isConfigured()) throw failure("BUS_NOT_CONFIGURED", "시외버스 정보 인증키 설정이 필요해요.");
+    private JsonNode get(Service service, String operation, String parameters) {
+        if (!properties.isConfigured()) throw failure("BUS_NOT_CONFIGURED", "버스 정보 인증키 설정이 필요해요.");
         // Decoding 키를 한 번만 인코딩한다. 요청 URL에는 키가 있어 로그에 남기지 않는다.
         String query = "?serviceKey=" + URLEncoder.encode(properties.serviceKey().trim(), StandardCharsets.UTF_8)
             + "&_type=json" + parameters;
         try {
-            var request = HttpRequest.newBuilder(URI.create(endpoint.resolve(operation) + query)).timeout(timeout).GET().build();
+            var request = HttpRequest.newBuilder(URI.create(endpoint.resolve(service.path + operation) + query)).timeout(timeout).GET().build();
             var response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             String body = response.body() == null ? "" : response.body();
             // 게이트웨이 인증 오류는 403과 함께 오며 JSON·XML 어느 쪽일 수도 있다. 원문은 반환하지 않는다.
@@ -146,6 +191,11 @@ public class IntercityBusClient {
     private LocalDateTime time(JsonNode item, String field) {
         var value = item.path(field);
         String raw = value.isNumber() ? value.asText() : value.isTextual() ? value.asText().trim() : "";
+        // 고속버스 막차는 "2400"(24:00)으로 오기도 한다. 그날의 끝, 곧 다음 날 00:00으로 읽는다.
+        if (raw.matches("[0-9]{8}2400(00)?")) {
+            try { return LocalDate.parse(raw.substring(0, 8), DATE).plusDays(1).atStartOfDay(); }
+            catch (RuntimeException e) { return null; }
+        }
         try {
             if (raw.matches("[0-9]{14}")) return LocalDateTime.parse(raw, TIME_SECONDS);
             if (raw.matches("[0-9]{12}")) return LocalDateTime.parse(raw, TIME);

@@ -29,17 +29,17 @@ public class NearbyRegionService {
 
     /**
      * 지역마다 이동시간을 재는 기준 터미널. 2026-09-21 카카오 장소 검색으로 이름·주소·좌표를 확인했다.
-     * busName은 TAGO 시외버스정보의 터미널 이름이다(같은 날 터미널 목록 조회로 확인). 부산종합버스터미널은
-     * TAGO에 '부산동부'로 등록되어 있다(카카오에서도 같은 주소).
+     * busName은 TAGO 시외버스정보, expressName은 TAGO 고속버스정보의 터미널 이름이다(2026-09-21 터미널 목록 조회로 확인).
+     * 부산종합버스터미널은 시외버스에 '부산동부', 고속버스에 '부산'으로 등록되어 있다(카카오에서도 같은 주소).
      */
-    record Terminal(String name, String busName, String address, double longitude, double latitude) {}
+    record Terminal(String name, String busName, String expressName, String address, double longitude, double latitude) {}
     static final Map<String,Terminal> TERMINALS=Map.of(
-        "강릉",new Terminal("강릉시외버스터미널","강릉","강원특별자치도 강릉시 하슬라로 27",128.878876,37.754680),
-        "속초",new Terminal("속초시외버스터미널","속초","강원특별자치도 속초시 장안로 16",128.590814,38.211223),
-        "양양",new Terminal("양양종합여객터미널","양양","강원특별자치도 양양군 양양읍 동해대로 2700",128.629777,38.085294),
-        "부산",new Terminal("부산종합버스터미널","부산동부","부산광역시 금정구 중앙대로 2238",129.095472,35.284773),
-        "경주",new Terminal("경주시외버스터미널","경주시외","경상북도 경주시 강변로 184",129.202469,35.839800),
-        "울산",new Terminal("울산시외버스터미널","울산","울산광역시 남구 화합로 133",129.339729,35.536562));
+        "강릉",new Terminal("강릉시외버스터미널","강릉","강릉","강원특별자치도 강릉시 하슬라로 27",128.878876,37.754680),
+        "속초",new Terminal("속초시외버스터미널","속초","속초","강원특별자치도 속초시 장안로 16",128.590814,38.211223),
+        "양양",new Terminal("양양종합여객터미널","양양","양양","강원특별자치도 양양군 양양읍 동해대로 2700",128.629777,38.085294),
+        "부산",new Terminal("부산종합버스터미널","부산동부","부산","부산광역시 금정구 중앙대로 2238",129.095472,35.284773),
+        "경주",new Terminal("경주시외버스터미널","경주시외","경주","경상북도 경주시 강변로 184",129.202469,35.839800),
+        "울산",new Terminal("울산시외버스터미널","울산","울산","울산광역시 남구 화합로 133",129.339729,35.536562));
 
     private final PlaceRepository places;
     private final KakaoMapClient maps;

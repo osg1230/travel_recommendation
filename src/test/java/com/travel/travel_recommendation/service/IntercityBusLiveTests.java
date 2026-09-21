@@ -17,8 +17,11 @@ class IntercityBusLiveTests {
         assertThat(properties.isConfigured()).as("TAGO 인증키 설정 여부").isTrue();
         var client = new IntercityBusClient(properties, new JsonMapper());
         // 서비스가 쓰는 터미널 이름은 모두 정확히 하나의 ID로 찾아져야 한다.
-        for (var terminal : NearbyRegionService.TERMINALS.values())
+        for (var terminal : NearbyRegionService.TERMINALS.values()) {
             assertThat(client.terminalId(terminal.busName())).as(terminal.busName()).isNotBlank();
+            // 고속버스 이름도 한 개 이상의 ID로 찾아져야 한다(승강장별로 여러 개일 수 있다).
+            assertThat(client.terminalIds(IntercityBusClient.Service.EXPRESS, terminal.expressName())).as("고속 " + terminal.expressName()).isNotEmpty();
+        }
         // 2026-09-21 확인 기준 배차가 등록된 구간(속초→강릉). 당일 배차만 있으므로 오늘 날짜로 조회한다.
         var today = LocalDate.now(ZoneId.of("Asia/Seoul"));
         var trips = client.trips(client.terminalId("속초"), client.terminalId("강릉"), today);

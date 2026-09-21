@@ -175,8 +175,11 @@ public class ItineraryGenerator {
                 } else {
                     var route=routes.computeIfAbsent(previous.placeId()+":"+next.placeId(),key->maps.travelTime(a,b,input.transport()));
                     if(route.minutes()>120) throw failure("TRAVEL_TIME_EXCEEDED","한 구간의 이동시간이 2시간을 넘어요. 다른 지역이나 이동수단을 선택해 주세요.");
+                    // 대중교통이면 탈 노선·환승·요금 요약을 함께 적는다(SFR-06-04). 요약을 못 읽으면 시간만 적는다.
                     add("TRANSIT",next,previous.name()+" → "+next.name(),route.minutes()+10,
-                        "카카오 예상 "+route.minutes()+"분 + 이동 여유 10분",route.seconds(),route.checkedAt());
+                        "카카오 예상 "+route.minutes()+"분 + 이동 여유 10분"
+                            +(route.summary()==null?"":"\n"+route.summary()+" (조회 시점 기준, 배차·요금은 이용 전 확인)"),
+                        route.seconds(),route.checkedAt());
                 }
             }
             previous=next;
