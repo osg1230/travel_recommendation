@@ -44,6 +44,14 @@ public class SavedItineraryController {
         return "my/itinerary";
     }
 
+    /** 완성된 수정안을 이 일정에 덮어쓴다. version이 다르면 다른 곳에서 먼저 바뀐 것으로 보고 거부한다. */
+    @PostMapping("/{id}/apply")
+    String apply(@PathVariable long id, @RequestParam UUID jobId, @RequestParam String version, Principal principal, RedirectAttributes redirect) {
+        service().apply(id,jobId,version,login(principal));
+        redirect.addFlashAttribute("savedMessage","수정안을 이 일정에 적용했어요.");
+        return "redirect:/my/itineraries/"+id;
+    }
+
     @PostMapping("/{id}/title")
     String rename(@PathVariable long id, @RequestParam String title, Principal principal, RedirectAttributes redirect) {
         service().rename(id,login(principal),title);

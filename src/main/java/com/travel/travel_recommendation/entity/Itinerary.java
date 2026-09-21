@@ -33,7 +33,13 @@ public class Itinerary {
         this.transportation=transportation; this.conditionsSnapshotJson=conditionsSnapshotJson;
         createdAt=updatedAt=LocalDateTime.now(ZoneOffset.UTC);
     }
-    /** 제목만 바꾼다. 저장한 일정의 시각·장소·순서는 수정 대상이 아니다. */
+    /** 사용자가 적용한 수정안으로 기간·이동수단·조건 스냅샷을 바꾼다. 제목은 유지한다. */
+    public void applyRevision(Long requestId, LocalDate startDate, LocalDate endDate, String transportation, String conditionsSnapshotJson) {
+        this.requestId=requestId; this.startDate=startDate; this.endDate=endDate;
+        this.transportation=transportation; this.conditionsSnapshotJson=conditionsSnapshotJson;
+        updatedAt=LocalDateTime.now(ZoneOffset.UTC);
+    }
+    /** 제목만 바꾼다. 시각·장소·순서는 수정안 적용(applyRevision)으로만 바꾼다. */
     public void rename(String title) {
         this.title=title; updatedAt=LocalDateTime.now(ZoneOffset.UTC);
     }

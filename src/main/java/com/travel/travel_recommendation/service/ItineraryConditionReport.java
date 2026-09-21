@@ -24,10 +24,11 @@ public final class ItineraryConditionReport {
     }
 
     public static Report evaluate(Input input, Result result) {
-        var checks = List.of(period(input, result), attractions(input, result), duplicates(result),
+        var checks = new ArrayList<>(List.of(period(input, result), attractions(input, result), duplicates(result),
             dailyVisits(result), timeline(input, result), travelTimes(result), operating(input, result),
-            accommodation(input, result), budget(input));
-        return new Report(checks, checks.stream().noneMatch(c -> c.status() == Status.UNMET));
+            accommodation(input, result), budget(input)));
+        if (input.revision() != null) checks.add(1, kept(input, result));
+        return new Report(List.copyOf(checks), checks.stream().noneMatch(c -> c.status() == Status.UNMET));
     }
 
     private static Check period(Input input, Result result) {
@@ -40,6 +41,15 @@ public final class ItineraryConditionReport {
             if (!c.startDate().plusDays(i).equals(result.days().get(i).date()))
                 return new Check("여행 기간", Status.UNMET, (i + 1) + "일차 날짜가 확정한 여행 기간과 달라요.");
         return new Check("여행 기간", Status.MET, c.startDate() + " ~ " + result.days().getLast().date() + " · " + days + "일");
+    }
+
+    // 수정안은 사용자가 유지하기로 한 관광지를 빠짐없이 그대로 포함해야 한다(SFR-04-07).
+    private static Check kept(Input input, Result result) {
+        var visited = visits(result).stream().map(Item::placeId).toList();
+        var missing = input.revision().kept().stream().filter(p -> !visited.contains(p.placeId())).map(PlaceRef::name).toList();
+        if (!missing.isEmpty()) return new Check("유지한 관광지", Status.UNMET, "빠진 관광지: " + String.join(", ", missing));
+        return new Check("유지한 관광지", Status.MET, "유지하기로 한 " + input.revision().kept().size()
+            + "곳을 모두 포함했어요. 방문 시각은 동선에 맞춰 다시 계산했어요.");
     }
 
     // 필수 장소 입력은 아직 없으므로, 일정에 쓰기로 고른 관광지가 빠짐없이 들어갔는지 확인한다.

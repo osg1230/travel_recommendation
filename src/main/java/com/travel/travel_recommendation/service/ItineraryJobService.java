@@ -54,6 +54,67 @@ public class ItineraryJobService {
         return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();
     }
 
+    /** 교체 사유. 실내 변경만 후보 선택 순서에 반영하고 나머지는 기록·안내에만 사용한다. */
+    public enum ReplaceReason {
+        TASTE("취향과 맞지 않아요"), INDOOR("실내 장소로 바꾸고 싶어요"), VISITED("이미 가 본 곳이에요"), OTHER("기타");
+        private final String label;
+        ReplaceReason(String label) { this.label=label; }
+        public String getLabel() { return label; }
+    }
+    private static final java.util.regex.Pattern INDOOR=java.util.regex.Pattern.compile("박물관|미술관|전시|과학관|아쿠아리움|기념관|체험관|실내|갤러리|아트");
+
+    /**
+     * 완성된 초안에서 유지할 관광지는 그대로 두고 교체할 관광지만 확인된 다른 후보로 바꾼 수정안 작업을 만든다.
+     * 원본 초안은 바꾸지 않으며, 수정안도 새 작업으로 같은 배치·검증 과정을 거친다.
+     */
+    @Transactional(timeout=10)
+    public UUID revise(UUID sourceId,String login,byte[] hash,List<Long> replace,ReplaceReason reason,
+                       LocalTime start,LocalTime end,int visitMinutes) {
+        var source=access.owned(sourceId,login,hash,"ITINERARY");
+        if(!"COMPLETED".equals(source.getStatus()) || source.getResultJson()==null)
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"완성된 일정 초안에서만 수정안을 만들 수 있어요.");
+        var original=mapper.readValue(source.getRequestJson(),Input.class);
+        var chosen=new LinkedHashSet<>(replace==null?List.<Long>of():replace);
+        var originalIds=original.places().attractions().stream().map(PlaceCandidate::placeId).toList();
+        if(!originalIds.containsAll(chosen))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"이 초안에 있는 관광지만 교체할 수 있어요.");
+        if(chosen.size()==originalIds.size())
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"유지할 관광지를 한 곳 이상 남겨 주세요. 모두 바꾸려면 일정을 새로 만들어 주세요.");
+        if(!chosen.isEmpty() && reason==null)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"교체 이유를 골라 주세요.");
+        long destinationId=original.places().destination().placeId();
+        // 현재 확인된 후보 전체를 다시 읽는다. 오래된 초안의 장소 정보로 수정안을 만들지 않는다.
+        var pool=candidates.find(original.recommendationId(),destinationId,login,hash);
+        var current=options(original.recommendationId(),destinationId,login,hash);
+        var kept=new ArrayList<PlaceCandidate>();
+        for(var place:original.places().attractions()) {
+            if(chosen.contains(place.placeId())) continue;
+            kept.add(pool.attractions().stream().filter(p->p.placeId().equals(place.placeId())).findFirst().orElseThrow(()->
+                new ResponseStatusException(HttpStatus.CONFLICT,"유지한 관광지 '"+place.name()+"'의 정보가 바뀌었어요. 장소 목록에서 다시 조회해 주세요.")));
+        }
+        var spare=pool.attractions().stream().filter(p->!originalIds.contains(p.placeId())).toList();
+        if(reason==ReplaceReason.INDOOR)
+            spare=spare.stream().sorted(Comparator.comparingInt(p->indoor(p)?0:1)).toList();
+        if(spare.size()<chosen.size())
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"바꿀 수 있는 다른 관광지 후보가 부족해요. 장소 목록에서 후보를 더 찾아본 뒤 다시 시도해 주세요.");
+        var added=spare.subList(0,chosen.size());
+        var attractions=new ArrayList<>(kept); attractions.addAll(added);
+        var places=new PlaceCandidateView(current.places().jobId(),current.places().destination(),current.places().durationDays(),
+            current.places().accommodationNeeded(),List.copyOf(attractions),current.places().accommodations(),current.places().restaurants());
+        var revision=new Revision(sourceId,refs(kept),refs(original.places().attractions().stream().filter(p->chosen.contains(p.placeId())).toList()),
+            refs(added),chosen.isEmpty()?null:reason.name(),Instant.now());
+        var input=new Input(original.recommendationId(),places,current.conditions(),start,end,original.transport(),visitMinutes,revision);
+        generator.checkInput(input);
+        var parent=access.owned(original.recommendationId(),login,hash,"RECOMMENDATION");
+        return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();
+    }
+    private static boolean indoor(PlaceCandidate place) {
+        return INDOOR.matcher(Objects.toString(place.name(),"")+" "+Objects.toString(place.subtype(),"")+" "+Objects.toString(place.description(),"")).find();
+    }
+    private static List<PlaceRef> refs(List<PlaceCandidate> places) {
+        return places.stream().map(p->new PlaceRef(p.placeId(),p.name())).toList();
+    }
+
     @Transactional(readOnly=true,timeout=10)
     public View view(UUID id,String login,byte[] hash) {
         var job=access.owned(id,login,hash,"ITINERARY");

@@ -34,6 +34,15 @@
         </article>
     </section>
 
+    <section class="condition-section" aria-labelledby="edit-title">
+        <h2 id="edit-title">일정 수정하기</h2>
+        <th:block th:if="${itinerary.editableJobId != null}">
+            <p class="help">원래 초안에서 바꿀 관광지와 하루 시간을 골라 수정안을 만들어요. 수정안을 확인하고 '이 일정에 적용하기'를 눌러야 바뀌며, 그 전까지 이 일정은 그대로예요.</p>
+            <div class="form-actions"><a class="button" th:href="@{/travel/recommendations/itineraries/{id}(id=${itinerary.editableJobId})}">수정안 만들러 가기</a></div>
+        </th:block>
+        <p class="help" th:if="${itinerary.editableJobId == null}">이 일정의 원래 초안이 만료돼 수정안을 만들 수 없어요. 바꾸려면 여행 조건부터 새 일정을 만들어 저장해 주세요.</p>
+    </section>
+
     <section class="condition-section">
         <h2>일정 관리</h2>
         <form th:action="@{/my/itineraries/{id}/title(id=${itinerary.summary.id})}" method="post">
@@ -41,7 +50,7 @@
                 <label for="title">일정 이름 (필수)</label>
                 <input id="title" name="title" type="text" required maxlength="150"
                        th:value="${itinerary.summary.title}" aria-describedby="title-help">
-                <p id="title-help" class="help">이름만 바꿀 수 있어요. 시각·장소·순서를 바꾸려면 일정을 새로 만들어 저장해 주세요.</p>
+                <p id="title-help" class="help">시각·장소·순서는 아래 '일정 수정하기'에서 수정안을 만들어 적용해요.</p>
             </div>
             <div class="form-actions"><button type="submit">이름 저장</button></div>
         </form>

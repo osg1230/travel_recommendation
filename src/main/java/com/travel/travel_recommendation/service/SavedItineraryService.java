@@ -23,6 +23,7 @@ public class SavedItineraryService {
     private final RecommendationJobService access;
     private final ItineraryRepository itineraries;
     private final ItineraryItemRepository items;
+    private final AiJobRepository jobs;
     private final UserRepository users;
     private final ObjectMapper mapper;
     /** 저장 결과. created=false이면 같은 초안을 이미 저장해 둔 일정이다. */
@@ -53,14 +54,81 @@ public class SavedItineraryService {
         var saved=itineraries.saveAndFlush(new Itinerary(userId,job.getRequestId(),destination.placeId(),
             defaultTitle(destination.name(),result.days().size()),result.days().getFirst().date(),result.days().getLast().date(),
             transportation(input),mapper.writeValueAsString(snapshot(jobId,input,result))));
+        writeItems(saved.getId(),result);
+        return new Saved(saved.getId(),true);
+    }
+
+    /**
+     * 완성된 수정안을 저장한 일정에 덮어쓴다(SFR-08-04). 가장 최근에 적용한 일정에서 이어진 수정안만 받고,
+     * 화면을 연 뒤 다른 곳에서 먼저 바뀐 일정은 덮어쓰지 않는다. 실패하면 기존 일정을 그대로 둔다.
+     */
+    @Transactional(timeout=10)
+    public void apply(Long id, UUID jobId, String version, String loginId) {
+        Long userId=member(loginId);
+        var itinerary=itineraries.lockByIdAndUserId(id,userId)
+            .orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"저장한 일정을 찾을 수 없어요."));
+        if(version==null || !version.equals(itinerary.getUpdatedAt().toString()))
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"다른 화면에서 이 일정을 먼저 바꿨어요. 내 일정에서 최신 내용을 확인한 뒤 다시 수정해 주세요.");
+        var job=access.owned(jobId,loginId,null,"ITINERARY");
+        if(!"COMPLETED".equals(job.getStatus()) || job.getResultJson()==null)
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"아직 완성되지 않은 수정안이에요. 수정안이 준비된 뒤 적용해 주세요.");
+        String current=snapshotJobId(itinerary);
+        var lineage=lineage(jobId,userId);
+        if(current.equals(jobId.toString()) || !lineage.contains(current))
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"가장 최근에 적용한 일정에서 만든 수정안만 적용할 수 있어요. 내 일정에서 다시 수정해 주세요.");
+        var input=mapper.readValue(job.getRequestJson(),Input.class);
+        var result=mapper.readValue(job.getResultJson(),Result.class);
+        if(!itinerary.getDestinationPlaceId().equals(input.places().destination().placeId())
+                || input.conditions().startDate()==null || result.days().stream().anyMatch(day->day.date()==null))
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"이 일정에 적용할 수 없는 수정안이에요.");
+        var report=ItineraryConditionReport.evaluate(input,result);
+        if(!report.complete()) {
+            var unmet=report.checks().stream().filter(c->c.status()==ItineraryConditionReport.Status.UNMET).findFirst().orElseThrow();
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"조건을 충족하지 못한 항목이 있어 적용할 수 없어요. "+unmet.name()+": "+unmet.detail());
+        }
+        items.deleteByItineraryId(itinerary.getId());
+        items.flush();
+        itinerary.applyRevision(job.getRequestId(),result.days().getFirst().date(),result.days().getLast().date(),
+            transportation(input),mapper.writeValueAsString(snapshot(jobId,input,result)));
+        itineraries.flush();
+        writeItems(itinerary.getId(),result);
+    }
+
+    /** 이 수정안을 덮어쓸 수 있는 저장 일정 목록. 수정안이 아니면 비어 있다. */
+    @Transactional(readOnly=true,timeout=10)
+    public List<SavedItinerary.Target> targets(UUID jobId, String loginId) {
+        if(loginId==null) return List.of();
+        Long userId=member(loginId);
+        var lineage=lineage(jobId,userId);
+        if(lineage.size()<2) return List.of();
+        return itineraries.findByUserIdOrderByStartDateDescIdDesc(userId).stream()
+            .filter(i->{ String source=snapshotJobId(i); return !source.equals(jobId.toString()) && lineage.contains(source); })
+            .map(i->new SavedItinerary.Target(i.getId(),i.getTitle(),i.getUpdatedAt().toString())).toList();
+    }
+
+    // 수정안이 어떤 초안에서 이어졌는지 원본 방향으로 따라간다. 같은 회원의 작업만 보고 최대 20단계까지 확인한다.
+    private List<String> lineage(UUID jobId, Long userId) {
+        var ids=new ArrayList<String>(); UUID next=jobId;
+        while(next!=null && ids.size()<20) {
+            var job=jobs.findById(next).filter(j->userId.equals(j.getUserId()) && "ITINERARY".equals(j.getJobType())).orElse(null);
+            if(job==null || ids.contains(next.toString())) break;
+            ids.add(next.toString());
+            var revision=mapper.readValue(job.getRequestJson(),Input.class).revision();
+            next=revision==null?null:revision.sourceJobId();
+        }
+        return ids;
+    }
+    private String snapshotJobId(Itinerary itinerary) {
+        return mapper.readTree(itinerary.getConditionsSnapshotJson()).path("jobId").asText("");
+    }
+    private void writeItems(Long itineraryId, Result result) {
         for(var day:result.days()) {
             int sequence=0;
-            for(var item:day.items()) items.save(new ItineraryItem(saved.getId(),day.number(),++sequence,item.type(),item.placeId(),
+            for(var item:day.items()) items.save(new ItineraryItem(itineraryId,day.number(),++sequence,item.type(),item.placeId(),
                 day.date().atTime(item.start()),day.date().atTime(item.end()),activity(item),travelMinutes(item),
                 mapper.writeValueAsString(placeSnapshot(item))));
         }
         items.flush();
-        return new Saved(saved.getId(),true);
     }
 
     @Transactional(readOnly=true,timeout=10)
@@ -77,7 +145,8 @@ public class SavedItineraryService {
                 days.add(new SavedItinerary.Day(item.getDayNo(),item.getStartAt().toLocalDate(),new ArrayList<>()));
             days.getLast().items().add(view(item));
         }
-        return new SavedItinerary.Detail(summary(itinerary),transportName(itinerary.getTransportation()),days);
+        return new SavedItinerary.Detail(summary(itinerary),transportName(itinerary.getTransportation()),days,
+            editable(itinerary,loginId),itinerary.getUpdatedAt().toString());
     }
 
     @Transactional(timeout=10)
@@ -98,6 +167,16 @@ public class SavedItineraryService {
         itineraries.flush();
     }
 
+    // 원래 초안이 만료 전이고 본인 것일 때만 그 초안에서 수정안을 만들 수 있다.
+    private UUID editable(Itinerary itinerary, String loginId) {
+        try {
+            var id=UUID.fromString(snapshotJobId(itinerary));
+            var job=access.owned(id,loginId,null,"ITINERARY");
+            return "COMPLETED".equals(job.getStatus())?id:null;
+        } catch(RuntimeException unavailable) {
+            return null;
+        }
+    }
     private Itinerary owned(Long id, String loginId) {
         return itineraries.findByIdAndUserId(id,member(loginId))
             .orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"저장한 일정을 찾을 수 없어요."));

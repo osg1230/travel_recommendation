@@ -8,7 +8,20 @@ import java.util.*;
 public final class ItineraryPlan {
     private ItineraryPlan() {}
     public record Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
-                        LocalTime start, LocalTime end, Transport transport, int visitMinutes) {}
+                        LocalTime start, LocalTime end, Transport transport, int visitMinutes, Revision revision) {
+        // 처음 만드는 초안과 이전 작업 JSON은 수정 정보 없이 그대로 사용한다.
+        public Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
+                     LocalTime start, LocalTime end, Transport transport, int visitMinutes) {
+            this(recommendationId, places, conditions, start, end, transport, visitMinutes, null);
+        }
+    }
+    public record PlaceRef(Long placeId, String name) {}
+    /**
+     * 기존 초안을 바탕으로 만든 수정안(SFR-04-07·08-04). 원본 초안은 바꾸지 않는다.
+     * kept는 사용자가 유지한 관광지이며 시각 고정이 아니라 장소 유지만 뜻한다.
+     */
+    public record Revision(UUID sourceJobId, List<PlaceRef> kept, List<PlaceRef> replaced, List<PlaceRef> added,
+                           String reason, Instant requestedAt) {}
     public record Item(String type, Long placeId, String name, LocalTime start, LocalTime end,
                        String note, String mapUrl, String sourceUrl, Integer travelSeconds, Instant checkedAt) {}
     public record Day(int number, LocalDate date, List<Item> items) {}

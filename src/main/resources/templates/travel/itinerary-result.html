@@ -7,7 +7,14 @@
 <main class="travel">
 <a class="back-link" th:href="@{/travel/recommendations/{id}/destinations/{dest}/places(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">← 장소 목록</a>
 <p class="eyebrow">여행 준비 · 일정 초안</p>
-<h1 th:text="${job.input.places.destination.name + ' 일정 초안'}"></h1>
+<h1 th:text="${job.input.places.destination.name + (job.input.revision == null ? ' 일정 초안' : ' 일정 수정안')}"></h1>
+<div class="notice" th:if="${job.input.revision != null}" th:with="rev=${job.input.revision}">
+<p th:if="${!rev.replaced.isEmpty()}" th:text="${'바꾼 관광지: ' + #strings.listJoin(rev.replaced.![name], ', ') + ' → ' + #strings.listJoin(rev.added.![name], ', ')}"></p>
+<p th:if="${rev.replaced.isEmpty()}">관광지는 그대로 두고 하루 시간과 체류시간만 바꾼 수정안이에요.</p>
+<p th:text="${'유지한 관광지: ' + #strings.listJoin(rev.kept.![name], ', ') + ' (장소만 유지하고 방문 시각은 다시 계산해요)'}"></p>
+<p th:if="${rev.reason != null}" th:text="${'교체 이유: ' + T(com.travel.travel_recommendation.service.ItineraryJobService.ReplaceReason).valueOf(rev.reason).label}"></p>
+<p>원래 초안은 바뀌지 않았어요. <a th:href="@{/travel/recommendations/itineraries/{id}(id=${rev.sourceJobId})}">원래 초안 보기</a> · 이 수정안이 마음에 들면 저장해서 적용해 주세요.</p>
+</div>
 <div role="status" data-poll-seconds="120" th:attr="data-job-pending=${job.pending},data-status-url=@{/travel/recommendations/itineraries/{id}/status(id=${job.id})}">
 <p data-job-message th:text="${job.message}"></p></div>
 <p th:if="${job.pending}">최대 약 2분 정도 걸릴 수 있어요. 이 화면에서 처리 상태를 확인할 수 있어요.</p>
@@ -52,6 +59,36 @@
 </div>
 </article></section>
 </th:block>
+
+<section class="condition-section" th:if="${job.result != null}" aria-labelledby="revise-title">
+<h2 id="revise-title">장소 바꿔서 수정안 만들기</h2>
+<p class="help">바꾸고 싶은 관광지만 고르세요. 고르지 않은 관광지는 그대로 유지하고, 바꿀 관광지는 확인된 다른 후보로 채워요. 식사·숙소 후보와 이동수단은 그대로예요. 수정안은 새 초안으로 만들어지고 이 초안은 바뀌지 않아요.</p>
+<form method="post" th:action="@{/travel/recommendations/itineraries/{id}/revisions(id=${job.id})}">
+<fieldset class="theme-choices"><legend>바꿀 관광지 (고르지 않은 곳은 유지)</legend>
+<label th:each="place : ${job.input.places.attractions}"><input type="checkbox" name="replace" th:value="${place.placeId}"><span th:text="${place.name}"></span></label>
+</fieldset>
+<p><label for="reason">교체 이유 (관광지를 바꿀 때 필수)</label><select id="reason" name="reason">
+<option value="">선택해 주세요</option>
+<option th:each="r : ${T(com.travel.travel_recommendation.service.ItineraryJobService.ReplaceReason).values()}" th:value="${r.name()}" th:text="${r.label}"></option></select></p>
+<p class="help">'실내 장소로'를 고르면 박물관·전시·체험관처럼 실내로 보이는 후보를 먼저 골라요. 다른 이유는 기록만 하고 후보 목록 순서대로 골라요.</p>
+<div class="field-grid">
+<div><label for="rev-start">하루 시작 시간</label><input id="rev-start" name="start" type="time" min="08:00" max="17:00" th:value="${job.input.start}" required></div>
+<div><label for="rev-end">하루 종료 시간</label><input id="rev-end" name="end" type="time" min="12:00" max="21:00" th:value="${job.input.end}" required></div>
+<div><label for="rev-visit">관광지 체류시간 (분)</label><input id="rev-visit" name="visitMinutes" type="number" min="30" max="180" th:value="${job.input.visitMinutes}" required></div>
+</div>
+<div class="form-actions"><button type="submit">수정안 만들기</button></div>
+</form>
+</section>
+
+<section class="condition-section" th:if="${job.result != null and !applyTargets.isEmpty()}" aria-labelledby="apply-title">
+<h2 id="apply-title">저장한 일정에 적용</h2>
+<p class="help">이 수정안은 아래 저장 일정에서 이어졌어요. 적용하면 저장한 일정의 시각·장소·순서가 이 수정안으로 바뀌고 이름은 그대로예요. 적용 전까지 저장한 일정은 바뀌지 않아요.</p>
+<p role="alert" th:unless="${report.complete}">미충족 조건이 있어 적용할 수 없어요.</p>
+<form th:if="${report.complete}" th:each="target : ${applyTargets}" th:action="@{/my/itineraries/{id}/apply(id=${target.id})}" method="post">
+<input type="hidden" name="jobId" th:value="${job.id}"><input type="hidden" name="version" th:value="${target.version}">
+<div class="form-actions"><button type="submit" th:text="${target.title + '에 적용하기'}"></button></div>
+</form>
+</section>
 
 <section class="condition-section" th:if="${job.result != null}">
 <h2>내 일정으로 저장</h2>

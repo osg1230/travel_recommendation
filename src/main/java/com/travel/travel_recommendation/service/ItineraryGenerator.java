@@ -97,6 +97,10 @@ public class ItineraryGenerator {
         if(result.days().size()!=input.conditions().durationDays() || result.transport()!=input.transport()) throw invalid();
         checkAssist(result);
         Set<Long> expected=new HashSet<>(); input.places().attractions().forEach(p->expected.add(p.placeId()));
+        // 수정안은 유지한 관광지와 새 관광지가 모두 배치 대상에 있어야 한다. 유지 장소를 빼거나 바꾼 결과는 받지 않는다.
+        if(input.revision()!=null && (input.revision().kept().isEmpty()
+                || !expected.containsAll(input.revision().kept().stream().map(PlaceRef::placeId).toList())
+                || !expected.containsAll(input.revision().added().stream().map(PlaceRef::placeId).toList()))) throw invalid();
         Set<Long> seen=new HashSet<>(); Set<Long> allowed=new HashSet<>(expected);
         input.places().restaurants().forEach(p->allowed.add(p.placeId()));
         input.places().accommodations().forEach(p->allowed.add(p.placeId()));

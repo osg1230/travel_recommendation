@@ -20,6 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/travel/recommendations")
 public class ItineraryController {
     private final ObjectProvider<ItineraryJobService> services;
+    private final ObjectProvider<SavedItineraryService> savedItineraries;
     private record Submission(UUID parent,long destination,String login,String token,UUID job) {}
     private static final String SESSION_KEY="itinerarySubmission";
 
@@ -65,7 +66,19 @@ public class ItineraryController {
         if(job.result()!=null) model.addAttribute("report",ItineraryConditionReport.evaluate(job.input(),job.result()));
         // 내 일정 저장은 회원만 할 수 있어 화면에서 로그인 여부를 구분한다.
         model.addAttribute("loggedIn",principal!=null);
+        // 수정안이면 이어진 저장 일정에 덮어쓸 수 있게 대상 일정을 함께 보여 준다.
+        var saved=savedItineraries.getIfAvailable();
+        model.addAttribute("applyTargets",saved==null || job.result()==null || job.input().revision()==null?List.of():saved.targets(id,login(principal)));
         return "travel/itinerary-result";
+    }
+    /** 유지·교체할 관광지와 시간을 받아 새 수정안 작업을 만든다. 원본 초안은 그대로 둔다. */
+    @PostMapping("/itineraries/{id}/revisions")
+    ResponseEntity<?> revise(@PathVariable UUID id,@RequestParam(required=false) List<Long> replace,
+            @RequestParam(required=false) ItineraryJobService.ReplaceReason reason,@RequestParam LocalTime start,
+            @RequestParam LocalTime end,@RequestParam int visitMinutes,Principal principal,HttpSession session) {
+        UUID job=service().revise(id,login(principal),hash(session),replace,reason,start,end,visitMinutes);
+        return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create("/travel/recommendations/itineraries/"+job))
+            .cacheControl(CacheControl.noStore()).build();
     }
     @GetMapping("/itineraries/{id}/status")
     @ResponseBody
@@ -74,13 +87,16 @@ public class ItineraryController {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(Map.of("status",job.status(),"message",job.message(),"pending",job.pending()));
     }
     @ExceptionHandler({ResponseStatusException.class,RecommendationException.class,DataAccessException.class})
-    String error(RuntimeException error,HttpServletResponse response,HttpSession session,Model model) {
+    String error(RuntimeException error,HttpServletRequest request,HttpServletResponse response,HttpSession session,Model model) {
         int status=400; String message;
         if(error instanceof ResponseStatusException e) { status=e.getStatusCode().value(); message=e.getReason(); }
         else if(error instanceof RecommendationException e) message=e.getMessage();
         else { status=503; message="일정 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요."; }
         response.setStatus(status); response.setHeader("Cache-Control","no-store"); model.addAttribute("message",message);
         var submission=(Submission)session.getAttribute(SESSION_KEY);
+        // 수정안을 만들지 못하면 원본 초안은 그대로이므로 원본으로 돌아가는 길을 안내한다.
+        var revision=java.util.regex.Pattern.compile("^/travel/recommendations/itineraries/([0-9a-fA-F-]{36})/revisions$").matcher(request.getRequestURI().substring(request.getContextPath().length()));
+        if(revision.matches()) model.addAttribute("sourceUrl","/travel/recommendations/itineraries/"+revision.group(1));
         if(submission!=null) model.addAttribute("editUrl","/travel/recommendations/"+submission.parent()+"/destinations/"+submission.destination()+"/schedule");
         return "travel/itinerary-error";
     }
