@@ -26,6 +26,7 @@ public class ItineraryJobService {
     private final ItineraryGenerator generator;
     private final ItineraryAssistant assistant;
     private final OpenAiRevisionClient revisions;
+    private final NearbyRegionService nearby;
     // 트랜잭션이 걸린 공개 메서드를 같은 객체 안에서 부를 때 프록시를 거치게 한다.
     private final org.springframework.beans.factory.ObjectProvider<ItineraryJobService> selfProvider;
     private final ObjectMapper mapper;
@@ -242,12 +243,15 @@ public class ItineraryJobService {
         }
         job.generatingSchedule(); return new Work(id,mapper.readValue(job.getRequestJson(),Input.class));
     }
-    // 외부 지도 호출 동안 트랜잭션이나 DB 잠금을 유지하지 않는다. AI 보조도 같은 단계에서 처리한다.
+    // 외부 지도 호출 동안 트랜잭션이나 DB 잠금을 유지하지 않는다. AI 보조와 주변 지역 추천도 같은 단계에서 처리한다.
     public Result generate(Work work) {
         // 작업 처리 제한은 2분이다. 배치에 쓴 시간을 빼고 남는 동안만 AI 보조를 시도한다.
         var deadline=Instant.now().plusSeconds(100);
-        var plan=generator.generate(work.input());
-        return assistant.assist(work.input(),plan,deadline);
+        var plan=assistant.assist(work.input(),generator.generate(work.input()),deadline);
+        // 주변 지역 조회는 최대 수십 초가 걸릴 수 있어 남은 시간이 부족하면 건너뛴다. 실패해도 일정 초안은 그대로다.
+        if(Instant.now().isAfter(deadline.minusSeconds(40))) return plan;
+        try { return plan.withNearby(nearby.recommend(work.input(),plan)); }
+        catch(RuntimeException error) { return plan; }
     }
 
     @Transactional(timeout=10)

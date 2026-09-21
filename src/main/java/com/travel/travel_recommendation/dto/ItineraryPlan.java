@@ -50,12 +50,31 @@ public final class ItineraryPlan {
     /** AI가 작성한 보조 안내. 서버가 만든 시각·장소·순서를 바꾸지 않으며 검증 완료를 뜻하지 않는다. */
     public record Assist(String summary, List<DayAdvice> days, Instant createdAt) {}
     public record DayAdvice(int number, String advice) {}
-    public record Result(String destination, List<Day> days, Transport transport, Instant createdAt, Assist assist) {
-        // 보조 안내를 붙이기 전의 초안과 이전 작업 JSON은 assist 없이 그대로 사용한다.
+    /**
+     * 주변 지역 추천 결과(SFR-07). decision은 추천 여부 판단이고 regions는 기준 시간 안의 지역만 담는다.
+     * 일정에 끼워 넣지 않는 참고 추천이며, 이동시간은 조회 시점의 예상값이다.
+     */
+    public record Nearby(String decision, String reason, String basis, List<NearbyRegion> regions, String notice, Instant checkedAt) {
+        public Nearby { regions = regions == null ? List.of() : List.copyOf(regions); }
+    }
+    /** minutes는 basis(자차 또는 직행 시외버스)의 편도 예상 시간이다. bus는 시외버스 기준일 때만 있다. */
+    public record NearbyRegion(Long placeId, String name, String region, String description, String sourceUrl,
+                               int minutes, String route, BusInfo bus, List<NearbyAttraction> attractions) {
+        public NearbyRegion { attractions = attractions == null ? List.of() : List.copyOf(attractions); }
+    }
+    /** 오늘 운행하는 직행 시외버스 요약. 여행 당일 시간표와 다를 수 있다(SFR-06-06). */
+    public record BusInfo(LocalDate serviceDate, int trips, LocalTime firstDeparture, LocalTime lastDeparture, Integer minCharge) {}
+    public record NearbyAttraction(Long placeId, String name, String subtype, String description, String address, String sourceUrl) {}
+    public record Result(String destination, List<Day> days, Transport transport, Instant createdAt, Assist assist, Nearby nearby) {
+        // 보조 안내를 붙이기 전의 초안과 이전 작업 JSON은 assist·nearby 없이 그대로 사용한다.
         public Result(String destination, List<Day> days, Transport transport, Instant createdAt) {
-            this(destination, days, transport, createdAt, null);
+            this(destination, days, transport, createdAt, null, null);
         }
-        public Result withAssist(Assist assist) { return new Result(destination, days, transport, createdAt, assist); }
+        public Result(String destination, List<Day> days, Transport transport, Instant createdAt, Assist assist) {
+            this(destination, days, transport, createdAt, assist, null);
+        }
+        public Result withAssist(Assist assist) { return new Result(destination, days, transport, createdAt, assist, nearby); }
+        public Result withNearby(Nearby nearby) { return new Result(destination, days, transport, createdAt, assist, nearby); }
     }
     public record View(UUID id, String status, String message, boolean pending, Input input, Result result) {}
 }
