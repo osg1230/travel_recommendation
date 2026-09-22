@@ -7,17 +7,32 @@ import java.util.*;
 /** 작업 입력과 검증된 일정 초안. 장소 정보는 서버 후보 스냅샷을 사용한다. */
 public final class ItineraryPlan {
     private ItineraryPlan() {}
+    /**
+     * reserve는 일정에 쓰려고 고른 관광지(places.attractions)가 섬처럼 갈 수 없어 빠질 때 대신 넣을 예비 관광지다.
+     * 쓰지 않은 예비 관광지는 결과에 적지 않는다.
+     */
     public record Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
                         LocalTime start, LocalTime end, Transport transport, int visitMinutes, Revision revision,
-                        Constraints constraints) {
-        // 처음 만드는 초안과 이전 작업 JSON은 수정 정보·조건 구분 없이 그대로 사용한다.
+                        Constraints constraints, List<PlaceCandidate> reserve) {
+        public Input { reserve = reserve == null ? List.of() : List.copyOf(reserve); }
+        // 처음 만드는 초안과 이전 작업 JSON은 수정 정보·조건 구분·예비 관광지 없이 그대로 사용한다.
         public Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
                      LocalTime start, LocalTime end, Transport transport, int visitMinutes) {
-            this(recommendationId, places, conditions, start, end, transport, visitMinutes, null, null);
+            this(recommendationId, places, conditions, start, end, transport, visitMinutes, null, null, null);
         }
         public Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
                      LocalTime start, LocalTime end, Transport transport, int visitMinutes, Revision revision) {
-            this(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, null);
+            this(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, null, null);
+        }
+        public Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
+                     LocalTime start, LocalTime end, Transport transport, int visitMinutes, Revision revision,
+                     Constraints constraints) {
+            this(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, null);
+        }
+        /** 고른 관광지와 예비 관광지 전체. 일정에 들어간 관광지가 어느 쪽이든 찾을 수 있다. */
+        public List<PlaceCandidate> attractionsWithReserve() {
+            var all = new ArrayList<>(places.attractions()); all.addAll(reserve);
+            return List.copyOf(all);
         }
     }
     /**

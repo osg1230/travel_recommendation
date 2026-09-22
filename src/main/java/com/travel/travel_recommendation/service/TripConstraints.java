@@ -45,6 +45,30 @@ public final class TripConstraints {
         pool.stream().filter(p -> p.latitude() == null || p.longitude() == null).forEach(ordered::add);
         return List.copyOf(ordered);
     }
+    /**
+     * 관광지 종류. 카카오 분류(예: "여행 > 관광,명소 > 해수욕장,해변")는 마지막 단계를 쓰고, 해수욕장·해변은 하나로 묶는다.
+     * 분류가 없으면 빈 문자열이다.
+     */
+    public static String kind(PlaceCandidate place) {
+        String subtype = place.subtype() == null ? "" : place.subtype().strip();
+        String last = subtype.contains(">") ? subtype.substring(subtype.lastIndexOf('>') + 1).strip() : subtype;
+        if (last.contains("해수욕장") || last.contains("해변")) return "해변";
+        return last;
+    }
+
+    /**
+     * 같은 종류(예: 해수욕장)가 몰리지 않도록 종류별로 돌아가며 한 곳씩 뽑는다. 종류 안의 순서와 종류가 처음 나온 순서는 그대로 둔다.
+     * 예) 해변A·해변B·전망대·해변C·공원 → 해변A·전망대·공원·해변B·해변C
+     */
+    public static List<PlaceCandidate> mixKinds(List<PlaceCandidate> ordered) {
+        Map<String, Deque<PlaceCandidate>> byKind = new LinkedHashMap<>();
+        for (var place : ordered) byKind.computeIfAbsent(kind(place), k -> new ArrayDeque<>()).add(place);
+        List<PlaceCandidate> mixed = new ArrayList<>();
+        while (mixed.size() < ordered.size())
+            for (var queue : byKind.values()) if (!queue.isEmpty()) mixed.add(queue.poll());
+        return List.copyOf(mixed);
+    }
+
     private static double median(List<Double> values) {
         var sorted = values.stream().sorted().toList();
         int mid = sorted.size() / 2;

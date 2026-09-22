@@ -157,6 +157,40 @@ class ItineraryGeneratorTests {
         assertThatThrownBy(()->generator.generate(required)).isInstanceOfSatisfying(RecommendationException.class,e->{
             assertThat(e.getCode()).isEqualTo("TRAVEL_TIME_EXCEEDED"); assertThat(e.getMessage()).contains("장소90"); });
     }
+    // 섬(장소 90)이 빠지면 그 자리를 예비 관광지로 채운다. 쓰지 않은 예비 관광지는 결과에 적지 않는다.
+    @Test void reservePlaceFillsTheSlotOfAnUnreachableAttraction() {
+        when(maps.travelTime(any(),any(),any())).thenAnswer(invocation->{
+            KakaoMapClient.Location a=invocation.getArgument(0), b=invocation.getArgument(1);
+            boolean island=Math.max(a.longitude(),b.longitude())>128.885;
+            return new KakaoMapClient.TravelTime(invocation.getArgument(2),island?7300:601,3000,Instant.now());
+        });
+        var base=input(1,LocalTime.of(18,0));
+        var pool=new PlaceCandidateView(base.places().jobId(),base.places().destination(),1,false,
+            List.of(place(1),place(90),place(2)),List.of(),base.places().restaurants());
+        var input=new Input(base.recommendationId(),pool,base.conditions(),base.start(),base.end(),base.transport(),60,null,null,
+            List.of(place(5),place(6)));
+        var result=generator.generate(input);
+        assertThat(result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).map(Item::placeId)).containsExactly(1L,2L,5L);
+        assertThat(result.skipped()).extracting(PlaceRef::placeId).containsExactly(90L);
+        generator.validate(input,result);
+        // 예비 관광지가 아닌 곳을 넣은 결과는 받지 않는다.
+        var forged=new Input(base.recommendationId(),pool,base.conditions(),base.start(),base.end(),base.transport(),60);
+        assertThatThrownBy(()->generator.validate(forged,result)).isInstanceOf(RecommendationException.class);
+    }
+    // 해수욕장 두 곳이 붙어 있어도 바로 이어서 가지 않고, 조금 먼 다른 종류(전망대)를 먼저 넣는다. 날이 바뀌어도 이어서 본다.
+    @Test void sameKindIsNotVisitedBackToBackWhenAnotherKindIsNearby() {
+        var beachA=new PlaceCandidate(1L,"해변A","강원 강릉시 경포로 1","여행 > 관광,명소 > 해수욕장,해변","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var beachB=new PlaceCandidate(3L,"해변B","강원 강릉시 경포로 3","여행 > 관광,명소 > 해수욕장,해변","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var view=new PlaceCandidate(4L,"전망대","강원 강릉시 경포로 4","여행 > 관광,명소 > 전망대","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var base=input(1,LocalTime.of(18,0));
+        var pool=new PlaceCandidateView(base.places().jobId(),base.places().destination(),1,false,
+            List.of(beachA,beachB,view),List.of(),List.of(place(30)));
+        var input=new Input(base.recommendationId(),pool,base.conditions(),base.start(),base.end(),base.transport(),60);
+        var result=generator.generate(input);
+        // 해변B(해변A에서 2단위)가 전망대(3단위)보다 가깝지만, 같은 종류라 두 배(4단위)로 쳐서 전망대를 먼저 간다.
+        assertThat(result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).map(Item::placeId)).containsExactly(1L,4L,3L);
+        generator.validate(input,result);
+    }
     // 필수 방문 장소는 시간이 부족해도 빼지 않고, 어느 장소 때문인지 알린다.
     @Test void requiredPlaceThatDoesNotFitFailsWithItsName() {
         var base=input(1,LocalTime.of(13,0));

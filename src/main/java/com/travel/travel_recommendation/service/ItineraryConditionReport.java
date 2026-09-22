@@ -129,7 +129,7 @@ public final class ItineraryConditionReport {
     }
 
     private static Check operating(Input input, Result result) {
-        var pool = new ArrayList<>(input.places().attractions());
+        var pool = new ArrayList<>(input.attractionsWithReserve());
         pool.addAll(input.places().restaurants()); pool.addAll(input.places().accommodations());
         int checked = 0, unknown = 0;
         for (var day : result.days()) for (var item : day.items()) {
