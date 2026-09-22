@@ -95,6 +95,9 @@ public class PlaceCandidateController {
         var places = service.find(id, destinationId,
             principal == null ? null : principal.getName(), RecommendationJobController.guestHash(session, false));
         model.addAttribute("places", places);
+        // 여행 목적 시설(예: 아쿠아리움)은 목록에서 따로 표시한다.
+        model.addAttribute("purpose", service.purpose(id, destinationId,
+            principal == null ? null : principal.getName(), RecommendationJobController.guestHash(session, false)));
         // 관광지·숙소 위치를 지도에 표시한다(SFR-11-01).
         model.addAttribute("mapJson", mapper.writeValueAsString(com.travel.travel_recommendation.service.TripMap.places(places)));
         // 장소별 평균 별점·평가 수·많이 고른 태그(SFR-10-02). 비회원도 볼 수 있다.

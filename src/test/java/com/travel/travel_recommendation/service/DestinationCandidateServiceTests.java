@@ -55,6 +55,9 @@ class DestinationCandidateServiceTests {
         assertThat(names(DestinationCandidateService.pick(all, List.of("바다", "휴식"), true)).subList(0, 3)).containsExactly("강릉", "여수", "제주");
         // 시·도를 정한 조회는 5곳 이하면 그대로 둔다.
         assertThat(DestinationCandidateService.pick(List.of(gangneung, sokcho), List.of("바다"), false)).containsExactly(gangneung, sokcho);
+        // 여행 목적 시설(예: 아쿠아리움)이 있는 여행지는 취향 점수보다 먼저 고른다.
+        assertThat(names(DestinationCandidateService.pick(all, List.of("문화·역사"), true, List.of(jeju.getId(), yeosu.getId()))).subList(0, 2))
+            .containsExactly("여수", "제주");
         // 같은 조건이면 늘 같은 결과다.
         assertThat(DestinationCandidateService.pick(all, List.of("맛집"), true)).isEqualTo(DestinationCandidateService.pick(all, List.of("맛집"), true));
     }

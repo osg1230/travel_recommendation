@@ -44,6 +44,12 @@ public class ItineraryJobService {
             transport==null?KakaoMapClient.Transport.CAR:transport,90);
     }
 
+    /** 이 여행지에 있는 여행 목적 시설(예: 아쿠아리움)의 관광지 ID. 일정 화면에서 필수 방문 장소 기본값으로 쓴다. */
+    @Transactional(readOnly=true,timeout=10)
+    public List<Long> purposePlaceIds(UUID parentId,long destinationId,String login,byte[] hash) {
+        return candidates.purpose(parentId,destinationId,login,hash).placeIds();
+    }
+
     /** 필수 방문 장소로 고를 수 있는 전체 관광지 후보(최대 16곳). */
     @Transactional(readOnly=true,timeout=10)
     public List<PlaceCandidate> attractionPool(UUID parentId,long destinationId,String login,byte[] hash) {

@@ -49,12 +49,17 @@ public class OpenAiRecommendationClient {
                 travelPurpose에 예전 지역·기간·예산이 남아 있다면 별도의 구조화된 조건 값을 우선한다.
                 상어 관람 같은 목적을 단순한 바다 여행으로 바꾸지 않는다. 후보 소개에 관람·체험 근거가 없으면
                 해당 목적에 맞는 장소는 아직 확인하지 못했다고 명시한다. 장소나 전시 내용을 지어내지 않는다.
+                후보의 purposePlaces는 목적 검색어(purposeKeywords)로 카카오 지도에서 찾은 그 지역의 시설 이름이다.
+                있으면 그 시설 이름을 근거로 목적과의 연결을 설명하되, 시설의 전시·체험 내용(예: 상어가 있는지)은
+                확인하지 않았으니 방문 전 확인이 필요하다고 쓴다. 없으면 그 지역에서는 목적 시설을 찾지 못했다고 쓴다.
+                purposePlaces에 없는 시설 이름은 쓰지 않는다.
                 특정 지역 후보 하나만 있으면 다른 지역을 추가하지 말고 그 지역의 적합성과 한계를 설명한다.
                 각 reason은 일반 텍스트 1~3문장으로 작성하고 HTML·URL·연락처는 넣지 않는다.
                 """,
                 "input",mapper.writeValueAsString(Map.of("conditions",promptConditions(conditions),
                     "candidates",candidates.stream().map(c->Map.of("placeId",c.placeId(),"name",c.name(),
-                        "region",c.region(),"description",Objects.toString(c.description(),""))).toList())),
+                        "region",c.region(),"description",Objects.toString(c.description(),""),
+                        "purposePlaces",purposePlaces(conditions,c))).toList())),
                 "text",Map.of("format",Map.of("type","json_schema","name","destination_recommendations","strict",true,
                     "schema",schema(candidates))));
             HttpRequest request=HttpRequest.newBuilder(endpoint).timeout(timeout)
@@ -111,12 +116,18 @@ public class OpenAiRecommendationClient {
                     "properties",Map.of("placeId",Map.of("type","integer","enum",candidates.stream().map(DestinationCandidate::placeId).toList()),
                         "reason",Map.of("type","string","minLength",1,"maxLength",2000))))));
     }
+    // 그 후보 지역에서 찾은 목적 시설 이름. 목적 검색을 하지 않았거나 찾지 못했으면 빈 목록이다.
+    private static List<String> purposePlaces(ConfirmedTravelConditions c,DestinationCandidate candidate) {
+        if(c.purposeSearch()==null) return List.of();
+        return c.purposeSearch().placesIn(candidate.placeId()).stream().map(p->p.name()).toList();
+    }
     private Map<String,Object> promptConditions(ConfirmedTravelConditions c) {
         Map<String,Object> p=new LinkedHashMap<>();
         p.put("region",c.region());p.put("startDate",c.startDate());p.put("endDate",c.endDate());
         p.put("durationDays",c.durationDays());p.put("budgetKrw",c.budget());p.put("partySize",c.partySize());
         p.put("accommodationNeeded",c.accommodationNeeded());p.put("includeNearby",c.includeNearby());
         p.put("travelPurpose",c.travelPurpose() == null ? "" : c.travelPurpose());
+        p.put("purposeKeywords",c.purposeSearch() == null ? List.of() : c.purposeSearch().keywords());
         for(String category:List.of("SEASON","COMPANION","THEME","TRANSPORTATION")) p.put(category,c.keywordNames(category));
         // 원문, 계정 식별자, 세션 토큰과 DB 키워드 ID는 외부로 전송하지 않는다.
         return p;

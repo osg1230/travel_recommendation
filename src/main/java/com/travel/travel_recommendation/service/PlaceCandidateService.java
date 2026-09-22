@@ -33,6 +33,21 @@ public class PlaceCandidateService {
         "www.seamarqhotel.com", "booking.seamarqhotel.com", "www.shillahotels.com",
         "www.haeundaegalbi.com", "www.lahanhotels.com", "lahanhotels.com");
 
+    /** 이 추천에서 찾은 여행 목적 시설 중 이 여행지에 있는 관광지. 장소 목록 표시와 일정의 필수 방문 기본값에 쓴다. */
+    public record PurposeView(String purpose, List<Long> placeIds) {
+        public static final PurposeView NONE = new PurposeView("", List.of());
+    }
+    @Transactional(readOnly = true, timeout = 10)
+    public PurposeView purpose(UUID jobId, long destinationId, String loginId, byte[] guestHash) {
+        jobs.view(jobId, loginId, guestHash);
+        var stored = jobRepository.findById(jobId).orElse(null);
+        if (stored == null) return PurposeView.NONE;
+        var c = mapper.readValue(stored.getRequestJson(), ConfirmedTravelConditions.class);
+        if (c.purposeSearch() == null) return PurposeView.NONE;
+        return new PurposeView(c.travelPurpose() == null ? "" : c.travelPurpose(),
+            c.purposeSearch().placesIn(destinationId).stream().map(p -> p.placeId()).toList());
+    }
+
     @Transactional(readOnly = true, timeout = 10)
     public PlaceCandidateView find(UUID jobId, long destinationId, String loginId, byte[] guestHash) {
         return findForSchedule(jobId, destinationId, loginId, guestHash, null);
@@ -62,9 +77,13 @@ public class PlaceCandidateService {
         boolean needsAccommodation = !Boolean.FALSE.equals(conditions.accommodationNeeded())
             && conditions.durationDays() != null && conditions.durationDays() > 1;
         // 부분 문자열 검색으로 다른 시·군을 섞지 않는다. 출처·주소를 확인한 활성 장소만 반환한다.
+        // 여행 목적 시설(예: 아쿠아리움)은 후보 수 제한에 밀리지 않도록 맨 앞에 둔다.
+        var purposeIds = conditions.purposeSearch() == null ? List.<Long>of()
+            : conditions.purposeSearch().placesIn(destinationId).stream().map(p -> p.placeId()).toList();
         var candidates = places.findLocalPlaces(current.getRegion()).stream()
             .filter(place -> usable(place, current.getRegion()))
-            .sorted(Comparator.comparing((Place p)->!"KAKAO".equals(p.getSourceProvider()))
+            .sorted(Comparator.comparing((Place p)->!purposeIds.contains(p.getId()))
+                .thenComparing((Place p)->!"KAKAO".equals(p.getSourceProvider()))
                 .thenComparing(Place::getName).thenComparing(Place::getId)).toList();
         var distinct=new ArrayList<Place>(); Set<String> seen=new HashSet<>();
         for(var place:candidates) {

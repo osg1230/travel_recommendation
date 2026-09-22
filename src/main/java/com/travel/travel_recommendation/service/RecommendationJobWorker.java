@@ -15,9 +15,11 @@ import org.springframework.stereotype.Component;
 @EnableScheduling
 @RequiredArgsConstructor
 public class RecommendationJobWorker {
+    private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(RecommendationJobWorker.class);
     private final RecommendationJobService service;
     private final DestinationRecommendationService recommendations;
     private final ItineraryJobService itineraries;
+    private final PurposePlaceService purposes;
     private volatile boolean ready;
 
     @EventListener(ApplicationReadyEvent.class)
@@ -28,6 +30,8 @@ public class RecommendationJobWorker {
     public void runQueued() {
         if(!ready) return;
         for(UUID id:service.queued()) {
+            // 구체적 목적이 있으면 후보를 고르기 전에 목적 시설을 찾아 둔다. 실패해도 추천은 그대로 진행한다.
+            try { purposes.enrich(id); } catch(RuntimeException e) { log.warn("목적 시설 검색을 건너뜀 job={} ({})",id,e.toString()); }
             try { service.prepare(id); }
             catch(RuntimeException e) { service.fail(id); }
         }

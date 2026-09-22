@@ -10,6 +10,14 @@
     <section class="condition-section" th:if="${conditions != null}">
         <h2>이런 여행을 찾고 있어요</h2>
         <p th:if="${!#strings.isEmpty(conditions.travelPurpose)}" th:text="${'여행 목적: ' + conditions.travelPurpose}"></p>
+        <th:block th:if="${conditions.purposeSearch != null}" th:with="ps=${conditions.purposeSearch}">
+            <p class="help" th:if="${!ps.keywords.isEmpty()}" th:text="${'목적 시설 검색어: ' + #strings.listJoin(ps.keywords, ', ') + ' (AI가 목적을 시설 종류로 바꾼 검색어)'}"></p>
+            <th:block th:if="${ps.status == 'FOUND'}">
+                <p th:text="${'목적 시설을 찾은 여행지: ' + #strings.listJoin(ps.places.![destinationName + ' ' + name], ', ')}"></p>
+                <p class="help">카카오 장소 검색에서 이름·주소를 확인한 시설이에요. 전시·체험 내용(예: 원하는 동물이 있는지)은 확인하지 않았으니 공식 사이트에서 확인해 주세요.</p>
+            </th:block>
+            <p class="help" th:unless="${ps.status == 'FOUND'}" th:text="${ps.message}"></p>
+        </th:block>
         <details th:if="${!#strings.isEmpty(conditions.interpretationSummary)}"><summary>처음 입력한 내용의 해석 보기</summary><p th:text="${conditions.interpretationSummary}"></p></details>
         <p th:text="${(conditions.region.isEmpty() ? '지역 제한 없음' : conditions.region) + ' · ' + (conditions.durationDays == null ? '기간은 일정 만들 때 선택' : conditions.durationDays + '일')}"></p>
         <a th:href="@{/travel/conditions/edit(recommendationId=${job.jobId})}">조건 수정하기</a>
@@ -32,6 +40,12 @@
             <h2 th:text="${item.rank + '순위 · ' + item.destination.name}"></h2>
             <p th:text="${item.destination.region}"></p>
             <p th:text="${item.reason}"></p>
+            <ul th:if="${conditions != null and conditions.purposeSearch != null and !conditions.purposeSearch.placesIn(item.destination.placeId).isEmpty()}">
+                <li th:each="facility : ${conditions.purposeSearch.placesIn(item.destination.placeId)}">
+                    <span th:text="${'목적 시설 · ' + facility.name + ' (' + facility.address + ')'}"></span>
+                    <a th:href="${facility.sourceUrl}" target="_blank" rel="noopener noreferrer">카카오맵 (새 창)</a>
+                </li>
+            </ul>
             <a th:href="${item.destination.sourceUrl}" target="_blank" rel="noopener noreferrer">공식 관광 정보 보기</a>
             <p class="help" th:text="${'지역 정보 확인일: ' + #temporals.format(item.destination.verifiedAt,'yyyy-MM-dd') + ' · 실시간 조회 아님'}"></p>
             <div class="form-actions"><a class="button" th:href="@{/travel/recommendations/{id}/destinations/{destinationId}/places(id=${job.jobId},destinationId=${item.destination.placeId})}" th:text="${item.destination.name + ' 선택하고 장소 보기'}"></a></div>
