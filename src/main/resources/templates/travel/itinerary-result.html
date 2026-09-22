@@ -110,7 +110,7 @@
 <p><strong th:text="${'참고 합계 약 ' + #numbers.formatInteger(costEstimate.totalMin(), 0, 'COMMA') + '~' + #numbers.formatInteger(costEstimate.totalMax(), 0, 'COMMA') + '원'}"></strong></p>
 <ul>
 <li th:if="${costEstimate.lodgingMin != null}" th:text="${'숙박: 객실 1개 × ' + costEstimate.nights + '박 = ' + #numbers.formatInteger(costEstimate.lodgingMin, 0, 'COMMA') + '~' + #numbers.formatInteger(costEstimate.lodgingMax, 0, 'COMMA') + '원'}"></li>
-<li th:if="${costEstimate.mealMin != null}" th:text="${'식사: 가격을 찾은 ' + costEstimate.pricedMeals + '끼(전체 ' + costEstimate.meals + '끼) × ' + costEstimate.partySize + '명 = ' + #numbers.formatInteger(costEstimate.mealMin, 0, 'COMMA') + '~' + #numbers.formatInteger(costEstimate.mealMax, 0, 'COMMA') + '원'}"></li>
+<li th:if="${costEstimate.mealMin != null}" th:text="${'식사: 가격을 찾은 ' + costEstimate.pricedMeals + '끼(전체 ' + costEstimate.meals + '끼) × ' + costEstimate.partySize + '명(' + costEstimate.partyBasis + ') = ' + #numbers.formatInteger(costEstimate.mealMin, 0, 'COMMA') + '~' + #numbers.formatInteger(costEstimate.mealMax, 0, 'COMMA') + '원'}"></li>
 </ul>
 </th:block>
 <p class="help">실제 가격은 날짜·객실·메뉴·인원에 따라 달라요. 가격을 찾지 못한 곳, 교통비·입장료는 합계에 없어요. 예약·방문 전에 출처에서 확인해 주세요. 24시간 안에 다시 조회하면 같은 결과를 보여 줘요.</p>
