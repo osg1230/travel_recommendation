@@ -72,6 +72,8 @@ class OpenAiRecommendationClientTests {
             .isEqualTo("목적 시설 검색 결과에 야경 명소 정보가 없어 여행 목적과 여행 취향 연결은 확인이 필요합니다.");
         var body=mapper.readTree(request.get());
         assertThat(body.path("instructions").asText()).contains("입력 필드 이름을 쓰지 말고");
+        // 지시문의 예시(예: 상어 관람)가 다른 목적의 추천 이유에 새어 나오지 않도록 구체적 대상을 쓰지 않는다.
+        assertThat(body.path("instructions").asText()).doesNotContain("상어").contains("travelPurpose에 없는 목적을 언급하지 않는다");
         assertThat(OpenAiRecommendationClient.readable("THEMES와 purposePlacesX는 필드가 아니에요."))
             .isEqualTo("THEMES와 purposePlacesX는 필드가 아니에요.");
         assertThat(OpenAiRecommendationClient.readable("partySize가 없고 COMPANION는 연인, purposeKeywords로 찾았고 budgetKrw를 몰라요."))
