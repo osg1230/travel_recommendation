@@ -41,7 +41,7 @@ public class PlaceOperatingService {
             places.lockDestination(destinationId).orElseThrow(PlaceOperatingService::changed);
             var current = candidates.find(jobId, destinationId, login, hash);
             if (!before.destination().equals(current.destination()) || !selected.equals(select(current, placeId))) throw changed();
-            var place = places.findById(placeId).orElseThrow(PlaceOperatingService::changed);
+            var place = places.lockById(placeId).orElseThrow(PlaceOperatingService::changed);
             place.updateDetails(PlaceOperatingDetails.write(place, info, mapper));
             places.flush(); return true;
         });

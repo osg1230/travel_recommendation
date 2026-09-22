@@ -124,6 +124,13 @@ public class ItineraryController {
             // 조회 시각은 한국 시간으로 보여 준다.
             model.addAttribute("pricesCheckedAt",job.result().prices()==null?null:java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
                 .format(job.result().prices().checkedAt().atZone(java.time.ZoneId.of("Asia/Seoul"))));
+            // 장소에 저장해 둔 이전 검색 결과를 다시 쓴 곳은 그 검색 시각을 따로 보여 준다.
+            var reusedAt=new java.util.HashMap<Long,String>();
+            if(job.result().prices()!=null) job.result().prices().quotes().stream()
+                .filter(q->q.reusedBefore(job.result().prices().checkedAt()))
+                .forEach(q->reusedAt.put(q.placeId(),java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                    .format(q.checkedAt().atZone(java.time.ZoneId.of("Asia/Seoul")))));
+            model.addAttribute("priceReusedAt",reusedAt);
         }
         // 내 일정 저장은 회원만 할 수 있어 화면에서 로그인 여부를 구분한다.
         model.addAttribute("loggedIn",principal!=null);
