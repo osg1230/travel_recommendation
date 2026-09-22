@@ -104,6 +104,6 @@ public class DestinationRecommendationService {
     }
     private List<DestinationCandidate> pool(AiJob job) { return List.of(mapper.readValue(job.getResultJson(),DestinationCandidate[].class)); }
     private boolean currentPlacesMatch(ConfirmedTravelConditions c,List<DestinationCandidate> pool) {
-        return !pool.isEmpty() && pool.size()<=5 && places.find(c.region()).equals(pool);
+        return !pool.isEmpty() && pool.size()<=5 && places.find(c.region(),c.themeNames()).equals(pool);
     }
 }

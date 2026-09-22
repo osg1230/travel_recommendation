@@ -27,6 +27,7 @@ public class ItineraryJobService {
     private final ItineraryAssistant assistant;
     private final OpenAiRevisionClient revisions;
     private final NearbyRegionService nearby;
+    private final OpenAiPriceClient priceClient;
     // 트랜잭션이 걸린 공개 메서드를 같은 객체 안에서 부를 때 프록시를 거치게 한다.
     private final org.springframework.beans.factory.ObjectProvider<ItineraryJobService> selfProvider;
     private final ObjectMapper mapper;
@@ -34,13 +35,10 @@ public class ItineraryJobService {
 
     @Transactional(readOnly=true,timeout=10)
     public Input options(UUID parentId,long destinationId,String login,byte[] hash) {
+        // 관광지 후보는 전부 돌려준다. 몇 곳을 쓸지는 create에서 하루 시간을 보고 TripConstraints.select로 정한다.
         var pool=candidates.find(parentId,destinationId,login,hash);
         var parent=access.owned(parentId,login,hash,"RECOMMENDATION");
         var conditions=mapper.readValue(parent.getRequestJson(),ConfirmedTravelConditions.class);
-        int days=conditions.durationDays()==null?1:Math.max(1,Math.min(7,conditions.durationDays()));
-        // 후보가 늘어도 전부 방문시키지 않는다. 기간당 최대 2곳, 전체 8곳으로 조회 비용·체류량을 제한한다.
-        pool=new PlaceCandidateView(pool.jobId(),pool.destination(),pool.durationDays(),pool.accommodationNeeded(),
-            pool.attractions().stream().limit(Math.min(8,days*2)).toList(),pool.accommodations(),pool.restaurants());
         var transport=confirmedTransport(conditions);
         return new Input(parentId,pool,conditions,LocalTime.of(9,0),LocalTime.of(18,0),
             transport==null?KakaoMapClient.Transport.CAR:transport,90);
@@ -74,18 +72,19 @@ public class ItineraryJobService {
         if(constraints!=null && constraints.stayTier()!=null && (current.conditions().budget()!=null || !current.places().accommodationNeeded()))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"숙소 예산대는 예산을 정하지 않은 숙박 여행에서만 고를 수 있어요.");
         var places=current.places();
-        if(constraints!=null) {
-            int days=current.conditions().durationDays()==null?1:current.conditions().durationDays();
-            if(start==null || end==null || !end.isAfter(start)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"하루 시작·종료 시간을 확인해 주세요.");
-            List<PlaceCandidate> selected;
-            try {
-                selected=TripConstraints.select(attractionPool(parentId,destinationId,login,hash),days,start,end,visitMinutes,constraints);
-            } catch(IllegalArgumentException invalid) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"화면에 있는 장소와 값으로 조건을 다시 골라 주세요.");
-            }
-            places=new PlaceCandidateView(places.jobId(),places.destination(),places.durationDays(),places.accommodationNeeded(),
-                selected,places.accommodations(),places.restaurants());
+        int days=current.conditions().durationDays()==null?1:current.conditions().durationDays();
+        // 시간 범위 자체의 검증은 generator.checkInput이 한다. 여기서는 조건 선택에 필요한 값만 먼저 확인한다.
+        if(start==null || end==null || (constraints!=null && !end.isAfter(start)))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"하루 시작·종료 시간을 확인해 주세요.");
+        // 하루 시간·체류시간으로 추정한 수만큼 관광지를 고른다. 실제로 다 들어가는지는 일정 생성 때 이동시간으로 다시 확인한다.
+        List<PlaceCandidate> selected;
+        try {
+            selected=TripConstraints.select(places.attractions(),days,start,end,visitMinutes,constraints);
+        } catch(IllegalArgumentException invalid) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"화면에 있는 장소와 값으로 조건을 다시 골라 주세요.");
         }
+        places=new PlaceCandidateView(places.jobId(),places.destination(),places.durationDays(),places.accommodationNeeded(),
+            selected,places.accommodations(),places.restaurants());
         var input=new Input(parentId,places,current.conditions(),start,end,transport,visitMinutes,null,constraints);
         generator.checkInput(input);
         var parent=access.owned(parentId,login,hash,"RECOMMENDATION");
@@ -120,8 +119,9 @@ public class ItineraryJobService {
         if(!"COMPLETED".equals(source.getStatus()) || source.getResultJson()==null)
             throw new ResponseStatusException(HttpStatus.CONFLICT,"완성된 일정 초안에서만 수정안을 만들 수 있어요.");
         var original=mapper.readValue(source.getRequestJson(),Input.class);
+        var placed=placed(original,mapper.readValue(source.getResultJson(),Result.class));
         var chosen=new LinkedHashSet<>(replace==null?List.<Long>of():replace);
-        var originalIds=original.places().attractions().stream().map(PlaceCandidate::placeId).toList();
+        var originalIds=placed.stream().map(PlaceCandidate::placeId).toList();
         if(!originalIds.containsAll(chosen))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"이 초안에 있는 관광지만 교체할 수 있어요.");
         if(chosen.size()==originalIds.size())
@@ -136,7 +136,7 @@ public class ItineraryJobService {
         var pool=candidates.find(original.recommendationId(),destinationId,login,hash);
         var current=options(original.recommendationId(),destinationId,login,hash);
         var kept=new ArrayList<PlaceCandidate>();
-        for(var place:original.places().attractions()) {
+        for(var place:placed) {
             if(chosen.contains(place.placeId())) continue;
             kept.add(pool.attractions().stream().filter(p->p.placeId().equals(place.placeId())).findFirst().orElseThrow(()->
                 new ResponseStatusException(HttpStatus.CONFLICT,"유지한 관광지 '"+place.name()+"'의 정보가 바뀌었어요. 장소 목록에서 다시 조회해 주세요.")));
@@ -157,7 +157,7 @@ public class ItineraryJobService {
         var attractions=new ArrayList<>(kept); attractions.addAll(added);
         var places=new PlaceCandidateView(current.places().jobId(),current.places().destination(),current.places().durationDays(),
             current.places().accommodationNeeded(),List.copyOf(attractions),current.places().accommodations(),current.places().restaurants());
-        var revision=new Revision(sourceId,refs(kept),refs(original.places().attractions().stream().filter(p->chosen.contains(p.placeId())).toList()),
+        var revision=new Revision(sourceId,refs(kept),refs(placed.stream().filter(p->chosen.contains(p.placeId())).toList()),
             refs(added),chosen.isEmpty() && reason!=ReplaceReason.AI_REQUEST?null:reason.name(),Instant.now(),request,explanation);
         var input=new Input(original.recommendationId(),places,current.conditions(),start,end,original.transport(),visitMinutes,revision,original.constraints());
         generator.checkInput(input);
@@ -213,13 +213,79 @@ public class ItineraryJobService {
         var input=mapper.readValue(source.getRequestJson(),Input.class);
         var result=mapper.readValue(source.getResultJson(),Result.class);
         var pool=candidates.find(input.recommendationId(),input.places().destination().placeId(),login,hash);
-        var currentIds=input.places().attractions().stream().map(PlaceCandidate::placeId).toList();
-        var current=input.places().attractions().stream().map(OpenAiRevisionClient::candidate).toList();
+        var placed=placed(input,result);
+        var currentIds=placed.stream().map(PlaceCandidate::placeId).toList();
+        var current=placed.stream().map(OpenAiRevisionClient::candidate).toList();
         var spare=pool.attractions().stream().filter(p->!currentIds.contains(p.placeId())).map(OpenAiRevisionClient::candidate).toList();
         Set<Long> fixed=input.constraints()==null?Set.of():Set.copyOf(input.constraints().requiredPlaceIds());
         return new AiContext(input,result,current,spare,fixed);
     }
     private ItineraryJobService self() { return selfProvider.getObject(); }
+
+    /** 한 번에 가격을 찾는 장소 수. 숙소 1곳과 일정에 넣은 음식점을 앞에서부터 센다. 유료 검색이라 상한을 둔다. */
+    static final int MAX_PRICE_PLACES=8;
+    /** 같은 초안을 다시 눌러도 이 시간 안에는 이전 조회 결과를 쓴다. */
+    static final Duration PRICE_REUSE=Duration.ofHours(24);
+    public record PriceTarget(PlaceCandidate place,String kind) {}
+    public record PriceContext(String resultJson,List<PriceTarget> targets,Prices cached) {}
+
+    /**
+     * 완성된 초안의 숙소·음식점 참고 가격을 AI 웹 검색으로 찾아 결과에 붙인다.
+     * 외부 호출 동안 DB 연결을 잡지 않도록 읽기 → 검색 → 저장을 나누고, 이 메서드 자체에는 트랜잭션을 두지 않는다.
+     */
+    public Prices lookupPrices(UUID id,String login,byte[] hash) {
+        var context=self().priceContext(id,login,hash);
+        if(context.cached()!=null) return context.cached();
+        List<PriceQuote> quotes=new ArrayList<>();
+        // 장소마다 따로 검색해야 다른 가게 가격이 섞이지 않는다. 앞에서부터 차례로 찾는다.
+        for(var target:context.targets()) quotes.add(priceClient.lookup(target.place(),target.kind()));
+        var prices=new Prices(quotes,Instant.now());
+        self().savePrices(id,login,hash,context.resultJson(),prices);
+        return prices;
+    }
+    @Transactional(readOnly=true,timeout=10)
+    public PriceContext priceContext(UUID id,String login,byte[] hash) {
+        var job=access.owned(id,login,hash,"ITINERARY");
+        if(!"COMPLETED".equals(job.getStatus()) || job.getResultJson()==null)
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"완성된 일정 초안에서만 가격을 찾을 수 있어요.");
+        var result=mapper.readValue(job.getResultJson(),Result.class);
+        if(result.prices()!=null && result.prices().checkedAt().isAfter(Instant.now().minus(PRICE_REUSE)))
+            return new PriceContext(job.getResultJson(),List.of(),result.prices());
+        if(!priceClient.configured())
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"가격 검색은 OpenAI 연결 설정 후 이용할 수 있어요.");
+        var input=mapper.readValue(job.getRequestJson(),Input.class);
+        return new PriceContext(job.getResultJson(),priceTargets(input,result),null);
+    }
+    /** 가격을 찾을 장소: 고른 숙소, 그다음 일정에 넣은 음식점(처음 나온 순서, 중복 없이). */
+    static List<PriceTarget> priceTargets(Input input,Result result) {
+        List<PriceTarget> targets=new ArrayList<>();
+        if(result.lodging()!=null)
+            input.places().accommodations().stream().filter(p->p.placeId().equals(result.lodging().chosenPlaceId())).findFirst()
+                .ifPresent(p->targets.add(new PriceTarget(p,OpenAiPriceClient.LODGING)));
+        Set<Long> seen=new HashSet<>();
+        for(var day:result.days()) for(var item:day.items()) {
+            if(!"MEAL".equals(item.type()) || !seen.add(item.placeId())) continue;
+            input.places().restaurants().stream().filter(p->p.placeId().equals(item.placeId())).findFirst()
+                .ifPresent(p->targets.add(new PriceTarget(p,OpenAiPriceClient.RESTAURANT)));
+        }
+        return List.copyOf(targets.subList(0,Math.min(MAX_PRICE_PLACES,targets.size())));
+    }
+    /** 검색하는 동안 초안이 바뀌지 않았을 때만 가격을 붙인다. */
+    @Transactional(timeout=10)
+    public void savePrices(UUID id,String login,byte[] hash,String expectedResult,Prices prices) {
+        access.owned(id,login,hash,"ITINERARY");
+        var job=jobs.lockById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if(!"COMPLETED".equals(job.getStatus()) || !Objects.equals(job.getResultJson(),expectedResult))
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"가격을 찾는 동안 일정이 바뀌었어요. 다시 시도해 주세요.");
+        job.attachToResult(mapper.writeValueAsString(mapper.readValue(expectedResult,Result.class).withPrices(prices)));
+        jobs.flush();
+    }
+
+    /** 초안에 실제로 배치된 관광지. 하루 시간이 부족해 빠진 관광지(skipped)는 유지·교체 대상에서 뺀다. */
+    public static List<PlaceCandidate> placed(Input input,Result result) {
+        var skipped=result.skipped().stream().map(PlaceRef::placeId).toList();
+        return input.places().attractions().stream().filter(p->!skipped.contains(p.placeId())).toList();
+    }
 
     private static boolean indoor(PlaceCandidate place) {
         return INDOOR.matcher(Objects.toString(place.name(),"")+" "+Objects.toString(place.subtype(),"")+" "+Objects.toString(place.description(),"")).find();

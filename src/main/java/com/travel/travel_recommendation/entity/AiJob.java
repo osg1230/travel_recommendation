@@ -53,6 +53,11 @@ public class AiJob {
     public void completeSchedule(String json) {
         completeRecommendation(json); message="이동시간을 반영한 일정 초안이 준비됐어요.";
     }
+    /** 완성된 일정 초안에 나중에 찾은 참고 정보(숙소·음식점 가격)를 붙인다. 일정 자체는 서버가 만든 그대로 둔다. */
+    public void attachToResult(String json) {
+        if(!"ITINERARY".equals(jobType) || !"COMPLETED".equals(status)) throw new IllegalStateException("Only completed itineraries");
+        resultJson=json;
+    }
     public void candidatesReady(String json) {
         status="CANDIDATES_READY"; resultJson=json;
         message="여행지 후보를 찾았어요. 확정한 조건으로 추천 순위와 이유를 받아보세요.";

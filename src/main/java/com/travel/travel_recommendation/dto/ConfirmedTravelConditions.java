@@ -13,4 +13,9 @@ public record ConfirmedTravelConditions(String inputMode, String originalText, S
         return selectedKeywords.stream().filter(k -> k.categoryCode().equals(categoryCode))
                 .map(TravelKeyword::name).collect(java.util.stream.Collectors.joining(", "));
     }
+    /** 사용자가 고른 여행 취향 이름 목록(자연·바다 등). 여행지 후보를 고를 때 쓴다. */
+    public List<String> themeNames() {
+        return selectedKeywords == null ? List.of()
+            : selectedKeywords.stream().filter(k -> "THEME".equals(k.categoryCode())).map(TravelKeyword::name).toList();
+    }
 }

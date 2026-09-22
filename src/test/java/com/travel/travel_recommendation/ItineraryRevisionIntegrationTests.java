@@ -78,8 +78,9 @@ class ItineraryRevisionIntegrationTests {
         });
         when(maps.travelTime(any(),any(),any())).thenAnswer(call->new KakaoMapClient.TravelTime(call.getArgument(2),300,3000,Instant.now()));
     }
+    // 09:00~16:00, 체류 90분이면 하루 약 2곳이라 2일 초안에 관광지 4곳을 쓰고, 나머지는 교체 후보로 남는다.
     private UUID completedDraft() {
-        var id=schedules.create(parent,destination,null,hash,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90);
+        var id=schedules.create(parent,destination,null,hash,LocalTime.of(9,0),LocalTime.of(16,0),KakaoMapClient.Transport.CAR,90);
         finish(id); return id;
     }
     private void finish(UUID id) {

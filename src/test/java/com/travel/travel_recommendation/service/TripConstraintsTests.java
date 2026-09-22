@@ -19,14 +19,20 @@ class TripConstraintsTests {
         return new Constraints(required, daily, dailyRequired, null, List.of());
     }
 
-    @Test void withoutConstraintsKeepsPreviousRule() {
-        assertThat(ids(TripConstraints.select(pool(16), 2, NINE, SIX, 90, null))).containsExactly(1L, 2L, 3L, 4L);
-        assertThat(ids(TripConstraints.select(pool(16), 7, NINE, SIX, 90, null))).hasSize(8);
-        assertThat(ids(TripConstraints.select(pool(16), 2, NINE, SIX, 90, c(List.of(), null, false)))).containsExactly(1L, 2L, 3L, 4L);
+    @Test void withoutDailyCountSelectsWhatFitsInTheDay() {
+        // 09:00~18:00, 체류 90분이면 점심을 빼고 하루 약 3곳이다.
+        assertThat(TripConstraints.estimatedDailyCapacity(NINE, SIX, 90)).isEqualTo(3);
+        assertThat(ids(TripConstraints.select(pool(16), 2, NINE, SIX, 90, null))).containsExactly(1L, 2L, 3L, 4L, 5L, 6L);
+        assertThat(ids(TripConstraints.select(pool(16), 2, NINE, SIX, 90, c(List.of(), null, false)))).containsExactly(1L, 2L, 3L, 4L, 5L, 6L);
+        // 체류시간이 짧거나 하루가 길면 더 많이 고르고, 저녁까지 이어지는 날은 저녁 식사 시간도 뺀다.
+        assertThat(TripConstraints.estimatedDailyCapacity(NINE, SIX, 60)).isEqualTo(5);
+        assertThat(TripConstraints.estimatedDailyCapacity(NINE, LocalTime.of(21, 0), 90)).isEqualTo(4);
+        // 전체는 후보 화면의 최대 수(16곳)를 넘지 않는다.
+        assertThat(ids(TripConstraints.select(pool(16), 7, NINE, SIX, 90, null))).hasSize(16);
     }
 
     @Test void requiredPlacesComeFirstAndDailyCountSetsTotal() {
-        assertThat(ids(TripConstraints.select(pool(16), 2, NINE, SIX, 90, c(List.of(9L, 12L), null, false)))).containsExactly(9L, 12L, 1L, 2L);
+        assertThat(ids(TripConstraints.select(pool(16), 2, NINE, SIX, 90, c(List.of(9L, 12L), null, false)))).containsExactly(9L, 12L, 1L, 2L, 3L, 4L);
         assertThat(ids(TripConstraints.select(pool(16), 2, NINE, SIX, 90, c(List.of(9L), 3, true)))).containsExactly(9L, 1L, 2L, 3L, 4L, 5L);
         assertThat(ids(TripConstraints.select(pool(16), 3, NINE, SIX, 90, c(List.of(), 1, true)))).hasSize(3);
     }
@@ -53,18 +59,18 @@ class TripConstraintsTests {
         assertThatThrownBy(() -> TripConstraints.select(pool(3), 2, NINE, SIX, 60, c(List.of(), 2, true)))
             .isInstanceOfSatisfying(TripConstraints.ConflictException.class, e ->
                 assertThat(e.conflicts()).anySatisfy(conflict -> assertThat(conflict.reason()).contains("후보가 3곳")));
-        assertThatThrownBy(() -> TripConstraints.select(pool(16), 3, NINE, SIX, 60, c(List.of(), 3, true)))
+        assertThatThrownBy(() -> TripConstraints.select(pool(16), 7, NINE, SIX, 60, c(List.of(), 3, true)))
             .isInstanceOfSatisfying(TripConstraints.ConflictException.class, e ->
-                assertThat(e.conflicts()).anySatisfy(conflict -> assertThat(conflict.reason()).contains("전체 최대 8곳")));
-        assertThatThrownBy(() -> TripConstraints.select(pool(16), 1, NINE, SIX, 90, c(LongStream.rangeClosed(1, 9).boxed().toList(), null, false)))
+                assertThat(e.conflicts()).anySatisfy(conflict -> assertThat(conflict.reason()).contains("전체 최대 16곳")));
+        assertThatThrownBy(() -> TripConstraints.select(pool(17), 7, NINE, SIX, 60, c(LongStream.rangeClosed(1, 17).boxed().toList(), null, false)))
             .isInstanceOfSatisfying(TripConstraints.ConflictException.class, e ->
-                assertThat(e.conflicts()).anySatisfy(conflict -> assertThat(conflict.reason()).contains("최대 8곳")));
+                assertThat(e.conflicts()).anySatisfy(conflict -> assertThat(conflict.reason()).contains("최대 16곳")));
     }
 
     @Test void rejectsForgedPlacesAndValues() {
         assertThatThrownBy(() -> TripConstraints.select(pool(4), 1, NINE, SIX, 90, c(List.of(99L), null, false))).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> TripConstraints.select(pool(4), 1, NINE, SIX, 90, c(List.of(1L, 1L), null, false))).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> TripConstraints.select(pool(4), 1, NINE, SIX, 90, c(List.of(), 5, false))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> TripConstraints.select(pool(4), 1, NINE, SIX, 90, c(List.of(), 11, false))).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> TripConstraints.select(pool(4), 1, NINE, SIX, 90, new Constraints(List.of(), null, false, "HALF", List.of()))).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> TripConstraints.select(pool(4), 1, NINE, SIX, 90, new Constraints(List.of(), null, false, "TOTAL", List.of("TAX")))).isInstanceOf(IllegalArgumentException.class);
     }

@@ -41,7 +41,7 @@
     </nav>
     <section id="attractions" class="condition-section">
         <h2 th:text="${'관광지 · ' + places.attractions.size() + '곳'}"></h2>
-        <p th:if="${places.attractions.isEmpty()}" role="status">이 지역에서 확인된 관광지 후보가 아직 없어요. 다른 추천 지역을 선택해 주세요.</p>
+        <p th:if="${places.attractions.isEmpty()}" role="status">이 지역에서 확인된 관광지 후보가 아직 없어요. 위의 '카카오에서 장소 더 찾아보기'를 눌러 관광지·음식점·숙소를 찾아 주세요.</p>
         <th:block th:each="place : ${places.attractions}"><article th:replace="~{::placeRow(${place},true)}"></article></th:block>
     </section>
     <section id="restaurants" class="condition-section">

@@ -78,15 +78,12 @@ public class KakaoMapClient {
     }
 
     public List<KakaoPlace> searchPlaces(String region,String type) {
-        String city=switch(region) {
-            case "강원특별자치도 강릉시" -> "강릉";
-            case "부산광역시" -> "부산";
-            case "경상북도 경주시" -> "경주";
-            default -> throw failure("MAP_REGION","현재 강릉·부산·경주만 조회할 수 있어요.");
-        };
+        String city=searchWord(region);
+        if(city==null) throw failure("MAP_REGION","여행지 지역 이름을 확인하지 못해 장소를 찾을 수 없어요.");
+        // 관광지는 하루 시간에 맞춰 여러 곳을 고를 수 있도록 한 번에 받을 수 있는 최대(15곳)까지 받는다.
         String code, keyword; int limit;
         switch(type) {
-            case "ATTRACTION" -> { code="AT4"; keyword="관광지"; limit=8; }
+            case "ATTRACTION" -> { code="AT4"; keyword="관광지"; limit=15; }
             case "RESTAURANT" -> { code="FD6"; keyword="음식점"; limit=5; }
             case "ACCOMMODATION" -> { code="AD5"; keyword="숙소"; limit=3; }
             default -> throw invalid();
@@ -273,10 +270,23 @@ public class KakaoMapClient {
         // 인증키나 공급자 오류 원문을 예외·로그에 포함하지 않는다. 자동 재호출도 하지 않는다.
         catch (RuntimeException e) { throw invalid(); }
     }
+    // 시·도 표기를 대표 이름으로 맞춰 비교한다. 예) "강원특별자치도 강릉시"와 카카오의 "강원 강릉시"를 같게 본다.
     static String normalize(String address) {
-        return address.strip().replaceFirst("^강원특별자치도\\s+", "강원 ")
-            .replaceFirst("^강원도\\s+", "강원 ").replaceFirst("^경상북도\\s+", "경북 ")
-            .replaceFirst("^부산광역시(?:\\s+|$)", "부산 ").replaceAll("\\s+", " ").strip();
+        return Provinces.normalizeAddress(address);
+    }
+
+    /**
+     * 여행지 지역(region)으로 카카오 검색어에 쓸 지역 이름을 만든다. 조회 결과는 주소가 이 지역으로 시작하는 곳만 남긴다.
+     * 예) "강원특별자치도 강릉시" → "강릉", "경기도 가평군" → "가평", "부산광역시" → "부산", "제주특별자치도" → "제주".
+     */
+    static String searchWord(String region) {
+        if(region==null || region.isBlank()) return null;
+        String[] parts=region.strip().split("\\s+");
+        if(parts.length==1) return Provinces.canonical(parts[0]);
+        if(parts.length!=2 || Provinces.canonical(parts[0])==null) return null;
+        String city=parts[1];
+        // 시·군 글자는 떼고 검색한다. 떼면 한 글자만 남는 이름은 그대로 둔다.
+        return city.length()>2 && (city.endsWith("시") || city.endsWith("군")) ? city.substring(0,city.length()-1) : city;
     }
     private static RecommendationException invalidAddress() { return failure("MAP_ADDRESS", "도로명 주소와 좌표를 정확히 확인하지 못했어요. 장소 주소를 확인해 주세요."); }
     private static RecommendationException noRoute() { return failure("MAP_NO_ROUTE", "선택한 이동수단으로 경로를 찾지 못했어요."); }

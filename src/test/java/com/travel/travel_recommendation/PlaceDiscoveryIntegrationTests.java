@@ -80,8 +80,10 @@ class PlaceDiscoveryIntegrationTests {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM dbo.places WHERE source_provider='SYSTEM'",Integer.class)).isEqualTo(system);
         var pool=candidates.find(parent,destination,null,hash);
         assertThat(pool.attractions().stream().filter(p->"KAKAO".equals(p.sourceProvider()))).hasSize(8);
-        assertThat(schedules.options(parent,destination,null,hash).places().attractions()).hasSize(6);
+        assertThat(schedules.options(parent,destination,null,hash).places().attractions()).hasSize(10);
         var id=schedules.create(parent,destination,null,hash,LocalTime.of(9,0),LocalTime.of(20,0),KakaoMapClient.Transport.CAR,60);
+        // 09:00~20:00, 체류 60분이면 하루 약 5곳으로 추정해 3일 동안 후보 10곳을 모두 고른다.
+        assertThat(schedules.view(id,null,hash).input().places().attractions()).hasSize(10);
         var work=schedules.claim(id); var result=schedules.generate(work); schedules.complete(work,result);
         assertThat(schedules.view(id,null,hash).status()).isEqualTo("COMPLETED");
         assertThat(result.days()).hasSize(3);

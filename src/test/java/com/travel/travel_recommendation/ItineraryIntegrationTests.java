@@ -43,6 +43,7 @@ class ItineraryIntegrationTests {
     @Autowired MockMvc mvc;
     @MockitoBean KakaoMapClient maps;
     @MockitoBean TourApiClient tour;
+    @MockitoBean OpenAiPriceClient prices;
     @Autowired PlaceOperatingService operating;
     @Autowired PlaceRepository placeRepository;
     private MockHttpSession session;
@@ -89,6 +90,38 @@ class ItineraryIntegrationTests {
         assertThatThrownBy(()->operating.refresh(parent,destination,candidate.placeId(),null,new byte[32]))
             .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
         verify(tour,times(1)).search(candidate.name());
+    }
+
+    // 참고 가격은 완성된 초안에 붙기만 하고 일정은 바꾸지 않는다. 24시간 안에 다시 찾으면 유료 검색을 다시 하지 않는다.
+    @Test void priceLookupAttachesQuotesWithoutChangingScheduleAndReusesThem() throws Exception {
+        var id=create(); var work=schedules.claim(id); schedules.complete(work,schedules.generate(work)); em.flush();
+        var before=schedules.view(id,null,hash).result();
+        when(prices.configured()).thenReturn(true);
+        when(prices.lookup(any(),eq(OpenAiPriceClient.LODGING))).thenAnswer(call->{ PlaceCandidate p=call.getArgument(0);
+            return new ItineraryPlan.PriceQuote(p.placeId(),p.name(),OpenAiPriceClient.LODGING,"UNVERIFIED","1박 12만~15만원",120000,150000,"스탠다드 더블 1박","https://booking.example.kr/"+p.placeId()); });
+        when(prices.lookup(any(),eq(OpenAiPriceClient.RESTAURANT))).thenAnswer(call->{ PlaceCandidate p=call.getArgument(0);
+            return new ItineraryPlan.PriceQuote(p.placeId(),p.name(),OpenAiPriceClient.RESTAURANT,"VERIFIED","대표 메뉴 1만~1만2천원",10000,12000,"대표 메뉴 1인분","https://menu.example.kr/"+p.placeId()); });
+        mvc.perform(post(resultUrl(id)+"/prices").session(session).with(csrf())).andExpect(status().is3xxRedirection());
+        em.flush(); em.clear();
+        var after=schedules.view(id,null,hash).result();
+        assertThat(after.days()).isEqualTo(before.days()); assertThat(after.lodging()).isEqualTo(before.lodging());
+        assertThat(after.prices().quotes()).isNotEmpty();
+        assertThat(after.prices().quotes().getFirst().kind()).isEqualTo(OpenAiPriceClient.LODGING);
+        int calls=after.prices().quotes().size();
+        mvc.perform(get(resultUrl(id)).session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("참고 합계 약")))
+            .andExpect(content().string(containsString("출처 페이지에서 상호·가격 확인")))
+            .andExpect(content().string(containsString("AI 검색 결과, 출처에서 직접 확인 필요")))
+            .andDo(response->{
+                if(Boolean.getBoolean("travel.ui.capture")) {
+                    var folder=java.nio.file.Path.of("target","ui-check"); java.nio.file.Files.createDirectories(folder);
+                    java.nio.file.Files.writeString(folder.resolve("itinerary-prices.html"),response.getResponse().getContentAsString(StandardCharsets.UTF_8));
+                }
+            });
+        assertThat(schedules.lookupPrices(id,null,hash)).isEqualTo(after.prices());
+        verify(prices,times(calls)).lookup(any(),any());
+        // 다른 세션은 남의 초안 가격을 찾을 수 없다.
+        assertThatThrownBy(()->schedules.lookupPrices(id,null,new byte[32])).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
     }
 
     @Test void createsIsolatedQueueCompletesAndRendersDraft() throws Exception {
