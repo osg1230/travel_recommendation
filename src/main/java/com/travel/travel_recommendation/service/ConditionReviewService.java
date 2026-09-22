@@ -22,7 +22,7 @@ public class ConditionReviewService {
     private final TravelConditionValidator validator;
     private static final Set<String> RESPONSE_FIELDS = Set.of("isTravel", "region", "startDate", "endDate",
             "durationDays", "season", "companion", "themes", "budget", "transportation", "partySize",
-            "accommodationNeeded", "includeNearby", "summary");
+            "accommodationNeeded", "includeNearby", "summary", "travelPurpose");
 
     public record Analysis(ConditionReviewForm form, String summary) {}
 
@@ -45,6 +45,11 @@ public class ConditionReviewService {
         form.setPartySize(integer(result, "partySize"));
         form.setAccommodationNeeded(bool(result, "accommodationNeeded"));
         form.setIncludeNearby(bool(result, "includeNearby"));
+        if(!result.get("travelPurpose").isTextual()) throw invalid();
+        String purpose = result.get("travelPurpose").asText().strip();
+        if(purpose.length() > 200 || purpose.contains("<") || purpose.contains(">")
+            || purpose.matches("(?s).*(https?://|@|[0-9]{3,}).*")) throw invalid();
+        form.setTravelPurpose(purpose);
         JsonNode budget = result.get("budget");
         if (!budget.isNull() && !budget.isNumber()) throw invalid();
         form.setBudget(budget.isNull() ? "" : budget.decimalValue().toPlainString());
@@ -84,6 +89,27 @@ public class ConditionReviewService {
         return form;
     }
 
+    public ConditionReviewForm fromConfirmed(ConfirmedTravelConditions c) {
+        var form = new ConditionReviewForm();
+        form.setTravelPurpose(c.travelPurpose() == null ? "" : c.travelPurpose());
+        form.setRegion(c.region());
+        form.setStartDate(c.startDate() == null ? "" : c.startDate().toString());
+        form.setEndDate(c.endDate() == null ? "" : c.endDate().toString());
+        form.setDurationDays(c.durationDays() == null ? "" : c.durationDays().toString());
+        form.setBudget(c.budget() == null ? "" : c.budget().toPlainString());
+        form.setPartySize(c.partySize() == null ? "" : c.partySize().toString());
+        form.setAccommodationNeeded(c.accommodationNeeded() == null ? "" : c.accommodationNeeded().toString());
+        form.setIncludeNearby(c.includeNearby() == null ? "" : c.includeNearby().toString());
+        form.setThemes(c.selectedKeywords().stream().filter(k -> "THEME".equals(k.categoryCode())).map(TravelKeyword::getSelectionValue).toList());
+        for(var keyword : c.selectedKeywords()) switch(keyword.categoryCode()) {
+            case "SEASON" -> form.setSeason(keyword.getSelectionValue());
+            case "COMPANION" -> form.setCompanion(keyword.getSelectionValue());
+            case "TRANSPORTATION" -> form.setTransportation(keyword.getSelectionValue());
+            default -> { }
+        }
+        return form;
+    }
+
     public void validate(ConditionReviewForm form, Errors errors, Map<String, List<TravelKeyword>> choices) {
         validator.validate(form, errors, choices, true);
         if (!form.getPartySize().isEmpty()) {
@@ -116,7 +142,7 @@ public class ConditionReviewService {
         return new ConfirmedTravelConditions(source.getInputMode(), source.getOriginalText(), form.getRegion(),
                 start, end, days, form.getBudget().isEmpty() ? null : new BigDecimal(form.getBudget()),
                 number(form.getPartySize()), flag(form.getAccommodationNeeded()), flag(form.getIncludeNearby()),
-                List.copyOf(snapshots), summary);
+                List.copyOf(snapshots), summary).withPurpose(form.getTravelPurpose());
     }
 
     private LocalDate date(String value) { return value.isEmpty() ? null : LocalDate.parse(value); }

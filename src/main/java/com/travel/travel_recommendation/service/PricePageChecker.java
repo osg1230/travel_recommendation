@@ -6,6 +6,7 @@ import java.net.http.*;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
+import java.util.regex.Pattern;
 
 /**
  * AI가 알려 준 가격 출처 페이지를 서버가 직접 열어, 그 페이지에 상호와 가격 숫자가 실제로 적혀 있는지 확인한다.
@@ -79,10 +80,15 @@ public class PricePageChecker {
 
     static String compact(String text) { return text == null ? "" : text.replaceAll("\\s+", ""); }
 
+    /**
+     * 가격(최저 또는 최고)이 다른 숫자의 일부가 아닌 온전한 금액으로 적혀 있는지 본다.
+     * 앞뒤에 숫자나 '쉼표+숫자'가 붙으면 다른 금액으로 본다. 예) 10,000원을 찾을 때 110,000원·10,000,000원은 인정하지 않는다.
+     */
     static boolean pricesIn(String text, Integer minWon, Integer maxWon) {
         for (Integer won : Arrays.asList(minWon, maxWon)) {
             if (won == null) continue;
-            if (text.contains(String.format(Locale.ROOT, "%,d", won)) || text.contains(Integer.toString(won))) return true;
+            for (String written : List.of(String.format(Locale.ROOT, "%,d", won), Integer.toString(won)))
+                if (Pattern.compile("(?<![0-9])(?<![0-9],)" + Pattern.quote(written) + "(?!,?[0-9])").matcher(text).find()) return true;
         }
         return false;
     }

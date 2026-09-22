@@ -47,6 +47,19 @@ class PricePageCheckerTests {
         assertThat(checker.confirms(url(), "토담순두부", ADDRESS, 13000, 13000)).isFalse();
     }
 
+    // 금액은 다른 숫자의 일부로 맞추지 않는다. 110,000원이 10,000원의 근거가 되면 안 된다.
+    @Test void priceMustBeAWholeAmountNotPartOfAnotherNumber() {
+        assertThat(PricePageChecker.pricesIn("객실110,000원", 10000, 10000)).isFalse();
+        assertThat(PricePageChecker.pricesIn("객실10,000,000원", 10000, 10000)).isFalse();
+        assertThat(PricePageChecker.pricesIn("객실1,110,000원", 110000, 110000)).isFalse();
+        assertThat(PricePageChecker.pricesIn("정식110000원", 10000, 10000)).isFalse();
+        assertThat(PricePageChecker.pricesIn("정식100005원", 10000, 10000)).isFalse();
+        assertThat(PricePageChecker.pricesIn("객실110,000원·조식10,000원", 10000, 10000)).isTrue();
+        assertThat(PricePageChecker.pricesIn("순두부,11,000원", 11000, 11000)).isTrue();
+        assertThat(PricePageChecker.pricesIn("가격:11000원부터", 11000, 11000)).isTrue();
+        assertThat(PricePageChecker.pricesIn("1박120,000~150,000원", 100000, 150000)).isTrue();
+    }
+
     // AI가 준 주소로 서버가 요청하므로 https 공개 주소가 아니면 열지 않는다.
     @Test void refusesLocalPrivateAndNonHttpsAddresses() {
         page.set("<p>토담순두부 11,000원</p>");

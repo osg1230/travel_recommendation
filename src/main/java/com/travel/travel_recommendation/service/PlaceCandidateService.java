@@ -35,6 +35,13 @@ public class PlaceCandidateService {
 
     @Transactional(readOnly = true, timeout = 10)
     public PlaceCandidateView find(UUID jobId, long destinationId, String loginId, byte[] guestHash) {
+        return findForSchedule(jobId, destinationId, loginId, guestHash, null);
+    }
+
+    // 일정 화면에서 보완한 기간·숙박 조건을 적용한다. 추천 원본은 변경하지 않는다.
+    @Transactional(readOnly = true, timeout = 10)
+    public PlaceCandidateView findForSchedule(UUID jobId, long destinationId, String loginId, byte[] guestHash,
+            ConfirmedTravelConditions scheduleConditions) {
         // URL의 지역 ID만 믿지 않고 작업 소유권·만료와 실제 추천 목록을 먼저 확인한다.
         var job = jobs.view(jobId, loginId, guestHash);
         if (!"COMPLETED".equals(job.status())) {
@@ -51,7 +58,7 @@ public class PlaceCandidateService {
                 "선택한 지역 정보가 변경됐어요. 여행 조건에서 후보를 다시 조회해 주세요."));
         var storedJob = jobRepository.findById(jobId).orElseThrow(() ->
             new ResponseStatusException(HttpStatus.NOT_FOUND, "요청을 찾을 수 없거나 만료됐어요."));
-        var conditions = mapper.readValue(storedJob.getRequestJson(), ConfirmedTravelConditions.class);
+        var conditions = scheduleConditions == null ? mapper.readValue(storedJob.getRequestJson(), ConfirmedTravelConditions.class) : scheduleConditions;
         boolean needsAccommodation = !Boolean.FALSE.equals(conditions.accommodationNeeded())
             && conditions.durationDays() != null && conditions.durationDays() > 1;
         // 부분 문자열 검색으로 다른 시·군을 섞지 않는다. 출처·주소를 확인한 활성 장소만 반환한다.

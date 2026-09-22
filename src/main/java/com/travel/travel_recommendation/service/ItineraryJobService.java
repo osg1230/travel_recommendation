@@ -63,7 +63,27 @@ public class ItineraryJobService {
     @Transactional(timeout=10)
     public UUID create(UUID parentId,long destinationId,String login,byte[] hash,LocalTime start,LocalTime end,
                        KakaoMapClient.Transport transport,int visitMinutes,Constraints constraints) {
+        return create(parentId,destinationId,login,hash,start,end,transport,visitMinutes,constraints,null,null);
+    }
+
+    @Transactional(timeout=10)
+    public UUID create(UUID parentId,long destinationId,String login,byte[] hash,LocalTime start,LocalTime end,
+                       KakaoMapClient.Transport transport,int visitMinutes,Constraints constraints,Integer durationDays,Boolean accommodationNeeded) {
         var current=options(parentId,destinationId,login,hash);
+        // 추천 때 미정이던 값만 일정 생성 시 받는다. 명시된 날짜·기간을 조용히 덮어쓰지 않는다.
+        var c=current.conditions();
+        if(durationDays!=null && c.durationDays()!=null && !durationDays.equals(c.durationDays()))
+            throw scheduleConflict("이미 입력한 여행 기간과 달라요. 추천 화면에서 조건을 수정해 주세요.");
+        if(accommodationNeeded!=null && c.accommodationNeeded()!=null && !accommodationNeeded.equals(c.accommodationNeeded()))
+            throw scheduleConflict("이미 입력한 숙박 조건과 달라요. 추천 화면에서 조건을 수정해 주세요.");
+        Integer daysToUse=c.durationDays()==null?durationDays:c.durationDays();
+        Boolean stay=c.accommodationNeeded()==null?accommodationNeeded:c.accommodationNeeded();
+        if(daysToUse==null || daysToUse<1 || daysToUse>7) throw scheduleConflict("일정에 필요한 여행 일수를 1~7일로 골라 주세요.");
+        if(daysToUse>1 && stay==null) throw scheduleConflict("여러 날 여행에는 숙소가 필요한지 골라 주세요.");
+        if(daysToUse==1 && stay==null) stay=false;
+        c=c.withSchedule(daysToUse,stay);
+        current=new Input(parentId,candidates.findForSchedule(parentId,destinationId,login,hash,c),c,
+            current.start(),current.end(),current.transport(),current.visitMinutes());
         var fixed=confirmedTransport(current.conditions());
         if(fixed!=null && fixed!=transport) throw new ResponseStatusException(HttpStatus.CONFLICT,"확정한 이동수단과 달라요. 여행 조건에서 먼저 수정해 주세요.");
         if(constraints!=null && constraints.budgetBasis()!=null && current.conditions().budget()==null)
@@ -79,7 +99,7 @@ public class ItineraryJobService {
         // 하루 시간·체류시간으로 추정한 수만큼 관광지를 고른다. 실제로 다 들어가는지는 일정 생성 때 이동시간으로 다시 확인한다.
         List<PlaceCandidate> selected;
         try {
-            selected=TripConstraints.select(places.attractions(),days,start,end,visitMinutes,constraints);
+            selected=TripConstraints.select(TripConstraints.nearCenterFirst(places.attractions()),days,start,end,visitMinutes,constraints);
         } catch(IllegalArgumentException invalid) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"화면에 있는 장소와 값으로 조건을 다시 골라 주세요.");
         }
@@ -89,6 +109,11 @@ public class ItineraryJobService {
         generator.checkInput(input);
         var parent=access.owned(parentId,login,hash,"RECOMMENDATION");
         return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();
+    }
+
+    private TripConstraints.ConflictException scheduleConflict(String message) {
+        return new TripConstraints.ConflictException(List.of(new TripConstraints.Conflict(message,
+            List.of("아래 여행 기간·숙박 여부를 선택하거나 추천 화면의 조건 수정에서 변경해 주세요."))));
     }
 
     /** 교체 사유. 실내 변경만 후보 선택 순서에 반영하고 나머지는 기록·안내에만 사용한다. */
@@ -133,15 +158,18 @@ public class ItineraryJobService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"필수 방문 장소로 지정한 관광지는 바꿀 수 없어요. 새 일정에서 필수 조건을 바꿔 주세요.");
         long destinationId=original.places().destination().placeId();
         // 현재 확인된 후보 전체를 다시 읽는다. 오래된 초안의 장소 정보로 수정안을 만들지 않는다.
-        var pool=candidates.find(original.recommendationId(),destinationId,login,hash);
-        var current=options(original.recommendationId(),destinationId,login,hash);
+        // 조건은 원본 초안의 스냅샷(일정 생성 때 받은 기간·숙박 포함)을 쓴다. 부모 추천에는 기간이 비어 있을 수 있다.
+        var pool=candidates.findForSchedule(original.recommendationId(),destinationId,login,hash,original.conditions());
         var kept=new ArrayList<PlaceCandidate>();
         for(var place:placed) {
             if(chosen.contains(place.placeId())) continue;
             kept.add(pool.attractions().stream().filter(p->p.placeId().equals(place.placeId())).findFirst().orElseThrow(()->
                 new ResponseStatusException(HttpStatus.CONFLICT,"유지한 관광지 '"+place.name()+"'의 정보가 바뀌었어요. 장소 목록에서 다시 조회해 주세요.")));
         }
-        var spare=pool.attractions().stream().filter(p->!originalIds.contains(p.placeId())).toList();
+        // 새로 넣을 후보에서는 원본 초안이 쓰려던 관광지를 모두 뺀다. 시간·거리 때문에 빠졌던 곳(섬 등)을 다시 넣지 않는다.
+        var tried=original.places().attractions().stream().map(PlaceCandidate::placeId).toList();
+        // 새 후보도 후보들 가운데에서 가까운 곳부터 고른다(이름순이면 먼 섬이 먼저 뽑힐 수 있다).
+        var spare=TripConstraints.nearCenterFirst(pool.attractions()).stream().filter(p->!tried.contains(p.placeId())).toList();
         if(reason==ReplaceReason.INDOOR)
             spare=spare.stream().sorted(Comparator.comparingInt(p->indoor(p)?0:1)).toList();
         if(add!=null) {
@@ -155,11 +183,11 @@ public class ItineraryJobService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,"바꿀 수 있는 다른 관광지 후보가 부족해요. 장소 목록에서 후보를 더 찾아본 뒤 다시 시도해 주세요.");
         var added=spare.subList(0,chosen.size());
         var attractions=new ArrayList<>(kept); attractions.addAll(added);
-        var places=new PlaceCandidateView(current.places().jobId(),current.places().destination(),current.places().durationDays(),
-            current.places().accommodationNeeded(),List.copyOf(attractions),current.places().accommodations(),current.places().restaurants());
+        var places=new PlaceCandidateView(pool.jobId(),pool.destination(),pool.durationDays(),
+            pool.accommodationNeeded(),List.copyOf(attractions),pool.accommodations(),pool.restaurants());
         var revision=new Revision(sourceId,refs(kept),refs(placed.stream().filter(p->chosen.contains(p.placeId())).toList()),
             refs(added),chosen.isEmpty() && reason!=ReplaceReason.AI_REQUEST?null:reason.name(),Instant.now(),request,explanation);
-        var input=new Input(original.recommendationId(),places,current.conditions(),start,end,original.transport(),visitMinutes,revision,original.constraints());
+        var input=new Input(original.recommendationId(),places,original.conditions(),start,end,original.transport(),visitMinutes,revision,original.constraints());
         generator.checkInput(input);
         var parent=access.owned(original.recommendationId(),login,hash,"RECOMMENDATION");
         return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();
@@ -212,11 +240,13 @@ public class ItineraryJobService {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"AI 수정 요청은 OpenAI 연결 설정 후 이용할 수 있어요. 위의 '장소 바꿔서 수정안 만들기'는 그대로 쓸 수 있어요.");
         var input=mapper.readValue(source.getRequestJson(),Input.class);
         var result=mapper.readValue(source.getResultJson(),Result.class);
-        var pool=candidates.find(input.recommendationId(),input.places().destination().placeId(),login,hash);
+        var pool=candidates.findForSchedule(input.recommendationId(),input.places().destination().placeId(),login,hash,input.conditions());
         var placed=placed(input,result);
         var currentIds=placed.stream().map(PlaceCandidate::placeId).toList();
         var current=placed.stream().map(OpenAiRevisionClient::candidate).toList();
-        var spare=pool.attractions().stream().filter(p->!currentIds.contains(p.placeId())).map(OpenAiRevisionClient::candidate).toList();
+        // 원본 초안이 쓰려다 뺀 곳(skipped)도 AI가 새로 고를 후보에서 뺀다.
+        var tried=input.places().attractions().stream().map(PlaceCandidate::placeId).toList();
+        var spare=TripConstraints.nearCenterFirst(pool.attractions()).stream().filter(p->!tried.contains(p.placeId())).map(OpenAiRevisionClient::candidate).toList();
         Set<Long> fixed=input.constraints()==null?Set.of():Set.copyOf(input.constraints().requiredPlaceIds());
         return new AiContext(input,result,current,spare,fixed);
     }
@@ -281,7 +311,7 @@ public class ItineraryJobService {
         jobs.flush();
     }
 
-    /** 초안에 실제로 배치된 관광지. 하루 시간이 부족해 빠진 관광지(skipped)는 유지·교체 대상에서 뺀다. */
+    /** 초안에 실제로 배치된 관광지. 시간이 부족하거나 너무 멀어 빠진 관광지(skipped)는 유지·교체 대상에서 뺀다. */
     public static List<PlaceCandidate> placed(Input input,Result result) {
         var skipped=result.skipped().stream().map(PlaceRef::placeId).toList();
         return input.places().attractions().stream().filter(p->!skipped.contains(p.placeId())).toList();

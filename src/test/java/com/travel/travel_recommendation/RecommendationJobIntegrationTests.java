@@ -77,6 +77,17 @@ class RecommendationJobIntegrationTests {
         mvc.perform(get(location).session(new MockHttpSession())).andExpect(status().isNotFound());
         mvc.perform(get(location+"/status").session(new MockHttpSession())).andExpect(status().isNotFound());
     }
+
+    @Test void directRecommendationQueuesRankingWithoutAnotherConfirmation() {
+        var conditions=conditions("강릉").forDirectRecommendation().withPurpose("상어 관람");
+        var id=service.create(conditions,null,new byte[32]);
+        service.prepare(id);
+        var view=service.view(id,null,new byte[32]);
+        assertThat(view.status()).isEqualTo("RECOMMENDATION_QUEUED");
+        assertThat(view.pending()).isTrue();
+        assertThat(view.attemptCount()).isZero();
+        assertThat(service.conditions(id,null,new byte[32]).travelPurpose()).isEqualTo("상어 관람");
+    }
     @Test void rejectsMissingCsrfUnconfirmedAndStaleSubmission() throws Exception {
         mvc.perform(post("/travel/recommendations").session(session()).param("confirmationToken","confirmed"))
             .andExpect(status().isForbidden());

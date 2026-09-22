@@ -44,7 +44,7 @@
             </div>
             <label for="includeNearby">주변 지역도 포함할까요?</label><select th:field="*{includeNearby}"><option value="">아직 미정</option><option value="true">주변 지역 포함</option><option value="false">선택 지역 중심</option></select><p class="field-error" th:errors="*{includeNearby}"></p>
         </section>
-        <div class="form-actions"><button type="submit">이 조건으로 확정하기</button><p class="help">조건은 현재 세션에 보관해요. 여행지 추천과 일정 생성은 다음 단계에서 연결됩니다.</p></div>
+        <div class="form-actions"><button type="submit" th:text="${directFlow == true ? '수정한 조건으로 추천받기' : '이 조건으로 확정하기'}"></button><p class="help">바꾸고 싶은 조건만 수정해 주세요. 아직 정하지 않은 항목은 비워 둬도 괜찮아요.</p></div>
     </form>
     <a class="home-link" th:href="@{/travel/conditions}">처음 입력부터 수정하기</a>
 </main>

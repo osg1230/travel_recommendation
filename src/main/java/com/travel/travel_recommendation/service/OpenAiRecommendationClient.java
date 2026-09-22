@@ -45,6 +45,10 @@ public class OpenAiRecommendationClient {
                 정보가 부족하면 비교 한계를 이유에 밝힌다. 날짜·인원·예산을 임의로 확정하지 않는다.
                 THEME(여행 취향)이 있으면 각 reason에서 그 취향이 후보의 어떤 점과 연결되는지 밝히고,
                 소개에 연결 근거가 없으면 그 취향은 확인하지 못했다고 쓴다.
+                travelPurpose에는 키워드로 표현하지 못한 구체적인 여행 목적이 있다. 각 이유에서 그 목적을 우선 다룬다.
+                travelPurpose에 예전 지역·기간·예산이 남아 있다면 별도의 구조화된 조건 값을 우선한다.
+                상어 관람 같은 목적을 단순한 바다 여행으로 바꾸지 않는다. 후보 소개에 관람·체험 근거가 없으면
+                해당 목적에 맞는 장소는 아직 확인하지 못했다고 명시한다. 장소나 전시 내용을 지어내지 않는다.
                 특정 지역 후보 하나만 있으면 다른 지역을 추가하지 말고 그 지역의 적합성과 한계를 설명한다.
                 각 reason은 일반 텍스트 1~3문장으로 작성하고 HTML·URL·연락처는 넣지 않는다.
                 """,
@@ -112,6 +116,7 @@ public class OpenAiRecommendationClient {
         p.put("region",c.region());p.put("startDate",c.startDate());p.put("endDate",c.endDate());
         p.put("durationDays",c.durationDays());p.put("budgetKrw",c.budget());p.put("partySize",c.partySize());
         p.put("accommodationNeeded",c.accommodationNeeded());p.put("includeNearby",c.includeNearby());
+        p.put("travelPurpose",c.travelPurpose() == null ? "" : c.travelPurpose());
         for(String category:List.of("SEASON","COMPANION","THEME","TRANSPORTATION")) p.put(category,c.keywordNames(category));
         // 원문, 계정 식별자, 세션 토큰과 DB 키워드 ID는 외부로 전송하지 않는다.
         return p;

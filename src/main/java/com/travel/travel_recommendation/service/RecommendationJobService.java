@@ -86,6 +86,8 @@ public class RecommendationJobService {
         } else {
             // 최종 추천 테이블에는 아직 넣지 않는다. 지역 후보를 확보한 준비 단계만 기록한다.
             job.candidatesReady(mapper.writeValueAsString(found));
+            // 한 번의 추천 요청 안에서 후보 조회 다음 순위·이유 생성까지 이어 간다.
+            if(c.directRecommendation()) job.queueRecommendation();
         }
     }
 

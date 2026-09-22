@@ -57,6 +57,10 @@ public class TravelConditionController {
         Object prefill = session.getAttribute(PREFILL_KEY);
         Object draft = prefill != null ? prefill : session.getAttribute(DRAFT_KEY);
         model.addAttribute("travelForm", draft != null ? draft : new TravelConditionForm());
+        String token = session.getAttribute("travelConditionAnalyzing") != null
+            && session.getAttribute("travelInputToken") instanceof String existing ? existing : java.util.UUID.randomUUID().toString();
+        session.setAttribute("travelInputToken", token);
+        model.addAttribute("inputToken", token);
         return "travel/conditions";
     }
 
@@ -74,6 +78,7 @@ public class TravelConditionController {
             session.removeAttribute(PREFILL_KEY);
             session.removeAttribute(TravelConditionReviewController.REVIEW_KEY);
             session.removeAttribute(TravelConditionReviewController.CONFIRMED_KEY);
+            session.removeAttribute("travelDirectRecommendation");
         }
         return "redirect:/travel/conditions/check";
     }

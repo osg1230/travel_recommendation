@@ -15,7 +15,8 @@
     "partySize": {"type": ["integer", "null"]},
     "accommodationNeeded": {"type": ["boolean", "null"]},
     "includeNearby": {"type": ["boolean", "null"]},
-    "summary": {"type": "string"}
+    "summary": {"type": "string"},
+    "travelPurpose": {"type": "string", "maxLength": 200}
   },
-  "required": ["isTravel", "region", "startDate", "endDate", "durationDays", "season", "companion", "themes", "budget", "transportation", "partySize", "accommodationNeeded", "includeNearby", "summary"]
+  "required": ["isTravel", "region", "startDate", "endDate", "durationDays", "season", "companion", "themes", "budget", "transportation", "partySize", "accommodationNeeded", "includeNearby", "summary", "travelPurpose"]
 }

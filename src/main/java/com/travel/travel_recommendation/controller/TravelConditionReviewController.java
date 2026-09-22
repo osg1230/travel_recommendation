@@ -6,6 +6,10 @@ import jakarta.servlet.http.HttpSession;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.security.Principal;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.propertyeditors.StringTrimmerEditor;
 import org.springframework.dao.DataAccessException;
@@ -26,8 +30,110 @@ public class TravelConditionReviewController {
     private static final String BUSY_KEY = "travelConditionAnalyzing";
     private final ConditionReviewService service;
     private final TravelConditionOptions options;
+    private final TravelConditionValidator validator;
+    private final TravelConditionService drafts;
+    private final ObjectProvider<RecommendationJobService> jobs;
+    private static final String DIRECT_KEY = "travelDirectRecommendation";
+    private static final String DIRECT_JOB = "travelDirectJob";
+    private record DirectJob(String token, String login, UUID id) {}
 
     private record Review(String sourceId, ConditionReviewForm form, String summary) {}
+
+    @InitBinder("travelForm")
+    void bindInput(WebDataBinder binder) {
+        binder.setAllowedFields("inputMode", "originalText", "region", "startDate", "endDate",
+            "durationDays", "season", "companion", "themes", "budget", "transportation");
+        binder.registerCustomEditor(String.class, new StringTrimmerEditor(false));
+    }
+
+    /** 입력 한 번으로 분석과 추천을 연결한다. 누락된 선택 조건 때문에 보완 화면을 강제로 열지 않는다. */
+    @PostMapping("/recommend")
+    String start(@ModelAttribute("travelForm") TravelConditionForm form, BindingResult errors,
+            @RequestParam String inputToken, HttpSession session, Principal principal, Model model,
+            RedirectAttributes flash) {
+        var choices = choices(model);
+        model.addAttribute("preview", options.isPreview());
+        model.addAttribute("choicesEmpty", choices.values().stream().anyMatch(List::isEmpty));
+        model.addAttribute("inputToken", inputToken);
+        validator.validate(form, errors, choices);
+        if(Boolean.TRUE.equals(model.getAttribute("choicesUnavailable")))
+            errors.reject("unavailable", "조건 목록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
+        if(errors.hasErrors()) return "travel/conditions";
+        String login = principal == null ? null : principal.getName();
+        TravelConditionForm source;
+        synchronized(session) {
+            if(!inputToken.equals(session.getAttribute("travelInputToken"))) return stale(flash);
+            if(session.getAttribute(DIRECT_JOB) instanceof DirectJob old && old.token().equals(inputToken)
+                    && java.util.Objects.equals(old.login(), login)) {
+                jobService().view(old.id(), login, RecommendationJobController.guestHash(session, false));
+                return "redirect:/travel/recommendations/" + old.id();
+            }
+            if(session.getAttribute(BUSY_KEY) != null) {
+                flash.addFlashAttribute("analysisError", "추천을 준비 중이에요. 잠시 기다려 주세요.");
+                return "redirect:/travel/conditions";
+            }
+            source = drafts.createDraft(form, choices);
+            session.setAttribute(TravelConditionController.DRAFT_KEY, source);
+            session.removeAttribute(TravelConditionController.PREFILL_KEY);
+            session.removeAttribute(REVIEW_KEY);
+            session.removeAttribute(CONFIRMED_KEY);
+            session.setAttribute(DIRECT_KEY, true);
+            session.setAttribute(BUSY_KEY, source.getDraftId());
+        }
+        try {
+            // 유료 분석을 기다리는 동안 다른 탭의 입력·로그아웃을 막지 않는다.
+            var analysis = "TEXT".equals(source.getInputMode()) ? service.analyze(source, choices)
+                : new ConditionReviewService.Analysis(service.fromKeywords(source), "");
+            synchronized(session) {
+                if(draft(session) != source || !inputToken.equals(session.getAttribute("travelInputToken"))) return stale(flash);
+                analysis.form().setRevision(UUID.randomUUID().toString());
+                session.setAttribute(REVIEW_KEY, new Review(source.getDraftId(), analysis.form(), analysis.summary()));
+                var conditions = service.confirm(analysis.form(), source, analysis.summary(), choices).forDirectRecommendation();
+                session.setAttribute(CONFIRMED_KEY, conditions);
+                session.setAttribute(CONFIRMATION_TOKEN, UUID.randomUUID().toString());
+                UUID id = jobService().create(conditions, login, RecommendationJobController.guestHash(session, true));
+                session.setAttribute(DIRECT_JOB, new DirectJob(inputToken, login, id));
+                return "redirect:/travel/recommendations/" + id;
+            }
+        } catch(ConditionAnalysisException ex) {
+            flash.addFlashAttribute("analysisError", ex.getMessage());
+            return "redirect:/travel/conditions";
+        } catch(DataAccessException ex) {
+            flash.addFlashAttribute("analysisError", "추천을 접수하지 못했어요. 잠시 후 다시 시도해 주세요.");
+            return "redirect:/travel/conditions";
+        } catch(IllegalStateException ex) {
+            return "redirect:/travel/conditions";
+        } finally {
+            try { synchronized(session) {
+                if(source.getDraftId().equals(session.getAttribute(BUSY_KEY))) session.removeAttribute(BUSY_KEY);
+            } } catch(IllegalStateException ignored) { /* 만료된 세션은 복구하지 않는다. */ }
+        }
+    }
+
+    /** 수정은 보고 있던 추천의 소유권을 확인한 뒤 그 조건으로 연다. 다른 탭의 조건을 섞지 않는다. */
+    @GetMapping("/edit")
+    String edit(@RequestParam UUID recommendationId, Principal principal, HttpSession session) {
+        var c = jobService().conditions(recommendationId, principal == null ? null : principal.getName(),
+            RecommendationJobController.guestHash(session, false));
+        TravelConditionForm source = service.fromConfirmed(c);
+        source.setInputMode(c.inputMode()); source.setOriginalText(c.originalText());
+        var form = service.fromConfirmed(c);
+        form.setRevision(UUID.randomUUID().toString());
+        synchronized(session) {
+            session.setAttribute(TravelConditionController.DRAFT_KEY, source);
+            session.setAttribute(REVIEW_KEY, new Review(source.getDraftId(), form, c.interpretationSummary()));
+            session.setAttribute(DIRECT_KEY, true);
+            session.removeAttribute(DIRECT_JOB);
+        }
+        return "redirect:/travel/conditions/review";
+    }
+
+    private RecommendationJobService jobService() {
+        var result = jobs.getIfAvailable();
+        if(result == null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+            "DB 연결 모드에서 여행지 추천을 이용해 주세요.");
+        return result;
+    }
 
     @InitBinder("reviewForm")
     void bind(WebDataBinder binder) {
@@ -80,6 +186,7 @@ public class TravelConditionReviewController {
 
     @GetMapping("/review")
     String review(HttpSession session, Model model) {
+        model.addAttribute("directFlow",Boolean.TRUE.equals(session.getAttribute(DIRECT_KEY)));
         synchronized (session) {
             TravelConditionForm draft = draft(session);
             if (draft == null) return "redirect:/travel/conditions";
@@ -100,8 +207,9 @@ public class TravelConditionReviewController {
 
     @PostMapping("/confirm")
     String confirm(@ModelAttribute("reviewForm") ConditionReviewForm form, BindingResult errors,
-                   HttpSession session, Model model, RedirectAttributes flash) {
+                   HttpSession session, Model model, RedirectAttributes flash, Principal principal) {
         Map<String, List<TravelKeyword>> choices = choices(model);
+        model.addAttribute("directFlow",Boolean.TRUE.equals(session.getAttribute(DIRECT_KEY)));
         synchronized (session) {
             TravelConditionForm draft = draft(session);
             Review review = (Review) session.getAttribute(REVIEW_KEY);
@@ -114,11 +222,19 @@ public class TravelConditionReviewController {
                 context(model, draft, review);
                 return "travel/condition-review";
             }
+            form.setTravelPurpose(review.form().getTravelPurpose());
             session.setAttribute(CONFIRMED_KEY, service.confirm(form, draft, review.summary(), choices));
             session.setAttribute(CONFIRMATION_TOKEN, UUID.randomUUID().toString());
             // 확정 때마다 토큰을 교체해 이전 탭이나 중복 제출이 최신 결과를 덮어쓰지 않게 한다.
             form.setRevision(UUID.randomUUID().toString());
             session.setAttribute(REVIEW_KEY, new Review(draft.getDraftId(), form, review.summary()));
+            if(Boolean.TRUE.equals(session.getAttribute(DIRECT_KEY))) {
+                var conditions = ((ConfirmedTravelConditions)session.getAttribute(CONFIRMED_KEY)).forDirectRecommendation();
+                session.setAttribute(CONFIRMED_KEY, conditions);
+                UUID id = jobService().create(conditions, principal == null ? null : principal.getName(),
+                    RecommendationJobController.guestHash(session, true));
+                return "redirect:/travel/recommendations/" + id;
+            }
         }
         return "redirect:/travel/conditions/confirmed";
     }
