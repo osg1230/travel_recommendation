@@ -25,8 +25,14 @@ public class KakaoMapClient {
                 throw new IllegalArgumentException("국내 장소 좌표를 확인해 주세요.");
         }
     }
-    /** summary는 대중교통일 때만 있는 노선 요약(SFR-06-04). 자동차 경로와 요약을 읽지 못한 경우는 null이다. */
-    public record TravelTime(Transport transport, int seconds, int meters, Instant checkedAt, String summary) {
+    /**
+     * summary는 대중교통일 때만 있는 노선 요약(SFR-06-04). 자동차 경로와 요약을 읽지 못한 경우는 null이다.
+     * walkingEstimate는 걸어갈 만큼 가까워 카카오가 대중교통 경로를 주지 않은 구간을 직선거리로 추정했다는 뜻이다.
+     */
+    public record TravelTime(Transport transport, int seconds, int meters, Instant checkedAt, String summary, boolean walkingEstimate) {
+        public TravelTime(Transport transport, int seconds, int meters, Instant checkedAt, String summary) {
+            this(transport, seconds, meters, checkedAt, summary, false);
+        }
         public TravelTime(Transport transport, int seconds, int meters, Instant checkedAt) {
             this(transport, seconds, meters, checkedAt, null);
         }
@@ -163,7 +169,14 @@ public class KakaoMapClient {
         } else {
             root=get(localEndpoint.resolve("/v2/routing/publictraffic?start_x="+from.longitude()+"&start_y="+from.latitude()
                 +"&end_x="+to.longitude()+"&end_y="+to.latitude()));
-            if (!"OK".equals(root.path("status").asText())) throw noRoute();
+            if (!"OK".equals(root.path("status").asText())) {
+                // 걸어갈 만큼 가까운 구간은 카카오가 대중교통 경로 없음(NO_RESULTS)으로 답한다. 이때만 도보 시간을 추정한다.
+                if ("NO_RESULTS".equals(root.path("status").asText())) {
+                    var walk=walkingEstimate(from,to);
+                    if (walk!=null) return walk;
+                }
+                throw noRoute();
+            }
         }
         var routes=root.path("routes");
         if (!routes.isArray() || routes.isEmpty() || routes.size()>100) throw noRoute();
@@ -186,6 +199,25 @@ public class KakaoMapClient {
         }
         if (fastest==null) throw noRoute();
         return fastest;
+    }
+
+    /** 도보로 대신할 최대 직선거리(m). 이보다 멀면 대중교통 경로가 없는 것으로 본다. */
+    static final int WALK_MAX_METERS=1000;
+
+    /**
+     * 직선거리에 우회 30%를 더하고 시속 4km로 걸었을 때의 시간. 실제 보행 경로를 조회한 값이 아니므로
+     * 요약에 추정임을 밝히고, 직선거리가 WALK_MAX_METERS를 넘으면 null이다.
+     */
+    static TravelTime walkingEstimate(Location from, Location to) {
+        double lat1=Math.toRadians(from.latitude()), lat2=Math.toRadians(to.latitude());
+        double dLat=lat2-lat1, dLon=Math.toRadians(to.longitude()-from.longitude());
+        double h=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)*Math.sin(dLon/2);
+        int straight=(int)Math.ceil(6371000*2*Math.asin(Math.min(1,Math.sqrt(h))));
+        if (straight>WALK_MAX_METERS) return null;
+        int meters=Math.max(1,(int)Math.ceil(straight*1.3));
+        int seconds=Math.max(60,(int)Math.ceil(meters/(4000.0/3600)));
+        String summary="도보 약 "+(seconds+59)/60+"분 · 직선 약 "+straight+"m라 대중교통 경로가 없어 걸어서 이동하는 것으로 추정했어요 (실제 보행 경로 확인 필요)";
+        return new TravelTime(Transport.PUBLIC_TRANSIT,seconds,meters,Instant.now(),summary,true);
     }
 
     /**

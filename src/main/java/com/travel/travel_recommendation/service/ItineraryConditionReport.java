@@ -118,6 +118,9 @@ public final class ItineraryConditionReport {
         long unknown = moves.stream().filter(i -> i.travelSeconds() == null || i.checkedAt() == null).count();
         if (unknown > 0) return new Check("이동시간", Status.NEEDS_CHECK,
             "이동 " + moves.size() + "구간 중 " + unknown + "구간은 같은 주소 안 이동이라 실제 내부 동선을 확인해야 해요.");
+        long walking = moves.stream().filter(i -> i.note() != null && i.note().startsWith(ItineraryGenerator.WALK_NOTE_PREFIX)).count();
+        if (walking > 0) return new Check("이동시간", Status.NEEDS_CHECK,
+            "이동 " + moves.size() + "구간 중 " + walking + "구간은 가까워서 대중교통 경로가 없어 도보 시간을 직선거리로 추정했어요. 실제 보행 경로를 확인해 주세요.");
         return new Check("이동시간", Status.MET, "이동 " + moves.size() + "구간 모두 카카오 예상 이동시간과 여유 10분을 반영했어요. 실시간 교통은 보장하지 않아요.");
     }
 

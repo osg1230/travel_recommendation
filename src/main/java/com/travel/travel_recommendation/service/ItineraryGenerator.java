@@ -14,6 +14,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ItineraryGenerator {
     private final KakaoMapClient maps;
+    /** 도보로 추정한 이동 항목 메모의 시작 문구. 조건 확인 결과에서 추정 구간을 구분하는 데 쓴다. */
+    static final String WALK_NOTE_PREFIX="도보 추정 ";
     private static final Pattern ROAD=Pattern.compile("^(.+?(?:로|길)\\s+\\d+(?:-\\d+)?)(?:\\s+.*)?$");
 
     public Result generate(Input input) {
@@ -266,9 +268,11 @@ public class ItineraryGenerator {
                     var route=routes.computeIfAbsent(previous.placeId()+":"+next.placeId(),key->maps.travelTime(a,b,input.transport()));
                     if(route.minutes()>120) throw failure("TRAVEL_TIME_EXCEEDED","한 구간의 이동시간이 2시간을 넘어요. 다른 지역이나 이동수단을 선택해 주세요.");
                     // 대중교통이면 탈 노선·환승·요금 요약을 함께 적는다(SFR-06-04). 요약을 못 읽으면 시간만 적는다.
+                    // 가까워서 도보로 추정한 구간은 카카오 예상값이 아니므로 따로 표시한다.
                     add("TRANSIT",next,previous.name()+" → "+next.name(),route.minutes()+10,
-                        "카카오 예상 "+route.minutes()+"분 + 이동 여유 10분"
-                            +(route.summary()==null?"":"\n"+route.summary()+" (조회 시점 기준, 배차·요금은 이용 전 확인)"),
+                        (route.walkingEstimate()?WALK_NOTE_PREFIX:"카카오 예상 ")+route.minutes()+"분 + 이동 여유 10분"
+                            +(route.summary()==null?"":"\n"+route.summary()
+                                +(route.walkingEstimate()?"":" (조회 시점 기준, 배차·요금은 이용 전 확인)")),
                         route.seconds(),route.checkedAt());
                 }
             }
