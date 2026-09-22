@@ -21,6 +21,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 public class SavedItineraryController {
     private final ObjectProvider<SavedItineraryService> services;
     private final ObjectProvider<com.travel.travel_recommendation.service.PlaceRatingService> ratings;
+    private final ObjectProvider<com.travel.travel_recommendation.service.VirtualReservationService> reservations;
     private final tools.jackson.databind.ObjectMapper mapper;
 
     @PostMapping
@@ -55,6 +56,13 @@ public class SavedItineraryController {
         model.addAttribute("ratingSummaries",rating==null?java.util.Map.of():rating.summaries(itinerary.days().stream()
             .flatMap(d->d.items().stream()).filter(i->i.placeId()!=null && java.util.Set.of("VISIT","MEAL","STAY").contains(i.type()))
             .map(com.travel.travel_recommendation.dto.SavedItinerary.Item::placeId).toList()));
+        // 같은 날짜에 가상 수량이 있는 숙소·관광시설은 가상 예약으로 이어 준다(SFR-13-01).
+        var reservation=reservations.getIfAvailable();
+        java.util.List<?> bookables=java.util.List.of();
+        // SQL 013을 적용하지 않은 PC에서도 일정 상세는 그대로 보여 준다.
+        try { if(reservation!=null) bookables=reservation.bookable(id,login(principal)); }
+        catch(org.springframework.dao.DataAccessException missingTables) { bookables=java.util.List.of(); }
+        model.addAttribute("bookables",bookables);
         return "my/itinerary";
     }
 

@@ -26,6 +26,7 @@ public class SavedItineraryService {
     private final AiJobRepository jobs;
     private final UserRepository users;
     private final ObjectMapper mapper;
+    private final org.springframework.beans.factory.ObjectProvider<VirtualReservationService> reservations;
     /** 저장 결과. created=false이면 같은 초안을 이미 저장해 둔 일정이다. */
     public record Saved(Long id, boolean created) {}
 
@@ -161,7 +162,9 @@ public class SavedItineraryService {
     @Transactional(timeout=10)
     public void delete(Long id, String loginId) {
         var itinerary=owned(id,loginId);
-        // 세부 항목과 일정 기본정보를 같은 트랜잭션에서 제거한다.
+        // 가상 예약은 남기고 일정 연결만 끊은 뒤(정의서 '삭제와 참조 유지'), 세부 항목과 일정 기본정보를 같은 트랜잭션에서 제거한다.
+        var reservation=reservations.getIfAvailable();
+        if(reservation!=null) reservation.detachItinerary(itinerary.getId());
         items.deleteByItineraryId(itinerary.getId());
         itineraries.delete(itinerary);
         itineraries.flush();

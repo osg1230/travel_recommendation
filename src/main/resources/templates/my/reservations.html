@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>가상 예약 | 다녀올게</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="travel">
+    <nav th:replace="~{fragments/layout :: myNav('reservations')}"></nav>
+    <p class="eyebrow">내 여행 · 가상 예약</p>
+    <h1>가상 예약</h1>
+    <p class="intro">예약·결제 과정을 체험하는 기능이에요. 실제 시설에 예약이 전달되지 않고 실제 돈이 오가지 않아요.</p>
+    <p role="status" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
+    <p role="status" th:if="${reservations.isEmpty()}">아직 가상 예약이 없어요. 저장한 일정 상세에서 숙소·관광시설을 가상 예약할 수 있어요.</p>
+    <p th:if="${reservations.isEmpty()}"><a th:href="@{/my/itineraries}">저장한 일정 보러 가기 →</a></p>
+    <article class="place-row" th:each="r : ${reservations}">
+        <p class="help">
+            <span class="status-badge" th:classappend="${r.status == 'CONFIRMED' ? 'status-met' : (r.status == 'PENDING' ? 'status-needs_check' : 'status-not_applicable')}"
+                  th:text="${r.statusName()}"></span>
+            <span th:text="${'예약번호 ' + r.id + ' · ' + r.paymentStatusName()}"></span>
+        </p>
+        <h2><a th:href="@{/my/reservations/{id}(id=${r.id})}" th:text="${r.placeName}"></a></h2>
+        <p th:text="${#temporals.format(r.usageStart, 'yyyy-MM-dd HH:mm') + ' ~ ' + #temporals.format(r.usageEnd, 'yyyy-MM-dd HH:mm')
+            + ' · ' + (r.unit == 'ROOM' ? '객실 ' + r.quantity + '실 · ' : '') + '인원 ' + r.partySize + '명'}"></p>
+        <p th:text="${'가상 금액 ' + #numbers.formatInteger(r.amount, 1, 'COMMA') + '원'}"></p>
+    </article>
+</main>
+</body>
+</html>

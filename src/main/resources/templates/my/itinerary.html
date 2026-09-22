@@ -47,6 +47,22 @@
         </article>
     </section>
 
+    <section class="condition-section" aria-labelledby="reserve-title">
+        <h2 id="reserve-title">가상 예약</h2>
+        <p class="help">예약·결제 과정을 체험하는 기능이에요. 실제 시설에 예약이 전달되지 않고 실제 돈이 오가지 않아요.</p>
+        <p th:if="${bookables.isEmpty()}">이 일정에는 가상 예약할 수 있는 장소가 없어요. 가상 수량은 씨마크 호텔·신라스테이 해운대·라한셀렉트 경주(숙박)와
+            오죽헌·시립박물관·동궁과 월지(관람)에만, 2026-10-01~2026-12-31 날짜로 있어요.</p>
+        <article class="place-row" th:each="b : ${bookables}">
+            <p class="help" th:text="${b.dayNo + '일차 · ' + b.itemTypeName + ' · ' + #temporals.format(b.stock.usageStart, 'yyyy-MM-dd')}"></p>
+            <h3 th:text="${b.stock.placeName}"></h3>
+            <p th:text="${'남은 수량 ' + b.stock.remaining + (b.stock.room() ? '실' : '명') + ' · ' + #numbers.formatInteger(b.stock.unitPrice, 1, 'COMMA') + '원 / ' + (b.stock.room() ? '1실 1박' : '1명')}"></p>
+            <div class="place-links">
+                <a th:if="${b.activeReservationId != null}" th:href="@{/my/reservations/{rid}(rid=${b.activeReservationId})}">내 가상 예약 보기</a>
+                <a th:if="${b.activeReservationId == null}" th:href="@{/my/reservations/new(stockId=${b.stock.stockId},itineraryId=${itinerary.summary.id})}">가상 예약하기</a>
+            </div>
+        </article>
+    </section>
+
     <section class="condition-section" aria-labelledby="edit-title">
         <h2 id="edit-title">일정 수정하기</h2>
         <th:block th:if="${itinerary.editableJobId != null}">
