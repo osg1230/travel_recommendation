@@ -8,9 +8,15 @@ import static org.assertj.core.api.Assertions.*;
 
 @EnabledIfEnvironmentVariable(named="RUN_KAKAO_TESTS", matches="true")
 class KakaoMapLiveTests {
+    // 005·012·014 SQL로 넣은 여행지 28곳의 지역명. 주소 앞부분이 이 지역과 맞는 후보가 실제로 나오는지 본다.
+    private static final java.util.List<String> REGIONS=java.util.List.of("강원특별자치도 강릉시","부산광역시","경상북도 경주시",
+        "강원특별자치도 속초시","강원특별자치도 양양군","울산광역시","서울특별시","대구광역시","인천광역시","대전광역시","세종특별자치시",
+        "경기도 수원시","경기도 가평군","강원특별자치도 춘천시","강원특별자치도 평창군","충청북도 단양군","충청남도 공주시","충청남도 태안군",
+        "전북특별자치도 전주시","전북특별자치도 군산시","전남광주통합특별시 여수시","전남광주통합특별시 순천시","전남광주통합특별시 담양군",
+        "경상북도 안동시","경상북도 포항시","경상남도 통영시","경상남도 거제시","제주특별자치도");
     @Test void discoversSupportedRegions() {
         var client=new KakaoMapClient(new KakaoMapProperties(System.getenv("KAKAO_REST_API_KEY")),new JsonMapper());
-        for(String region:java.util.List.of("강원특별자치도 강릉시","부산광역시","경상북도 경주시")) {
+        for(String region:REGIONS) {
             for(String type:java.util.List.of("ATTRACTION","RESTAURANT","ACCOMMODATION")) {
                 var places=client.searchPlaces(region,type);
                 assertThat(places).isNotEmpty().allSatisfy(p->{

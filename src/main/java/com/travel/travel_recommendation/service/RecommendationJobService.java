@@ -80,9 +80,9 @@ public class RecommendationJobService {
         }
         job.searching();
         ConfirmedTravelConditions c=mapper.readValue(job.getRequestJson(),ConfirmedTravelConditions.class);
-        var found=candidates.find(c.region());
+        var found=candidates.find(c.region(),c.themeNames());
         if(found.isEmpty()) {
-            job.fail("NO_DESTINATIONS","조회 가능한 여행지가 없어요. 현재 강릉·부산·경주를 지원해요. 지역을 수정하거나 상관없음으로 선택해 주세요.");
+            job.fail("NO_DESTINATIONS","이 지역에서 조회 가능한 여행지가 없어요. 시·도 이름(예: 강원, 전북)으로 고르거나 상관없음으로 선택해 주세요.");
         } else {
             // 최종 추천 테이블에는 아직 넣지 않는다. 지역 후보를 확보한 준비 단계만 기록한다.
             job.candidatesReady(mapper.writeValueAsString(found));

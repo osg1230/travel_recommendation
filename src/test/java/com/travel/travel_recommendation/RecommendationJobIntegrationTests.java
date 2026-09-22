@@ -119,7 +119,8 @@ class RecommendationJobIntegrationTests {
             .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
     }
     @Test void unmatchedRegionIsExplicitFailureAndRetryCreatesNewJob() throws Exception {
-        var session=session();session.setAttribute(CONFIRMED_KEY,conditions("제주"));
+        // 제주도 이제 지원하므로 여행지로 등록하지 않은 지역(울릉)으로 확인한다.
+        var session=session();session.setAttribute(CONFIRMED_KEY,conditions("울릉"));
         String location=create(session);UUID id=UUID.fromString(location.substring(location.lastIndexOf('/')+1));
         service.prepare(id);
         mvc.perform(get(location+"/status").session(session)).andExpect(jsonPath("$.errorCode").value("NO_DESTINATIONS"));
@@ -130,16 +131,19 @@ class RecommendationJobIntegrationTests {
         assertThat(retry).isNotEqualTo(location);
     }
     @Test void regionMatchingDoesNotInventNearbyPlacesOrTreatSubstringsAsRegions() {
-        assertThat(destinations.find("")).hasSize(3);
+        // 전국 여행지는 AI가 한 번에 비교하는 5곳까지만 고른다.
+        assertThat(destinations.find("")).hasSize(5);
         assertThat(destinations.find("강원특별자치도 강릉시")).extracting(DestinationCandidate::name).containsExactly("강릉");
-        assertThat(destinations.find("경북")).extracting(DestinationCandidate::name).containsExactly("경주");
+        assertThat(destinations.find("경북")).extracting(DestinationCandidate::name).containsExactly("경주","안동","포항");
+        assertThat(destinations.find("광주")).extracting(DestinationCandidate::name).containsExactly("여수","순천","담양");
         assertThat(destinations.find("부산 아닌 서울")).isEmpty();
         assertThat(destinations.find("강릉 부산")).isEmpty();
     }
     @Test void inactiveAndUnverifiedSourcesAreExcluded() {
         jdbc.update("UPDATE dbo.places SET is_active=0 WHERE place_name=N'강릉'");
         jdbc.update("UPDATE dbo.places SET source_url='javascript:alert(1)' WHERE place_name=N'부산'");
-        assertThat(destinations.find("")).extracting(DestinationCandidate::name).containsExactly("경주");
+        assertThat(destinations.find("")).extracting(DestinationCandidate::name).doesNotContain("강릉","부산").contains("경주");
+        assertThat(destinations.find("부산")).isEmpty();
     }
     @Test void expiredGuestsAreDeniedThenDeletedButMemberRequestsRemain() {
         UUID id=service.create(conditions(""),null,new byte[32]);

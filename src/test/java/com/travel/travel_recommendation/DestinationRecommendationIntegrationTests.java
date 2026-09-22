@@ -56,8 +56,8 @@ class DestinationRecommendationIntegrationTests {
         service.complete(work,ranked(work));service.complete(work,ranked(work));
         var job=jobRepository.findById(id).orElseThrow();
         assertThat(job.getStatus()).isEqualTo("COMPLETED");assertThat(job.getAttemptCount()).isEqualTo((short)1);
-        assertThat(results.findByRequestIdOrderByRank(job.getRequestId())).hasSize(3);
-        assertThat(jobs.view(id,member.getLoginId(),null).recommendations()).hasSize(3);
+        assertThat(results.findByRequestIdOrderByRank(job.getRequestId())).hasSize(5);
+        assertThat(jobs.view(id,member.getLoginId(),null).recommendations()).hasSize(5);
         service.enqueue(id,member.getLoginId(),null,1);
         assertThat(service.claim(id)).isNull();
     }

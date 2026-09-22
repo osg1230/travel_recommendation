@@ -144,8 +144,8 @@ class KakaoMapClientTests {
         var items=new java.util.ArrayList<java.util.Map<String,String>>();
         for(int i=1;i<=15;i++) items.add(searchItem(""+i,"부산 해운대구 중동 "+i));
         body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",items)));
-        assertThat(client("key").searchPlaces("부산광역시","ATTRACTION")).hasSize(8);
-        int before=calls.get(); assertCode("MAP_REGION",()->client("key").searchPlaces("서울","ATTRACTION"));
+        assertThat(client("key").searchPlaces("부산광역시","ATTRACTION")).hasSize(15);
+        int before=calls.get(); assertCode("MAP_REGION",()->client("key").searchPlaces("어딘가 어느곳 모름","ATTRACTION"));
         assertThat(calls.get()).isEqualTo(before);
         body.set("{\"documents\":[]}"); assertThat(client("key").searchPlaces("부산광역시","ATTRACTION")).isEmpty();
         body.set("{}"); assertCode("MAP_INVALID_RESPONSE",()->client("key").searchPlaces("부산광역시","ATTRACTION"));
