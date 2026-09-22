@@ -53,6 +53,11 @@ public class AiJob {
     public void completeSchedule(String json) {
         completeRecommendation(json); message="이동시간을 반영한 일정 초안이 준비됐어요.";
     }
+    /** 후보 조회 전의 추천 요청에 목적 시설 검색 결과를 붙인다. 사용자가 확정한 다른 조건은 바꾸지 않는다. */
+    public void attachRequest(String json) {
+        if(!"RECOMMENDATION".equals(jobType) || !"QUEUED".equals(status)) throw new IllegalStateException("Only queued recommendations");
+        requestJson=json;
+    }
     /** 완성된 일정 초안에 나중에 찾은 참고 정보(숙소·음식점 가격)를 붙인다. 일정 자체는 서버가 만든 그대로 둔다. */
     public void attachToResult(String json) {
         if(!"ITINERARY".equals(jobType) || !"COMPLETED".equals(status)) throw new IllegalStateException("Only completed itineraries");

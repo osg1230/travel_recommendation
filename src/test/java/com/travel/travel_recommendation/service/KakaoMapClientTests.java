@@ -140,6 +140,20 @@ class KakaoMapClientTests {
         assertThat(found.getFirst().address()).isEqualTo("강원 강릉시 죽헌동 1");
         assertThat(path.get()).contains("category_group_code=AT4","size=15","page=1");
     }
+    // 목적 시설 전국 검색은 관광명소·문화시설만 받고, 주소가 서비스 여행지 안인 곳을 그 여행지 지역으로 돌려준다.
+    @Test void nationwideSearchKeepsFacilitiesInsideServiceRegions() {
+        var yeosu=searchItem("201","전남광주통합특별시 여수시 오동도로 61-11"); yeosu.put("category_group_code","CT1");
+        var busan=searchItem("202","부산 해운대구 해운대해변로 266");
+        var outside=searchItem("203","경기 고양시 일산서구 한류월드로 282");
+        var shop=searchItem("204","부산 해운대구 구남로 1"); shop.put("category_group_code","FD6");
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(yeosu,busan,outside,shop))));
+        var found=client("key").searchNationwide("아쿠아리움",java.util.List.of("전남광주통합특별시 여수시","부산광역시"));
+        assertThat(found).extracting(com.travel.travel_recommendation.dto.KakaoPlace::sourceId).containsExactly("201","202");
+        assertThat(found).extracting(com.travel.travel_recommendation.dto.KakaoPlace::region).containsExactly("전남광주통합특별시 여수시","부산광역시");
+        assertThat(found).allSatisfy(p->assertThat(p.type()).isEqualTo("ATTRACTION"));
+        assertThat(path.get()).contains("size=15").doesNotContain("category_group_code");
+        assertCode("MAP_INVALID_RESPONSE",()->client("key").searchNationwide(" ",java.util.List.of("부산광역시")));
+    }
     @Test void searchHasBoundedResultsAndRejectsUnsupportedRegionBeforeCalling() {
         var items=new java.util.ArrayList<java.util.Map<String,String>>();
         for(int i=1;i<=15;i++) items.add(searchItem(""+i,"부산 해운대구 중동 "+i));

@@ -48,6 +48,7 @@
 </fieldset>
 <p class="help" th:if="${pool.isEmpty()}">확인된 관광지 후보가 없어요. 장소 목록에서 후보를 먼저 찾아 주세요.</p>
 <p class="help">고른 관광지는 빠짐없이 일정에 넣고, 나중에 수정안을 만들 때도 바꾸지 않아요.</p>
+<p class="notice" th:if="${purposePlaceIds != null and !purposePlaceIds.isEmpty()}">여행 목적으로 찾은 시설을 미리 골라 두었어요. 빼고 싶으면 체크를 풀어 주세요.</p>
 <div class="field-grid">
 <div><label for="dailyVisits">하루 방문할 관광지 수 (선택)</label><select id="dailyVisits" name="dailyVisits">
 <option value="" th:selected="${values.dailyVisits == null}">정하지 않음</option>

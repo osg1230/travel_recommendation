@@ -39,14 +39,19 @@ public class ItineraryController {
         response.setHeader("Cache-Control","no-store");
         var options=service().options(id,destinationId,login(principal),hash(session));
         model.addAttribute("options",options);
-        model.addAttribute("pool",service().attractionPool(id,destinationId,login(principal),hash(session)));
+        var pool=service().attractionPool(id,destinationId,login(principal),hash(session));
+        model.addAttribute("pool",pool);
+        // 여행 목적 시설은 필수 방문 장소로 미리 골라 둔다. 사용자가 체크를 풀 수 있다.
+        var poolIds=pool.stream().map(p->p.placeId()).toList();
+        var purposeIds=service().purposePlaceIds(id,destinationId,login(principal),hash(session)).stream().filter(poolIds::contains).toList();
+        model.addAttribute("purposePlaceIds",purposeIds);
         model.addAttribute("budgetItems",TripConstraints.BUDGET_ITEMS);
         model.addAttribute("maxDailyVisits",TripConstraints.MAX_DAILY);
         // 필수 조건이 모순돼 돌아온 경우 이유·선택지와 입력했던 값을 다시 보여 준다(한 번만).
         var conflict=session.getAttribute(CONFLICT_KEY) instanceof ConstraintInput previous && previous.parent().equals(id) ? previous : null;
         session.removeAttribute(CONFLICT_KEY);
         model.addAttribute("values",conflict!=null?conflict:new ConstraintInput(id,options.start(),options.end(),options.transport(),
-            options.visitMinutes(),List.of(),null,false,null,List.of(),null,List.of(),null,null));
+            options.visitMinutes(),purposeIds,null,false,null,List.of(),null,List.of(),null,null));
         model.addAttribute("stayTiers",BudgetGuide.StayTier.values());
         synchronized(session) {
             var submission=new Submission(id,destinationId,login(principal),UUID.randomUUID().toString(),null);

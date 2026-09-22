@@ -91,6 +91,22 @@ public class KakaoMapClient {
         var root=get(localEndpoint.resolve("/v2/local/search/keyword.json?query="
             +URLEncoder.encode(city+" "+keyword,StandardCharsets.UTF_8)
             +"&category_group_code="+code+"&rect=124,33,132,39&size=15&page=1&sort=accuracy"));
+        return places(root,Set.of(code),List.of(region),type,limit);
+    }
+
+    /**
+     * 여행 목적 시설을 전국에서 찾는다(예: "아쿠아리움"). 관광명소(AT4)·문화시설(CT1)만 받고, 주소가 regions 중 하나로
+     * 시작하는 곳만 그 지역의 관광지 후보로 돌려준다. 시설 이름·주소·좌표만 확인하며 전시·체험 내용은 알 수 없다.
+     */
+    public List<KakaoPlace> searchNationwide(String query,List<String> regions) {
+        if(query==null || query.isBlank() || query.length()>40 || regions.isEmpty()) throw invalid();
+        var root=get(localEndpoint.resolve("/v2/local/search/keyword.json?query="
+            +URLEncoder.encode(query.strip(),StandardCharsets.UTF_8)+"&rect=124,33,132,39&size=15&page=1&sort=accuracy"));
+        return places(root,Set.of("AT4","CT1"),regions,"ATTRACTION",15);
+    }
+
+    // 검색 결과를 검사해 후보로 바꾼다. 분류·주소(지역)·좌표·상세 링크가 맞지 않는 항목은 건너뛴다.
+    private List<KakaoPlace> places(JsonNode root,Set<String> codes,List<String> regions,String type,int limit) {
         var documents=root.path("documents");
         if(!documents.isArray() || documents.size()>15) throw invalid();
         List<KakaoPlace> result=new ArrayList<>(); Set<String> ids=new HashSet<>();
@@ -98,9 +114,10 @@ public class KakaoMapClient {
             try {
                 String id=requiredText(item,"id",20), name=requiredText(item,"place_name",200);
                 String address=requiredText(item,"address_name",300);
-                if(!id.matches("[1-9][0-9]{0,19}") || !code.equals(item.path("category_group_code").asText())) continue;
+                if(!id.matches("[1-9][0-9]{0,19}") || !codes.contains(item.path("category_group_code").asText())) continue;
                 String normalized=normalize(address);
-                if(!normalized.startsWith(normalize(region)+" ")) continue;
+                String region=regions.stream().filter(r->normalized.startsWith(normalize(r)+" ")).findFirst().orElse(null);
+                if(region==null) continue;
                 String road=item.path("road_address_name").asText("");
                 if(!road.isBlank()) {
                     if(road.length()>300 || !normalize(road).startsWith(normalize(region)+" ")) continue;
