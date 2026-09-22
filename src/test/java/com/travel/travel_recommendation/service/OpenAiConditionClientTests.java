@@ -61,6 +61,8 @@ class OpenAiConditionClientTests {
         assertThat(mapper.readTree(body.path("input").asText()).path("choices").path("season").get(0)
                 .path("selectionValue").asText()).isEqualTo("20");
         assertThat(request.get()).doesNotContain("test-key", "loginId", "password");
+        // 지시문의 예시 대상(예: 특정 동물)이 다른 입력의 여행 목적으로 새어 나오지 않도록 구체적 대상을 쓰지 않는다.
+        assertThat(body.path("instructions").asText()).doesNotContain("상어").contains("원문에 없는 대상·활동은 만들어 넣지 않는다");
         assertThat(calls.get()).isEqualTo(1);
         assertThat(new OpenAiProperties("test-key", "gpt-4.1-mini").toString()).doesNotContain("test-key");
     }
