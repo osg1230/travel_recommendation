@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>가상 예약 신청 | 다녀올게</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="travel">
+    <nav th:replace="~{fragments/layout :: myNav('reservations')}"></nav>
+    <a class="back-link" th:if="${itineraryId != null}" th:href="@{/my/itineraries/{id}(id=${itineraryId})}">← 저장한 일정으로</a>
+    <p class="eyebrow">내 여행 · 가상 예약 신청</p>
+    <h1 th:text="${stock.placeName}"></h1>
+    <p class="notice">가상 예약이에요. 실제 시설에 예약이 전달되지 않고, 결제도 테스트 결제수단으로만 처리돼 실제 돈이 오가지 않아요.</p>
+
+    <section class="condition-section">
+        <h2>예약 정보</h2>
+        <p th:text="${stock.address}"></p>
+        <p th:text="${'이용 ' + #temporals.format(stock.usageStart, 'yyyy-MM-dd HH:mm') + ' ~ ' + #temporals.format(stock.usageEnd, 'yyyy-MM-dd HH:mm')
+            + (stock.room() ? ' (1박, 입실~퇴실)' : ' (하루 이용)')}"></p>
+        <p th:text="${'남은 수량 ' + stock.remaining + (stock.room() ? '실' : '명') + ' / 전체 ' + stock.total}"></p>
+        <p th:text="${'단위 가격 ' + #numbers.formatInteger(stock.unitPrice, 1, 'COMMA') + '원 / ' + (stock.room() ? '1실 1박' : '1명')}"></p>
+        <p class="help" th:text="${stock.priceNote}"></p>
+        <p class="place-links" th:if="${stock.priceSourceUrl != null}">
+            <a th:href="${stock.priceSourceUrl}" target="_blank" rel="noopener noreferrer">가격 출처 확인 (새 창)</a></p>
+        <form th:action="@{/my/reservations/new}" method="get">
+            <input type="hidden" name="stockId" th:value="${stock.stockId}">
+            <input type="hidden" name="itineraryId" th:if="${itineraryId != null}" th:value="${itineraryId}">
+            <div class="field">
+                <label for="date">다른 날짜로 보기</label>
+                <input id="date" name="date" type="date" min="2026-10-01" max="2026-12-31"
+                       th:value="${#temporals.format(stock.usageStart, 'yyyy-MM-dd')}" aria-describedby="date-help">
+                <p id="date-help" class="help">가상 수량은 2026-10-01~2026-12-31에만 있어요.</p>
+            </div>
+            <div class="form-actions"><button type="submit" class="button-quiet">이 날짜로 보기</button></div>
+        </form>
+    </section>
+
+    <section class="condition-section">
+        <h2>예약 신청</h2>
+        <p role="status" th:if="${stock.remaining == 0}">이 날짜는 매진됐어요. 다른 날짜를 골라 주세요.</p>
+        <form th:if="${stock.remaining > 0}" th:action="@{/my/reservations}" method="post">
+            <input type="hidden" name="stockId" th:value="${stock.stockId}">
+            <input type="hidden" name="itineraryId" th:if="${itineraryId != null}" th:value="${itineraryId}">
+            <input type="hidden" name="requestKey" th:value="${requestKey}">
+            <div class="field-grid">
+                <div class="field" th:if="${stock.room()}">
+                    <label for="quantity">객실 수 (필수)</label>
+                    <input id="quantity" name="quantity" type="number" min="1" th:max="${stock.remaining < maxRooms ? stock.remaining : maxRooms}" value="1" required>
+                    <p class="help" th:text="${'한 번에 최대 ' + maxRooms + '실, 객실당 최대 ' + stock.maxPerUnit + '명'}"></p>
+                </div>
+                <div class="field">
+                    <label for="partySize">이용 인원 (필수)</label>
+                    <input id="partySize" name="partySize" type="number" min="1"
+                           th:max="${stock.room() ? maxRooms * stock.maxPerUnit : (stock.remaining < maxPeople ? stock.remaining : maxPeople)}"
+                           th:value="${stock.room() ? 2 : 1}" required>
+                    <p class="help" th:text="${stock.room() ? '금액은 객실 수 × 1실 가격으로 계산해요.' : '인원 수만큼 수량을 예약해요. 최대 ' + maxPeople + '명'}"></p>
+                </div>
+            </div>
+            <p class="help">금액은 서버가 남은 수량을 확인한 뒤 계산해요. 신청하면 수량이 먼저 잡히고, 결제하면 예약이 확정돼요.</p>
+            <div class="form-actions"><button type="submit">가상 예약 신청</button></div>
+        </form>
+    </section>
+</main>
+</body>
+</html>

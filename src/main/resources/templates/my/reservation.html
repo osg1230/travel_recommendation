@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${'가상 예약 ' + reservation.summary.id + ' | 다녀올게'}">가상 예약 | 다녀올게</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="travel" th:with="s=${reservation.summary}">
+    <nav th:replace="~{fragments/layout :: myNav('reservations')}"></nav>
+    <a class="back-link" th:href="@{/my/reservations}">← 가상 예약 목록</a>
+    <p class="eyebrow" th:text="${'내 여행 · 가상 예약번호 ' + s.id}"></p>
+    <h1 th:text="${s.placeName}"></h1>
+    <p role="status" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
+    <p class="notice">가상 예약이에요. 실제 시설에 전달되지 않고 실제 돈이 오가지 않아요.</p>
+
+    <section class="condition-section">
+        <h2>예약 상태</h2>
+        <table class="report-table">
+            <tbody>
+            <tr><th scope="row">예약</th><td><span class="status-badge"
+                th:classappend="${s.status == 'CONFIRMED' ? 'status-met' : (s.status == 'PENDING' ? 'status-needs_check' : 'status-not_applicable')}"
+                th:text="${s.statusName()}"></span></td></tr>
+            <tr><th scope="row">결제</th><td th:text="${s.paymentStatusName()}"></td></tr>
+            <tr><th scope="row">이용 일시</th><td th:text="${#temporals.format(s.usageStart, 'yyyy-MM-dd HH:mm') + ' ~ ' + #temporals.format(s.usageEnd, 'yyyy-MM-dd HH:mm')}"></td></tr>
+            <tr th:if="${s.unit == 'ROOM'}"><th scope="row">객실</th><td th:text="${s.quantity + '실'}"></td></tr>
+            <tr><th scope="row">인원</th><td th:text="${s.partySize + '명'}"></td></tr>
+            <tr><th scope="row">가상 금액</th><td th:text="${#numbers.formatInteger(s.amount, 1, 'COMMA') + '원'}"></td></tr>
+            <tr><th scope="row">신청 시각</th><td th:text="${#temporals.format(s.createdAt, 'yyyy-MM-dd HH:mm') + ' (UTC)'}"></td></tr>
+            </tbody>
+        </table>
+        <p class="help" th:if="${reservation.stock != null}" th:text="${reservation.stock.priceNote}"></p>
+        <p th:if="${reservation.itineraryId != null}"><a th:href="@{/my/itineraries/{id}(id=${reservation.itineraryId})}">연결된 저장 일정 보기 →</a></p>
+    </section>
+
+    <section class="condition-section" th:if="${reservation.pending()}" aria-labelledby="pay-title">
+        <h2 id="pay-title">가상 결제</h2>
+        <form th:action="@{/my/reservations/{id}/pay(id=${s.id})}" method="post">
+            <input type="hidden" name="idempotencyKey" th:value="${paymentKey}">
+            <fieldset class="field">
+                <legend>테스트 결제 결과 (결제수단: 테스트 결제)</legend>
+                <label class="check-line"><input type="radio" name="outcome" value="approve" checked> 결제 성공</label>
+                <label class="check-line"><input type="radio" name="outcome" value="decline"> 결제 실패 (테스트)</label>
+            </fieldset>
+            <p class="help">카드번호 같은 결제정보는 받지 않아요. 결제 버튼을 여러 번 눌러도 한 번만 처리돼요.</p>
+            <div class="form-actions"><button type="submit" th:text="${'가상 결제 ' + #numbers.formatInteger(s.amount, 1, 'COMMA') + '원'}">가상 결제</button></div>
+        </form>
+    </section>
+
+    <section class="condition-section" th:if="${reservation.changeable() and reservation.stock != null}" aria-labelledby="change-title"
+             th:with="st=${reservation.stock}">
+        <h2 id="change-title">예약 변경</h2>
+        <p class="help">결제 전에만 날짜·인원을 바꿀 수 있어요. 결제한 뒤에는 취소(환불) 후 새로 예약해 주세요.</p>
+        <form th:action="@{/my/reservations/{id}/change(id=${s.id})}" method="post">
+            <div class="field-grid">
+                <div class="field">
+                    <label for="date">이용 날짜</label>
+                    <input id="date" name="date" type="date" min="2026-10-01" max="2026-12-31" th:value="${#temporals.format(s.usageStart, 'yyyy-MM-dd')}">
+                </div>
+                <div class="field" th:if="${st.room()}">
+                    <label for="quantity">객실 수</label>
+                    <input id="quantity" name="quantity" type="number" min="1" th:max="${maxRooms}" th:value="${s.quantity}" required>
+                    <p class="help" th:text="${'객실당 최대 ' + st.maxPerUnit + '명'}"></p>
+                </div>
+                <div class="field">
+                    <label for="partySize">이용 인원</label>
+                    <input id="partySize" name="partySize" type="number" min="1" th:max="${st.room() ? maxRooms * st.maxPerUnit : maxPeople}" th:value="${s.partySize}" required>
+                </div>
+            </div>
+            <div class="form-actions"><button type="submit" class="button-quiet">변경 내용 저장</button></div>
+        </form>
+    </section>
+
+    <section class="condition-section danger-zone" th:if="${!reservation.canceled()}" aria-labelledby="cancel-title">
+        <h2 id="cancel-title" th:text="${reservation.paid() ? '예약 취소·환불' : '예약 취소'}"></h2>
+        <p class="help" th:text="${reservation.paid() ? '취소하면 가상 결제를 환불 처리하고 잡아 둔 수량을 되돌려요.' : '취소하면 잡아 둔 수량을 되돌려요.'}"></p>
+        <form th:action="@{/my/reservations/{id}/cancel(id=${s.id})}" method="post"
+              onsubmit="return confirm('이 가상 예약을 취소할까요? 취소한 예약은 되돌릴 수 없어요.');">
+            <div class="form-actions"><button type="submit" class="button-danger" th:text="${reservation.paid() ? '취소하고 환불받기' : '예약 취소'}"></button></div>
+        </form>
+    </section>
+
+    <section class="condition-section" th:if="${!reservation.payments.isEmpty()}">
+        <h2>결제 내역</h2>
+        <table class="report-table">
+            <thead><tr><th scope="col">결제번호</th><th scope="col">상태</th><th scope="col">금액</th><th scope="col">처리 시각 (UTC)</th></tr></thead>
+            <tbody>
+            <tr th:each="p : ${reservation.payments}">
+                <td th:text="${p.id}"></td>
+                <td th:text="${p.statusName() + (p.failureCode != null ? ' (' + p.failureCode + ')' : '')}"></td>
+                <td th:text="${#numbers.formatInteger(p.amount, 1, 'COMMA') + '원'}"></td>
+                <td th:text="${(p.processedAt != null ? #temporals.format(p.processedAt, 'yyyy-MM-dd HH:mm:ss') : '-')
+                    + (p.refundedAt != null ? ' · 환불 ' + #temporals.format(p.refundedAt, 'yyyy-MM-dd HH:mm:ss') : '')}"></td>
+            </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <section class="condition-section" th:if="${!reservation.logs.isEmpty()}">
+        <h2>수량 변경 이력</h2>
+        <table class="report-table">
+            <thead><tr><th scope="col">내용</th><th scope="col">남은 수량</th><th scope="col">상태</th><th scope="col">시각 (UTC)</th></tr></thead>
+            <tbody>
+            <tr th:each="l : ${reservation.logs}">
+                <td th:text="${l.reason}"></td>
+                <td th:text="${l.beforeQuantity + ' → ' + l.afterQuantity + ' (' + (l.delta > 0 ? '+' : '') + l.delta + ')'}"></td>
+                <td th:text="${(l.beforeStatus != null ? l.beforeStatus + ' → ' : '') + l.afterStatus}"></td>
+                <td th:text="${#temporals.format(l.createdAt, 'yyyy-MM-dd HH:mm:ss')}"></td>
+            </tr>
+            </tbody>
+        </table>
+    </section>
+</main>
+</body>
+</html>

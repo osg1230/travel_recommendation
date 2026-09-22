@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 회원 본인 탈퇴(SFR-01-05). 계정 행은 남겨 아이디 재사용과 운영 기록 참조를 막고, 상태·탈퇴 시각·익명 닉네임으로 바꾼다.
- * 본인이 만든 일정·즐겨찾기·추천 이력·평가·임시 작업은 같은 트랜잭션에서 지운다. 관리자 계정은 탈퇴하지 않는다.
+ * 본인이 만든 가상 예약·일정·즐겨찾기·추천 이력·평가·임시 작업은 같은 트랜잭션에서 지운다. 관리자 계정은 탈퇴하지 않는다.
  */
 @Service
 @Profile({"sqlserver","sqlserver-windows"})
@@ -23,6 +23,7 @@ public class WithdrawalService {
     private final UserRepository users;
     private final PasswordEncoder encoder;
     private final JdbcTemplate jdbc;
+    private final VirtualReservationService reservations;
 
     @Transactional(timeout=15)
     public void withdraw(String loginId, String currentPassword, boolean confirmed) {
@@ -35,6 +36,8 @@ public class WithdrawalService {
             throw new ProfileUpdateException(null,"현재 비밀번호가 올바르지 않아요.");
         Long id=user.getId();
         // 자식 행부터 지운다. 운영 처리 이력(operation_logs)은 관리 기록이라 남긴다.
+        // 가상 예약은 점유 수량을 취소 절차로 한 번 복구한 뒤 로그·결제·예약을 지운다. 일정 FK가 있어 일정보다 먼저 처리한다.
+        reservations.purgeForWithdrawal(id);
         jdbc.update("DELETE t FROM dbo.place_rating_tags t JOIN dbo.place_ratings r ON r.rating_id=t.rating_id WHERE r.user_id=?",id);
         jdbc.update("DELETE FROM dbo.place_ratings WHERE user_id=?",id);
         jdbc.update("DELETE FROM dbo.favorites WHERE user_id=?",id);
