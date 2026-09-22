@@ -79,6 +79,26 @@ class KakaoMapClientTests {
         body.set("{\"routes\":[{\"result_code\":0,\"summary\":{\"duration\":324,\"distance\":3800}}]}");
         assertThat(client("key").travelTime(from,to,KakaoMapClient.Transport.CAR).summary()).isNull();
     }
+    @Test void nearbyTransitWithoutRouteBecomesMarkedWalkingEstimate() {
+        // 강릉 안목해변 → 강릉카페거리(직선 약 100m). 카카오 대중교통은 NO_RESULTS로 답한다.
+        var beach=new KakaoMapClient.Location("안목해변",128.948275,37.772262,Instant.now());
+        var street=new KakaoMapClient.Location("카페거리",128.947242,37.772654,Instant.now());
+        body.set("{\"status\":\"NO_RESULTS\"}");
+        var result=client("key").travelTime(beach,street,KakaoMapClient.Transport.PUBLIC_TRANSIT);
+        assertThat(result.walkingEstimate()).isTrue();
+        assertThat(result.transport()).isEqualTo(KakaoMapClient.Transport.PUBLIC_TRANSIT);
+        assertThat(result.meters()).isBetween(120,160);
+        assertThat(result.minutes()).isEqualTo(2);
+        assertThat(result.summary()).startsWith("도보 약 2분").contains("직선 약 101m").contains("실제 보행 경로 확인 필요");
+        // 걸어갈 수 없는 거리의 NO_RESULTS와 다른 실패 상태는 추정하지 않는다.
+        var far=new KakaoMapClient.Location("멀리",128.970,37.772262,Instant.now());
+        assertCode("MAP_NO_ROUTE",()->client("key").travelTime(beach,far,KakaoMapClient.Transport.PUBLIC_TRANSIT));
+        body.set("{\"status\":\"ERROR\"}");
+        assertCode("MAP_NO_ROUTE",()->client("key").travelTime(beach,street,KakaoMapClient.Transport.PUBLIC_TRANSIT));
+        // 카카오가 경로를 주면 추정값이 아니다.
+        body.set("{\"status\":\"OK\",\"routes\":[{\"properties\":{\"totalTime\":300,\"totalDistance\":200}}]}");
+        assertThat(client("key").travelTime(beach,street,KakaoMapClient.Transport.PUBLIC_TRANSIT).walkingEstimate()).isFalse();
+    }
     @Test void noRouteAndMalformedDurationsNeverBecomeEstimatedTimes() {
         body.set("{\"status\":\"NO_RESULTS\"}");
         assertCode("MAP_NO_ROUTE",()->client("key").travelTime(from,to,KakaoMapClient.Transport.PUBLIC_TRANSIT));

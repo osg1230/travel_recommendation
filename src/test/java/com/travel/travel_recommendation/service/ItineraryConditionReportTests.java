@@ -49,6 +49,18 @@ class ItineraryConditionReportTests {
         assertThat(status(report,"숙박")).isEqualTo(Status.NEEDS_CHECK);
         assertThat(report.count(Status.UNMET)).isZero();
     }
+    @Test void walkingEstimatedMovesAreShownAsEstimateAndNeedCheck() {
+        when(maps.travelTime(any(),any(),any())).thenAnswer(invocation->new KakaoMapClient.TravelTime(invocation.getArgument(2),150,130,Instant.now(),"도보 약 3분 · 추정",true));
+        var input=input(1,LocalDate.of(2026,10,1),null);
+        var result=generator.generate(input);
+        generator.validate(input,result);
+        var moves=result.days().getFirst().items().stream().filter(i->i.type().equals("TRANSIT")).toList();
+        assertThat(moves).isNotEmpty().allSatisfy(i->{
+            assertThat(i.note()).startsWith("도보 추정 3분 + 이동 여유 10분").doesNotContain("카카오 예상").doesNotContain("배차·요금");
+            assertThat(Duration.between(i.start(),i.end()).toMinutes()).isEqualTo(13);
+        });
+        assertThat(status(ItineraryConditionReport.evaluate(input,result),"이동시간")).isEqualTo(Status.NEEDS_CHECK);
+    }
     @Test void missingDateAndBudgetAreNotTreatedAsViolations() {
         var input=input(1,null,null);
         var report=ItineraryConditionReport.evaluate(input,generator.generate(input));
