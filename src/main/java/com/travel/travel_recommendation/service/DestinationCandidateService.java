@@ -42,10 +42,22 @@ public class DestinationCandidateService {
     /** purposeDestinationIds는 여행 목적 시설(예: 아쿠아리움)이 있는 여행지다. 후보가 5곳보다 많을 때 가장 먼저 고른다. */
     @Transactional(readOnly=true, timeout=10)
     public List<DestinationCandidate> find(String region,List<String> themes,List<Long> purposeDestinationIds) {
+        return find(region,themes,purposeDestinationIds,List.of());
+    }
+
+    /** 추천 조건 그대로 후보를 고른다. 후보 준비와 추천 저장 직전 재확인이 같은 기준을 쓰도록 이 메서드를 쓴다. */
+    @Transactional(readOnly=true, timeout=10)
+    public List<DestinationCandidate> find(com.travel.travel_recommendation.dto.ConfirmedTravelConditions c) {
+        return find(c.region(),c.themeNames(),c.purposeDestinationIds(),c.purposeThemes());
+    }
+
+    /** purposeThemes는 목적과 가까운 여행지 분류(예: 갯벌 체험 → 바다)로, 사용자가 고른 취향 다음으로 순서를 정한다. */
+    @Transactional(readOnly=true, timeout=10)
+    public List<DestinationCandidate> find(String region,List<String> themes,List<Long> purposeDestinationIds,List<String> purposeThemes) {
         String query=region==null?"":region.replaceAll("\\s+","");
         // 지역을 억지로 넓히거나 부분 문자열로 추측하지 않는다. 지원하지 않는 상세 지역은 보완을 요청한다.
         var matched=usablePlaces().stream().filter(p -> query.isEmpty() || matches(p,query)).toList();
-        return pick(matched,themes,query.isEmpty(),purposeDestinationIds).stream().map(DestinationCandidateService::candidate).toList();
+        return pick(matched,themes,query.isEmpty(),purposeDestinationIds,purposeThemes).stream().map(DestinationCandidateService::candidate).toList();
     }
 
     /** 출처를 확인한 전체 여행지(5곳으로 줄이기 전). 목적 시설이 어느 여행지에 있는지 나눌 때 쓴다. */
@@ -63,19 +75,21 @@ public class DestinationCandidateService {
     }
 
     static List<Place> pick(List<Place> matched,List<String> themes,boolean nationwide) {
-        return pick(matched,themes,nationwide,List.of());
+        return pick(matched,themes,nationwide,List.of(),List.of());
     }
 
     /**
-     * 후보가 5곳 이하면 그대로 쓴다. 더 많으면 여행 목적 시설이 있는 곳, 여행 취향과 겹치는 분류가 많은 곳 순서로 고르고,
+     * 후보가 5곳 이하면 그대로 쓴다. 더 많으면 여행 목적 시설이 있는 곳, 여행 취향과 겹치는 분류가 많은 곳,
+     * 목적과 가까운 분류(예: 갯벌 체험 → 바다)가 겹치는 곳 순서로 고르고,
      * 같으면 먼저 등록한 곳을 앞에 둔다. 전국에서 고를 때는 한 시·도에 몰리지 않도록 시·도마다 한 곳씩 먼저 고른 뒤 남는 자리를 채운다.
      * 같은 조건이면 늘 같은 후보가 나와야 추천 저장 직전의 재확인(currentPlacesMatch)과 맞는다.
      */
-    static List<Place> pick(List<Place> matched,List<String> themes,boolean nationwide,List<Long> purposeDestinationIds) {
+    static List<Place> pick(List<Place> matched,List<String> themes,boolean nationwide,List<Long> purposeDestinationIds,
+                            List<String> purposeThemes) {
         if(matched.size()<=MAX_CANDIDATES) return matched;
         var ranked=new ArrayList<>(matched);
         ranked.sort(Comparator.comparingInt((Place p)->purposeDestinationIds.contains(p.getId())?0:1)
-            .thenComparingInt(p->-themeScore(p,themes)).thenComparing(Place::getId));
+            .thenComparingInt(p->-themeScore(p,themes)).thenComparingInt(p->-themeScore(p,purposeThemes)).thenComparing(Place::getId));
         List<Place> chosen=new ArrayList<>(); Set<String> provinces=new HashSet<>();
         if(nationwide)
             for(var place:ranked) if(chosen.size()<MAX_CANDIDATES && provinces.add(province(place))) chosen.add(place);

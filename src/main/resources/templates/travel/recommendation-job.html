@@ -17,6 +17,8 @@
                 <p class="help">카카오 장소 검색에서 이름·주소를 확인한 시설이에요. 전시·체험 내용(예: 원하는 동물이 있는지)은 확인하지 않았으니 공식 사이트에서 확인해 주세요.</p>
             </th:block>
             <p class="help" th:unless="${ps.status == 'FOUND'}" th:text="${ps.message}"></p>
+            <p class="help" th:if="${!ps.themes.isEmpty()}" th:text="${'목적과 가까운 여행지 분류: ' + #strings.listJoin(ps.themes, ', ')
+                + ' · 후보 여행지를 고를 때 반영했어요(목적 시설이 있는 곳, 직접 고른 여행 취향 다음 순서).'}"></p>
         </th:block>
         <details th:if="${!#strings.isEmpty(conditions.interpretationSummary)}"><summary>처음 입력한 내용의 해석 보기</summary><p th:text="${conditions.interpretationSummary}"></p></details>
         <p th:text="${(conditions.region.isEmpty() ? '지역 제한 없음' : conditions.region) + ' · ' + (conditions.durationDays == null ? '기간은 일정 만들 때 선택' : conditions.durationDays + '일')}"></p>

@@ -56,8 +56,14 @@ class DestinationCandidateServiceTests {
         // 시·도를 정한 조회는 5곳 이하면 그대로 둔다.
         assertThat(DestinationCandidateService.pick(List.of(gangneung, sokcho), List.of("바다"), false)).containsExactly(gangneung, sokcho);
         // 여행 목적 시설(예: 아쿠아리움)이 있는 여행지는 취향 점수보다 먼저 고른다.
-        assertThat(names(DestinationCandidateService.pick(all, List.of("문화·역사"), true, List.of(jeju.getId(), yeosu.getId()))).subList(0, 2))
+        assertThat(names(DestinationCandidateService.pick(all, List.of("문화·역사"), true, List.of(jeju.getId(), yeosu.getId()), List.of())).subList(0, 2))
             .containsExactly("여수", "제주");
+        // 목적 시설을 못 찾아도 목적과 가까운 분류(갯벌 체험 → 바다)가 있으면 그 분류의 여행지를 먼저 고른다(전주 대신 제주).
+        assertThat(names(DestinationCandidateService.pick(all, List.of(), true, List.of(), List.of("바다"))))
+            .containsExactly("강릉", "부산", "여수", "제주", "경주");
+        // 사용자가 고른 취향이 목적 분류보다 먼저다. 같은 취향 점수 안에서만 목적 분류로 순서를 정한다.
+        assertThat(names(DestinationCandidateService.pick(all, List.of("문화·역사"), true, List.of(), List.of("바다"))).subList(0, 3))
+            .containsExactly("부산", "경주", "전주");
         // 같은 조건이면 늘 같은 결과다.
         assertThat(DestinationCandidateService.pick(all, List.of("맛집"), true)).isEqualTo(DestinationCandidateService.pick(all, List.of("맛집"), true));
     }

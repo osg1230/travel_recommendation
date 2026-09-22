@@ -42,7 +42,7 @@ class PurposePlaceIntegrationTests {
         purposes.clearCaches();
         Arrays.fill(hash,(byte)7);
         when(ai.configured()).thenReturn(true);
-        when(ai.keywords("상어 관람")).thenReturn(List.of("아쿠아리움"));
+        when(ai.terms("상어 관람")).thenReturn(new OpenAiPurposeClient.Terms(List.of("아쿠아리움"),List.of("바다")));
         when(maps.searchNationwide(eq("아쿠아리움"),anyList())).thenReturn(List.of(new KakaoPlace(SOURCE,"ATTRACTION","테스트 아쿠아리움 여수",
             YEOSU,YEOSU+" 오동도로 61-11","여행 > 관광명소 > 아쿠아리움",127.765,34.745,"https://place.map.kakao.com/"+SOURCE,
             LocalDateTime.now(ZoneOffset.UTC).withNano(0))));
@@ -68,7 +68,7 @@ class PurposePlaceIntegrationTests {
         assertThat(found).hasSize(5).first().extracting(DestinationCandidate::name).isEqualTo("여수");
         // 이미 찾은 요청은 다시 검색하지 않는다(유료 호출 중복 방지).
         purposes.enrich(id);
-        verify(ai,times(1)).keywords(anyString());
+        verify(ai,times(1)).terms(anyString());
         // 여수를 고르면 장소 목록 맨 앞에 목적 시설이 나오고 목적 표시용 ID도 돌려준다.
         var yeosu=found.getFirst();
         jobs.findById(id).orElseThrow().completeRecommendation(mapper.writeValueAsString(List.of(new RankedDestination(1,yeosu,"추천"))));
@@ -89,16 +89,18 @@ class PurposePlaceIntegrationTests {
         purposes.enrich(plain);
         assertThat(recommendations.conditions(plain,null,hash).purposeSearch()).isNull();
         // 시설로 찾을 목적이 아니면 검색하지 않았다고 남긴다.
-        when(ai.keywords("휴식")).thenReturn(List.of());
+        when(ai.terms("휴식")).thenReturn(new OpenAiPurposeClient.Terms(List.of(),List.of("휴식")));
         var rest=request("휴식");
         purposes.enrich(rest);
         assertThat(recommendations.conditions(rest,null,hash).purposeSearch().status()).isEqualTo("SKIPPED");
-        verify(ai,never()).keywords("");
+        // 시설로 찾지 않는 목적도 가까운 분류는 남겨 후보를 고를 때 쓴다.
+        assertThat(recommendations.conditions(rest,null,hash).purposeThemes()).containsExactly("휴식");
+        verify(ai,never()).terms("");
     }
 
     // 관광공사에서 찾은 여행지 안 시설을 카카오 장소로 맞춰 저장한다. 같은 목적의 다음 요청은 보관한 결과를 쓴다.
     @Test void tourApiFacilityIsMatchedToKakaoAndRepeatedPurposeUsesCache() {
-        when(ai.keywords("갯벌 체험")).thenReturn(List.of("갯벌 체험장"));
+        when(ai.terms("갯벌 체험")).thenReturn(new OpenAiPurposeClient.Terms(List.of("갯벌 체험장"),List.of("바다")));
         when(tour.configured()).thenReturn(true);
         when(tour.searchFacilities("갯벌 체험장")).thenReturn(List.of());
         when(tour.searchFacilities("갯벌체험장")).thenReturn(List.of(
@@ -120,7 +122,7 @@ class PurposePlaceIntegrationTests {
         var second=request("갯벌 체험");
         purposes.enrich(second);
         assertThat(recommendations.conditions(second,null,hash).purposeSearch().places()).hasSize(1);
-        verify(ai,times(1)).keywords("갯벌 체험");
+        verify(ai,times(1)).terms("갯벌 체험");
         verify(tour,times(2)).searchFacilities(anyString());
         verify(maps,times(1)).searchNationwide(anyString(),anyList());
     }
@@ -134,5 +136,20 @@ class PurposePlaceIntegrationTests {
         var search=recommendations.conditions(id,null,hash).purposeSearch();
         assertThat(search.status()).isEqualTo("FOUND");
         assertThat(search.places()).extracting(p->p.name()).containsExactly("테스트 아쿠아리움 여수");
+    }
+
+    // 목적 시설을 하나도 못 찾아도 목적과 가까운 분류(갯벌 체험 → 바다)로 후보를 고른다. 바다가 없는 대전 같은 곳은 빠진다.
+    @Test void purposeThemeGuidesCandidatesWhenNoFacilityIsFound() {
+        when(ai.terms("갯벌 체험")).thenReturn(new OpenAiPurposeClient.Terms(List.of("갯벌체험"),List.of("바다")));
+        when(maps.searchNationwide(eq("갯벌체험"),anyList())).thenReturn(List.of());
+        var id=request("갯벌 체험");
+        purposes.enrich(id);
+        var conditions=recommendations.conditions(id,null,hash);
+        assertThat(conditions.purposeSearch().status()).isEqualTo("NONE");
+        assertThat(conditions.purposeThemes()).containsExactly("바다");
+        recommendations.prepare(id);
+        var found=recommendations.view(id,null,hash).candidates();
+        assertThat(found).hasSize(5).extracting(DestinationCandidate::name).doesNotContain("대전");
+        assertThat(found).allSatisfy(c->assertThat(places.findById(c.placeId()).orElseThrow().getSubtype()).contains("바다"));
     }
 }
