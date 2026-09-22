@@ -123,6 +123,21 @@ class ItineraryRevisionIntegrationTests {
             .andExpect(content().string(containsString("허브 테스트 실내 체험관")));
     }
 
+    // 원본 초안이 시간·거리 때문에 뺀 관광지(skipped)는 교체 후보로 다시 쓰지 않는다(섬처럼 갈 수 없는 곳이 돌아오지 않게).
+    @Test void placesLeftOutOfTheDraftAreNotUsedAsReplacements() {
+        var original=completedDraft();
+        var ids=attractionIds(original);
+        var job=jobs.findById(original).orElseThrow();
+        var result=mapper.readValue(job.getResultJson(),ItineraryPlan.Result.class);
+        var left=schedules.view(original,null,hash).input().places().attractions().getLast();
+        job.attachToResult(mapper.writeValueAsString(result.withSkipped(List.of(new PlaceRef(left.placeId(),left.name())))));
+        em.flush();
+        var revised=schedules.revise(original,null,hash,List.of(ids.getFirst()),ReplaceReason.TASTE,LocalTime.of(9,0),LocalTime.of(18,0),90);
+        var revision=schedules.view(revised,null,hash).input().revision();
+        assertThat(revision.added()).extracting(PlaceRef::placeId).doesNotContain(left.placeId());
+        assertThat(revision.kept()).extracting(PlaceRef::placeId).doesNotContain(left.placeId());
+    }
+
     private OpenAiRevisionClient.Proposal revise(List<Long> replace,List<Long> add,LocalTime start) {
         return new OpenAiRevisionClient.Proposal(false,null,replace,add,start,null,null,"박물관 대신 바다 쪽 장소로 바꿨어요.");
     }

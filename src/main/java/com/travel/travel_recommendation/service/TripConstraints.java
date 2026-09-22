@@ -30,6 +30,27 @@ public final class TripConstraints {
         public List<Conflict> conflicts() { return conflicts; }
     }
 
+    /**
+     * 좌표가 있는 후보를 후보들 가운데(위도·경도 중앙값)에서 가까운 순서로 앞에 두고, 좌표가 없는 후보는 원래 순서대로 뒤에 둔다.
+     * 이름순으로 앞에서부터 고르면 여수 거문도처럼 멀리 떨어진 섬이 우연히 먼저 뽑히므로, 모여 있는 곳부터 고르기 위해 쓴다.
+     */
+    public static List<PlaceCandidate> nearCenterFirst(List<PlaceCandidate> pool) {
+        var located = pool.stream().filter(p -> p.latitude() != null && p.longitude() != null).toList();
+        if (located.size() < 2) return pool;
+        double lat = median(located.stream().map(PlaceCandidate::latitude).toList());
+        double lon = median(located.stream().map(PlaceCandidate::longitude).toList());
+        double scale = Math.cos(Math.toRadians(lat));
+        var ordered = new ArrayList<>(located);
+        ordered.sort(Comparator.comparingDouble(p -> Math.pow((p.longitude() - lon) * scale, 2) + Math.pow(p.latitude() - lat, 2)));
+        pool.stream().filter(p -> p.latitude() == null || p.longitude() == null).forEach(ordered::add);
+        return List.copyOf(ordered);
+    }
+    private static double median(List<Double> values) {
+        var sorted = values.stream().sorted().toList();
+        int mid = sorted.size() / 2;
+        return sorted.size() % 2 == 1 ? sorted.get(mid) : (sorted.get(mid - 1) + sorted.get(mid)) / 2;
+    }
+
     /** 하루 종료 시간이 저녁 식사까지 넣을 만큼 늦은지 확인한다. */
     public static boolean includesDinner(LocalTime end) {
         return !end.isBefore(DINNER_DAY_END);

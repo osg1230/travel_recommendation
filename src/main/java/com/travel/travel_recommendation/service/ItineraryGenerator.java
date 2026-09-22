@@ -21,6 +21,8 @@ public class ItineraryGenerator {
     private static final LocalTime DINNER_FROM=LocalTime.of(17,0);
     /** 관광지를 더 넣어 볼 때 이 오류가 나면 실패가 아니라 '오늘은 더 들어가지 않음'으로 본다. */
     private static final Set<String> DAY_FULL_CODES=Set.of("TIME_OVERLAP","OPERATING_CONFLICT");
+    /** 이 오류가 나면 그 관광지만 뺀다. 한 구간 2시간 초과(섬 등)와 경로 없음이다. */
+    private static final Set<String> UNREACHABLE_CODES=Set.of("TRAVEL_TIME_EXCEEDED","MAP_NO_ROUTE");
 
     public Result generate(Input input) {
         checkInput(input);
@@ -57,6 +59,10 @@ public class ItineraryGenerator {
         int dayCount=input.conditions().durationDays();
         boolean dinnerDay=TripConstraints.includesDinner(input.end());
         var constraints=input.constraints();
+        var mustVisit=mustVisit(input);
+        // 섬처럼 차·대중교통으로 2시간 안에 갈 수 없거나 경로가 없는 관광지. 그곳만 빼고 일정을 만든다.
+        List<PlaceCandidate> unreachable=new ArrayList<>();
+        RecommendationException routeError=null;
         for(int day=1;day<=dayCount;day++) {
             var builder=new DayBuilder(input,locations,routes,deadline,previous,day,usedRestaurants,foods);
             PlaceCandidate stay=hotel!=null && day<dayCount?hotel:null;
@@ -76,6 +82,13 @@ public class ItineraryGenerator {
                     // 이 관광지를 넣어도 남은 점심·숙소 도착까지 하루 종료 시간 안에 끝나는지 미리 확인한다.
                     checkClosing(builder,next,stay);
                 } catch(RecommendationException error) {
+                    // 이 관광지를 넣으려다 한 구간이 2시간을 넘거나 경로가 없으면 이 곳만 빼고 다음 후보를 본다.
+                    if(UNREACHABLE_CODES.contains(error.getCode())) {
+                        if(mustVisit.contains(next.placeId()))
+                            throw failure(error.getCode(),"'"+next.name()+"'까지 가는 길이 2시간을 넘거나 경로를 찾지 못했어요. 필수 방문 장소에서 빼거나 이동수단을 바꿔 주세요.");
+                        builder.reset(mark); remaining.remove(next); unreachable.add(next); routeError=error;
+                        continue;
+                    }
                     // 첫 관광지부터 들어가지 않으면 그대로 실패를 알린다. 그 뒤라면 오늘은 여기서 마치고 남은 곳은 다음 날로 넘긴다.
                     if(visits==0 || !DAY_FULL_CODES.contains(error.getCode())) throw error;
                     builder.reset(mark); break;
@@ -91,6 +104,8 @@ public class ItineraryGenerator {
                     }
                 }
             }
+            // 갈 수 있는 관광지가 남지 않아 하루를 비워 두게 되면 일정을 만들지 않는다.
+            if(visits==0) throw routeError!=null?routeError:failure("INSUFFICIENT_PLACES",day+"일차에 넣을 관광지가 부족해요. 여행 기간을 줄이거나 장소 목록에서 후보를 더 찾아 주세요.");
             // 점심을 아직 넣지 못했으면 마지막 관광지 뒤에 넣는다. 들어가는지는 위에서 확인했다.
             if(!builder.lunch) eat(builder,last,false);
             if(stay!=null) builder.visit(stay,"STAY",30,"숙소 도착·휴식 (체크인 시간·예약 확인 필요)\n추천 이유: "+lodging.reason());
@@ -101,12 +116,12 @@ public class ItineraryGenerator {
             previous=hotel!=null?hotel:null;
         }
         // 끝까지 넣지 못한 관광지는 일정에서 빼고 결과에 적는다. 필수·유지 장소가 남았으면 일정을 만들지 않는다.
-        var mustVisit=mustVisit(input);
         var missed=remaining.stream().filter(p->mustVisit.contains(p.placeId())).map(PlaceCandidate::name).toList();
         if(!missed.isEmpty())
             throw failure("TIME_OVERLAP","하루 시간 안에 '"+String.join("', '",missed)+"'을(를) 넣지 못했어요. 하루 시간을 늘리거나 관광지 체류시간을 줄여 주세요.");
+        var skipped=new ArrayList<>(unreachable); skipped.addAll(remaining);
         var result=new Result(places.destination().name(),List.copyOf(days),input.transport(),Instant.now()).withLodging(lodging)
-            .withSkipped(remaining.stream().map(p->new PlaceRef(p.placeId(),p.name())).toList());
+            .withSkipped(skipped.stream().map(p->new PlaceRef(p.placeId(),p.name())).toList());
         validate(input,result);
         return result;
     }

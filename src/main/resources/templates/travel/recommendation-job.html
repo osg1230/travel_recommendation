@@ -1,13 +1,21 @@
 <!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>여행지 후보 | 다녀올게</title><link rel="stylesheet" th:href="@{/css/app.css}"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>여행지 추천 | 다녀올게</title><link rel="stylesheet" th:href="@{/css/app.css}"></head>
 <body><header th:replace="~{fragments/layout :: header}"></header>
 <main class="travel confirmation" th:attr="data-job-pending=${job.pending},data-status-url=@{/travel/recommendations/{id}/status(id=${job.jobId})}">
 <nav th:replace="~{fragments/layout :: flowSteps(3)}"></nav>
     <p class="eyebrow">여행 준비 · 여행지 후보</p>
     <h1 th:text="${job.pending ? '여행지 추천을 준비하고 있어요' : (job.status == 'FAILED' ? '요청을 마치지 못했어요' : (job.status == 'COMPLETED' ? '추천 여행지를 확인해 보세요' : '여행지 후보를 확인해 보세요'))}"></h1>
     <p class="intro" role="status" th:text="${job.message}" data-job-message></p>
-    <div th:if="${!job.candidates.isEmpty()}">
+    <section class="condition-section" th:if="${conditions != null}">
+        <h2>이런 여행을 찾고 있어요</h2>
+        <p th:if="${!#strings.isEmpty(conditions.travelPurpose)}" th:text="${'여행 목적: ' + conditions.travelPurpose}"></p>
+        <details th:if="${!#strings.isEmpty(conditions.interpretationSummary)}"><summary>처음 입력한 내용의 해석 보기</summary><p th:text="${conditions.interpretationSummary}"></p></details>
+        <p th:text="${(conditions.region.isEmpty() ? '지역 제한 없음' : conditions.region) + ' · ' + (conditions.durationDays == null ? '기간은 일정 만들 때 선택' : conditions.durationDays + '일')}"></p>
+        <a th:href="@{/travel/conditions/edit(recommendationId=${job.jobId})}">조건 수정하기</a>
+        <p class="help">원하는 내용과 다르게 해석됐다면 수정해 주세요. 날짜·예산이 미정이어도 추천을 볼 수 있어요.</p>
+    </section>
+    <div th:if="${!job.pending and !job.candidates.isEmpty()}">
         <p class="help">공식 관광 사이트에서 확인해 저장한 지역 정보예요. GPT 추천을 받으면 확정한 조건에 따른 순위와 이유를 볼 수 있어요.</p>
         <section class="destination-candidate" th:each="candidate : ${job.candidates}">
             <h2 th:text="${candidate.name}"></h2>

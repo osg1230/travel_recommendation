@@ -30,7 +30,8 @@ public class ItineraryController {
     /** 일정 입력 화면의 값. 필수 조건 충돌로 돌아갈 때 입력을 잃지 않도록 세션에 잠시 둔다. */
     public record ConstraintInput(UUID parent,LocalTime start,LocalTime end,KakaoMapClient.Transport transport,int visitMinutes,
                                   List<Long> required,Integer dailyVisits,boolean dailyRequired,String budgetBasis,
-                                  List<String> budgetIncludes,String stayTier,List<TripConstraints.Conflict> conflicts) {}
+                                  List<String> budgetIncludes,String stayTier,List<TripConstraints.Conflict> conflicts,
+                                  Integer durationDays,Boolean accommodationNeeded) {}
 
     @GetMapping("/{id}/destinations/{destinationId}/schedule")
     String form(@PathVariable UUID id,@PathVariable long destinationId,Principal principal,HttpSession session,
@@ -45,7 +46,7 @@ public class ItineraryController {
         var conflict=session.getAttribute(CONFLICT_KEY) instanceof ConstraintInput previous && previous.parent().equals(id) ? previous : null;
         session.removeAttribute(CONFLICT_KEY);
         model.addAttribute("values",conflict!=null?conflict:new ConstraintInput(id,options.start(),options.end(),options.transport(),
-            options.visitMinutes(),List.of(),null,false,null,List.of(),null,List.of()));
+            options.visitMinutes(),List.of(),null,false,null,List.of(),null,List.of(),null,null));
         model.addAttribute("stayTiers",BudgetGuide.StayTier.values());
         synchronized(session) {
             var submission=new Submission(id,destinationId,login(principal),UUID.randomUUID().toString(),null);
@@ -60,6 +61,7 @@ public class ItineraryController {
             @RequestParam(required=false) Integer dailyVisits,@RequestParam(defaultValue="PREFERRED") String dailyMode,
             @RequestParam(required=false) String budgetBasis,@RequestParam(required=false) List<String> budgetIncludes,
             @RequestParam(required=false) String stayTier,
+            @RequestParam(required=false) Integer durationDays,@RequestParam(required=false) Boolean accommodationNeeded,
             Principal principal,HttpSession session,
             @RequestHeader(value="Accept",defaultValue="") String accept) {
         if(!Set.of("REQUIRED","PREFERRED").contains(dailyMode)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"하루 방문 수의 구분을 다시 골라 주세요.");
@@ -76,11 +78,11 @@ public class ItineraryController {
                 job=submission.job(); service().view(job,login(principal),hash(session));
             } else {
                 try {
-                    job=service().create(id,destinationId,login(principal),hash(session),start,end,transport,visitMinutes,constraints);
+                    job=service().create(id,destinationId,login(principal),hash(session),start,end,transport,visitMinutes,constraints,durationDays,accommodationNeeded);
                 } catch(TripConstraints.ConflictException conflict) {
                     // 모순된 필수 조건은 임의로 완화하지 않고 입력 화면으로 돌아가 이유와 선택지를 보여 준다.
                     session.setAttribute(CONFLICT_KEY,new ConstraintInput(id,start,end,transport,visitMinutes,constraints.requiredPlaceIds(),
-                        dailyVisits,constraints.dailyVisitsRequired(),basis,constraints.budgetIncludes(),tier,conflict.conflicts()));
+                        dailyVisits,constraints.dailyVisitsRequired(),basis,constraints.budgetIncludes(),tier,conflict.conflicts(),durationDays,accommodationNeeded));
                     session.removeAttribute(SESSION_KEY);
                     return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create("/travel/recommendations/"+id+"/destinations/"+destinationId+"/schedule"))
                         .cacheControl(CacheControl.noStore()).build();

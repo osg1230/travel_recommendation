@@ -41,13 +41,14 @@ class OpenAiRecommendationClientTests {
             List.of(Map.of("type","output_text","text",json)))))));
     }
     @Test void sendsOnlyConfirmedConditionsAndCandidateFacts() {
-        var result=client("test-key",Duration.ofSeconds(2)).recommend(conditions(),pool);
+        var result=client("test-key",Duration.ofSeconds(2)).recommend(conditions().withPurpose("상어 관람"),pool);
         assertThat(result).hasSize(1);assertThat(result.getFirst().rank()).isEqualTo(1);
         assertThat(result.getFirst().destination()).isEqualTo(pool.getFirst());
         var body=mapper.readTree(request.get());
         assertThat(body.path("store").booleanValue()).isFalse();
         assertThat(body.path("text").path("format").path("strict").booleanValue()).isTrue();
         assertThat(request.get()).doesNotContain("private-original-input","private-summary","test-key","guestToken","userId");
+        assertThat(mapper.readTree(body.path("input").asText()).path("conditions").path("travelPurpose").asText()).isEqualTo("상어 관람");
         assertThat(calls.get()).isEqualTo(1);
     }
     @Test void rejectsUnknownDuplicateMissingAndMalformedResults() {

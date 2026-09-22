@@ -24,6 +24,7 @@ public class SecurityConfig {
                     .requestMatchers("/", "/login", "/css/**", "/js/**", "/error",
                             "/travel/conditions", "/travel/conditions/check", "/travel/conditions/analyze",
                             "/travel/conditions/review", "/travel/conditions/confirm", "/travel/conditions/confirmed",
+                            "/travel/conditions/recommend", "/travel/conditions/edit",
                             "/travel/conditions/discover", "/travel/conditions/discover/**",
                             "/travel/recommendations", "/travel/recommendations/**").permitAll()
                     .requestMatchers("/signup", "/signup/complete").anonymous()

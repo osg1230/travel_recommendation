@@ -11,4 +11,6 @@ public class ConditionReviewForm extends TravelConditionForm {
     private String partySize = "";
     private String accommodationNeeded = "";
     private String includeNearby = "";
+    /** AI가 추출한 여행 활동만 보관한다. 요청 바인딩으로 덮어쓸 수 없다. */
+    private String travelPurpose = "";
 }

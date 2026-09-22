@@ -66,6 +66,7 @@ public class RecommendationJobController {
         model.addAttribute("confirmationToken",session.getAttribute(CONFIRMATION_TOKEN));
         // 예산을 입력하지 않았으면 전국 평균 지출액과 여행지별 숙소 유형(예산대)을 함께 보여 준다(SFR-03-03).
         var conditions=service().conditions(id,login,guestHash(session,false));
+        model.addAttribute("conditions",conditions);
         var guides=budgetGuides.getIfAvailable();
         if(conditions.budget()==null && guides!=null) {
             boolean overnight=(conditions.durationDays()!=null && conditions.durationDays()>1) || Boolean.TRUE.equals(conditions.accommodationNeeded());

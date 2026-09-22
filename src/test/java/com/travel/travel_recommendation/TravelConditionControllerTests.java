@@ -21,7 +21,7 @@ class TravelConditionControllerTests {
     @Test
     void guestCanOpenFormAndMissingDraftReturnsToInput() throws Exception {
         mvc.perform(get("/travel/conditions")).andExpect(status().isOk())
-                .andExpect(content().string(containsString("입력 내용 확인하기")))
+                .andExpect(content().string(containsString("여행지 추천받기")))
                 .andExpect(content().string(containsString("name=\"_csrf\"")));
         mvc.perform(get("/travel/conditions/check")).andExpect(redirectedUrl("/travel/conditions"));
     }

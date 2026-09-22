@@ -6,6 +6,7 @@
     <link rel="stylesheet" th:href="@{/css/app.css}">
 
     <script defer th:src="@{/js/travel-conditions.js}"></script>
+    <script defer th:src="@{/js/travel-analysis.js}"></script>
 </head>
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
@@ -21,7 +22,9 @@
     </div>
     <p th:if="${preview}" class="notice">화면 확인용 예시 선택지입니다.</p>
     <p th:if="${choicesUnavailable}" class="notice" role="alert">조건 목록을 불러오지 못했어요. 잠시 후 다시 시도하거나 문장으로 적어 주세요.</p>
-    <form th:action="@{/travel/conditions}" th:object="${travelForm}" method="post" novalidate>
+    <p th:if="${analysisError}" class="notice" role="alert" th:text="${analysisError}"></p>
+    <form th:action="@{/travel/conditions/recommend}" th:object="${travelForm}" method="post" novalidate data-analysis-form>
+        <input type="hidden" name="inputToken" th:value="${inputToken}">
         <div th:if="${#fields.hasAnyErrors()}" class="notice" role="alert" tabindex="-1" id="error-summary">
             <p><strong>입력한 내용을 다시 확인해 주세요.</strong></p>
             <ul><li th:each="error : ${#fields.errors('*')}" th:text="${error}"></li></ul>
@@ -78,7 +81,9 @@
             </section>
         </section>
         <noscript><p class="help">선택한 입력 방법에 해당하는 부분만 작성해 주세요.</p></noscript>
-        <div class="form-actions"><button type="submit">입력 내용 확인하기</button><p class="help">입력한 내용을 확인하고 문장 분석 또는 조건 보완으로 이어져요.</p></div>
+        <p class="help">문장으로 적은 내용은 OpenAI에 보내 분석해요. 이름·연락처 등 개인정보는 빼고 적어 주세요.</p>
+        <div class="form-actions"><button type="submit">여행지 추천받기</button><p class="help">날짜나 예산은 아직 몰라도 괜찮아요. 추천을 먼저 보고 조건을 바꿀 수 있어요.</p></div>
+        <p data-analysis-status role="status" aria-live="polite" hidden>여행 이야기를 읽고 추천을 준비하고 있어요. 최대 30초 정도 걸릴 수 있어요.</p>
     </form>
 </main>
 </body></html>

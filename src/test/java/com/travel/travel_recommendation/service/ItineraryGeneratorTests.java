@@ -136,6 +136,27 @@ class ItineraryGeneratorTests {
         var hidden=new Result(result.destination(),result.days(),result.transport(),result.createdAt());
         assertThatThrownBy(()->generator.validate(input,hidden)).isInstanceOf(RecommendationException.class);
     }
+    // 섬처럼 한 곳만 2시간 넘게 걸리면 일정 전체를 실패시키지 않고 그곳만 뺀다. 필수 장소면 이름과 함께 알린다.
+    @Test void unreachableAttractionIsLeftOutInsteadOfFailingTheSchedule() {
+        // 장소 90은 멀리 있는 섬으로 본다(좌표 128.8+90×0.001). 그곳을 잇는 구간만 2시간을 넘는다.
+        when(maps.travelTime(any(),any(),any())).thenAnswer(invocation->{
+            KakaoMapClient.Location a=invocation.getArgument(0), b=invocation.getArgument(1);
+            boolean island=Math.max(a.longitude(),b.longitude())>128.885;
+            return new KakaoMapClient.TravelTime(invocation.getArgument(2),island?7300:601,3000,Instant.now());
+        });
+        var base=input(1,LocalTime.of(18,0));
+        var pool=new PlaceCandidateView(base.places().jobId(),base.places().destination(),1,false,
+            List.of(place(1),place(90),place(2)),List.of(),base.places().restaurants());
+        var input=new Input(base.recommendationId(),pool,base.conditions(),base.start(),base.end(),base.transport(),60);
+        var result=generator.generate(input);
+        assertThat(result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).map(Item::placeId)).containsExactly(1L,2L);
+        assertThat(result.skipped()).extracting(PlaceRef::placeId).containsExactly(90L);
+        generator.validate(input,result);
+        var required=new Input(base.recommendationId(),pool,base.conditions(),base.start(),base.end(),base.transport(),60,null,
+            new Constraints(List.of(90L),null,false,null,List.of()));
+        assertThatThrownBy(()->generator.generate(required)).isInstanceOfSatisfying(RecommendationException.class,e->{
+            assertThat(e.getCode()).isEqualTo("TRAVEL_TIME_EXCEEDED"); assertThat(e.getMessage()).contains("장소90"); });
+    }
     // 필수 방문 장소는 시간이 부족해도 빼지 않고, 어느 장소 때문인지 알린다.
     @Test void requiredPlaceThatDoesNotFitFailsWithItsName() {
         var base=input(1,LocalTime.of(13,0));

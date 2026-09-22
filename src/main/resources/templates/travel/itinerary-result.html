@@ -71,7 +71,7 @@
 <a th:if="${item.type != 'TRANSIT'}" th:href="${item.sourceUrl}" target="_blank" rel="noopener noreferrer">장소 출처 확인 (새 창)</a></div>
 </div>
 </article></section>
-<p class="notice" th:if="${!job.result.skipped.isEmpty()}" th:text="${'이동시간까지 넣으니 하루 시간이 부족해 ' + #strings.listJoin(job.result.skipped.![name], ', ') + '은(는) 일정에 넣지 않았어요. 넣고 싶다면 하루 시간을 늘리거나 체류시간을 줄여 새로 만들어 주세요.'}"></p>
+<p class="notice" th:if="${!job.result.skipped.isEmpty()}" th:text="${'하루 시간이 부족하거나 가는 길이 2시간을 넘어(섬 등) ' + #strings.listJoin(job.result.skipped.![name], ', ') + '은(는) 일정에 넣지 않았어요. 넣고 싶다면 하루 시간을 늘리거나 체류시간을 줄여 새로 만들어 주세요.'}"></p>
 
 <section class="condition-section" th:if="${job.result.lodging != null}" aria-labelledby="lodging-title">
 <h2 id="lodging-title">숙소 추천</h2>

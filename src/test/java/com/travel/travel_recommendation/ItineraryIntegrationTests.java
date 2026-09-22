@@ -67,6 +67,36 @@ class ItineraryIntegrationTests {
         when(maps.travelTime(any(),any(),any())).thenAnswer(call->new KakaoMapClient.TravelTime(call.getArgument(2),300,3000,Instant.now()));
     }
     private UUID create() { return schedules.create(parent,destination,null,hash,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90); }
+
+    @Test void missingPeriodAndStayAreCollectedAtScheduleWithoutChangingRecommendation() throws Exception {
+        var conditions=new ConfirmedTravelConditions("TEXT","상어 보고 싶어","강릉",null,null,null,null,null,null,null,List.of(),"")
+            .withPurpose("상어 관람");
+        parent=recommendations.create(conditions,null,hash); recommendations.prepare(parent);
+        var candidate=recommendations.view(parent,null,hash).candidates().getFirst(); destination=candidate.placeId();
+        jobs.findById(parent).orElseThrow().completeRecommendation(mapper.writeValueAsString(List.of(new RankedDestination(1,candidate,"추천"))));
+        em.flush();
+        var page=mvc.perform(get(formUrl()).session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("여행 일수 (필수)"))).andReturn();
+        String token=(String)page.getModelAndView().getModel().get("submissionToken");
+        var response=mvc.perform(post(formUrl()).session(session).with(csrf()).param("submissionToken",token)
+            .param("start","09:00").param("end","18:00").param("transport","CAR").param("visitMinutes","90")
+            .param("durationDays","2").param("accommodationNeeded","true"))
+            .andExpect(status().isSeeOther()).andReturn().getResponse();
+        UUID id=UUID.fromString(response.getHeader("Location").replace("/travel/recommendations/itineraries/",""));
+        var input=schedules.view(id,null,hash).input();
+        assertThat(input.conditions().durationDays()).isEqualTo(2);
+        assertThat(input.conditions().travelPurpose()).isEqualTo("상어 관람");
+        assertThat(input.places().accommodations()).isNotEmpty();
+        assertThat(recommendations.conditions(parent,null,hash).durationDays()).isNull();
+        var work=schedules.claim(id); schedules.complete(work,schedules.generate(work));
+        assertThat(schedules.view(id,null,hash).status()).isEqualTo("COMPLETED");
+        // 수정안도 부모 추천(기간 없음)이 아니라 이 초안의 기간·숙박 조건으로 만든다.
+        var revised=schedules.revise(id,null,hash,List.of(),null,LocalTime.of(10,0),LocalTime.of(18,0),90);
+        var revisedInput=schedules.view(revised,null,hash).input();
+        assertThat(revisedInput.conditions().durationDays()).isEqualTo(2);
+        assertThat(revisedInput.conditions().accommodationNeeded()).isTrue();
+        assertThat(revisedInput.places().accommodations()).isNotEmpty();
+    }
     private String formUrl() { return "/travel/recommendations/"+parent+"/destinations/"+destination+"/schedule"; }
     private String resultUrl(UUID id) { return "/travel/recommendations/itineraries/"+id; }
 
