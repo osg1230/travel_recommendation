@@ -27,6 +27,7 @@ public class ItineraryJobService {
     private final ItineraryAssistant assistant;
     private final OpenAiRevisionClient revisions;
     private final NearbyRegionService nearby;
+    private final OpenAiPriceClient priceClient;
     // 트랜잭션이 걸린 공개 메서드를 같은 객체 안에서 부를 때 프록시를 거치게 한다.
     private final org.springframework.beans.factory.ObjectProvider<ItineraryJobService> selfProvider;
     private final ObjectMapper mapper;
@@ -220,6 +221,65 @@ public class ItineraryJobService {
         return new AiContext(input,result,current,spare,fixed);
     }
     private ItineraryJobService self() { return selfProvider.getObject(); }
+
+    /** 한 번에 가격을 찾는 장소 수. 숙소 1곳과 일정에 넣은 음식점을 앞에서부터 센다. 유료 검색이라 상한을 둔다. */
+    static final int MAX_PRICE_PLACES=8;
+    /** 같은 초안을 다시 눌러도 이 시간 안에는 이전 조회 결과를 쓴다. */
+    static final Duration PRICE_REUSE=Duration.ofHours(24);
+    public record PriceTarget(PlaceCandidate place,String kind) {}
+    public record PriceContext(String resultJson,List<PriceTarget> targets,Prices cached) {}
+
+    /**
+     * 완성된 초안의 숙소·음식점 참고 가격을 AI 웹 검색으로 찾아 결과에 붙인다.
+     * 외부 호출 동안 DB 연결을 잡지 않도록 읽기 → 검색 → 저장을 나누고, 이 메서드 자체에는 트랜잭션을 두지 않는다.
+     */
+    public Prices lookupPrices(UUID id,String login,byte[] hash) {
+        var context=self().priceContext(id,login,hash);
+        if(context.cached()!=null) return context.cached();
+        List<PriceQuote> quotes=new ArrayList<>();
+        // 장소마다 따로 검색해야 다른 가게 가격이 섞이지 않는다. 앞에서부터 차례로 찾는다.
+        for(var target:context.targets()) quotes.add(priceClient.lookup(target.place(),target.kind()));
+        var prices=new Prices(quotes,Instant.now());
+        self().savePrices(id,login,hash,context.resultJson(),prices);
+        return prices;
+    }
+    @Transactional(readOnly=true,timeout=10)
+    public PriceContext priceContext(UUID id,String login,byte[] hash) {
+        var job=access.owned(id,login,hash,"ITINERARY");
+        if(!"COMPLETED".equals(job.getStatus()) || job.getResultJson()==null)
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"완성된 일정 초안에서만 가격을 찾을 수 있어요.");
+        var result=mapper.readValue(job.getResultJson(),Result.class);
+        if(result.prices()!=null && result.prices().checkedAt().isAfter(Instant.now().minus(PRICE_REUSE)))
+            return new PriceContext(job.getResultJson(),List.of(),result.prices());
+        if(!priceClient.configured())
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"가격 검색은 OpenAI 연결 설정 후 이용할 수 있어요.");
+        var input=mapper.readValue(job.getRequestJson(),Input.class);
+        return new PriceContext(job.getResultJson(),priceTargets(input,result),null);
+    }
+    /** 가격을 찾을 장소: 고른 숙소, 그다음 일정에 넣은 음식점(처음 나온 순서, 중복 없이). */
+    static List<PriceTarget> priceTargets(Input input,Result result) {
+        List<PriceTarget> targets=new ArrayList<>();
+        if(result.lodging()!=null)
+            input.places().accommodations().stream().filter(p->p.placeId().equals(result.lodging().chosenPlaceId())).findFirst()
+                .ifPresent(p->targets.add(new PriceTarget(p,OpenAiPriceClient.LODGING)));
+        Set<Long> seen=new HashSet<>();
+        for(var day:result.days()) for(var item:day.items()) {
+            if(!"MEAL".equals(item.type()) || !seen.add(item.placeId())) continue;
+            input.places().restaurants().stream().filter(p->p.placeId().equals(item.placeId())).findFirst()
+                .ifPresent(p->targets.add(new PriceTarget(p,OpenAiPriceClient.RESTAURANT)));
+        }
+        return List.copyOf(targets.subList(0,Math.min(MAX_PRICE_PLACES,targets.size())));
+    }
+    /** 검색하는 동안 초안이 바뀌지 않았을 때만 가격을 붙인다. */
+    @Transactional(timeout=10)
+    public void savePrices(UUID id,String login,byte[] hash,String expectedResult,Prices prices) {
+        access.owned(id,login,hash,"ITINERARY");
+        var job=jobs.lockById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if(!"COMPLETED".equals(job.getStatus()) || !Objects.equals(job.getResultJson(),expectedResult))
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"가격을 찾는 동안 일정이 바뀌었어요. 다시 시도해 주세요.");
+        job.attachToResult(mapper.writeValueAsString(mapper.readValue(expectedResult,Result.class).withPrices(prices)));
+        jobs.flush();
+    }
 
     /** 초안에 실제로 배치된 관광지. 하루 시간이 부족해 빠진 관광지(skipped)는 유지·교체 대상에서 뺀다. */
     public static List<PlaceCandidate> placed(Input input,Result result) {

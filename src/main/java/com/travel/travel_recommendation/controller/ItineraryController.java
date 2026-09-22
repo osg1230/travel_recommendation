@@ -109,6 +109,14 @@ public class ItineraryController {
             model.addAttribute("foods",RegionalFoods.of(job.result().destination()).orElse(null));
             // 수정안에서 바꿀 수 있는 관광지는 실제로 배치된 곳뿐이다(시간이 부족해 뺀 곳 제외).
             model.addAttribute("placedAttractions",ItineraryJobService.placed(job.input(),job.result()));
+            // 버튼으로 찾은 숙소·음식점 참고 가격. 일정 항목 옆에 보여 주도록 장소 ID로 묶는다.
+            var priceByPlace=new java.util.HashMap<Long,ItineraryPlan.PriceQuote>();
+            if(job.result().prices()!=null) job.result().prices().quotes().forEach(q->priceByPlace.put(q.placeId(),q));
+            model.addAttribute("priceByPlace",priceByPlace);
+            model.addAttribute("costEstimate",TripCostEstimate.of(job.input(),job.result()));
+            // 조회 시각은 한국 시간으로 보여 준다.
+            model.addAttribute("pricesCheckedAt",job.result().prices()==null?null:java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                .format(job.result().prices().checkedAt().atZone(java.time.ZoneId.of("Asia/Seoul"))));
         }
         // 내 일정 저장은 회원만 할 수 있어 화면에서 로그인 여부를 구분한다.
         model.addAttribute("loggedIn",principal!=null);
@@ -127,6 +135,31 @@ public class ItineraryController {
             .cacheControl(CacheControl.noStore()).build();
     }
     private static final String AI_COOLDOWN_KEY="itineraryAiRevisionNext";
+    private static final String PRICE_COOLDOWN_KEY="itineraryPriceLookupNext";
+
+    /** 초안의 숙소·음식점 참고 가격을 AI 웹 검색으로 찾는다. 유료 호출이라 버튼을 누를 때만 하고, 세션마다 30초 간격을 둔다. */
+    @PostMapping("/itineraries/{id}/prices")
+    String prices(@PathVariable UUID id,Principal principal,HttpSession session,
+                  org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
+        String back="redirect:/travel/recommendations/itineraries/"+id+"#prices-title";
+        synchronized(session) {
+            var next=session.getAttribute(PRICE_COOLDOWN_KEY) instanceof java.time.Instant at?at:null;
+            if(next!=null && next.isAfter(java.time.Instant.now())) {
+                redirect.addFlashAttribute("priceError","방금 가격을 찾았어요. 잠시 후 다시 시도해 주세요.");
+                return back;
+            }
+            session.setAttribute(PRICE_COOLDOWN_KEY,java.time.Instant.now().plusSeconds(30));
+        }
+        try {
+            service().lookupPrices(id,login(principal),hash(session));
+        } catch(RecommendationException e) {
+            redirect.addFlashAttribute("priceError",e.getMessage()+" 일정 초안은 그대로예요.");
+        } catch(ResponseStatusException e) {
+            if(e.getStatusCode().value()==404) throw e;
+            redirect.addFlashAttribute("priceError",e.getReason());
+        }
+        return back;
+    }
 
     /**
      * 문장으로 받은 수정 요청을 AI로 수정안 형식으로 바꿔 새 수정안 작업을 만든다(SFR-08-04).

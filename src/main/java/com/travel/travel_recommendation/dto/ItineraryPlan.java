@@ -80,29 +80,44 @@ public final class ItineraryPlan {
     public record StayOption(Long placeId, String name, String subtype, String address, double averageKilometers,
                              String sourceUrl, String mapUrl) {}
     /**
+     * AI 웹 검색으로 찾은 숙소·음식점 참고 가격 하나. 날짜·인원·메뉴에 따라 실제 가격은 다르다.
+     * status: VERIFIED(출처 페이지에서 상호와 가격 숫자를 서버가 확인), UNVERIFIED(검색 결과에 있는 출처지만 페이지 내용은 확인하지 못함),
+     * NOT_FOUND(가격을 찾지 못했거나 근거를 믿을 수 없어 쓰지 않음). NOT_FOUND는 가격·출처가 비어 있다.
+     */
+    public record PriceQuote(Long placeId, String name, String kind, String status, String priceText, Integer minWon,
+                             Integer maxWon, String basis, String sourceUrl) {
+        public boolean found() { return !"NOT_FOUND".equals(status); }
+    }
+    /** 결과 화면에서 버튼을 눌러 조회한 참고 가격 묶음. checkedAt은 조회 시각이다. */
+    public record Prices(List<PriceQuote> quotes, Instant checkedAt) {
+        public Prices { quotes = quotes == null ? List.of() : List.copyOf(quotes); }
+    }
+    /**
      * skipped는 일정에 쓰려고 골랐지만 하루 시간 안에 넣지 못해 뺀 관광지다. 필수·유지 장소는 여기에 들어가지 않는다.
+     * prices는 완성된 초안에 나중에 붙이는 참고 가격이며 일정의 시각·장소를 바꾸지 않는다.
      */
     public record Result(String destination, List<Day> days, Transport transport, Instant createdAt, Assist assist, Nearby nearby,
-                         Lodging lodging, List<PlaceRef> skipped) {
+                         Lodging lodging, List<PlaceRef> skipped, Prices prices) {
         public Result { skipped = skipped == null ? List.of() : List.copyOf(skipped); }
-        // 보조 안내를 붙이기 전의 초안과 이전 작업 JSON은 assist·nearby·lodging·skipped 없이 그대로 사용한다.
+        // 보조 안내를 붙이기 전의 초안과 이전 작업 JSON은 assist·nearby·lodging·skipped·prices 없이 그대로 사용한다.
         public Result(String destination, List<Day> days, Transport transport, Instant createdAt) {
-            this(destination, days, transport, createdAt, null, null, null, null);
+            this(destination, days, transport, createdAt, null, null, null, null, null);
         }
         public Result(String destination, List<Day> days, Transport transport, Instant createdAt, Assist assist) {
-            this(destination, days, transport, createdAt, assist, null, null, null);
+            this(destination, days, transport, createdAt, assist, null, null, null, null);
         }
         public Result(String destination, List<Day> days, Transport transport, Instant createdAt, Assist assist, Nearby nearby) {
-            this(destination, days, transport, createdAt, assist, nearby, null, null);
+            this(destination, days, transport, createdAt, assist, nearby, null, null, null);
         }
         public Result(String destination, List<Day> days, Transport transport, Instant createdAt, Assist assist, Nearby nearby,
                       Lodging lodging) {
-            this(destination, days, transport, createdAt, assist, nearby, lodging, null);
+            this(destination, days, transport, createdAt, assist, nearby, lodging, null, null);
         }
-        public Result withAssist(Assist assist) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped); }
-        public Result withNearby(Nearby nearby) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped); }
-        public Result withLodging(Lodging lodging) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped); }
-        public Result withSkipped(List<PlaceRef> skipped) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped); }
+        public Result withAssist(Assist assist) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
+        public Result withNearby(Nearby nearby) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
+        public Result withLodging(Lodging lodging) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
+        public Result withSkipped(List<PlaceRef> skipped) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
+        public Result withPrices(Prices prices) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
     }
     public record View(UUID id, String status, String message, boolean pending, Input input, Result result) {}
 }
