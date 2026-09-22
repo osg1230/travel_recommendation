@@ -115,11 +115,50 @@ class ItineraryGeneratorTests {
         verifyNoInteractions(maps);
     }
     @Test void overflowLongRoutesAndMapFailuresDoNotProduceResult() {
-        assertThatThrownBy(()->generator.generate(input(1,LocalTime.of(13,0)))).isInstanceOfSatisfying(RecommendationException.class,e->assertThat(e.getCode()).isEqualTo("TIME_OVERLAP"));
+        // 첫 관광지와 점심조차 하루 시간에 들어가지 않으면 일정을 만들지 않는다.
+        assertThatThrownBy(()->generator.generate(withHours(LocalTime.of(9,0),LocalTime.of(13,0),180))).isInstanceOfSatisfying(RecommendationException.class,e->assertThat(e.getCode()).isEqualTo("TIME_OVERLAP"));
         when(maps.travelTime(any(),any(),any())).thenReturn(new KakaoMapClient.TravelTime(KakaoMapClient.Transport.CAR,7201,90000,Instant.now()));
         assertThatThrownBy(()->generator.generate(input(1,LocalTime.of(18,0)))).isInstanceOfSatisfying(RecommendationException.class,e->assertThat(e.getCode()).isEqualTo("TRAVEL_TIME_EXCEEDED"));
         doThrow(new RecommendationException("MAP_AUTH","설정 확인")).when(maps).locate(anyString());
         assertThatThrownBy(()->generator.generate(input(1,LocalTime.of(18,0)))).isInstanceOfSatisfying(RecommendationException.class,e->assertThat(e.getCode()).isEqualTo("MAP_AUTH"));
+    }
+    // 09:00~13:00이면 관광지 1곳과 점심만 들어간다. 남은 관광지는 실패 대신 빼고 결과에 적는다.
+    @Test void dropsAttractionsThatDoNotFitAndRecordsThem() {
+        var input=input(1,LocalTime.of(13,0)); var result=generator.generate(input);
+        assertThat(result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).map(Item::placeId)).containsExactly(1L);
+        assertThat(result.days().getFirst().items().stream().filter(i->i.type().equals("MEAL"))).hasSize(1);
+        assertThat(result.skipped()).extracting(PlaceRef::placeId).containsExactly(2L);
+        generator.validate(input,result);
+        var report=ItineraryConditionReport.evaluate(input,result);
+        assertThat(report.complete()).isTrue();
+        assertThat(report.checks()).anySatisfy(c->assertThat(c.detail()).contains("장소2").contains("넣지 않았어요"));
+        // 빠진 관광지를 skipped에 적지 않은 결과는 받지 않는다.
+        var hidden=new Result(result.destination(),result.days(),result.transport(),result.createdAt());
+        assertThatThrownBy(()->generator.validate(input,hidden)).isInstanceOf(RecommendationException.class);
+    }
+    // 필수 방문 장소는 시간이 부족해도 빼지 않고, 어느 장소 때문인지 알린다.
+    @Test void requiredPlaceThatDoesNotFitFailsWithItsName() {
+        var base=input(1,LocalTime.of(13,0));
+        var input=new Input(base.recommendationId(),base.places(),base.conditions(),base.start(),base.end(),base.transport(),90,null,
+            new Constraints(List.of(2L),null,false,null,List.of()));
+        assertThatThrownBy(()->generator.generate(input)).isInstanceOfSatisfying(RecommendationException.class,e->{
+            assertThat(e.getCode()).isEqualTo("TIME_OVERLAP"); assertThat(e.getMessage()).contains("장소2"); });
+    }
+    // 하루가 길고 체류시간이 짧으면 하루에 여러 곳을 넣고, 17시가 지나면 다른 음식점에서 저녁도 넣는다.
+    @Test void longDayFitsMoreAttractionsAndAddsDinner() {
+        var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,1),1,null,2,false,false,List.of(),"");
+        var pool=new PlaceCandidateView(UUID.randomUUID(),new DestinationCandidate(99L,"강릉","강원","소개","https://www.gn.go.kr/",LocalDateTime.of(2026,9,1,0,0)),1,false,
+            List.of(place(1),place(2),place(3),place(4),place(5),place(6)),List.of(),List.of(place(20),place(21)));
+        var input=new Input(pool.jobId(),pool,conditions,LocalTime.of(9,0),LocalTime.of(20,0),KakaoMapClient.Transport.CAR,60);
+        var result=generator.generate(input);
+        var items=result.days().getFirst().items();
+        assertThat(items.stream().filter(i->i.type().equals("VISIT"))).hasSize(6);
+        var meals=items.stream().filter(i->i.type().equals("MEAL")).toList();
+        assertThat(meals).extracting(Item::placeId).containsExactly(20L,21L);
+        assertThat(meals.get(1).start()).isAfterOrEqualTo(LocalTime.of(17,0));
+        assertThat(meals.get(1).note()).startsWith("저녁 식사");
+        assertThat(result.skipped()).isEmpty();
+        generator.validate(input,result);
     }
     @Test void rejectsMissingTransferAndDuplicatedVisitDuringFinalValidation() {
         var input=input(1,LocalTime.of(18,0)); var good=generator.generate(input); var day=good.days().getFirst();

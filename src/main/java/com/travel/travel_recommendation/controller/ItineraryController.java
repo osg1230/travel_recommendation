@@ -40,6 +40,7 @@ public class ItineraryController {
         model.addAttribute("options",options);
         model.addAttribute("pool",service().attractionPool(id,destinationId,login(principal),hash(session)));
         model.addAttribute("budgetItems",TripConstraints.BUDGET_ITEMS);
+        model.addAttribute("maxDailyVisits",TripConstraints.MAX_DAILY);
         // 필수 조건이 모순돼 돌아온 경우 이유·선택지와 입력했던 값을 다시 보여 준다(한 번만).
         var conflict=session.getAttribute(CONFLICT_KEY) instanceof ConstraintInput previous && previous.parent().equals(id) ? previous : null;
         session.removeAttribute(CONFLICT_KEY);
@@ -106,6 +107,8 @@ public class ItineraryController {
             model.addAttribute("route",route); model.addAttribute("mapJson",mapper.writeValueAsString(route));
             // 지역 대표 음식 안내(SFR-17-01). 공식 출처로 확인한 지역만 보여 준다.
             model.addAttribute("foods",RegionalFoods.of(job.result().destination()).orElse(null));
+            // 수정안에서 바꿀 수 있는 관광지는 실제로 배치된 곳뿐이다(시간이 부족해 뺀 곳 제외).
+            model.addAttribute("placedAttractions",ItineraryJobService.placed(job.input(),job.result()));
         }
         // 내 일정 저장은 회원만 할 수 있어 화면에서 로그인 여부를 구분한다.
         model.addAttribute("loggedIn",principal!=null);

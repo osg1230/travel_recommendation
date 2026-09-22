@@ -7,16 +7,21 @@ import java.util.*;
 
 /**
  * 필수·선호 조건(SFR-02-07)으로 일정에 넣을 관광지를 고르고, 필수 조건끼리 모순되면 임의로 완화하지 않고
- * 충돌 이유와 바꿀 수 있는 선택지를 알린다. 하루 수용량은 식사 60분과 구간당 이동 약 30분을 가정한 추정치다.
+ * 충돌 이유와 바꿀 수 있는 선택지를 알린다. 하루 수용량은 식사 60분과 구간당 이동 약 30분을 가정한 추정치이며,
+ * 실제로 몇 곳이 들어가는지는 ItineraryGenerator가 카카오 이동시간으로 다시 확인한다.
  */
 public final class TripConstraints {
     private TripConstraints() {}
 
-    public static final int MAX_TOTAL = 8;
-    public static final int MAX_DAILY = 4;
+    /** 한 일정에 넣을 수 있는 관광지 수. 장소 목록에 보여 주는 관광지 후보 수(16곳)와 같다. */
+    public static final int MAX_TOTAL = 16;
+    /** 하루 방문 수로 고를 수 있는 값의 범위. 실제로 들어가는 수는 하루 시간으로 따로 추정한다. */
+    public static final int MAX_DAILY = 10;
     public static final Set<String> BUDGET_BASES = Set.of("TOTAL", "PER_PERSON");
     public static final Map<String, String> BUDGET_ITEMS = Map.of("LODGING", "숙박", "MEAL", "식사", "ADMISSION", "입장료", "TRANSPORT", "교통");
     private static final int MEAL_MINUTES = 60, MOVE_MINUTES = 30;
+    /** 하루 종료 시간이 이 시각 이후면 저녁 식사도 넣을 수 있는 날로 본다. */
+    private static final LocalTime DINNER_DAY_END = LocalTime.of(19, 0);
 
     public record Conflict(String reason, List<String> choices) {}
     public static class ConflictException extends RuntimeException {
@@ -25,21 +30,30 @@ public final class TripConstraints {
         public List<Conflict> conflicts() { return conflicts; }
     }
 
-    /** 식사와 이동을 넣었을 때 하루에 들어갈 수 있는 관광지 수의 추정치(최소 1곳). */
+    /** 하루 종료 시간이 저녁 식사까지 넣을 만큼 늦은지 확인한다. */
+    public static boolean includesDinner(LocalTime end) {
+        return !end.isBefore(DINNER_DAY_END);
+    }
+
+    /**
+     * 하루 시간에서 식사(식당까지 이동 포함)를 빼고 남은 시간에 관광지가 몇 곳 들어가는지 추정한다(최소 1곳).
+     * 관광지 한 곳에는 체류시간과 이동 약 30분이 든다고 본다. 예) 09:00~18:00, 체류 90분이면 3곳.
+     */
     public static int estimatedDailyCapacity(LocalTime start, LocalTime end, int visitMinutes) {
-        long minutes = Duration.between(start, end).toMinutes() - MEAL_MINUTES;
-        return (int) Math.max(1, Math.min(MAX_DAILY, minutes / (visitMinutes + MOVE_MINUTES)));
+        int meals = includesDinner(end) ? 2 : 1;
+        long minutes = Duration.between(start, end).toMinutes() - meals * (MEAL_MINUTES + MOVE_MINUTES);
+        return (int) Math.max(1, minutes / (visitMinutes + MOVE_MINUTES));
     }
 
     /**
      * 일정에 넣을 관광지를 고른다. 필수 장소를 먼저 넣고 후보 순서대로 채운다.
-     * 조건이 없으면 기존 규칙(여행 일수 × 2곳, 최대 8곳)과 같다.
+     * 하루 방문 수를 정하지 않으면 하루 시간으로 추정한 수(여행 일수 × 하루 수용량, 최대 16곳)만큼 고른다.
      * @throws IllegalArgumentException 화면에 없는 장소·범위를 벗어난 값
      * @throws ConflictException 필수 조건끼리 또는 시간·후보 수와 모순될 때
      */
     public static List<PlaceCandidate> select(List<PlaceCandidate> pool, int days, LocalTime start, LocalTime end,
                                               int visitMinutes, Constraints c) {
-        if (c == null) return pool.stream().limit(Math.min(MAX_TOTAL, days * 2)).toList();
+        if (c == null) return pool.stream().limit(Math.min(MAX_TOTAL, days * estimatedDailyCapacity(start, end, visitMinutes))).toList();
         var poolIds = pool.stream().map(PlaceCandidate::placeId).toList();
         if (!poolIds.containsAll(c.requiredPlaceIds()) || new HashSet<>(c.requiredPlaceIds()).size() != c.requiredPlaceIds().size())
             throw new IllegalArgumentException("Unknown required place");
@@ -80,7 +94,7 @@ public final class TripConstraints {
         if (!conflicts.isEmpty()) throw new ConflictException(conflicts);
 
         int target;
-        if (c.dailyVisits() == null) target = Math.min(MAX_TOTAL, days * 2);
+        if (c.dailyVisits() == null) target = Math.min(MAX_TOTAL, days * capacity);
         else if (c.dailyVisitsRequired()) target = days * c.dailyVisits();
         // 선호 조건은 시간·후보가 허락하는 만큼만 반영한다.
         else target = Math.min(MAX_TOTAL, days * Math.min(c.dailyVisits(), capacity));

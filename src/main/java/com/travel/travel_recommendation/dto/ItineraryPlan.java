@@ -79,21 +79,30 @@ public final class ItineraryPlan {
     }
     public record StayOption(Long placeId, String name, String subtype, String address, double averageKilometers,
                              String sourceUrl, String mapUrl) {}
+    /**
+     * skipped는 일정에 쓰려고 골랐지만 하루 시간 안에 넣지 못해 뺀 관광지다. 필수·유지 장소는 여기에 들어가지 않는다.
+     */
     public record Result(String destination, List<Day> days, Transport transport, Instant createdAt, Assist assist, Nearby nearby,
-                         Lodging lodging) {
-        // 보조 안내를 붙이기 전의 초안과 이전 작업 JSON은 assist·nearby·lodging 없이 그대로 사용한다.
+                         Lodging lodging, List<PlaceRef> skipped) {
+        public Result { skipped = skipped == null ? List.of() : List.copyOf(skipped); }
+        // 보조 안내를 붙이기 전의 초안과 이전 작업 JSON은 assist·nearby·lodging·skipped 없이 그대로 사용한다.
         public Result(String destination, List<Day> days, Transport transport, Instant createdAt) {
-            this(destination, days, transport, createdAt, null, null, null);
+            this(destination, days, transport, createdAt, null, null, null, null);
         }
         public Result(String destination, List<Day> days, Transport transport, Instant createdAt, Assist assist) {
-            this(destination, days, transport, createdAt, assist, null, null);
+            this(destination, days, transport, createdAt, assist, null, null, null);
         }
         public Result(String destination, List<Day> days, Transport transport, Instant createdAt, Assist assist, Nearby nearby) {
-            this(destination, days, transport, createdAt, assist, nearby, null);
+            this(destination, days, transport, createdAt, assist, nearby, null, null);
         }
-        public Result withAssist(Assist assist) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging); }
-        public Result withNearby(Nearby nearby) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging); }
-        public Result withLodging(Lodging lodging) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging); }
+        public Result(String destination, List<Day> days, Transport transport, Instant createdAt, Assist assist, Nearby nearby,
+                      Lodging lodging) {
+            this(destination, days, transport, createdAt, assist, nearby, lodging, null);
+        }
+        public Result withAssist(Assist assist) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped); }
+        public Result withNearby(Nearby nearby) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped); }
+        public Result withLodging(Lodging lodging) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped); }
+        public Result withSkipped(List<PlaceRef> skipped) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped); }
     }
     public record View(UUID id, String status, String message, boolean pending, Input input, Result result) {}
 }

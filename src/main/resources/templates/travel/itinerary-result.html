@@ -53,9 +53,10 @@
 
 <section class="condition-section timeline" th:each="day : ${job.result.days}">
 <h2 th:text="${day.number + '일차' + (day.date == null ? ' · 날짜 미정' : ' · ' + day.date)}"></h2>
-<th:block th:if="${job.result.assist != null}" th:each="advice : ${job.result.assist.days}">
+<!--/* th:each가 th:if보다 먼저 실행되므로, AI 안내가 없을 때를 바깥 블록에서 먼저 거른다. */-->
+<th:block th:if="${job.result.assist != null}"><th:block th:each="advice : ${job.result.assist.days}">
 <p class="notice" th:if="${advice.number == day.number}" style="white-space: pre-line" th:text="${'AI 준비 안내 · ' + advice.advice}"></p>
-</th:block>
+</th:block></th:block>
 <article class="place-row schedule-item" th:each="item, st : ${day.items}" th:classappend="${'item-' + #strings.toLowerCase(item.type)}">
 <p class="schedule-time" th:text="${#temporals.format(item.start, 'HH:mm') + '–' + #temporals.format(item.end, 'HH:mm')}"></p>
 <div class="schedule-body">
@@ -66,6 +67,7 @@
 <a th:if="${item.type != 'TRANSIT'}" th:href="${item.sourceUrl}" target="_blank" rel="noopener noreferrer">장소 출처 확인 (새 창)</a></div>
 </div>
 </article></section>
+<p class="notice" th:if="${!job.result.skipped.isEmpty()}" th:text="${'이동시간까지 넣으니 하루 시간이 부족해 ' + #strings.listJoin(job.result.skipped.![name], ', ') + '은(는) 일정에 넣지 않았어요. 넣고 싶다면 하루 시간을 늘리거나 체류시간을 줄여 새로 만들어 주세요.'}"></p>
 
 <section class="condition-section" th:if="${job.result.lodging != null}" aria-labelledby="lodging-title">
 <h2 id="lodging-title">숙소 추천</h2>
@@ -167,7 +169,7 @@
 <p class="help">바꾸고 싶은 관광지만 고르세요. 고르지 않은 관광지는 그대로 유지하고, 바꿀 관광지는 확인된 다른 후보로 채워요. 식사·숙소 후보와 이동수단은 그대로예요. 수정안은 새 초안으로 만들어지고 이 초안은 바뀌지 않아요.</p>
 <form method="post" th:action="@{/travel/recommendations/itineraries/{id}/revisions(id=${job.id})}">
 <fieldset class="theme-choices"><legend>바꿀 관광지 (고르지 않은 곳은 유지)</legend>
-<label th:each="place : ${job.input.places.attractions}"><input type="checkbox" name="replace" th:value="${place.placeId}"><span th:text="${place.name}"></span></label>
+<label th:each="place : ${placedAttractions}"><input type="checkbox" name="replace" th:value="${place.placeId}"><span th:text="${place.name}"></span></label>
 </fieldset>
 <p><label for="reason">교체 이유 (관광지를 바꿀 때 필수)</label><select id="reason" name="reason">
 <option value="">선택해 주세요</option>
