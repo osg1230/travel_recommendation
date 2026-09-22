@@ -65,6 +65,20 @@ class OpenAiRecommendationClientTests {
         output("{\"recommendations\":[{\"placeId\":1,\"reason\":\"x\"},{\"placeId\":1,\"reason\":\"y\"}]}");
         assertThatThrownBy(()->client.recommend(conditions(),List.of(pool.getFirst(),second))).isInstanceOf(RecommendationException.class);
     }
+    @Test void promptFieldNamesInReasonAreReplacedWithReadableWords() {
+        output("{\"recommendations\":[{\"placeId\":1,\"reason\":\"purposePlaces에 야경 명소 정보가 없어 `travelPurpose`와 THEME 연결은 확인이 필요합니다.\"}]}");
+        var result=client("test-key",Duration.ofSeconds(2)).recommend(conditions(),pool);
+        assertThat(result.getFirst().reason())
+            .isEqualTo("목적 시설 검색 결과에 야경 명소 정보가 없어 여행 목적과 여행 취향 연결은 확인이 필요합니다.");
+        var body=mapper.readTree(request.get());
+        assertThat(body.path("instructions").asText()).contains("입력 필드 이름을 쓰지 말고");
+        assertThat(OpenAiRecommendationClient.readable("THEMES와 purposePlacesX는 필드가 아니에요."))
+            .isEqualTo("THEMES와 purposePlacesX는 필드가 아니에요.");
+        assertThat(OpenAiRecommendationClient.readable("partySize가 없고 COMPANION는 연인, purposeKeywords로 찾았고 budgetKrw를 몰라요."))
+            .isEqualTo("인원이 없고 동행자는 연인, 목적 검색어로 찾았고 예산을 몰라요.");
+        assertThat(OpenAiRecommendationClient.readable("travelPurpose이나 THEME에 맞춰"))
+            .isEqualTo("여행 목적이나 여행 취향에 맞춰");
+    }
     @Test void errorsRefusalAndIncompleteAreSafeWithoutAutomaticRetry() {
         var client=client("test-key",Duration.ofSeconds(2));
         response.set("private-provider-body");
