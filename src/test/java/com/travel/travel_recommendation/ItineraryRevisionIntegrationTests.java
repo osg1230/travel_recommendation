@@ -54,6 +54,7 @@ class ItineraryRevisionIntegrationTests {
     private long destination;
 
     @BeforeEach void setup() throws Exception {
+        ExternalPlaceCache.expireExisting(jdbc);
         // 강릉 기본 관광지는 2곳뿐이라 교체 후보를 확인할 수 있게 테스트 관광지를 추가한다(롤백됨).
         // 이름순 정렬에서 뒤에 오도록 이름을 정해, 2일 일정에는 앞의 4곳이 쓰이고 마지막 1곳이 교체 후보로 남는다.
         String[][] extra={{"하슬라 테스트 정원","1001"},{"해변 테스트 공원","1002"},{"허브 테스트 실내 체험관","1003"}};

@@ -44,15 +44,15 @@
 - 기능별 마지막 기록(2026-09-21, 원문 참고): SQL Server 포함 전체 269개 중 255개 통과, 외부 API 7개 건너뜀, 실패 7개. 실패 7개는 브라우저 확인 중 저장된 KAKAO 캐시 16행 때문에 지역별 장소 수·첫 후보를 가정하는 통합 테스트(`ItineraryIntegrationTests`·`ItineraryRevisionIntegrationTests`·`PlaceCandidateIntegrationTests`·`PlaceDiscoveryIntegrationTests`)가 어긋난 것으로, 변경 전 main에서도 같게 실패했다.
 - 2026-09-22 사용자 확인: 병합 후 전체 테스트를 사용자 PC에서 실행했다. 통과 수치는 이 문서에 기록되지 않았다.
 - 2026-09-22 가상 예약·결제: 이 PC DB에 SQL 013 적용(시드 460행, 기존 데이터 변경 없음). Java 21.0.12로 SQL Server 전체 verify 285개 중 271개 통과, 외부 API 7개 건너뜀, 실패 7개는 위 KAKAO 캐시 16행 때문인 기존 7개와 같다(새 실패 없음). 새 `VirtualReservationIntegrationTests` 14개(마지막 1개 동시 2건, 20건 병렬, 같은/다른 멱등키 동시 결제, 결제 중 예외 롤백, 재환불 차단, 날짜 변경, 타인 접근, 일정 삭제·탈퇴 연동)는 3회 연속 통과. 화면은 테스트가 실제 DB로 그린 HTML로 데스크톱·모바일(375px)을 확인했고, 실제 로그인한 브라우저 흐름은 확인하지 않았다. DB 테스트는 `-DargLine=-Djava.library.path=<DLL 폴더>`가 필요하다.
+- 2026-09-22 KAKAO 캐시 테스트 수정: 지역별 장소 수·첫 후보를 확인하는 통합 테스트 4개 클래스(`ItineraryIntegrationTests`·`ItineraryRevisionIntegrationTests`·`PlaceCandidateIntegrationTests`·`PlaceDiscoveryIntegrationTests`)가 시작할 때 기존 KAKAO 캐시를 테스트 트랜잭션 안에서 만료 처리한다(`ExternalPlaceCache`, 롤백되어 실제 캐시는 그대로). 유효한 KAKAO 캐시 16행이 있는 상태에서 SQL Server 전체 verify **285개 중 278개 통과, 실패 0**, 외부 API 7개 건너뜀, BUILD SUCCESS. 앞 두 줄의 실패 7개는 이것으로 해소됐다.
 - 브라우저에서 확인하지 않은 흐름: 저장 일정 삭제, 관리자 상태 변경(제한 회원 로그인 차단 포함), 실제 GPT의 자연어 일정 수정. 실물 모바일·Java 21 런타임·음식점/숙소 TourAPI 실제 표본·부하도 확인하지 않았다.
 - 과거 기록의 서버 PID·포트를 현재 실행 상태로 간주하지 않는다.
 
 ## 다음 작업
 
 1. 작업 시작 시 Git 상태와 최신 원격 커밋을 확인한다. Claude와 Codex는 같은 기준 커밋을 사용하며 동일 폴더를 동시에 수정하지 않는다.
-2. KAKAO 캐시에 영향받는 통합 테스트 7개: 캐시 행과 무관하게 동작하도록 테스트 단언을 고칠지, 실행 전 캐시를 정리할지 정한다.
-3. 가상 예약·결제: 로그인한 브라우저에서 실행 안내 6절 30~36단계를 확인한다. 다른 PC는 SQL 013 적용이 필요하다(미적용 시 일정 삭제·탈퇴 실패).
-4. 요구분석서 3.1과 DB·화면 추적표는 관련 기능을 바꿀 때 해당 부분을 대조한다. 전체 설계 일치 완료로 간주하지 않는다.
+2. 가상 예약·결제: 로그인한 브라우저에서 실행 안내 6절 30~36단계를 확인한다. 다른 PC는 SQL 013 적용이 필요하다(미적용 시 일정 삭제·탈퇴 실패).
+3. 요구분석서 3.1과 DB·화면 추적표는 관련 기능을 바꿀 때 해당 부분을 대조한다. 전체 설계 일치 완료로 간주하지 않는다.
 
 ## 필요한 문서
 
