@@ -18,7 +18,8 @@ import tools.jackson.databind.*;
 
 @Component
 public class TourApiClient {
-    private static final Set<String> TYPES = Set.of("12", "14", "28", "32", "39");
+    private static final Set<String> TYPES = Set.of("12", "14", "28", "32", "39"), FACILITY_TYPES = Set.of("12", "14");
+    static final int FACILITY_ROWS = 100;
     private final TourApiProperties properties;
     private final ObjectMapper mapper;
     private final URI endpoint;
@@ -42,7 +43,7 @@ public class TourApiClient {
     public Optional<PlaceOperatingInfo> findOperatingInfo(String contentId, String contentTypeId) {
         if (contentId == null || !contentId.matches("[1-9][0-9]{0,19}") || !TYPES.contains(contentTypeId == null ? "" : contentTypeId))
             throw failure("TOUR_INPUT", "관광정보의 장소 ID와 유형을 확인해 주세요.");
-        var data = get(endpoint, "&numOfRows=1&contentId=" + contentId + "&contentTypeId=" + contentTypeId);
+        var data = get(endpoint, 1, "&contentId=" + contentId + "&contentTypeId=" + contentTypeId);
         var items = data.path("items").path("item");
         if (data.path("totalCount").asInt() == 0) return Optional.empty();
         if (data.path("totalCount").asInt() != 1 || items.size() != 1) throw invalid();
@@ -71,7 +72,7 @@ public class TourApiClient {
 
     public List<SearchPlace> search(String name) {
         if (name == null || name.isBlank() || name.length() > 200) throw failure("TOUR_INPUT", "장소 이름을 확인해 주세요.");
-        var data = get(endpoint.resolve("searchKeyword2"), "&numOfRows=10&keyword=" + URLEncoder.encode(name, StandardCharsets.UTF_8));
+        var data = get(endpoint.resolve("searchKeyword2"), 10, "&keyword=" + URLEncoder.encode(name, StandardCharsets.UTF_8));
         // 일부 결과만 보고 유일한 장소라고 판단하지 않는다.
         if (data.path("totalCount").asInt() > 10) return List.of();
         List<SearchPlace> result = new ArrayList<>();
@@ -86,7 +87,34 @@ public class TourApiClient {
         return List.copyOf(result);
     }
 
-    private JsonNode get(URI target, String parameters) {
+    public boolean configured() { return properties.isConfigured(); }
+
+    /**
+     * 여행 목적 시설을 제목 키워드로 전국에서 찾는다(예: "갯벌체험장"). 관광지(12)·문화시설(14)만 받아 음식점·숙박·축제·코스는 뺀다.
+     * TourAPI는 제목에 검색어가 그대로 들어 있어야 찾으므로 띄어쓰기는 호출하는 쪽에서 맞춘다. 앞쪽 최대 100건만 본다.
+     */
+    public List<SearchPlace> searchFacilities(String keyword) {
+        if (keyword == null || keyword.isBlank() || keyword.length() > 40) throw failure("TOUR_INPUT", "검색어를 확인해 주세요.");
+        var data = get(endpoint.resolve("searchKeyword2"), FACILITY_ROWS, "&keyword=" + URLEncoder.encode(keyword.strip(), StandardCharsets.UTF_8));
+        List<SearchPlace> result = new ArrayList<>();
+        for (var item : data.path("items").path("item")) {
+            try {
+                String id = text(item, "contentid"), type = text(item, "contenttypeid");
+                if (!id.matches("[1-9][0-9]{0,19}") || !FACILITY_TYPES.contains(type)) continue;
+                double x = coordinate(item, "mapx"), y = coordinate(item, "mapy");
+                if (!Double.isFinite(x) || !Double.isFinite(y) || x < 124 || x > 132 || y < 33 || y > 39) continue;
+                String title = text(item, "title"), address = text(item, "addr1");
+                if (title.isBlank() || title.length() > 100 || address.isBlank()) continue;
+                result.add(new SearchPlace(id, type, title, address, x, y));
+            } catch (RecommendationException ignored) {
+                // 한 항목의 형식 오류로 다른 시설까지 잃지 않는다.
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    private JsonNode get(URI target, int rows, String extra) {
+        String parameters = "&numOfRows=" + rows + extra;
         if (!properties.isConfigured())
             throw failure("TOUR_NOT_CONFIGURED", "TourAPI 인증키 설정이 필요해요.");
         // Decoding 키를 한 번만 인코딩한다. 요청 URL에는 키가 있어 로그에 남기지 않는다.
@@ -119,7 +147,7 @@ public class TourApiClient {
                 if ((items.isArray() && !items.isEmpty()) || items.isObject()) throw invalid();
                 return data;
             }
-            if (count < 1 || !items.isArray() || items.size() != Math.min(count, parameters.startsWith("&numOfRows=1&") ? 1 : 10)) throw invalid();
+            if (count < 1 || !items.isArray() || items.size() != Math.min(count, rows)) throw invalid();
             return data;
         } catch (HttpTimeoutException e) {
             throw failure("TOUR_TIMEOUT", "관광정보 조회 시간이 초과됐어요. 다시 시도해 주세요.");

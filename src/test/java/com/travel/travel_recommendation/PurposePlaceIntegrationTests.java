@@ -24,7 +24,7 @@ import static org.mockito.Mockito.*;
 @ActiveProfiles("sqlserver-windows")
 @Transactional
 class PurposePlaceIntegrationTests {
-    private static final String YEOSU="전남광주통합특별시 여수시", SOURCE="9100000000000001";
+    private static final String YEOSU="전남광주통합특별시 여수시", SOURCE="9100000000000001", TIDAL="9100000000000002";
     @Autowired RecommendationJobService recommendations;
     @Autowired PurposePlaceService purposes;
     @Autowired PlaceCandidateService candidates;
@@ -34,10 +34,12 @@ class PurposePlaceIntegrationTests {
     @Autowired JdbcTemplate jdbc;
     @MockitoBean OpenAiPurposeClient ai;
     @MockitoBean KakaoMapClient maps;
+    @MockitoBean TourApiClient tour;
     private final byte[] hash=new byte[32];
 
     @BeforeEach void setup() {
         ExternalPlaceCache.expireExisting(jdbc);
+        purposes.clearCaches();
         Arrays.fill(hash,(byte)7);
         when(ai.configured()).thenReturn(true);
         when(ai.keywords("상어 관람")).thenReturn(List.of("아쿠아리움"));
@@ -92,5 +94,45 @@ class PurposePlaceIntegrationTests {
         purposes.enrich(rest);
         assertThat(recommendations.conditions(rest,null,hash).purposeSearch().status()).isEqualTo("SKIPPED");
         verify(ai,never()).keywords("");
+    }
+
+    // 관광공사에서 찾은 여행지 안 시설을 카카오 장소로 맞춰 저장한다. 같은 목적의 다음 요청은 보관한 결과를 쓴다.
+    @Test void tourApiFacilityIsMatchedToKakaoAndRepeatedPurposeUsesCache() {
+        when(ai.keywords("갯벌 체험")).thenReturn(List.of("갯벌 체험장"));
+        when(tour.configured()).thenReturn(true);
+        when(tour.searchFacilities("갯벌 체험장")).thenReturn(List.of());
+        when(tour.searchFacilities("갯벌체험장")).thenReturn(List.of(
+            new TourApiClient.SearchPlace("2001","12","여수 갯벌 노을마을",YEOSU+" 서부로 785-24",127.568,34.790),
+            new TourApiClient.SearchPlace("2002","12","보령 갯벌체험장","충청남도 보령시 해안로 607-5",126.52,36.33)));
+        when(maps.findNear(eq("여수 갯벌 노을마을"),anyDouble(),anyDouble(),eq(YEOSU))).thenReturn(Optional.of(new KakaoPlace(TIDAL,
+            "ATTRACTION","여수갯벌노을마을",YEOSU,YEOSU+" 소라면 사곡리 1223","여행 > 체험여행 > 정보화,체험마을",127.568,34.790,
+            "https://place.map.kakao.com/"+TIDAL,LocalDateTime.now(ZoneOffset.UTC).withNano(0))));
+        when(maps.searchNationwide(eq("갯벌 체험장"),anyList())).thenReturn(List.of());
+        var first=request("갯벌 체험");
+        purposes.enrich(first);
+        var search=recommendations.conditions(first,null,hash).purposeSearch();
+        assertThat(search.status()).isEqualTo("FOUND");
+        assertThat(search.places()).singleElement().satisfies(p->{
+            assertThat(p.destinationName()).isEqualTo("여수"); assertThat(p.name()).isEqualTo("여수갯벌노을마을"); });
+        assertThat(places.findBySourceProviderAndSourcePlaceId("KAKAO",TIDAL)).isPresent();
+        // 보령은 서비스 여행지가 아니라 카카오로 맞추지 않는다.
+        verify(maps,never()).findNear(eq("보령 갯벌체험장"),anyDouble(),anyDouble(),anyString());
+        var second=request("갯벌 체험");
+        purposes.enrich(second);
+        assertThat(recommendations.conditions(second,null,hash).purposeSearch().places()).hasSize(1);
+        verify(ai,times(1)).keywords("갯벌 체험");
+        verify(tour,times(2)).searchFacilities(anyString());
+        verify(maps,times(1)).searchNationwide(anyString(),anyList());
+    }
+
+    // 관광공사 조회가 안 되면(한도 초과 등) 카카오 검색만으로 계속 찾는다.
+    @Test void tourApiFailureFallsBackToKakao() {
+        when(tour.configured()).thenReturn(true);
+        when(tour.searchFacilities(anyString())).thenThrow(new RecommendationException("TOUR_QUOTA","한도"));
+        var id=request("상어 관람");
+        purposes.enrich(id);
+        var search=recommendations.conditions(id,null,hash).purposeSearch();
+        assertThat(search.status()).isEqualTo("FOUND");
+        assertThat(search.places()).extracting(p->p.name()).containsExactly("테스트 아쿠아리움 여수");
     }
 }

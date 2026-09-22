@@ -86,6 +86,24 @@ class TourApiClientTests {
         response("14", place + ",\"mapx\":139.7,\"mapy\":35.7");
         assertThat(client("key").search("오죽헌")).isEmpty();
     }
+    // 목적 시설 검색은 관광지·문화시설만 받고 음식점·숙박·축제는 뺀다. 100건까지 한 번에 받는다.
+    @Test void facilitySearchKeepsAttractionsAndCulturalFacilitiesOnly() {
+        String item = "{\"contentid\":\"%s\",\"contenttypeid\":\"%s\",\"title\":\"%s\",\"addr1\":\"인천광역시 영종구 마시란로 107-8\",\"mapx\":\"126.417\",\"mapy\":\"37.431\"}";
+        var items = String.join(",", item.formatted("1", "12", "마시안갯벌체험장"), item.formatted("2", "14", "갯벌센터"),
+            item.formatted("3", "39", "갯벌낙지"), item.formatted("4", "32", "갯벌펜션"), item.formatted("5", "15", "갯벌축제"),
+            "{\"contentid\":\"6\",\"contenttypeid\":\"12\",\"title\":\"좌표없음\",\"addr1\":\"인천광역시\"}");
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":6,\"items\":{\"item\":[" + items + "]}}}}");
+        var found = client("key").searchFacilities("갯벌");
+        assertThat(found).extracting(TourApiClient.SearchPlace::id).containsExactly("1", "2");
+        assertThat(found.getFirst().name()).isEqualTo("마시안갯벌체험장");
+        assertThat(query.get()).contains("numOfRows=100", "keyword=%EA%B0%AF%EB%B2%8C");
+        // 전체 수보다 적게 온 응답은 잘린 응답으로 보고 쓰지 않는다.
+        body.set(body.get().replace("\"totalCount\":6", "\"totalCount\":7"));
+        assertCode("TOUR_RESPONSE", () -> client("key").searchFacilities("갯벌"));
+        int before = calls.get();
+        assertCode("TOUR_INPUT", () -> client("key").searchFacilities(" "));
+        assertThat(calls.get()).isEqualTo(before);
+    }
     @Test void distinguishesNoResultFromInvalidOrMismatchedData() {
         body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":0,\"items\":\"\"}}}");
         assertThat(client("key").findOperatingInfo("123", "12")).isEmpty();
