@@ -48,6 +48,7 @@ class PlaceDiscoveryIntegrationTests {
     private final String region="강원특별자치도 강릉시";
     private MockHttpSession session; private byte[] hash; private UUID parent; private long destination;
     @BeforeEach void setup() throws Exception {
+        ExternalPlaceCache.expireExisting(jdbc);
         session=new MockHttpSession(); String token=UUID.randomUUID().toString(); session.setAttribute("recommendationGuestToken",token);
         hash=MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8));
         var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",null,null,3,null,2,true,false,List.of(),"");

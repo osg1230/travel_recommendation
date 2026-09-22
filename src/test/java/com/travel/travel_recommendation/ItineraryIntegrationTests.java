@@ -50,6 +50,7 @@ class ItineraryIntegrationTests {
     private UUID parent;
     private long destination;
     @BeforeEach void setup() throws Exception {
+        ExternalPlaceCache.expireExisting(jdbc);
         session=new MockHttpSession(); String token=UUID.randomUUID().toString();
         session.setAttribute("recommendationGuestToken",token);
         hash=MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8));

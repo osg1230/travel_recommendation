@@ -8,6 +8,7 @@ import jakarta.persistence.EntityManager;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.*;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +42,8 @@ class PlaceCandidateIntegrationTests {
     @Autowired MockMvc mvc;
     private final MockHttpSession session = new MockHttpSession();
     private final String token = UUID.randomUUID().toString();
+
+    @BeforeEach void hideExternalCache() { ExternalPlaceCache.expireExisting(jdbc); }
 
     private byte[] hash() throws Exception {
         session.setAttribute("recommendationGuestToken", token);
