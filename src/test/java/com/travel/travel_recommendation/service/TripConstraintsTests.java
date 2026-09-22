@@ -81,6 +81,25 @@ class TripConstraintsTests {
         // 필수 장소는 멀어도 먼저 넣는다.
         assertThat(ids(TripConstraints.select(ordered, 1, NINE, SIX, 90, c(List.of(1L), null, false)))).startsWith(1L);
     }
+    // 거제 실제 분류(카카오). 해수욕장이 몰려 있어도 종류를 돌아가며 고른다.
+    @Test void kindsAreMixedSoBeachesDoNotCrowdOutOtherPlaces() {
+        var beach1 = typed(1, "구조라해수욕장", "여행 > 관광,명소 > 해수욕장,해변");
+        var beach2 = typed(2, "와현모래숲해수욕장", "여행 > 관광,명소 > 해수욕장,해변");
+        var view = typed(3, "신선대전망대", "여행 > 관광,명소 > 전망대");
+        var beach3 = typed(4, "해변 테스트", "해변");
+        var park = typed(5, "거제맹종죽테마공원", "여행 > 관광,명소 > 테마파크");
+        assertThat(TripConstraints.kind(beach1)).isEqualTo("해변");
+        assertThat(TripConstraints.kind(beach3)).isEqualTo("해변");
+        assertThat(TripConstraints.kind(view)).isEqualTo("전망대");
+        assertThat(ids(TripConstraints.mixKinds(List.of(beach1, beach2, view, beach3, park)))).containsExactly(1L, 3L, 5L, 2L, 4L);
+        // 하루 1곳씩 3일이면 해변·전망대·테마파크를 고른다(예전에는 해변 2곳이 먼저 뽑혔다).
+        assertThat(ids(TripConstraints.select(TripConstraints.mixKinds(List.of(beach1, beach2, view, beach3, park)), 3, NINE, SIX, 90,
+            c(List.of(), 1, true)))).containsExactly(1L, 3L, 5L);
+    }
+    private static PlaceCandidate typed(long id, String name, String subtype) {
+        return new PlaceCandidate(id, name, "경상남도 거제시 " + id, subtype, "", "https://place.map.kakao.com/" + id, "",
+            LocalDateTime.of(2026, 9, 22, 0, 0));
+    }
     private static PlaceCandidate located(long id, String name, double lat, double lon) {
         return new PlaceCandidate(id, name, "전남광주통합특별시 여수시 " + id, "관광", "", "https://place.map.kakao.com/" + id, "",
             LocalDateTime.of(2026, 9, 22, 0, 0), lon, lat, "KAKAO", null);

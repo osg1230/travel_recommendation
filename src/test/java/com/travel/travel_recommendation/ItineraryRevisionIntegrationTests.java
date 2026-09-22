@@ -130,7 +130,12 @@ class ItineraryRevisionIntegrationTests {
         var job=jobs.findById(original).orElseThrow();
         var result=mapper.readValue(job.getResultJson(),ItineraryPlan.Result.class);
         var left=schedules.view(original,null,hash).input().places().attractions().getLast();
-        job.attachToResult(mapper.writeValueAsString(result.withSkipped(List.of(new PlaceRef(left.placeId(),left.name())))));
+        // 초안에서 그 관광지를 뺀 것처럼 방문 항목을 지우고 skipped에 적는다.
+        var days=result.days().stream().map(d->new ItineraryPlan.Day(d.number(),d.date(),
+            d.items().stream().filter(i->!("VISIT".equals(i.type()) && i.placeId().equals(left.placeId()))).toList())).toList();
+        var leftOut=new ItineraryPlan.Result(result.destination(),days,result.transport(),result.createdAt())
+            .withSkipped(List.of(new PlaceRef(left.placeId(),left.name())));
+        job.attachToResult(mapper.writeValueAsString(leftOut));
         em.flush();
         var revised=schedules.revise(original,null,hash,List.of(ids.getFirst()),ReplaceReason.TASTE,LocalTime.of(9,0),LocalTime.of(18,0),90);
         var revision=schedules.view(revised,null,hash).input().revision();

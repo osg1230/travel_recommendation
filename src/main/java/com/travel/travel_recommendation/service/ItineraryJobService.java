@@ -104,17 +104,27 @@ public class ItineraryJobService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"하루 시작·종료 시간을 확인해 주세요.");
         // 하루 시간·체류시간으로 추정한 수만큼 관광지를 고른다. 실제로 다 들어가는지는 일정 생성 때 이동시간으로 다시 확인한다.
         List<PlaceCandidate> selected;
+        // 가운데에서 가까운 곳부터, 같은 종류(해수욕장 등)는 돌아가며 고른다.
+        var ordered=TripConstraints.mixKinds(TripConstraints.nearCenterFirst(places.attractions()));
         try {
-            selected=TripConstraints.select(TripConstraints.nearCenterFirst(places.attractions()),days,start,end,visitMinutes,constraints);
+            selected=TripConstraints.select(ordered,days,start,end,visitMinutes,constraints);
         } catch(IllegalArgumentException invalid) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"화면에 있는 장소와 값으로 조건을 다시 골라 주세요.");
         }
         places=new PlaceCandidateView(places.jobId(),places.destination(),places.durationDays(),places.accommodationNeeded(),
             selected,places.accommodations(),places.restaurants());
-        var input=new Input(parentId,places,current.conditions(),start,end,transport,visitMinutes,null,constraints);
+        var input=new Input(parentId,places,current.conditions(),start,end,transport,visitMinutes,null,constraints,reserve(ordered,selected));
         generator.checkInput(input);
         var parent=access.owned(parentId,login,hash,"RECOMMENDATION");
         return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();
+    }
+
+    /** 예비 관광지 수. 섬처럼 갈 수 없어 빠진 곳을 채울 만큼만 둔다. */
+    static final int MAX_RESERVE=6;
+    /** 고르지 않은 후보 중 앞에서부터(가운데 가까운 곳·종류를 섞은 순서) 예비 관광지로 둔다. */
+    static List<PlaceCandidate> reserve(List<PlaceCandidate> ordered,List<PlaceCandidate> selected) {
+        var ids=selected.stream().map(PlaceCandidate::placeId).toList();
+        return ordered.stream().filter(p->!ids.contains(p.placeId())).limit(MAX_RESERVE).toList();
     }
 
     private TripConstraints.ConflictException scheduleConflict(String message) {
@@ -150,7 +160,8 @@ public class ItineraryJobService {
         if(!"COMPLETED".equals(source.getStatus()) || source.getResultJson()==null)
             throw new ResponseStatusException(HttpStatus.CONFLICT,"완성된 일정 초안에서만 수정안을 만들 수 있어요.");
         var original=mapper.readValue(source.getRequestJson(),Input.class);
-        var placed=placed(original,mapper.readValue(source.getResultJson(),Result.class));
+        var originalResult=mapper.readValue(source.getResultJson(),Result.class);
+        var placed=placed(original,originalResult);
         var chosen=new LinkedHashSet<>(replace==null?List.<Long>of():replace);
         var originalIds=placed.stream().map(PlaceCandidate::placeId).toList();
         if(!originalIds.containsAll(chosen))
@@ -173,9 +184,12 @@ public class ItineraryJobService {
                 new ResponseStatusException(HttpStatus.CONFLICT,"유지한 관광지 '"+place.name()+"'의 정보가 바뀌었어요. 장소 목록에서 다시 조회해 주세요.")));
         }
         // 새로 넣을 후보에서는 원본 초안이 쓰려던 관광지를 모두 뺀다. 시간·거리 때문에 빠졌던 곳(섬 등)을 다시 넣지 않는다.
-        var tried=original.places().attractions().stream().map(PlaceCandidate::placeId).toList();
+        var tried=tried(original,originalResult);
         // 새 후보도 후보들 가운데에서 가까운 곳부터 고른다(이름순이면 먼 섬이 먼저 뽑힐 수 있다).
         var spare=TripConstraints.nearCenterFirst(pool.attractions()).stream().filter(p->!tried.contains(p.placeId())).toList();
+        // 유지하는 관광지와 종류가 겹치지 않는 곳을 먼저 쓴다(예: 해수욕장이 이미 있으면 다른 종류부터).
+        var keptKinds=kept.stream().map(TripConstraints::kind).toList();
+        spare=spare.stream().sorted(Comparator.comparingInt(p->keptKinds.contains(TripConstraints.kind(p))?1:0)).toList();
         if(reason==ReplaceReason.INDOOR)
             spare=spare.stream().sorted(Comparator.comparingInt(p->indoor(p)?0:1)).toList();
         if(add!=null) {
@@ -193,7 +207,9 @@ public class ItineraryJobService {
             pool.accommodationNeeded(),List.copyOf(attractions),pool.accommodations(),pool.restaurants());
         var revision=new Revision(sourceId,refs(kept),refs(placed.stream().filter(p->chosen.contains(p.placeId())).toList()),
             refs(added),chosen.isEmpty() && reason!=ReplaceReason.AI_REQUEST?null:reason.name(),Instant.now(),request,explanation);
-        var input=new Input(original.recommendationId(),places,original.conditions(),start,end,original.transport(),visitMinutes,revision,original.constraints());
+        // 새로 넣지 않고 남은 후보는 이 수정안의 예비 관광지로 둔다.
+        var spareLeft=spare.subList(chosen.size(),spare.size()).stream().limit(MAX_RESERVE).toList();
+        var input=new Input(original.recommendationId(),places,original.conditions(),start,end,original.transport(),visitMinutes,revision,original.constraints(),spareLeft);
         generator.checkInput(input);
         var parent=access.owned(original.recommendationId(),login,hash,"RECOMMENDATION");
         return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();
@@ -251,7 +267,7 @@ public class ItineraryJobService {
         var currentIds=placed.stream().map(PlaceCandidate::placeId).toList();
         var current=placed.stream().map(OpenAiRevisionClient::candidate).toList();
         // 원본 초안이 쓰려다 뺀 곳(skipped)도 AI가 새로 고를 후보에서 뺀다.
-        var tried=input.places().attractions().stream().map(PlaceCandidate::placeId).toList();
+        var tried=tried(input,result);
         var spare=TripConstraints.nearCenterFirst(pool.attractions()).stream().filter(p->!tried.contains(p.placeId())).map(OpenAiRevisionClient::candidate).toList();
         Set<Long> fixed=input.constraints()==null?Set.of():Set.copyOf(input.constraints().requiredPlaceIds());
         return new AiContext(input,result,current,spare,fixed);
@@ -319,8 +335,16 @@ public class ItineraryJobService {
 
     /** 초안에 실제로 배치된 관광지. 시간이 부족하거나 너무 멀어 빠진 관광지(skipped)는 유지·교체 대상에서 뺀다. */
     public static List<PlaceCandidate> placed(Input input,Result result) {
-        var skipped=result.skipped().stream().map(PlaceRef::placeId).toList();
-        return input.places().attractions().stream().filter(p->!skipped.contains(p.placeId())).toList();
+        // 예비 관광지로 대신 넣은 곳도 포함해, 일정에 실제로 방문으로 들어간 관광지만 돌려준다.
+        var visited=result.days().stream().flatMap(d->d.items().stream()).filter(i->"VISIT".equals(i.type())).map(Item::placeId).toList();
+        return input.attractionsWithReserve().stream().filter(p->visited.contains(p.placeId())).toList();
+    }
+    /** 원본 초안이 쓰려던 관광지(고른 곳·실제 방문한 예비 관광지·뺀 곳). 수정안의 새 후보에서 뺀다. */
+    private static List<Long> tried(Input input,Result result) {
+        var ids=new ArrayList<>(input.places().attractions().stream().map(PlaceCandidate::placeId).toList());
+        placed(input,result).forEach(p->ids.add(p.placeId()));
+        result.skipped().forEach(p->ids.add(p.placeId()));
+        return ids;
     }
 
     private static boolean indoor(PlaceCandidate place) {
@@ -375,12 +399,12 @@ public class ItineraryJobService {
             .ifPresent(j->j.fail(code,message));
     }
     private boolean unchanged(Input input) {
-        var pool=new ArrayList<>(input.places().attractions()); pool.addAll(input.places().restaurants()); pool.addAll(input.places().accommodations());
+        var pool=new ArrayList<>(input.attractionsWithReserve()); pool.addAll(input.places().restaurants()); pool.addAll(input.places().accommodations());
         var destination=input.places().destination();
         if(places.findById(destination.placeId()).filter(p->p.isActive() && "DESTINATION".equals(p.getPlaceType())
                 && destination.name().equals(p.getName()) && destination.region().equals(p.getRegion())).isEmpty()) return false;
         for(var candidate:pool) {
-            String type=input.places().attractions().contains(candidate)?"ATTRACTION":input.places().restaurants().contains(candidate)?"RESTAURANT":"ACCOMMODATION";
+            String type=input.attractionsWithReserve().contains(candidate)?"ATTRACTION":input.places().restaurants().contains(candidate)?"RESTAURANT":"ACCOMMODATION";
             if(places.findById(candidate.placeId()).filter(p->p.isActive() && type.equals(p.getPlaceType())
                 && destination.region().equals(p.getRegion()) && candidate.name().equals(p.getName())
                 && candidate.address().equals(p.getAddress()) && candidate.sourceUrl().equals(p.getSourceUrl())

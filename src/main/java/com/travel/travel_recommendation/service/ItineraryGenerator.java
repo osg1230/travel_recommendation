@@ -17,6 +17,8 @@ public class ItineraryGenerator {
     /** 도보로 추정한 이동 항목 메모의 시작 문구. 조건 확인 결과에서 추정 구간을 구분하는 데 쓴다. */
     static final String WALK_NOTE_PREFIX="도보 추정 ";
     private static final Pattern ROAD=Pattern.compile("^(.+?(?:로|길)\\s+\\d+(?:-\\d+)?)(?:\\s+.*)?$");
+    /** 같은 종류 관광지를 연달아 고르지 않도록 거리(제곱값)에 곱하는 수. 4는 실제 거리 두 배에 해당한다. */
+    private static final double SAME_KIND_PENALTY=4;
     /** 저녁 식사는 이 시각 이후에만 넣는다. */
     private static final LocalTime DINNER_FROM=LocalTime.of(17,0);
     /** 관광지를 더 넣어 볼 때 이 오류가 나면 실패가 아니라 '오늘은 더 들어가지 않음'으로 본다. */
@@ -63,6 +65,10 @@ public class ItineraryGenerator {
         // 섬처럼 차·대중교통으로 2시간 안에 갈 수 없거나 경로가 없는 관광지. 그곳만 빼고 일정을 만든다.
         List<PlaceCandidate> unreachable=new ArrayList<>();
         RecommendationException routeError=null;
+        // 뺀 관광지 자리를 채울 예비 관광지. 쓸 때 위치를 확인한다.
+        var reserve=new ArrayList<>(input.reserve());
+        // 직전에 간 관광지 종류(예: 해변). 날이 바뀌어도 이어서 본다.
+        String lastKind="";
         for(int day=1;day<=dayCount;day++) {
             var builder=new DayBuilder(input,locations,routes,deadline,previous,day,usedRestaurants,foods);
             PlaceCandidate stay=hotel!=null && day<dayCount?hotel:null;
@@ -70,10 +76,12 @@ public class ItineraryGenerator {
             int target=(remaining.size()+dayCount-day)/(dayCount-day+1);
             PlaceCandidate last=null; int visits=0;
             while(visits<target && !remaining.isEmpty()) {
-                PlaceCandidate anchor=builder.previous;
+                PlaceCandidate anchor=builder.previous; String previousKind=lastKind;
                 // 가까운 관광지를 이어서 고른다. 최단 경로 보장은 아니다.
+                // 직전 관광지와 종류가 같으면(예: 해수욕장 다음 해수욕장) 거리를 두 배로 쳐서, 조금 멀어도 다른 종류를 먼저 고른다.
                 var next=remaining.stream().min(order(builder.date,p->anchor==null?remaining.indexOf(p)
-                    :distance(locations.get(anchor.placeId()),locations.get(p.placeId())))).orElseThrow();
+                    :distance(locations.get(anchor.placeId()),locations.get(p.placeId()))
+                        *(!previousKind.isEmpty() && previousKind.equals(TripConstraints.kind(p))?SAME_KIND_PENALTY:1))).orElseThrow();
                 var mark=builder.mark();
                 boolean hadLunch=builder.lunch;
                 try {
@@ -87,13 +95,16 @@ public class ItineraryGenerator {
                         if(mustVisit.contains(next.placeId()))
                             throw failure(error.getCode(),"'"+next.name()+"'까지 가는 길이 2시간을 넘거나 경로를 찾지 못했어요. 필수 방문 장소에서 빼거나 이동수단을 바꿔 주세요.");
                         builder.reset(mark); remaining.remove(next); unreachable.add(next); routeError=error;
+                        // 빠진 자리는 예비 관광지로 채운다. 이미 일정에 있는 종류와 다른 곳을 먼저 쓴다.
+                        var replacement=takeReserve(reserve,remaining,days,builder,locations,addresses,deadline);
+                        if(replacement!=null) remaining.add(replacement);
                         continue;
                     }
                     // 첫 관광지부터 들어가지 않으면 그대로 실패를 알린다. 그 뒤라면 오늘은 여기서 마치고 남은 곳은 다음 날로 넘긴다.
                     if(visits==0 || !DAY_FULL_CODES.contains(error.getCode())) throw error;
                     builder.reset(mark); break;
                 }
-                remaining.remove(next); last=next; visits++;
+                remaining.remove(next); last=next; visits++; lastKind=TripConstraints.kind(next);
                 // 점심 뒤에 관광을 이어 가 17시가 지났으면 저녁 식사도 넣어 본다. 시간이 안 되면 저녁 없이 마친다.
                 if(dinnerDay && hadLunch && !builder.dinner && !builder.time.isBefore(DINNER_FROM)) {
                     var beforeDinner=builder.mark();
@@ -159,6 +170,28 @@ public class ItineraryGenerator {
             if(!builder.lunch) eat(builder,last,false);
             if(stay!=null) builder.visit(stay,"STAY",30,"");
         } finally { builder.reset(mark); }
+    }
+
+    /**
+     * 예비 관광지 하나를 꺼내 위치를 확인한다. 남은 관광지·이미 넣은 관광지와 종류가 다른 곳을 먼저 고른다.
+     * 위치를 확인하지 못한 예비 관광지는 건너뛴다. 쓸 수 있는 예비 관광지가 없으면 null이다.
+     */
+    private PlaceCandidate takeReserve(List<PlaceCandidate> reserve,List<PlaceCandidate> remaining,List<Day> days,DayBuilder today,
+                                       Map<Long,KakaoMapClient.Location> locations,Map<String,KakaoMapClient.Location> addresses,Instant deadline) {
+        Set<String> kinds=new HashSet<>();
+        remaining.forEach(p->kinds.add(TripConstraints.kind(p)));
+        var visits=new ArrayList<Long>();
+        days.forEach(d->d.items().forEach(i->{ if("VISIT".equals(i.type())) visits.add(i.placeId()); }));
+        today.items.forEach(i->{ if("VISIT".equals(i.type())) visits.add(i.placeId()); });
+        today.input.attractionsWithReserve().stream().filter(p->visits.contains(p.placeId())).forEach(p->kinds.add(TripConstraints.kind(p)));
+        while(!reserve.isEmpty()) {
+            var pick=reserve.stream().filter(p->!kinds.contains(TripConstraints.kind(p))).findFirst().orElse(reserve.getFirst());
+            reserve.remove(pick);
+            checkDeadline(deadline);
+            try { locations.put(pick.placeId(),locate(pick,addresses)); return pick; }
+            catch(RecommendationException error) { if("SCHEDULE_TIMEOUT".equals(error.getCode())) throw error; }
+        }
+        return null;
     }
 
     /** 시간이 부족해도 빼면 안 되는 관광지: 필수 방문 장소와 수정안에서 유지·새로 넣은 장소. */
@@ -274,6 +307,9 @@ public class ItineraryGenerator {
         var constraints=input.constraints();
         if(constraints!=null && !expected.containsAll(constraints.requiredPlaceIds())) throw invalid();
         Set<Long> seen=new HashSet<>(); Set<Long> allowed=new HashSet<>(expected);
+        // 예비 관광지는 빠진 자리를 채울 때만 방문으로 들어간다.
+        Set<Long> reserveIds=new HashSet<>(); input.reserve().forEach(p->reserveIds.add(p.placeId()));
+        allowed.addAll(reserveIds);
         input.places().restaurants().forEach(p->allowed.add(p.placeId()));
         input.places().accommodations().forEach(p->allowed.add(p.placeId()));
         // 숙소는 첫 후보로 고정하지 않고 동선에 맞춰 고르므로, 첫날 마지막 숙소를 기준으로 모든 날이 같은 숙소인지 본다.
@@ -307,14 +343,14 @@ public class ItineraryGenerator {
                     if(transferred && !item.placeId().equals(transferDestination)) throw invalid();
                     previous=item.placeId(); transferred=false;
                     switch(item.type()) {
-                        case "VISIT" -> { if(!expected.contains(item.placeId()) || !seen.add(item.placeId()) || minutes!=input.visitMinutes()) throw invalid(); visits++; }
+                        case "VISIT" -> { if(!(expected.contains(item.placeId()) || reserveIds.contains(item.placeId())) || !seen.add(item.placeId()) || minutes!=input.visitMinutes()) throw invalid(); visits++; }
                         case "MEAL" -> { if(input.places().restaurants().stream().noneMatch(p->p.placeId().equals(item.placeId()))) throw invalid(); meals++; }
                         case "STAY" -> { if(input.places().accommodations().stream().noneMatch(p->p.placeId().equals(item.placeId()))) throw invalid(); }
                         case "FREE" -> { }
                         default -> throw invalid();
                     }
                     if(Set.of("VISIT","MEAL","STAY").contains(item.type())) {
-                        var pool=new ArrayList<>(input.places().attractions()); pool.addAll(input.places().restaurants()); pool.addAll(input.places().accommodations());
+                        var pool=new ArrayList<>(input.attractionsWithReserve()); pool.addAll(input.places().restaurants()); pool.addAll(input.places().accommodations());
                         var place=pool.stream().filter(p->p.placeId().equals(item.placeId())).findFirst().orElseThrow(ItineraryGenerator::invalid);
                         OperatingHoursValidator.check(place.name(),place.operatingInfo(),date,item.start(),item.end());
                     }
@@ -330,9 +366,11 @@ public class ItineraryGenerator {
                     || !Objects.equals(hotelId,day.items().getLast().placeId()))) throw invalid();
         }
         // 배치하지 못한 관광지는 결과의 skipped와 정확히 같아야 하고, 필수·유지 장소는 빠지면 안 된다.
+        // 고른 관광지 중 넣지 못한 곳은 모두 skipped에 있어야 하고, skipped에는 방문하지 않은 관광지(예비 포함)만 있어야 한다.
         Set<Long> skipped=new HashSet<>(); result.skipped().forEach(p->skipped.add(p.placeId()));
         Set<Long> missing=new HashSet<>(expected); missing.removeAll(seen);
-        if(!missing.equals(skipped) || skipped.stream().anyMatch(mustVisit(input)::contains)) throw invalid();
+        Set<Long> notVisited=new HashSet<>(expected); notVisited.addAll(reserveIds); notVisited.removeAll(seen);
+        if(!skipped.containsAll(missing) || !notVisited.containsAll(skipped) || skipped.stream().anyMatch(mustVisit(input)::contains)) throw invalid();
     }
 
     private class DayBuilder {
