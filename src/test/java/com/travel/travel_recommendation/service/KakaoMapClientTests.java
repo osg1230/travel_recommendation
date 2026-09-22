@@ -154,6 +154,36 @@ class KakaoMapClientTests {
         assertThat(path.get()).contains("size=15").doesNotContain("category_group_code");
         assertCode("MAP_INVALID_RESPONSE",()->client("key").searchNationwide(" ",java.util.List.of("부산광역시")));
     }
+    // 갯벌체험장처럼 분류 코드 없이 체험여행·체험학습장으로만 분류된 곳도 목적 시설로 받는다. 축제·음식점·빌딩은 뺀다.
+    @Test void nationwideSearchAcceptsUncodedExperiencePlacesOnly() {
+        java.util.List<java.util.Map<String,String>> items=new java.util.ArrayList<>();
+        String[][] cases={{"301","","교육,학문 > 교육단체 > 체험학습장"},{"302","","여행 > 체험여행 > 정보화,체험마을"},
+            {"303","","여행 > 관광,명소"},{"304","","이슈 > 이벤트 > 페스티벌"},{"305","","부동산 > 빌딩"},
+            {"306","FD6","음식점 > 한식"},{"307","AD5","여행 > 숙박 > 펜션"}};
+        for(var c:cases) {
+            var item=searchItem(c[0],"인천 영종구 덕교동 "+c[0]); item.put("category_group_code",c[1]); item.put("category_name",c[2]);
+            items.add(item);
+        }
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",items)));
+        var found=client("key").searchNationwide("갯벌체험",java.util.List.of("인천광역시"));
+        assertThat(found).extracting(com.travel.travel_recommendation.dto.KakaoPlace::sourceId).containsExactly("301","302","303");
+        assertThat(found).allSatisfy(p->assertThat(p.region()).isEqualTo("인천광역시"));
+    }
+    // 관광공사에서 찾은 시설은 좌표 1km 안에서 이름이 맞는 가장 가까운 목적 시설로 맞춘다. 주차장·다른 이름은 고르지 않는다.
+    @Test void findNearMatchesNameAndCategoryNearTheCoordinate() {
+        var parking=searchItem("401","강원 강릉시 초당동 505"); parking.put("place_name","경포아쿠아리움 주차장"); parking.put("category_group_code","PK6");
+        var other=searchItem("402","강원 강릉시 초당동 505"); other.put("place_name","경포석호생태관"); other.put("category_group_code","CT1");
+        var aquarium=searchItem("403","강원 강릉시 초당동 505"); aquarium.put("place_name","경포아쿠아리움"); aquarium.put("category_group_code","CT1");
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(parking,other,aquarium))));
+        var found=client("key").findNear("경포 아쿠아리움",128.9079,37.79,"강원특별자치도 강릉시").orElseThrow();
+        assertThat(found.sourceId()).isEqualTo("403"); assertThat(found.region()).isEqualTo("강원특별자치도 강릉시");
+        assertThat(path.get()).contains("x=128.9079","y=37.79","radius=1000","sort=distance");
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(parking,other))));
+        assertThat(client("key").findNear("경포 아쿠아리움",128.9079,37.79,"강원특별자치도 강릉시")).isEmpty();
+        int before=calls.get();
+        assertCode("MAP_INVALID_RESPONSE",()->client("key").findNear("경포 아쿠아리움",0,0,"강원특별자치도 강릉시"));
+        assertThat(calls.get()).isEqualTo(before);
+    }
     @Test void searchHasBoundedResultsAndRejectsUnsupportedRegionBeforeCalling() {
         var items=new java.util.ArrayList<java.util.Map<String,String>>();
         for(int i=1;i<=15;i++) items.add(searchItem(""+i,"부산 해운대구 중동 "+i));

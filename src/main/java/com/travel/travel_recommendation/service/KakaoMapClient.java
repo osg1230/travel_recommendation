@@ -91,22 +91,64 @@ public class KakaoMapClient {
         var root=get(localEndpoint.resolve("/v2/local/search/keyword.json?query="
             +URLEncoder.encode(city+" "+keyword,StandardCharsets.UTF_8)
             +"&category_group_code="+code+"&rect=124,33,132,39&size=15&page=1&sort=accuracy"));
-        return places(root,Set.of(code),List.of(region),type,limit);
+        return places(root,item->code.equals(item.path("category_group_code").asText()),List.of(region),type,limit);
     }
 
     /**
-     * 여행 목적 시설을 전국에서 찾는다(예: "아쿠아리움"). 관광명소(AT4)·문화시설(CT1)만 받고, 주소가 regions 중 하나로
-     * 시작하는 곳만 그 지역의 관광지 후보로 돌려준다. 시설 이름·주소·좌표만 확인하며 전시·체험 내용은 알 수 없다.
+     * 여행 목적 시설을 전국에서 찾는다(예: "아쿠아리움"). 목적 시설 분류({@link #purposeCategory})만 받고, 주소가 regions 중
+     * 하나로 시작하는 곳만 그 지역의 관광지 후보로 돌려준다. 시설 이름·주소·좌표만 확인하며 전시·체험 내용은 알 수 없다.
      */
     public List<KakaoPlace> searchNationwide(String query,List<String> regions) {
         if(query==null || query.isBlank() || query.length()>40 || regions.isEmpty()) throw invalid();
         var root=get(localEndpoint.resolve("/v2/local/search/keyword.json?query="
             +URLEncoder.encode(query.strip(),StandardCharsets.UTF_8)+"&rect=124,33,132,39&size=15&page=1&sort=accuracy"));
-        return places(root,Set.of("AT4","CT1"),regions,"ATTRACTION",15);
+        return places(root,KakaoMapClient::purposeCategory,regions,"ATTRACTION",15);
+    }
+
+    /**
+     * 관광공사 등 다른 출처에서 찾은 시설을 카카오 장소로 맞춘다. 좌표 1km 안에서 이름이 서로 포함되는 목적 시설 분류의
+     * 장소 중 가장 가까운 곳을 고른다. 이름만 비슷한 주차장·음식점·축제는 분류에서 빠진다. 맞는 곳이 없으면 비어 있다.
+     */
+    public Optional<KakaoPlace> findNear(String name,double longitude,double latitude,String region) {
+        if(name==null || name.isBlank() || name.length()>100 || region==null) throw invalid();
+        if(!Double.isFinite(longitude) || !Double.isFinite(latitude) || longitude<124 || longitude>132 || latitude<33 || latitude>39)
+            throw invalid();
+        var root=get(localEndpoint.resolve("/v2/local/search/keyword.json?query="
+            +URLEncoder.encode(name.strip(),StandardCharsets.UTF_8)+"&x="+longitude+"&y="+latitude
+            +"&radius=1000&sort=distance&size=15&page=1"));
+        String wanted=compactName(name);
+        if(wanted.length()<2) return Optional.empty();
+        return places(root,KakaoMapClient::purposeCategory,List.of(region),"ATTRACTION",15).stream()
+            .filter(p->{ String found=compactName(p.name()); return found.length()>=2 && (found.contains(wanted) || wanted.contains(found)); })
+            .findFirst();
+    }
+
+    /**
+     * 목적 시설로 받을 카카오 분류. 관광명소(AT4)·문화시설(CT1)에 더해, 분류 코드가 비어 있는 체험장·체험마을·관광명소도 받는다
+     * (예: 갯벌체험장은 코드 없이 '여행 > 체험여행'·'교육,학문 > 교육단체 > 체험학습장'으로만 분류된다).
+     */
+    static boolean purposeCategory(JsonNode item) {
+        String code=item.path("category_group_code").asText("");
+        if(Set.of("AT4","CT1").contains(code)) return true;
+        String category=item.path("category_name").asText("");
+        return code.isBlank() && (category.startsWith("여행 > 관광,명소") || category.startsWith("여행 > 체험여행")
+            || category.startsWith("교육,학문 > 교육단체 > 체험학습장"));
+    }
+
+    /** 공백·기호를 뺀 이름. 출처마다 띄어쓰기가 달라도 같은 시설로 비교한다(예: "경포 아쿠아리움"과 "경포아쿠아리움"). */
+    static String compactName(String name) {
+        return name.replaceAll("[^가-힣A-Za-z0-9]","").toLowerCase(Locale.ROOT);
+    }
+
+    /** 주소가 어느 여행지 지역 안인지 찾는다. 시·도 약칭(예: "인천", "전남")도 같은 지역으로 본다. 없으면 null이다. */
+    static String regionOf(String address,List<String> regions) {
+        if(address==null || address.isBlank()) return null;
+        String normalized=normalize(address);
+        return regions.stream().filter(r->normalized.startsWith(normalize(r)+" ")).findFirst().orElse(null);
     }
 
     // 검색 결과를 검사해 후보로 바꾼다. 분류·주소(지역)·좌표·상세 링크가 맞지 않는 항목은 건너뛴다.
-    private List<KakaoPlace> places(JsonNode root,Set<String> codes,List<String> regions,String type,int limit) {
+    private List<KakaoPlace> places(JsonNode root,java.util.function.Predicate<JsonNode> accepts,List<String> regions,String type,int limit) {
         var documents=root.path("documents");
         if(!documents.isArray() || documents.size()>15) throw invalid();
         List<KakaoPlace> result=new ArrayList<>(); Set<String> ids=new HashSet<>();
@@ -114,9 +156,8 @@ public class KakaoMapClient {
             try {
                 String id=requiredText(item,"id",20), name=requiredText(item,"place_name",200);
                 String address=requiredText(item,"address_name",300);
-                if(!id.matches("[1-9][0-9]{0,19}") || !codes.contains(item.path("category_group_code").asText())) continue;
-                String normalized=normalize(address);
-                String region=regions.stream().filter(r->normalized.startsWith(normalize(r)+" ")).findFirst().orElse(null);
+                if(!id.matches("[1-9][0-9]{0,19}") || !accepts.test(item)) continue;
+                String region=regionOf(address,regions);
                 if(region==null) continue;
                 String road=item.path("road_address_name").asText("");
                 if(!road.isBlank()) {

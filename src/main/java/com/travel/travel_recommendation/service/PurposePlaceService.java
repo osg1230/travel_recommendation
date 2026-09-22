@@ -4,6 +4,7 @@ import com.travel.travel_recommendation.dto.*;
 import com.travel.travel_recommendation.dto.PurposeSearch.PurposePlace;
 import com.travel.travel_recommendation.entity.Place;
 import com.travel.travel_recommendation.repository.*;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
@@ -15,7 +16,8 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * 구체적 여행 목적(예: 상어 관람)에 맞는 시설을 찾아 추천 요청에 붙인다. 추천 작업이 후보를 고르기 전에 한 번 실행한다.
- * ① AI가 목적을 시설 검색어로 바꾸고 ② 카카오에서 전국을 검색해 ③ 서비스 여행지 안에 있는 시설만 그 지역 관광지로 저장한다.
+ * ① AI가 목적을 시설 검색어로 바꾸고 ② 관광공사 관광정보에서 먼저 찾아 카카오 장소로 맞춘 뒤 카카오 전국 검색으로 보충해
+ * ③ 서비스 여행지 안에 있는 시설만 그 지역 관광지로 저장한다. 저장하는 장소는 모두 카카오에서 이름·주소·좌표를 확인한 곳이다.
  * 외부 호출 동안 DB 연결을 잡지 않도록 읽기 → 검색 → 저장을 나눈다. 검색이 실패해도 추천은 목적 시설 없이 그대로 진행한다.
  */
 @Service
@@ -23,17 +25,29 @@ import tools.jackson.databind.ObjectMapper;
 @RequiredArgsConstructor
 public class PurposePlaceService {
     /** 여행지 한 곳에 붙이는 목적 시설 수와 전체 수의 상한. 장소 목록·AI 입력이 너무 길어지지 않게 한다. */
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PurposePlaceService.class);
     static final int MAX_PER_DESTINATION = 3, MAX_TOTAL = 12;
+    /**
+     * 검색어 변환(GPT)은 같은 목적이면 하루 동안 다시 묻지 않는다. 시설 검색 결과는 짧게 둔다. 카카오 장소는 조회 후 24시간 안에만
+     * 일정에 쓸 수 있어, 오래 보관한 결과를 저장하면 곧 만료되는 장소가 되기 때문이다.
+     */
+    static final Duration KEYWORD_TTL = Duration.ofHours(24), PLACE_TTL = Duration.ofHours(6);
     private final AiJobRepository jobs;
     private final PlaceRepository places;
     private final DestinationCandidateService destinations;
     private final OpenAiPurposeClient ai;
     private final KakaoMapClient maps;
+    private final TourApiClient tour;
     private final ObjectMapper mapper;
     private final ObjectProvider<PurposePlaceService> self;
+    private final ExpiringCache<String, List<String>> keywordCache = new ExpiringCache<>(KEYWORD_TTL, 500);
+    private final ExpiringCache<String, List<KakaoPlace>> placeCache = new ExpiringCache<>(PLACE_TTL, 500);
 
     public record Task(UUID jobId, String requestJson, ConfirmedTravelConditions conditions, List<DestinationCandidate> destinations) {}
     public record Found(PurposeSearch search, List<KakaoPlace> places) {}
+
+    /** 보관한 검색어·검색 결과를 비운다. 외부 응답을 바꿔 가며 확인하는 테스트에서 쓴다. */
+    public void clearCaches() { keywordCache.clear(); placeCache.clear(); }
 
     /** 이 작업에 목적 검색이 필요하면 찾아서 요청에 붙인다. 필요 없거나 이미 했으면 아무것도 하지 않는다. */
     public void enrich(UUID jobId) {
@@ -57,7 +71,7 @@ public class PurposePlaceService {
         String purpose = task.conditions().travelPurpose();
         if (!ai.configured()) return new Found(result("SKIPPED", List.of(), List.of(), "AI 연결 설정이 없어 목적 시설을 찾지 않았어요."), List.of());
         List<String> keywords;
-        try { keywords = ai.keywords(purpose); }
+        try { keywords = keywordCache.get(purpose.strip(), () -> ai.keywords(purpose)); }
         catch (RecommendationException e) { return new Found(result("FAILED", List.of(), List.of(), e.getMessage()), List.of()); }
         if (keywords.isEmpty())
             return new Found(result("SKIPPED", keywords, List.of(), "'" + purpose + "'은(는) 특정 시설로 찾을 목적이 아니라 목적 시설 검색을 하지 않았어요."), List.of());
@@ -65,7 +79,8 @@ public class PurposePlaceService {
         Map<String, KakaoPlace> bySource = new LinkedHashMap<>();
         try {
             for (String keyword : keywords)
-                for (var place : maps.searchNationwide(keyword, regions)) bySource.putIfAbsent(place.sourceId(), place);
+                for (var place : placeCache.get(keyword + "|" + String.join(",", regions), () -> facilities(keyword, regions)))
+                    bySource.putIfAbsent(place.sourceId(), place);
         } catch (RecommendationException e) {
             return new Found(result("FAILED", keywords, List.of(), e.getMessage()), List.of());
         }
@@ -77,6 +92,34 @@ public class PurposePlaceService {
         }
         if (kept.isEmpty()) return new Found(result("NONE", keywords, List.of(), "검색어(" + String.join(", ", keywords) + ")로 서비스 여행지 안의 시설을 찾지 못했어요."), List.of());
         return new Found(result("FOUND", keywords, List.of(), null), kept);
+    }
+
+    /**
+     * 한 검색어로 시설을 찾는다. 관광공사 관광지·문화시설을 먼저 보고(제목 일치라 띄어쓰기를 뺀 검색어도 쓴다) 여행지 안의 시설을
+     * 카카오 장소로 맞춘 뒤, 카카오 전국 검색 결과를 뒤에 붙인다. 관광공사 조회가 안 되면(키 없음·한도 등) 카카오만 쓴다.
+     */
+    List<KakaoPlace> facilities(String keyword, List<String> regions) {
+        List<TourApiClient.SearchPlace> fromTour = new ArrayList<>();
+        if (tour.configured()) {
+            try {
+                for (String query : new LinkedHashSet<>(List.of(keyword, keyword.replace(" ", ""))))
+                    fromTour.addAll(tour.searchFacilities(query));
+            } catch (RecommendationException e) {
+                log.warn("관광공사 목적 시설 검색을 건너뜀 keyword={} ({})", keyword, e.getCode());
+            }
+        }
+        List<KakaoPlace> found = new ArrayList<>();
+        Map<String, Integer> perRegion = new HashMap<>(); Set<String> seen = new HashSet<>();
+        for (var facility : fromTour) {
+            String region = KakaoMapClient.regionOf(facility.address(), regions);
+            if (region == null || !seen.add(facility.id()) || found.size() == MAX_TOTAL
+                    || perRegion.getOrDefault(region, 0) == MAX_PER_DESTINATION) continue;
+            maps.findNear(facility.name(), facility.longitude(), facility.latitude(), region).ifPresent(place -> {
+                found.add(place); perRegion.merge(region, 1, Integer::sum);
+            });
+        }
+        found.addAll(maps.searchNationwide(keyword, regions));
+        return List.copyOf(found);
     }
 
     /** 검색하는 동안 요청이 처리되기 시작했거나 바뀌었으면 저장하지 않는다. 찾은 시설은 그 여행지의 관광지 후보로 저장한다. */
@@ -96,7 +139,8 @@ public class PurposePlaceService {
                 place = existing.get();
                 // 이미 다른 지역·유형(예: 음식점)으로 저장된 곳은 바꾸지 않는다.
                 if (!place.isActive() || !place.getRegion().equals(data.region()) || !"ATTRACTION".equals(place.getPlaceType())) continue;
-                place.refreshKakao(data);
+                // 보관해 둔 검색 결과가 더 최근 조회를 덮어쓰지 않게 한다.
+                if (data.checkedAt().isAfter(place.getVerifiedAt())) place.refreshKakao(data);
             } else place = places.save(Place.fromKakao(data));
             saved.add(new PurposePlace(place.getId(), destination.placeId(), destination.name(), data.name(), data.address(), data.category(), data.url()));
         }
