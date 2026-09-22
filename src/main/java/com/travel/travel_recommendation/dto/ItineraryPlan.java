@@ -99,9 +99,21 @@ public final class ItineraryPlan {
      * status: VERIFIED(출처 페이지에서 상호와 가격 숫자를 서버가 확인), UNVERIFIED(검색 결과에 있는 출처지만 페이지 내용은 확인하지 못함),
      * NOT_FOUND(가격을 찾지 못했거나 근거를 믿을 수 없어 쓰지 않음). NOT_FOUND는 가격·출처가 비어 있다.
      */
+    /** checkedAt은 이 장소를 실제로 검색한 시각이다. 장소에 저장해 둔 결과를 다시 쓰면 묶음의 조회 시각보다 앞선다. */
     public record PriceQuote(Long placeId, String name, String kind, String status, String priceText, Integer minWon,
-                             Integer maxWon, String basis, String sourceUrl) {
+                             Integer maxWon, String basis, String sourceUrl, Instant checkedAt) {
+        public PriceQuote(Long placeId, String name, String kind, String status, String priceText, Integer minWon,
+                          Integer maxWon, String basis, String sourceUrl) {
+            this(placeId, name, kind, status, priceText, minWon, maxWon, basis, sourceUrl, null);
+        }
         public boolean found() { return !"NOT_FOUND".equals(status); }
+        /** 이번 조회 묶음보다 10분 넘게 앞서 검색한 결과, 즉 장소에 저장해 둔 가격을 다시 쓴 경우다. */
+        public boolean reusedBefore(Instant batch) {
+            return checkedAt != null && batch != null && checkedAt.isBefore(batch.minus(java.time.Duration.ofMinutes(10)));
+        }
+        public PriceQuote checkedAt(Instant at) {
+            return new PriceQuote(placeId, name, kind, status, priceText, minWon, maxWon, basis, sourceUrl, at);
+        }
     }
     /** 결과 화면에서 버튼을 눌러 조회한 참고 가격 묶음. checkedAt은 조회 시각이다. */
     public record Prices(List<PriceQuote> quotes, Instant checkedAt) {

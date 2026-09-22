@@ -92,13 +92,14 @@
 <h2 id="prices-title">숙소·음식점 참고 가격</h2>
 <p role="alert" th:if="${priceError != null}" th:text="${priceError}"></p>
 <th:block th:if="${job.result.prices == null}">
-<p class="help">일정에 넣은 숙소와 음식점(최대 8곳)의 가격을 AI 웹 검색으로 찾아요. 한 곳씩 검색해서 1분 가까이 걸릴 수 있고, OpenAI 사용 요금이 들어요.</p>
+<p class="help">일정에 넣은 숙소와 음식점(최대 8곳)의 가격을 AI 웹 검색으로 찾아요. 한 곳씩 검색해서 1분 가까이 걸릴 수 있고, OpenAI 사용 요금이 들어요. 최근에 다른 일정에서 찾은 장소는 다시 검색하지 않아요.</p>
 <form method="post" th:action="@{/travel/recommendations/itineraries/{id}/prices(id=${job.id})}"><button type="submit">참고 가격 찾기</button></form>
 </th:block>
 <th:block th:if="${job.result.prices != null}">
 <p class="help" th:text="${'AI 웹 검색 조회: ' + pricesCheckedAt + ' (한국 시간)'}"></p>
 <article class="place-row" th:each="quote : ${job.result.prices.quotes}">
 <h3 th:text="${(quote.kind == 'ACCOMMODATION' ? '숙소 · ' : '음식점 · ') + quote.name}"></h3>
+<p class="help" th:if="${priceReusedAt.containsKey(quote.placeId)}" th:text="${'이전에 찾은 결과를 다시 사용했어요 (검색: ' + priceReusedAt.get(quote.placeId) + ', 한국 시간). 같은 장소는 가격을 찾으면 7일, 못 찾으면 하루 동안 다시 검색하지 않아요.'}"></p>
 <th:block th:if="${quote.found()}">
 <p th:text="${quote.priceText + ' (' + quote.basis + ')'}"></p>
 <p class="help" th:text="${quote.status == 'VERIFIED' ? '출처 페이지에 상호와 가격이 적혀 있는 것을 서버가 확인했어요.' : 'AI 검색 결과예요. 출처 페이지 내용은 서버가 확인하지 못했으니 직접 확인해 주세요.'}"></p>
@@ -113,7 +114,7 @@
 <li th:if="${costEstimate.mealMin != null}" th:text="${'식사: 가격을 찾은 ' + costEstimate.pricedMeals + '끼(전체 ' + costEstimate.meals + '끼) × ' + costEstimate.partySize + '명(' + costEstimate.partyBasis + ') = ' + #numbers.formatInteger(costEstimate.mealMin, 0, 'COMMA') + '~' + #numbers.formatInteger(costEstimate.mealMax, 0, 'COMMA') + '원'}"></li>
 </ul>
 </th:block>
-<p class="help">실제 가격은 날짜·객실·메뉴·인원에 따라 달라요. 가격을 찾지 못한 곳, 교통비·입장료는 합계에 없어요. 예약·방문 전에 출처에서 확인해 주세요. 24시간 안에 다시 조회하면 같은 결과를 보여 줘요.</p>
+<p class="help">실제 가격은 날짜·객실·메뉴·인원에 따라 달라요. 가격을 찾지 못한 곳, 교통비·입장료는 합계에 없어요. 예약·방문 전에 출처에서 확인해 주세요. 24시간 안에 다시 조회하면 같은 결과를 보여 줘요. 다른 일정에서 이미 찾은 장소는 저장해 둔 결과를 다시 써요(가격을 찾은 곳 7일, 못 찾은 곳 하루).</p>
 <form method="post" th:action="@{/travel/recommendations/itineraries/{id}/prices(id=${job.id})}"><button type="submit">참고 가격 다시 찾기</button></form>
 </th:block>
 </section>

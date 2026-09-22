@@ -31,6 +31,7 @@ public class ItineraryJobService {
     // 트랜잭션이 걸린 공개 메서드를 같은 객체 안에서 부를 때 프록시를 거치게 한다.
     private final org.springframework.beans.factory.ObjectProvider<ItineraryJobService> selfProvider;
     private final ObjectMapper mapper;
+    private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(ItineraryJobService.class);
     public record Work(UUID id,Input input) {}
 
     @Transactional(readOnly=true,timeout=10)
@@ -278,7 +279,11 @@ public class ItineraryJobService {
     static final int MAX_PRICE_PLACES=8;
     /** 같은 초안을 다시 눌러도 이 시간 안에는 이전 조회 결과를 쓴다. */
     static final Duration PRICE_REUSE=Duration.ofHours(24);
-    public record PriceTarget(PlaceCandidate place,String kind) {}
+    /** stored는 이 장소에 저장해 둔 재사용 가능한 가격이다. 있으면 다시 검색하지 않는다. */
+    public record PriceTarget(PlaceCandidate place,String kind,PriceQuote stored) {
+        PriceTarget(PlaceCandidate place,String kind) { this(place,kind,null); }
+    }
+    public record SearchedPrice(PlaceCandidate place,PriceQuote quote) {}
     public record PriceContext(String resultJson,List<PriceTarget> targets,Prices cached) {}
 
     /**
@@ -288,9 +293,21 @@ public class ItineraryJobService {
     public Prices lookupPrices(UUID id,String login,byte[] hash) {
         var context=self().priceContext(id,login,hash);
         if(context.cached()!=null) return context.cached();
-        List<PriceQuote> quotes=new ArrayList<>();
-        // 장소마다 따로 검색해야 다른 가게 가격이 섞이지 않는다. 앞에서부터 차례로 찾는다.
-        for(var target:context.targets()) quotes.add(priceClient.lookup(target.place(),target.kind()));
+        List<PriceQuote> quotes=new ArrayList<>(); List<SearchedPrice> searched=new ArrayList<>();
+        try {
+            // 장소마다 따로 검색해야 다른 가게 가격이 섞이지 않는다. 앞에서부터 차례로 찾고, 저장해 둔 가격이 있는 곳은 건너뛴다.
+            for(var target:context.targets()) {
+                if(target.stored()!=null) { quotes.add(target.stored()); continue; }
+                var quote=priceClient.lookup(target.place(),target.kind()).checkedAt(Instant.now());
+                quotes.add(quote); searched.add(new SearchedPrice(target.place(),quote));
+            }
+        } finally {
+            // 중간에 실패하거나 초안이 바뀌어도 이미 비용을 낸 검색 결과는 장소에 남긴다.
+            if(!searched.isEmpty()) {
+                try { self().storePlacePrices(searched); }
+                catch(RuntimeException e) { log.warn("참고 가격을 장소에 저장하지 못함 job={} ({})",id,e.toString()); }
+            }
+        }
         var prices=new Prices(quotes,Instant.now());
         self().savePrices(id,login,hash,context.resultJson(),prices);
         return prices;
@@ -306,7 +323,28 @@ public class ItineraryJobService {
         if(!priceClient.configured())
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"가격 검색은 OpenAI 연결 설정 후 이용할 수 있어요.");
         var input=mapper.readValue(job.getRequestJson(),Input.class);
-        return new PriceContext(job.getResultJson(),priceTargets(input,result),null);
+        var targets=priceTargets(input,result);
+        Map<Long,Place> saved=new HashMap<>();
+        places.findAllById(targets.stream().map(t->t.place().placeId()).toList()).forEach(p->saved.put(p.getId(),p));
+        var now=Instant.now();
+        return new PriceContext(job.getResultJson(),targets.stream().map(t->{
+            var place=saved.get(t.place().placeId());
+            var stored=sameAsSnapshot(place,t.place())?PlacePriceDetails.read(place,t.kind(),now,mapper):null;
+            return new PriceTarget(t.place(),t.kind(),stored);
+        }).toList(),null);
+    }
+    /** 새로 검색한 가격을 장소에 보관한다. 초안을 만든 뒤 장소 이름·주소가 바뀌었으면 보관하지 않는다. */
+    @Transactional(timeout=10)
+    public void storePlacePrices(List<SearchedPrice> searched) {
+        for(var item:searched) places.lockById(item.place().placeId()).ifPresent(place->{
+            if(!sameAsSnapshot(place,item.place())) return;
+            String json=PlacePriceDetails.write(place,item.quote(),mapper);
+            if(json!=null) place.updateDetails(json);
+        });
+        places.flush();
+    }
+    private static boolean sameAsSnapshot(Place place,PlaceCandidate snapshot) {
+        return place!=null && place.getName().equals(snapshot.name()) && Objects.equals(place.getAddress(),snapshot.address());
     }
     /** 가격을 찾을 장소: 고른 숙소, 그다음 일정에 넣은 음식점(처음 나온 순서, 중복 없이). */
     static List<PriceTarget> priceTargets(Input input,Result result) {

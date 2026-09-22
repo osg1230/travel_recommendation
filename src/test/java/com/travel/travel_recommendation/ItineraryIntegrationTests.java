@@ -154,6 +154,51 @@ class ItineraryIntegrationTests {
         assertThatThrownBy(()->schedules.lookupPrices(id,null,new byte[32])).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
     }
 
+    private void answerPrices() {
+        when(prices.configured()).thenReturn(true);
+        when(prices.lookup(any(),anyString())).thenAnswer(call->{ PlaceCandidate p=call.getArgument(0); String kind=call.getArgument(1);
+            return new ItineraryPlan.PriceQuote(p.placeId(),p.name(),kind,"VERIFIED","참고 가격",20000,30000,"기준","https://price.example.kr/"+p.placeId()); });
+    }
+    private UUID completedDraft() {
+        var id=create(); var work=schedules.claim(id); schedules.complete(work,schedules.generate(work)); em.flush(); return id;
+    }
+
+    // 다른 초안이 같은 숙소·음식점을 쓰면 장소에 보관한 가격을 다시 써서 유료 검색을 하지 않는다.
+    @Test void storedPlacePricesAreReusedByAnotherDraft() throws Exception {
+        answerPrices();
+        var first=schedules.lookupPrices(completedDraft(),null,hash); em.flush(); em.clear();
+        int searched=first.quotes().size();
+        assertThat(searched).isPositive();
+        assertThat(first.quotes()).allSatisfy(q->assertThat(q.checkedAt()).isNotNull());
+        var place=placeRepository.findById(first.quotes().getFirst().placeId()).orElseThrow();
+        assertThat(place.getDetailsJson()).contains("referencePrice");
+        // 첫 장소의 보관 결과를 2시간 전 검색으로 바꿔 두면 화면에 '이전 결과 재사용' 안내가 붙는다.
+        var old=first.quotes().getFirst().checkedAt(first.quotes().getFirst().checkedAt().minus(Duration.ofHours(2)));
+        place.updateDetails(PlacePriceDetails.write(place,old,mapper)); em.flush();
+        var second=completedDraft();
+        var reused=schedules.lookupPrices(second,null,hash);
+        verify(prices,times(searched)).lookup(any(),any());
+        assertThat(reused.quotes().getFirst()).isEqualTo(old);
+        assertThat(reused.quotes().subList(1,searched)).isEqualTo(first.quotes().subList(1,searched));
+        assertThat(reused.quotes().getFirst().reusedBefore(reused.checkedAt())).isTrue();
+        assertThat(reused.quotes().getLast().reusedBefore(reused.checkedAt())).isEqualTo(searched==1);
+        mvc.perform(get(resultUrl(second)).session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("이전에 찾은 결과를 다시 사용했어요")));
+    }
+
+    // 여러 곳을 찾다 중간에 실패해도 이미 비용을 낸 앞쪽 검색 결과는 장소에 남는다.
+    @Test void searchedPricesAreKeptWhenALaterLookupFails() {
+        answerPrices();
+        when(prices.lookup(any(),eq(OpenAiPriceClient.RESTAURANT))).thenThrow(new RecommendationException("AI_RATE_LIMIT","제한"));
+        var id=completedDraft();
+        var lodging=schedules.view(id,null,hash).result().lodging();
+        assertThat(lodging).isNotNull();
+        assertThatThrownBy(()->schedules.lookupPrices(id,null,hash)).isInstanceOf(RecommendationException.class);
+        em.clear();
+        assertThat(placeRepository.findById(lodging.chosenPlaceId()).orElseThrow().getDetailsJson()).contains("referencePrice");
+        assertThat(schedules.view(id,null,hash).result().prices()).isNull();
+    }
+
     @Test void createsIsolatedQueueCompletesAndRendersDraft() throws Exception {
         var id=create();
         assertThat(schedules.queued()).contains(id); assertThat(recommendations.queued()).doesNotContain(id);
