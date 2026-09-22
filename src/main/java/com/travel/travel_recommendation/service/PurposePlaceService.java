@@ -40,7 +40,7 @@ public class PurposePlaceService {
     private final TourApiClient tour;
     private final ObjectMapper mapper;
     private final ObjectProvider<PurposePlaceService> self;
-    private final ExpiringCache<String, List<String>> keywordCache = new ExpiringCache<>(KEYWORD_TTL, 500);
+    private final ExpiringCache<String, OpenAiPurposeClient.Terms> keywordCache = new ExpiringCache<>(KEYWORD_TTL, 500);
     private final ExpiringCache<String, List<KakaoPlace>> placeCache = new ExpiringCache<>(PLACE_TTL, 500);
 
     public record Task(UUID jobId, String requestJson, ConfirmedTravelConditions conditions, List<DestinationCandidate> destinations) {}
@@ -69,12 +69,13 @@ public class PurposePlaceService {
     /** 외부 호출만 하는 단계라 트랜잭션을 두지 않는다. */
     Found search(Task task) {
         String purpose = task.conditions().travelPurpose();
-        if (!ai.configured()) return new Found(result("SKIPPED", List.of(), List.of(), "AI 연결 설정이 없어 목적 시설을 찾지 않았어요."), List.of());
-        List<String> keywords;
-        try { keywords = keywordCache.get(purpose.strip(), () -> ai.keywords(purpose)); }
-        catch (RecommendationException e) { return new Found(result("FAILED", List.of(), List.of(), e.getMessage()), List.of()); }
+        if (!ai.configured()) return new Found(result("SKIPPED", List.of(), List.of(), "AI 연결 설정이 없어 목적 시설을 찾지 않았어요.", List.of()), List.of());
+        OpenAiPurposeClient.Terms terms;
+        try { terms = keywordCache.get(purpose.strip(), () -> ai.terms(purpose)); }
+        catch (RecommendationException e) { return new Found(result("FAILED", List.of(), List.of(), e.getMessage(), List.of()), List.of()); }
+        var keywords = terms.keywords(); var themes = terms.themes();
         if (keywords.isEmpty())
-            return new Found(result("SKIPPED", keywords, List.of(), "'" + purpose + "'은(는) 특정 시설로 찾을 목적이 아니라 목적 시설 검색을 하지 않았어요."), List.of());
+            return new Found(result("SKIPPED", keywords, List.of(), "'" + purpose + "'은(는) 특정 시설로 찾을 목적이 아니라 목적 시설 검색을 하지 않았어요.", themes), List.of());
         var regions = task.destinations().stream().map(DestinationCandidate::region).toList();
         Map<String, KakaoPlace> bySource = new LinkedHashMap<>();
         try {
@@ -82,7 +83,7 @@ public class PurposePlaceService {
                 for (var place : placeCache.get(keyword + "|" + String.join(",", regions), () -> facilities(keyword, regions)))
                     bySource.putIfAbsent(place.sourceId(), place);
         } catch (RecommendationException e) {
-            return new Found(result("FAILED", keywords, List.of(), e.getMessage()), List.of());
+            return new Found(result("FAILED", keywords, List.of(), e.getMessage(), themes), List.of());
         }
         // 여행지마다 검색 순서대로 최대 3곳, 전체 12곳까지만 쓴다.
         Map<String, Integer> perRegion = new HashMap<>(); List<KakaoPlace> kept = new ArrayList<>();
@@ -90,8 +91,8 @@ public class PurposePlaceService {
             if (kept.size() == MAX_TOTAL || perRegion.merge(place.region(), 1, Integer::sum) > MAX_PER_DESTINATION) continue;
             kept.add(place);
         }
-        if (kept.isEmpty()) return new Found(result("NONE", keywords, List.of(), "검색어(" + String.join(", ", keywords) + ")로 서비스 여행지 안의 시설을 찾지 못했어요."), List.of());
-        return new Found(result("FOUND", keywords, List.of(), null), kept);
+        if (kept.isEmpty()) return new Found(result("NONE", keywords, List.of(), "검색어(" + String.join(", ", keywords) + ")로 서비스 여행지 안의 시설을 찾지 못했어요.", themes), List.of());
+        return new Found(result("FOUND", keywords, List.of(), null, themes), kept);
     }
 
     /**
@@ -147,13 +148,13 @@ public class PurposePlaceService {
         places.flush();
         var search = found.search();
         if ("FOUND".equals(search.status()) && saved.isEmpty())
-            search = result("NONE", search.keywords(), List.of(), "찾은 시설을 여행지 관광지로 저장하지 못했어요.");
-        else if ("FOUND".equals(search.status())) search = result("FOUND", search.keywords(), saved, null);
+            search = result("NONE", search.keywords(), List.of(), "찾은 시설을 여행지 관광지로 저장하지 못했어요.", search.themes());
+        else if ("FOUND".equals(search.status())) search = result("FOUND", search.keywords(), saved, null, search.themes());
         job.attachRequest(mapper.writeValueAsString(task.conditions().withPurposeSearch(search)));
         jobs.flush();
     }
 
-    private static PurposeSearch result(String status, List<String> keywords, List<PurposePlace> places, String message) {
-        return new PurposeSearch(status, keywords, places, message, Instant.now());
+    private static PurposeSearch result(String status, List<String> keywords, List<PurposePlace> places, String message, List<String> themes) {
+        return new PurposeSearch(status, keywords, places, message, Instant.now(), themes);
     }
 }

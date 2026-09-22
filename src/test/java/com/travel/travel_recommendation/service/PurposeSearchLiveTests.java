@@ -23,12 +23,12 @@ class PurposeSearchLiveTests {
         var ai = new OpenAiPurposeClient(new OpenAiProperties(key, "gpt-4.1-mini"), new JsonMapper());
         var maps = new KakaoMapClient(new KakaoMapProperties(System.getenv("KAKAO_REST_API_KEY")), new JsonMapper());
         for (String purpose : List.of("상어 관람", "별 보기", "휴식")) {
-            var keywords = ai.keywords(purpose);
-            System.out.println("목적: " + purpose + " → 검색어 " + keywords);
+            var terms = ai.terms(purpose); var keywords = terms.keywords();
+            System.out.println("목적: " + purpose + " → 검색어 " + keywords + " · 가까운 분류 " + terms.themes());
             for (String keyword : keywords)
                 for (var place : maps.searchNationwide(keyword, REGIONS))
                     System.out.println("  " + keyword + " · " + place.region() + " · " + place.name() + " · " + place.category());
         }
-        assertThat(ai.keywords("상어 관람")).isNotEmpty();
+        assertThat(ai.terms("상어 관람").keywords()).isNotEmpty();
     }
 }

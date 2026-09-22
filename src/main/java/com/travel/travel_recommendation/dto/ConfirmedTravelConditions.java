@@ -42,6 +42,9 @@ public record ConfirmedTravelConditions(String inputMode, String originalText, S
             budget, partySize, accommodationNeeded, includeNearby, selectedKeywords, interpretationSummary, directRecommendation, travelPurpose, search);
     }
     /** 목적 시설이 있는 여행지 ID. 목적 검색을 하지 않았거나 찾지 못했으면 비어 있다. */
+    public List<String> purposeThemes() {
+        return purposeSearch == null ? List.of() : purposeSearch.themes();
+    }
     public List<Long> purposeDestinationIds() {
         return purposeSearch == null ? List.of() : purposeSearch.destinationIds();
     }

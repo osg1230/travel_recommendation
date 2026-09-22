@@ -80,7 +80,7 @@ public class RecommendationJobService {
         }
         job.searching();
         ConfirmedTravelConditions c=mapper.readValue(job.getRequestJson(),ConfirmedTravelConditions.class);
-        var found=candidates.find(c.region(),c.themeNames(),c.purposeDestinationIds());
+        var found=candidates.find(c);
         if(found.isEmpty()) {
             job.fail("NO_DESTINATIONS","이 지역에서 조회 가능한 여행지가 없어요. 시·도 이름(예: 강원, 전북)으로 고르거나 상관없음으로 선택해 주세요.");
         } else {

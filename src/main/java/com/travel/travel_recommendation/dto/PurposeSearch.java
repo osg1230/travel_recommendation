@@ -9,10 +9,16 @@ import java.util.List;
  * 서비스 여행지 안에 있는 곳이다. 시설 이름·주소는 카카오에서 확인했지만 전시·체험 내용은 확인하지 않았다.
  * status: FOUND(시설 있음), NONE(검색했지만 여행지 안에 없음), SKIPPED(장소로 찾을 목적이 아님), FAILED(검색 실패).
  */
-public record PurposeSearch(String status, List<String> keywords, List<PurposePlace> places, String message, Instant checkedAt) {
+public record PurposeSearch(String status, List<String> keywords, List<PurposePlace> places, String message, Instant checkedAt,
+                            List<String> themes) {
+    /** themes는 목적과 가까운 여행지 분류(예: 갯벌 체험 → 바다)다. 시설 유무와 관계없이 후보를 고를 때 사용자 취향 다음으로 쓴다. */
     public PurposeSearch {
         keywords = keywords == null ? List.of() : List.copyOf(keywords);
         places = places == null ? List.of() : List.copyOf(places);
+        themes = themes == null ? List.of() : List.copyOf(themes);
+    }
+    public PurposeSearch(String status, List<String> keywords, List<PurposePlace> places, String message, Instant checkedAt) {
+        this(status, keywords, places, message, checkedAt, List.of());
     }
     /** placeId는 장소 목록에 저장한 관광지 ID, destinationId는 그 시설이 있는 여행지 ID다. */
     public record PurposePlace(Long placeId, Long destinationId, String destinationName, String name, String address,
