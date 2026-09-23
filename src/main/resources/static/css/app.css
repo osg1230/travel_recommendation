@@ -112,10 +112,14 @@ h3 { font-size: 17px; margin: 0 0 6px; }
 .help { margin: 6px 0 0; color: var(--text-muted); font-size: 13px; }
 .required-note { margin: 0 0 20px; font-size: 13px; color: var(--text-muted); }
 
-/* 카드: 화면의 기본 묶음 단위 */
-.card, .condition-section, .place-row, .travel-story {
+/* 카드: 화면의 기본 묶음 단위. 그림자는 바깥 카드에만 두고,
+   카드 안에 놓이는 목록 항목·표·요약은 테두리만 두어 겹친 카드처럼 보이지 않게 한다. */
+.card, .condition-section {
     background: var(--surface); border: 1px solid var(--line);
     border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.place-row, .travel-story {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
 }
 .card, .condition-section { padding: 22px; margin-bottom: var(--gap); }
 .condition-section { scroll-margin-top: 76px; }
@@ -130,7 +134,7 @@ h3 { font-size: 17px; margin: 0 0 6px; }
 .nearby-attractions { margin: 12px 0; padding: 0; list-style: none; }
 .nearby-attractions li { padding: 10px 0; border-top: 1px solid var(--line); }
 .nearby-attractions li p { margin: 2px 0; }
-.destination-candidate { padding: 18px 20px; margin-bottom: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.destination-candidate { padding: 18px 20px; margin-bottom: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
 
 /* 입력 요소 */
 .field { margin-bottom: 20px; }
@@ -200,14 +204,14 @@ main > p[role=status], .card > p[role=status], .condition-section > p[role=statu
 .guide-note p:last-child { margin-bottom: 0; }
 
 /* 표: 회원 관리 등 목록 화면 */
-table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 caption { text-align: left; padding: 14px 16px 0; font-weight: 700; }
 th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--line); font-size: 14px; vertical-align: top; }
 thead th { background: var(--surface-muted); color: var(--text-muted); font-size: 13px; }
 tbody tr:last-child td { border-bottom: 0; }
 
 /* 조건 요약 목록 */
-.condition-summary { display: grid; grid-template-columns: 150px 1fr; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+.condition-summary { display: grid; grid-template-columns: 150px 1fr; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 .condition-summary dt, .condition-summary dd { margin: 0; padding: 14px 16px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .condition-summary dt { color: var(--text-muted); background: var(--surface-muted); font-weight: 600; }
 
