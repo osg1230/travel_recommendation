@@ -150,6 +150,8 @@ class RecommendationHistoryIntegrationTests {
         mvc.perform(get("/my/recommendations")).andExpect(status().is3xxRedirection());
         mvc.perform(get("/my/recommendations").with(user(owner.getLoginId()))).andExpect(status().isOk())
             .andExpect(content().string(containsString("추천 완료")))
+            .andExpect(content().string(containsString("로그인 전에 이 브라우저에서 받은 추천은 로그인할 때 이력으로 옮겨요")))
+            .andExpect(content().string(containsString("30분 넘게")))
             .andExpect(content().string(containsString("/my/recommendations/"+request)))
             .andDo(response->capture("recommendations.html",response.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8)));
         mvc.perform(get("/my/recommendations/"+request).with(user(owner.getLoginId()))).andExpect(status().isOk())

@@ -38,6 +38,8 @@ a:hover { color: var(--brand-strong); }
     background: var(--surface); border-bottom: 1px solid var(--line);
 }
 .site-header .brand { display: inline-flex; align-items: center; gap: 9px; font-size: 19px; font-weight: 800; text-decoration: none; color: var(--text); letter-spacing: -.4px; }
+/* 로그인 직후 한 번만 보이는 안내. 헤더 아래 한 줄 전체를 쓴다. */
+.header-notice { flex-basis: 100%; margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--ok-soft); color: var(--ok); font-size: 14px; }
 .brand-mark { width: 30px; height: 30px; color: var(--brand); flex-shrink: 0; }
 .site-nav { display: flex; align-items: center; gap: 4px 6px; flex-wrap: wrap; margin-left: auto; }
 .nav-toggle { display: none; }

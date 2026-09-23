@@ -46,6 +46,9 @@ class ItineraryIntegrationTests {
     @MockitoBean OpenAiPriceClient prices;
     @Autowired PlaceOperatingService operating;
     @Autowired PlaceRepository placeRepository;
+    @Autowired com.travel.travel_recommendation.repository.UserRepository users;
+    @Autowired com.travel.travel_recommendation.service.SavedItineraryService saved;
+    @Autowired com.travel.travel_recommendation.repository.ItineraryRepository itineraryRows;
     private MockHttpSession session;
     private byte[] hash;
     private UUID parent;
@@ -238,6 +241,20 @@ class ItineraryIntegrationTests {
             else assertThat(response.getResponse().getHeader("Location")).isEqualTo(location);
         }
         verifyNoInteractions(maps);
+    }
+    @Test void adoptedGuestDraftIsSavedWithTheAdoptedRecommendation() {
+        String suffix=UUID.randomUUID().toString().substring(0,8);
+        var member=users.saveAndFlush(new com.travel.travel_recommendation.entity.User("draft_"+suffix,"unused-hash","초안"+suffix));
+        var id=schedules.create(parent,destination,null,hash,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90,
+            null,null,null,LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).plusDays(10));
+        var work=schedules.claim(id); schedules.complete(work,schedules.generate(work)); em.flush();
+        assertThat(recommendations.adoptGuestJobs(member.getLoginId(),hash)).isEqualTo(1);
+        em.flush(); em.clear();
+        var recommendation=jobs.findById(parent).orElseThrow(); var draft=jobs.findById(id).orElseThrow();
+        assertThat(draft.getUserId()).isEqualTo(member.getId());
+        assertThat(draft.getRequestId()).isNotNull().isEqualTo(recommendation.getRequestId());
+        var savedId=saved.save(id,member.getLoginId()).id(); em.flush();
+        assertThat(itineraryRows.findById(savedId).orElseThrow().getRequestId()).isEqualTo(recommendation.getRequestId());
     }
     @Test void refusesOtherGuestWrongTypeAndExpiredJob() throws Exception {
         var id=create();
