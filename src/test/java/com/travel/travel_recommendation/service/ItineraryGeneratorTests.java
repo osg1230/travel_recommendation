@@ -41,7 +41,10 @@ class ItineraryGeneratorTests {
     @Test void overnightEndsAtHotelAndNextDayStartsWithTransferFromHotel() {
         var input=input(2,LocalTime.of(18,0)); var result=generator.generate(input);
         assertThat(result.days()).hasSize(2);
-        assertThat(result.days().getFirst().items().getLast().type()).isEqualTo("STAY");
+        // 숙박하는 날은 숙소 도착 뒤 숙소 근처 저녁으로 하루를 마친다.
+        var first=result.days().getFirst().items();
+        assertThat(first.get(ItineraryGenerator.stayIndex(first)).type()).isEqualTo("STAY");
+        assertThat(first.getLast().type()).isEqualTo("MEAL");
         assertThat(result.days().get(1).items().getFirst().type()).isEqualTo("TRANSIT");
         assertThat(result.days().get(1).items().getFirst().name()).startsWith("장소4 →");
         assertThat(result.days().stream().flatMap(d->d.items().stream()).filter(i->i.type().equals("VISIT")).map(Item::placeId)).containsExactly(1L,2L);
@@ -50,16 +53,17 @@ class ItineraryGeneratorTests {
         // 관광지 1·2 근처의 숙소 5와 멀리 있는 숙소 40. 목록의 첫 후보(40)가 아니라 가까운 5를 골라야 한다.
         var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,null,2,true,false,List.of(),"");
         var pool=new PlaceCandidateView(UUID.randomUUID(),new DestinationCandidate(99L,"강릉","강원","소개","https://www.gn.go.kr/",LocalDateTime.of(2026,9,1,0,0)),2,true,
-            List.of(place(1),place(2)),List.of(place(40),place(5)),List.of(place(3),place(6)));
+            List.of(place(1),place(2)),List.of(place(40),place(5)),List.of(place(3),place(6),place(7)));
         var input=new Input(pool.jobId(),pool,conditions,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90);
         var result=generator.generate(input);
         assertThat(result.lodging().chosenPlaceId()).isEqualTo(5L);
         assertThat(result.lodging().options()).extracting(StayOption::placeId).containsExactly(5L,40L);
         assertThat(result.lodging().reason()).contains("관광지 2곳").contains("숙소 후보 2곳 중 가장 가까워요");
-        var stay=result.days().getFirst().items().getLast();
+        var firstDay=result.days().getFirst().items();
+        var stay=firstDay.get(ItineraryGenerator.stayIndex(firstDay));
         assertThat(stay.placeId()).isEqualTo(5L);
         assertThat(stay.note()).contains("추천 이유:");
-        // 이틀 동안 음식점 후보가 2곳이면 같은 곳을 반복하지 않는다.
+        // 이틀 동안 식사 3번(1일차 점심·저녁, 2일차 점심)에 음식점 후보가 3곳이면 같은 곳을 반복하지 않는다.
         var meals=result.days().stream().flatMap(d->d.items().stream()).filter(i->i.type().equals("MEAL")).toList();
         assertThat(meals).extracting(Item::placeId).doesNotHaveDuplicates();
         // 식사 항목에 음식 분류·고른 이유와 공식 자료의 지역 대표 음식을 적는다.
@@ -68,11 +72,58 @@ class ItineraryGeneratorTests {
         // 날마다 다른 숙소로 바꾼 결과는 받지 않는다.
         var days=new ArrayList<>(result.days());
         var firstItems=new ArrayList<>(days.getFirst().items());
-        var last=firstItems.removeLast();
-        firstItems.add(new Item(last.type(),40L,last.name(),last.start(),last.end(),last.note(),last.mapUrl(),last.sourceUrl(),null,null));
+        int stayAt=ItineraryGenerator.stayIndex(firstItems);
+        var last=firstItems.get(stayAt);
+        firstItems.set(stayAt,new Item(last.type(),40L,last.name(),last.start(),last.end(),last.note(),last.mapUrl(),last.sourceUrl(),null,null));
         days.set(0,new Day(1,days.getFirst().date(),firstItems));
         var changed=new Result(result.destination(),days,result.transport(),result.createdAt()).withLodging(result.lodging());
         assertThatThrownBy(()->generator.validate(input,changed)).isInstanceOf(RecommendationException.class);
+    }
+    // 09~18시 1박 2일: 1일차는 관광 → 숙소 도착·휴식 → 18시 숙소 근처 저녁(점심과 다른 곳), 2일차(마지막 날)는 저녁이 없다.
+    @Test void stayDayAddsDinnerNearHotelAfterArrival() {
+        var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,null,2,true,false,List.of(),"");
+        // 숙소 5 바로 옆 음식점 7, 관광지 옆 음식점 3.
+        var pool=new PlaceCandidateView(UUID.randomUUID(),new DestinationCandidate(99L,"강릉","강원","소개","https://www.gn.go.kr/",LocalDateTime.of(2026,9,1,0,0)),2,true,
+            List.of(place(1),place(2)),List.of(place(5)),List.of(place(3),place(7)));
+        var input=new Input(pool.jobId(),pool,conditions,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90);
+        var result=generator.generate(input);
+        var first=result.days().getFirst().items();
+        int stayAt=ItineraryGenerator.stayIndex(first);
+        var meals=first.stream().filter(i->i.type().equals("MEAL")).toList();
+        assertThat(meals).hasSize(2);
+        var dinner=meals.getLast();
+        assertThat(first.getLast()).isEqualTo(dinner);
+        assertThat(first.indexOf(dinner)).isGreaterThan(stayAt);
+        assertThat(dinner.start()).isEqualTo(LocalTime.of(18,0));
+        assertThat(dinner.note()).startsWith("저녁 식사").contains("장소5에서 직선");
+        assertThat(dinner.placeId()).isNotEqualTo(meals.getFirst().placeId());
+        // 숙소 휴식은 저녁 출발 전까지 이어진다. 관광은 하루 종료 시간(18시) 안이다.
+        assertThat(first.get(stayAt).end()).isBefore(LocalTime.of(18,0));
+        assertThat(first.stream().filter(i->i.type().equals("VISIT"))).allSatisfy(i->assertThat(i.end()).isBeforeOrEqualTo(LocalTime.of(18,0)));
+        assertThat(result.days().get(1).items().stream().filter(i->i.type().equals("MEAL"))).hasSize(1);
+        generator.validate(input,result);
+        var report=ItineraryConditionReport.evaluate(input,result);
+        assertThat(report.complete()).isTrue();
+        assertThat(report.checks()).anySatisfy(c->{ assertThat(c.name()).isEqualTo("시간 충돌"); assertThat(c.detail()).contains("숙소 근처 저녁은 21:00까지"); });
+        assertThat(report.checks()).anySatisfy(c->{ assertThat(c.name()).isEqualTo("숙박"); assertThat(c.detail()).contains("숙소 근처에서 저녁"); });
+        // 저녁 뒤에 관광을 더 넣은 결과는 받지 않는다.
+        var days=new ArrayList<>(result.days());
+        var items=new ArrayList<>(first);
+        var extra=items.get(stayAt);
+        items.add(new Item("VISIT",2L,"장소2",dinner.end(),dinner.end().plusMinutes(90),"",extra.mapUrl(),extra.sourceUrl(),null,null));
+        days.set(0,new Day(1,days.getFirst().date(),items));
+        var changed=new Result(result.destination(),days,result.transport(),result.createdAt()).withLodging(result.lodging());
+        assertThatThrownBy(()->generator.validate(input,changed)).isInstanceOf(RecommendationException.class);
+    }
+    // 하루 종료를 늦게(20:50) 정해도 숙박하는 날 저녁은 한 번만 넣는다(점심 1 + 저녁 1). 마지막 날은 점심만 있다.
+    @Test void stayDayDinnerIsAddedOnlyOnce() {
+        var late=input(2,LocalTime.of(20,50));
+        var result=generator.generate(late);
+        var first=result.days().getFirst().items();
+        assertThat(first.stream().filter(i->i.type().equals("MEAL"))).hasSize(2);
+        assertThat(first.stream().filter(i->i.type().equals("MEAL") && i.note().startsWith("저녁 식사"))).hasSize(1);
+        assertThat(result.days().get(1).items().stream().filter(i->i.type().equals("MEAL"))).hasSize(1);
+        generator.validate(late,result);
     }
     @Test void hotelWithoutLocationIsSkippedWhenAnotherCanBeUsed() {
         var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,null,2,true,false,List.of(),"");
