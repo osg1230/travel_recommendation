@@ -49,6 +49,23 @@ class ItineraryConditionReportTests {
         assertThat(status(report,"숙박")).isEqualTo(Status.NEEDS_CHECK);
         assertThat(report.count(Status.UNMET)).isZero();
     }
+    // 고른 여행 취향마다 맞는 관광지가 일정에 있는지 보여 준다. 선호 조건이라 없으면 미충족이 아니라 확인 필요다.
+    @Test void travelThemesAreReportedAsPreferenceByPlaceCategory() {
+        var base=input(1,LocalDate.of(2026,10,1),null);
+        assertThat(status(ItineraryConditionReport.evaluate(base,generator.generate(base)),"여행 취향")).isEqualTo(Status.NOT_APPLICABLE);
+        var culture=new TravelKeyword(30L,"THEME","문화·역사","{}"); var sea=new TravelKeyword(27L,"THEME","바다","{}");
+        var shrine=new PlaceCandidate(1L,"경기전","강원 강릉시 경포로 1","여행 > 관광,명소 > 문화유적","소개","https://www.gn.go.kr/","https://map.kakao.com/",LocalDateTime.of(2026,9,1,0,0));
+        var c=base.conditions();
+        var conditions=new ConfirmedTravelConditions(c.inputMode(),c.originalText(),c.region(),c.startDate(),c.endDate(),c.durationDays(),c.budget(),
+            c.partySize(),c.accommodationNeeded(),c.includeNearby(),List.of(culture,sea),c.interpretationSummary());
+        var pool=new PlaceCandidateView(base.places().jobId(),base.places().destination(),1,false,List.of(shrine,place(2)),List.of(),base.places().restaurants());
+        var input=new Input(pool.jobId(),pool,conditions,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90);
+        var report=ItineraryConditionReport.evaluate(input,generator.generate(input));
+        var check=report.checks().stream().filter(x->x.name().equals("여행 취향")).findFirst().orElseThrow();
+        assertThat(check.status()).isEqualTo(Status.NEEDS_CHECK);
+        assertThat(check.detail()).contains("문화·역사 1곳(경기전)").contains("바다에 맞는 관광지는 확인된 후보에서 찾지 못했어요");
+        assertThat(report.complete()).isTrue();
+    }
     @Test void walkingEstimatedMovesAreShownAsEstimateAndNeedCheck() {
         when(maps.travelTime(any(),any(),any())).thenAnswer(invocation->new KakaoMapClient.TravelTime(invocation.getArgument(2),150,130,Instant.now(),"도보 약 3분 · 추정",true));
         var input=input(1,LocalDate.of(2026,10,1),null);

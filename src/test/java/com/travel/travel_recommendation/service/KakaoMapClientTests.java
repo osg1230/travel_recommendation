@@ -125,20 +125,36 @@ class KakaoMapClientTests {
     }
     private java.util.Map<String,String> searchItem(String id,String address) {
         return new java.util.HashMap<>(java.util.Map.of("id",id,"place_name","장소"+id,"address_name",address,
-            "road_address_name","","category_group_code","AT4","category_name","여행 > 관광명소",
+            "road_address_name","","category_group_code","AT4","category_name","여행 > 관광,명소",
             "x","128.87","y","37.77","place_url","http://place.map.kakao.com/"+id));
     }
     @Test void searchFiltersRegionCategoryCoordinatesAndUrl() {
         var valid=searchItem("123","강원 강릉시 죽헌동 1");
         var other=searchItem("124","강원 동해시 천곡동 1");
-        var wrongCategory=searchItem("125","강원 강릉시 죽헌동 2"); wrongCategory.put("category_group_code","FD6");
+        var wrongCategory=searchItem("125","강원 강릉시 죽헌동 2"); wrongCategory.put("category_group_code","FD6"); wrongCategory.put("category_name","음식점 > 한식");
         var badCoordinate=searchItem("126","강원 강릉시 죽헌동 3"); badCoordinate.put("x","NaN");
         var badUrl=searchItem("127","강원 강릉시 죽헌동 4"); badUrl.put("place_url","https://evil.example/127");
         body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(valid,valid,other,wrongCategory,badCoordinate,badUrl))));
         var found=client("key").searchPlaces("강원특별자치도 강릉시","ATTRACTION");
         assertThat(found).hasSize(1); assertThat(found.getFirst().url()).isEqualTo("https://place.map.kakao.com/123");
         assertThat(found.getFirst().address()).isEqualTo("강원 강릉시 죽헌동 1");
-        assertThat(path.get()).contains("category_group_code=AT4","size=15","page=1");
+        // 관광지는 분류 코드 대신 분류 이름으로 거른다(대표 명소는 코드가 비어 있는 경우가 많다).
+        assertThat(path.get()).contains("size=15","page=1").doesNotContain("category_group_code");
+    }
+    // 분류 코드가 비어 있는 대표 명소도 받고, 다른 후보 안의 시설과 관광명소가 아닌 곳은 뺀다. 마지막 쪽이 아니면 3쪽까지 읽는다.
+    @Test void attractionSearchKeepsUncodedLandmarksAndDropsSubPlaces() {
+        var village=searchItem("401","전북특별자치도 전주시 완산구 교동 1"); village.put("category_group_code",""); village.put("place_name","전주한옥마을");
+        var shrine=searchItem("402","전북특별자치도 전주시 완산구 풍남동3가 1"); shrine.put("category_group_code",""); shrine.put("place_name","경기전");
+        shrine.put("category_name","여행 > 관광,명소 > 문화유적 > 사당,제단");
+        var stone=searchItem("403","전북특별자치도 전주시 완산구 풍남동3가 2"); stone.put("category_group_code",""); stone.put("place_name","경기전 하마비");
+        var church=searchItem("404","전북특별자치도 전주시 완산구 전동 1"); church.put("category_group_code",""); church.put("category_name","문화,예술 > 종교 > 천주교 > 성당");
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("meta",java.util.Map.of("is_end",false),
+            "documents",java.util.List.of(village,shrine,stone,church))));
+        int before=calls.get();
+        var found=client("key").searchPlaces("전북특별자치도 전주시","ATTRACTION");
+        assertThat(found).extracting(com.travel.travel_recommendation.dto.KakaoPlace::name).containsExactly("전주한옥마을","경기전");
+        assertThat(calls.get()-before).isEqualTo(3);
+        assertThat(path.get()).contains("page=3");
     }
     // 목적 시설 전국 검색은 관광명소·문화시설만 받고, 주소가 서비스 여행지 안인 곳을 그 여행지 지역으로 돌려준다.
     @Test void nationwideSearchKeepsFacilitiesInsideServiceRegions() {

@@ -119,8 +119,9 @@ public class ItineraryJobService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"하루 시작·종료 시간을 확인해 주세요.");
         // 하루 시간·체류시간으로 추정한 수만큼 관광지를 고른다. 실제로 다 들어가는지는 일정 생성 때 이동시간으로 다시 확인한다.
         List<PlaceCandidate> selected;
-        // 가운데에서 가까운 곳부터, 같은 종류(해수욕장 등)는 돌아가며 고른다.
-        var ordered=TripConstraints.mixKinds(TripConstraints.nearCenterFirst(places.attractions()));
+        // 가운데에서 가까운 곳부터, 같은 종류(해수욕장 등)는 돌아가며 고른다. 고른 여행 취향에 맞는 곳은 그중에서도 먼저 고른다.
+        var ordered=ThemePlaces.themeFirst(TripConstraints.mixKinds(TripConstraints.nearCenterFirst(places.attractions())),
+            current.conditions().themeNames());
         try {
             selected=TripConstraints.select(ordered,days,start,end,visitMinutes,constraints);
         } catch(IllegalArgumentException invalid) {

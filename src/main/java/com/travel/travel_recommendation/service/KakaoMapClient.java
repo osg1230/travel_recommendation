@@ -80,10 +80,9 @@ public class KakaoMapClient {
     public List<KakaoPlace> searchPlaces(String region,String type) {
         String city=searchWord(region);
         if(city==null) throw failure("MAP_REGION","여행지 지역 이름을 확인하지 못해 장소를 찾을 수 없어요.");
-        // 관광지는 하루 시간에 맞춰 여러 곳을 고를 수 있도록 한 번에 받을 수 있는 최대(15곳)까지 받는다.
+        if("ATTRACTION".equals(type)) return searchAttractions(city,region);
         String code, keyword; int limit;
         switch(type) {
-            case "ATTRACTION" -> { code="AT4"; keyword="관광지"; limit=15; }
             case "RESTAURANT" -> { code="FD6"; keyword="음식점"; limit=5; }
             case "ACCOMMODATION" -> { code="AD5"; keyword="숙소"; limit=3; }
             default -> throw invalid();
@@ -92,6 +91,29 @@ public class KakaoMapClient {
             +URLEncoder.encode(city+" "+keyword,StandardCharsets.UTF_8)
             +"&category_group_code="+code+"&rect=124,33,132,39&size=15&page=1&sort=accuracy"));
         return places(root,item->code.equals(item.path("category_group_code").asText()),List.of(region),type,limit);
+    }
+
+    /**
+     * 관광지는 "○○ 명소"로 찾고 분류 이름이 '여행 > 관광,명소'인 곳만 받는다. 한옥마을·경기전처럼 대표 명소는
+     * 분류 코드(AT4)가 비어 있는 경우가 많아 코드로 거르면 빠지기 때문이다. 정확도 순으로 최대 3쪽(45건)을 읽어
+     * 앞쪽 15곳을 쓰고, "경기전 하마비"처럼 다른 후보 안의 시설은 뺀다.
+     */
+    private List<KakaoPlace> searchAttractions(String city,String region) {
+        List<KakaoPlace> found=new ArrayList<>(); Set<String> ids=new HashSet<>();
+        for(int page=1;page<=3;page++) {
+            var root=get(localEndpoint.resolve("/v2/local/search/keyword.json?query="
+                +URLEncoder.encode(city+" 명소",StandardCharsets.UTF_8)+"&rect=124,33,132,39&size=15&page="+page+"&sort=accuracy"));
+            for(var place:places(root,item->item.path("category_name").asText("").startsWith("여행 > 관광,명소"),List.of(region),"ATTRACTION",15))
+                if(ids.add(place.sourceId())) found.add(place);
+            if(root.path("meta").path("is_end").asBoolean(true)) break;
+        }
+        return withoutSubPlaces(found).stream().limit(15).toList();
+    }
+
+    /** 다른 후보 이름 뒤에 한 칸 띄고 이어지는 곳(예: "경기전 하마비", "○○전당 공연장")은 그 후보 안의 시설로 보고 뺀다. */
+    static List<KakaoPlace> withoutSubPlaces(List<KakaoPlace> places) {
+        return places.stream().filter(p->places.stream().noneMatch(other->other!=p
+            && p.name().startsWith(other.name()+" "))).toList();
     }
 
     /**

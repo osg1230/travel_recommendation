@@ -80,9 +80,12 @@ public class PlaceCandidateService {
         // 여행 목적 시설(예: 아쿠아리움)은 후보 수 제한에 밀리지 않도록 맨 앞에 둔다.
         var purposeIds = conditions.purposeSearch() == null ? List.<Long>of()
             : conditions.purposeSearch().placesIn(destinationId).stream().map(p -> p.placeId()).toList();
+        // 고른 여행 취향(예: 문화·역사)에 맞는 관광지는 목적 시설 다음으로 둔다. 관광지는 최대 16곳까지만 후보가 되기 때문이다.
+        var themes = conditions.themeNames();
         var candidates = places.findLocalPlaces(current.getRegion()).stream()
             .filter(place -> usable(place, current.getRegion()))
             .sorted(Comparator.comparing((Place p)->!purposeIds.contains(p.getId()))
+                .thenComparing((Place p)->ThemePlaces.matched(p.getName(),p.getSubtype(),themes).isEmpty())
                 .thenComparing((Place p)->!"KAKAO".equals(p.getSourceProvider()))
                 .thenComparing(Place::getName).thenComparing(Place::getId)).toList();
         var distinct=new ArrayList<Place>(); Set<String> seen=new HashSet<>();
