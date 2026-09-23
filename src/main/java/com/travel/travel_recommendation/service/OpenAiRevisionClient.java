@@ -24,8 +24,17 @@ public class OpenAiRevisionClient {
      * CLARIFY면 question만 쓰고 일정은 바꾸지 않는다. UNSUPPORTED(식사·숙소·날짜 변경처럼 할 수 없는 요청)면
      * question에 서버가 정한 안내를 담는다. REVISE면 replace와 add의 개수가 같아야 한다.
      */
+    /**
+     * unavailable은 요청에 이름이 나왔지만 현재 일정·교체 후보에 없는 장소(서버가 요청 문장과 후보 이름으로 다시 확인한 것만)다.
+     * exactPlace는 사용자가 비슷한 곳이 아니라 그 장소 자체를 원했는지다.
+     */
     public record Proposal(boolean clarify, String question, List<Long> replace, List<Long> add,
-                           LocalTime start, LocalTime end, Integer visitMinutes, String explanation, boolean unsupported) {
+                           LocalTime start, LocalTime end, Integer visitMinutes, String explanation, boolean unsupported,
+                           List<String> unavailable, boolean exactPlace) {
+        public Proposal(boolean clarify, String question, List<Long> replace, List<Long> add,
+                        LocalTime start, LocalTime end, Integer visitMinutes, String explanation, boolean unsupported) {
+            this(clarify, question, replace, add, start, end, visitMinutes, explanation, unsupported, List.of(), false);
+        }
         public Proposal(boolean clarify, String question, List<Long> replace, List<Long> add,
                         LocalTime start, LocalTime end, Integer visitMinutes, String explanation) {
             this(clarify, question, replace, add, start, end, visitMinutes, explanation, false);
@@ -88,7 +97,11 @@ public class OpenAiRevisionClient {
                 CLARIFY는 할 수 있는 수정인데 대상·방향만 모를 때만 쓴다. 할 수 없는 수정은 CLARIFY로 되묻지 않고 UNSUPPORTED로 한다.
                 바꿀 대상(어느 관광지인지, 또는 시간인지)이나 바꿀 방향(어떤 곳으로, 몇 시로)이 하나도 없는 요청이 그렇다(예: '좀 바꿔줘', '다르게 해줘').
                 CLARIFY면 question에 무엇을 바꾸고 싶은지 묻는 질문을 쓰며 replace·add는 빈 배열, 시간 값은 null로 둔다.
-                spareCandidates 중 요청에 맞는 후보가 없으면 CLARIFY로 그 사실을 알린다.
+                요청에 이름이 나온 장소가 currentAttractions·spareCandidates에 없으면 unavailablePlaces에 요청에 적힌 그대로 그 이름을 넣고,
+                그 대신 spareCandidates 중 가장 비슷한 곳으로 REVISE한다. 사용자가 그 장소 자체를 원했으면('○○로 바꿔 줘', '○○ 넣어 줘')
+                exactPlace를 true로, 비슷한 곳을 원했으면('○○처럼', '○○ 같은 곳') false로 한다. 이 경우에도 CLARIFY로 되묻지 않는다.
+                요청에 장소 이름이 없거나 모두 후보에 있으면 unavailablePlaces는 빈 배열, exactPlace는 false다.
+                spareCandidates 중 요청에 맞는 후보가 전혀 없으면 CLARIFY로 그 사실을 알린다.
                 explanation에는 무엇을 왜 바꿨는지 1~2문장으로 쓴다. 영업시간·가격·혼잡도를 확인했다고 단정하지 않는다.
                 question·explanation은 사용자에게 그대로 보인다. placeId 숫자나 currentAttractions 같은 입력 필드 이름을 쓰지 말고
                 장소 이름과 '현재 일정', '교체 후보'처럼 풀어 쓴 말만 쓴다. UNSUPPORTED·CLARIFY가 아니면 question은 빈 문자열이다.
@@ -119,7 +132,7 @@ public class OpenAiRevisionClient {
                 }
             }
             if(output==null || output.length()>6000) throw invalid("응답 형식이 달라요.");
-            return validate(mapper.readTree(output),current,spare,fixed);
+            return validate(mapper.readTree(output),current,spare,fixed,request);
         } catch(RecommendationException e) { throw e; }
         catch(HttpTimeoutException e) { throw failure("AI_TIMEOUT","AI 수정 요청 응답 시간이 초과됐어요. 다시 시도해 주세요."); }
         catch(InterruptedException e) { Thread.currentThread().interrupt(); throw failure("AI_INTERRUPTED","AI 수정 요청 처리가 중단됐어요."); }
@@ -128,8 +141,9 @@ public class OpenAiRevisionClient {
     }
 
     /** 응답을 서버 규칙으로 다시 검사한다. 형식 문제는 AI_INVALID_RESPONSE로 알려 호출한 쪽이 재요청할 수 있게 한다. */
-    Proposal validate(JsonNode root,List<Candidate> current,List<Candidate> spare,Set<Long> fixed) {
-        if(!root.isObject() || root.size()!=8) throw invalid("응답 형식이 달라요.");
+    Proposal validate(JsonNode root,List<Candidate> current,List<Candidate> spare,Set<Long> fixed,String request) {
+        if(!root.isObject() || root.size()!=10) throw invalid("응답 형식이 달라요.");
+        if(!root.path("exactPlace").isBoolean()) throw invalid("exactPlace는 true 또는 false여야 해요.");
         String action=root.path("action").asText("");
         if(!Set.of("REVISE","CLARIFY","UNSUPPORTED").contains(action)) throw invalid("action은 REVISE·CLARIFY·UNSUPPORTED 중 하나여야 해요.");
         var replace=ids(root.path("replace")); var add=ids(root.path("add"));
@@ -151,7 +165,46 @@ public class OpenAiRevisionClient {
             visit=root.path("visitMinutes").intValue();
             if(visit<30 || visit>180) throw invalid("visitMinutes는 30~180 사이여야 해요.");
         }
-        return new Proposal(false,null,replace,add,start,end,visit,shown(text(root.path("explanation")),known));
+        var missing=unavailable(root.path("unavailablePlaces"),request,current,spare);
+        // "○○처럼", "○○ 같은 곳"은 비슷한 곳을 원한 요청이다. GPT가 콕 집은 요청으로 잘못 보더라도 서버 규칙을 따른다.
+        boolean exact=!missing.isEmpty() && root.path("exactPlace").booleanValue() && missing.stream().noneMatch(n->asksSimilar(request,n));
+        return new Proposal(false,null,replace,add,start,end,visit,shown(text(root.path("explanation")),known),false,missing,exact);
+    }
+
+    /** 요청에서 장소 이름 바로 뒤(8글자 안)에 "처럼·같은·같이·비슷·느낌·분위기"가 오면 비슷한 곳을 원한 것으로 본다. */
+    static boolean asksSimilar(String request,String name) {
+        if(request==null) return false;
+        int at=request.indexOf(name);
+        while(at>=0) {
+            String after=request.substring(at+name.length(),Math.min(request.length(),at+name.length()+8));
+            if(after.matches("(?s)\\s*(처럼|같은|같이|비슷|느낌|분위기).*")) return true;
+            at=request.indexOf(name,at+1);
+        }
+        return false;
+    }
+
+    /**
+     * GPT가 "후보에 없다"고 한 장소 이름을 그대로 믿지 않는다. 요청 문장에 실제로 들어 있고, 현재 일정·교체 후보의
+     * 이름과 겹치지 않는 이름만 남긴다. 맞지 않는 이름은 버리기만 하고 수정안은 실패시키지 않는다.
+     */
+    static List<String> unavailable(JsonNode node,String request,List<Candidate> current,List<Candidate> spare) {
+        if(!node.isArray()) throw new RecommendationException("AI_INVALID_RESPONSE","unavailablePlaces는 배열이어야 해요.");
+        String asked=compact(request);
+        var known=new ArrayList<String>();
+        current.forEach(c->known.add(compact(c.name()))); spare.forEach(c->known.add(compact(c.name())));
+        var result=new ArrayList<String>();
+        for(JsonNode item:node) {
+            if(!item.isTextual()) continue;
+            String name=item.asText().strip(), key=compact(name);
+            if(key.length()<2 || name.length()>40 || !asked.contains(key) || result.contains(name)) continue;
+            if(known.stream().anyMatch(k->!k.isEmpty() && (k.contains(key) || key.contains(k)))) continue;
+            result.add(name);
+            if(result.size()==3) break;
+        }
+        return List.copyOf(result);
+    }
+    private static String compact(String text) {
+        return text==null?"":text.replaceAll("[^가-힣A-Za-z0-9]","").toLowerCase(java.util.Locale.ROOT);
     }
     private List<Long> ids(JsonNode node) {
         if(!node.isArray() || node.size()>8) throw invalid("replace·add는 배열이어야 해요.");
@@ -186,14 +239,16 @@ public class OpenAiRevisionClient {
     private Map<String,Object> schema(List<Candidate> current,List<Candidate> spare) {
         var nullableString=Map.of("type",List.of("string","null"));
         return Map.of("type","object","additionalProperties",false,
-            "required",List.of("action","question","replace","add","start","end","visitMinutes","explanation"),
+            "required",List.of("action","question","replace","add","start","end","visitMinutes","explanation","unavailablePlaces","exactPlace"),
             "properties",Map.of("action",Map.of("type","string","enum",List.of("REVISE","CLARIFY","UNSUPPORTED")),
                 "question",Map.of("type","string","maxLength",400),
                 "replace",Map.of("type","array","maxItems",8,"items",idSchema(current)),
                 "add",Map.of("type","array","maxItems",8,"items",idSchema(spare)),
                 "start",nullableString,"end",nullableString,
                 "visitMinutes",Map.of("type",List.of("integer","null")),
-                "explanation",Map.of("type","string","maxLength",400)));
+                "explanation",Map.of("type","string","maxLength",400),
+                "unavailablePlaces",Map.of("type","array","maxItems",3,"items",Map.of("type","string","maxLength",40)),
+                "exactPlace",Map.of("type","boolean")));
     }
     // 후보가 없으면 enum을 비울 수 없으므로 정수만 허용하고 서버 검증에서 걸러 낸다.
     private Map<String,Object> idSchema(List<Candidate> list) {

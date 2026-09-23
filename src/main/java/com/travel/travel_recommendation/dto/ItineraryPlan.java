@@ -56,13 +56,22 @@ public final class ItineraryPlan {
      * 기존 초안을 바탕으로 만든 수정안(SFR-04-07·08-04). 원본 초안은 바꾸지 않는다.
      * kept는 사용자가 유지한 관광지이며 시각 고정이 아니라 장소 유지만 뜻한다.
      */
+    /**
+     * unavailablePlaces는 수정 요청에 이름이 나왔지만 확인된 교체 후보에 없어 비슷한 곳으로 바꾼 장소다.
+     * 이 값이 생기기 전의 작업 JSON에는 없으므로 null이면 빈 목록으로 본다.
+     */
     public record Revision(UUID sourceJobId, List<PlaceRef> kept, List<PlaceRef> replaced, List<PlaceRef> added,
-                           String reason, Instant requestedAt, String request, String explanation) {
+                           String reason, Instant requestedAt, String request, String explanation, List<String> unavailablePlaces) {
+        public Revision(UUID sourceJobId, List<PlaceRef> kept, List<PlaceRef> replaced, List<PlaceRef> added,
+                        String reason, Instant requestedAt, String request, String explanation) {
+            this(sourceJobId, kept, replaced, added, reason, requestedAt, request, explanation, List.of());
+        }
         // 직접 고른 수정안과 이전 작업 JSON은 자연어 요청·AI 설명 없이 그대로 사용한다.
         public Revision(UUID sourceJobId, List<PlaceRef> kept, List<PlaceRef> replaced, List<PlaceRef> added,
                         String reason, Instant requestedAt) {
             this(sourceJobId, kept, replaced, added, reason, requestedAt, null, null);
         }
+        public List<String> missingPlaces() { return unavailablePlaces == null ? List.of() : unavailablePlaces; }
     }
     public record Item(String type, Long placeId, String name, LocalTime start, LocalTime end,
                        String note, String mapUrl, String sourceUrl, Integer travelSeconds, Instant checkedAt) {

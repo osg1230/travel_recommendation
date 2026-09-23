@@ -155,6 +155,8 @@ public class ItineraryController {
             .cacheControl(CacheControl.noStore()).build();
     }
     private static final String AI_COOLDOWN_KEY="itineraryAiRevisionNext";
+    /** 초안마다 "후보에 없다"고 되물은 장소 이름. 같은 장소를 다시 요청하면 되묻지 않고 비슷한 곳으로 바꾼다. */
+    private static final String AI_ASKED_KEY="itineraryAiAskedPlaces";
     private static final String PRICE_COOLDOWN_KEY="itineraryPriceLookupNext";
 
     /** 초안의 숙소·음식점 참고 가격을 AI 웹 검색으로 찾는다. 유료 호출이라 버튼을 누를 때만 하고, 세션마다 30초 간격을 둔다. */
@@ -200,7 +202,19 @@ public class ItineraryController {
             session.setAttribute(AI_COOLDOWN_KEY,java.time.Instant.now().plusSeconds(20));
         }
         try {
-            var result=service().aiRevise(id,login(principal),hash(session),request);
+            java.util.Set<String> asked;
+            synchronized(session) {
+                @SuppressWarnings("unchecked")
+                var map=session.getAttribute(AI_ASKED_KEY) instanceof java.util.Map<?,?> m?(java.util.Map<UUID,java.util.Set<String>>)m:null;
+                asked=map==null?java.util.Set.of():java.util.Set.copyOf(map.getOrDefault(id,java.util.Set.of()));
+            }
+            var result=service().aiRevise(id,login(principal),hash(session),request,asked);
+            if(!result.askedPlaces().isEmpty()) synchronized(session) {
+                @SuppressWarnings("unchecked")
+                var map=session.getAttribute(AI_ASKED_KEY) instanceof java.util.Map<?,?> m?(java.util.Map<UUID,java.util.Set<String>>)m:new java.util.HashMap<UUID,java.util.Set<String>>();
+                var names=new java.util.HashSet<>(map.getOrDefault(id,java.util.Set.of())); names.addAll(result.askedPlaces());
+                map.put(id,names); session.setAttribute(AI_ASKED_KEY,map);
+            }
             if(result.job()!=null) return "redirect:/travel/recommendations/itineraries/"+result.job();
             if(result.notice()!=null) redirect.addFlashAttribute("aiNotice",result.notice());
             else redirect.addFlashAttribute("aiQuestion",result.question());

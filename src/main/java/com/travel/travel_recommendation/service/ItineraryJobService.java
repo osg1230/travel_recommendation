@@ -166,12 +166,12 @@ public class ItineraryJobService {
     public UUID revise(UUID sourceId,String login,byte[] hash,List<Long> replace,ReplaceReason reason,
                        LocalTime start,LocalTime end,int visitMinutes) {
         if(reason==ReplaceReason.AI_REQUEST) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"교체 이유를 다시 골라 주세요.");
-        return revise(sourceId,login,hash,replace,null,reason,start,end,visitMinutes,null,null);
+        return revise(sourceId,login,hash,replace,null,reason,start,end,visitMinutes,null,null,List.of());
     }
 
     /** add가 있으면 그 후보로 순서대로 바꾸고, 없으면 기존 규칙(후보 순서·실내 우선)으로 고른다. */
     private UUID revise(UUID sourceId,String login,byte[] hash,List<Long> replace,List<Long> add,ReplaceReason reason,
-                        LocalTime start,LocalTime end,int visitMinutes,String request,String explanation) {
+                        LocalTime start,LocalTime end,int visitMinutes,String request,String explanation,List<String> unavailable) {
         var source=access.owned(sourceId,login,hash,"ITINERARY");
         if(!"COMPLETED".equals(source.getStatus()) || source.getResultJson()==null)
             throw new ResponseStatusException(HttpStatus.CONFLICT,"완성된 일정 초안에서만 수정안을 만들 수 있어요.");
@@ -222,7 +222,8 @@ public class ItineraryJobService {
         var places=new PlaceCandidateView(pool.jobId(),pool.destination(),pool.durationDays(),
             pool.accommodationNeeded(),List.copyOf(attractions),pool.accommodations(),pool.restaurants());
         var revision=new Revision(sourceId,refs(kept),refs(placed.stream().filter(p->chosen.contains(p.placeId())).toList()),
-            refs(added),chosen.isEmpty() && reason!=ReplaceReason.AI_REQUEST?null:reason.name(),Instant.now(),request,explanation);
+            refs(added),chosen.isEmpty() && reason!=ReplaceReason.AI_REQUEST?null:reason.name(),Instant.now(),request,explanation,
+            List.copyOf(unavailable));
         // 새로 넣지 않고 남은 후보는 이 수정안의 예비 관광지로 둔다.
         var spareLeft=spare.subList(chosen.size(),spare.size()).stream().limit(MAX_RESERVE).toList();
         var input=new Input(original.recommendationId(),places,original.conditions(),start,end,original.transport(),visitMinutes,revision,original.constraints(),spareLeft);
@@ -234,7 +235,9 @@ public class ItineraryJobService {
      * AI 수정 결과. job이 있으면 새 수정안 작업, question이 있으면 일정을 바꾸지 않고 확인할 질문,
      * notice가 있으면 할 수 없는 요청이라 일정을 바꾸지 않았다는 안내다.
      */
-    public record AiRevision(UUID job,String question,String notice) {
+    /** askedPlaces는 이번에 "후보에 없다"고 되물은 장소다. 같은 초안에서 다시 요청하면 되묻지 않고 비슷한 곳으로 바꾼다. */
+    public record AiRevision(UUID job,String question,String notice,List<String> askedPlaces) {
+        AiRevision(UUID job,String question,String notice) { this(job,question,notice,List.of()); }
         AiRevision(UUID job,String question) { this(job,question,null); }
     }
 
@@ -244,6 +247,11 @@ public class ItineraryJobService {
      * 외부 호출 동안 트랜잭션을 잡지 않도록 이 메서드 자체에는 트랜잭션을 두지 않는다.
      */
     public AiRevision aiRevise(UUID sourceId,String login,byte[] hash,String request) {
+        return aiRevise(sourceId,login,hash,request,Set.of());
+    }
+
+    /** askedBefore는 이 초안에서 이미 "후보에 없다"고 되물은 장소 이름이다(세션에 보관). */
+    public AiRevision aiRevise(UUID sourceId,String login,byte[] hash,String request,Set<String> askedBefore) {
         String text=request==null?"":request.strip();
         if(text.isEmpty() || text.length()>300) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"수정 요청을 1~300자로 적어 주세요.");
         var context=self().aiContext(sourceId,login,hash);
@@ -259,18 +267,28 @@ public class ItineraryJobService {
         }
         if(proposal.unsupported()) return new AiRevision(null,null,proposal.question());
         if(proposal.clarify()) return new AiRevision(null,proposal.question());
+        // 사용자가 콕 집은 장소가 후보에 없으면 처음에는 임의로 바꾸지 않고 되묻는다. 같은 장소를 다시 요청하면 비슷한 곳으로 바꾼다.
+        var missing=proposal.unavailable();
+        if(proposal.exactPlace() && !missing.isEmpty() && !askedBefore.containsAll(missing))
+            return new AiRevision(null,unavailableQuestion(missing),null,missing);
         var original=context.input();
         LocalTime start=proposal.start()==null?original.start():proposal.start();
         LocalTime end=proposal.end()==null?original.end():proposal.end();
         int visit=proposal.visitMinutes()==null?original.visitMinutes():proposal.visitMinutes();
         if(proposal.replace().isEmpty() && start.equals(original.start()) && end.equals(original.end()) && visit==original.visitMinutes())
             return new AiRevision(null,"바꿀 내용을 찾지 못했어요. 어떤 관광지나 시간을 바꾸고 싶은지 조금 더 구체적으로 적어 주세요.");
-        return new AiRevision(self().reviseAi(sourceId,login,hash,proposal.replace(),proposal.add(),start,end,visit,text,proposal.explanation()),null);
+        return new AiRevision(self().reviseAi(sourceId,login,hash,proposal.replace(),proposal.add(),start,end,visit,text,
+            proposal.explanation(),missing),null);
+    }
+    /** 콕 집은 장소가 후보에 없을 때 되묻는 서버 고정 문구. GPT 문장 대신 써서 할 수 있는 일을 정확히 알린다. */
+    static String unavailableQuestion(List<String> names) {
+        return "'"+String.join("', '",names)+"'은(는) 지금 확인된 교체 후보에 없어요. 장소 목록에서 '카카오에서 장소 더 찾아보기'를 누른 뒤 "
+            +"다시 요청하거나, 같은 요청을 한 번 더 보내면 비슷한 곳으로 바꾼 수정안을 만들어 드려요.";
     }
     @Transactional(timeout=10)
     public UUID reviseAi(UUID sourceId,String login,byte[] hash,List<Long> replace,List<Long> add,
-                         LocalTime start,LocalTime end,int visitMinutes,String request,String explanation) {
-        return revise(sourceId,login,hash,replace,add,ReplaceReason.AI_REQUEST,start,end,visitMinutes,request,explanation);
+                         LocalTime start,LocalTime end,int visitMinutes,String request,String explanation,List<String> unavailable) {
+        return revise(sourceId,login,hash,replace,add,ReplaceReason.AI_REQUEST,start,end,visitMinutes,request,explanation,unavailable);
     }
     public record AiContext(Input input,Result result,List<OpenAiRevisionClient.Candidate> current,
                             List<OpenAiRevisionClient.Candidate> spare,Set<Long> fixed) {}

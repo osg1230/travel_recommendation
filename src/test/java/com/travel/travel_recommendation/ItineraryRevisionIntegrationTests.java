@@ -169,6 +169,39 @@ class ItineraryRevisionIntegrationTests {
         finish(result.job());
     }
 
+    // 콕 집은 장소가 후보에 없으면 처음에는 되묻고, 같은 장소를 다시 요청하면 비슷한 곳으로 바꾼 수정안에 참고 설명을 남긴다.
+    // 비슷한 곳을 원한 요청은 되묻지 않고 바로 바꾼다.
+    @Test void unavailableExactPlaceIsAskedFirstThenRevisedWithNote() throws Exception {
+        var original=completedDraft();
+        var target=attractionIds(original).getFirst();
+        long herb=spareId("허브 테스트 실내 체험관");
+        long before=jobs.count();
+        when(ai.configured()).thenReturn(true);
+        var exact=new OpenAiRevisionClient.Proposal(false,null,List.of(target),List.of(herb),null,null,null,"비슷한 실내 체험관으로 바꿨어요.",false,
+            List.of("전동성당"),true);
+        when(ai.propose(any(),any(),any(),any(),any(),any(),eq("첫 번째 곳을 전동성당으로 바꿔 줘"),any())).thenReturn(exact);
+        var asked=schedules.aiRevise(original,null,hash,"첫 번째 곳을 전동성당으로 바꿔 줘",Set.of());
+        assertThat(asked.job()).isNull();
+        assertThat(asked.question()).contains("'전동성당'은(는) 지금 확인된 교체 후보에 없어요").contains("한 번 더 보내면");
+        assertThat(asked.askedPlaces()).containsExactly("전동성당");
+        assertThat(jobs.count()).isEqualTo(before);
+
+        var again=schedules.aiRevise(original,null,hash,"첫 번째 곳을 전동성당으로 바꿔 줘",Set.of("전동성당"));
+        var revision=schedules.view(again.job(),null,hash).input().revision();
+        assertThat(revision.missingPlaces()).containsExactly("전동성당");
+        assertThat(revision.added()).extracting(PlaceRef::placeId).containsExactly(herb);
+        finish(again.job());
+        mvc.perform(get("/travel/recommendations/itineraries/"+again.job()).session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("참고: 요청한 &#39;전동성당&#39;은(는) 확인된 교체 후보에 없어서 비슷한 곳으로 바꿨어요.")));
+
+        var similar=new OpenAiRevisionClient.Proposal(false,null,List.of(target),List.of(herb),null,null,null,"비슷한 곳으로 바꿨어요.",false,
+            List.of("전동성당"),false);
+        when(ai.propose(any(),any(),any(),any(),any(),any(),eq("첫 번째 곳을 전동성당 같은 곳으로"),any())).thenReturn(similar);
+        var direct=schedules.aiRevise(original,null,hash,"첫 번째 곳을 전동성당 같은 곳으로",Set.of());
+        assertThat(direct.job()).isNotNull();
+        assertThat(schedules.view(direct.job(),null,hash).input().revision().missingPlaces()).containsExactly("전동성당");
+    }
+
     @Test void ambiguousRequestReturnsQuestionAndFormatFailuresAreRetriedAtMostTwice() {
         var original=completedDraft();
         long before=jobs.count();
