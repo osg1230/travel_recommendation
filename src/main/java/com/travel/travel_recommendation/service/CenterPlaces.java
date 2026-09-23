@@ -52,6 +52,27 @@ public final class CenterPlaces {
         return List.copyOf(picked);
     }
 
+    /**
+     * 목적 시설 중 중심 장소와 같은 종류인 곳을 뺀다. 예) 목적 "전통 마을이랑 서원"에서 중심 장소로 하회마을·도산서원을 골랐으면
+     * 가송농촌전통테마마을·경광서원은 필수로 미리 고르지 않는다. 중심 장소가 이미 그 목적을 채우고, 덜 알려진 곳까지 필수로 두면
+     * 동선이 넓어지기 때문이다. 종류는 분류(예: "서원")나 이름 끝 두 글자(예: "마을")가 같으면 같다고 본다.
+     * 카카오 분류가 "관광단지"·"체험마을"처럼 달라도 이름으로 맞추기 위해서다.
+     */
+    public static List<Long> notCoveredByCenters(List<PlaceCandidate> pool, List<Long> purposeIds, List<Long> centerIds) {
+        var centers = pool.stream().filter(p -> centerIds.contains(p.placeId())).toList();
+        return purposeIds.stream().filter(id -> pool.stream().filter(p -> p.placeId().equals(id)).findFirst()
+            .map(purpose -> centers.stream().noneMatch(center -> sameKind(purpose, center))).orElse(true)).toList();
+    }
+
+    private static boolean sameKind(PlaceCandidate a, PlaceCandidate b) {
+        if (a.placeId().equals(b.placeId())) return true;
+        // "관광,명소"는 분류가 더 나뉘지 않은 곳에 붙는 넓은 분류라 종류로 보지 않는다.
+        String kind = TripConstraints.kind(a);
+        if (!kind.isEmpty() && !kind.equals("관광,명소") && kind.equals(TripConstraints.kind(b))) return true;
+        String nameA = key(a.name(), null), nameB = key(b.name(), null);
+        return nameA.length() >= 3 && nameB.length() >= 3 && nameA.endsWith(nameB.substring(nameB.length() - 2));
+    }
+
     /** 이름이 key를 포함하거나 key에 포함되는 후보. 두 글자 미만은 맞추지 않는다. */
     private static List<PlaceCandidate> matches(List<PlaceCandidate> pool, String key, String destinationName) {
         if (key.length() < 2) return List.of();

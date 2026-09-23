@@ -13,6 +13,28 @@ class CenterPlacesTests {
             LocalDateTime.now(), lng, lat, "KAKAO");
     }
 
+    private static PlaceCandidate place(long id, String name, String subtype) {
+        return new PlaceCandidate(id, name, "주소 " + id, subtype, "", "https://place.map.kakao.com/" + id, "https://map",
+            LocalDateTime.now(), 128.7, 36.5, "KAKAO");
+    }
+
+    // 중심 장소와 같은 종류(분류 또는 이름 끝 "마을"·"서원")인 목적 시설은 필수 기본값에서 빼고, 종류가 다른 시설은 남긴다.
+    @Test void purposePlacesOfSameKindAsCentersAreNotPreselected() {
+        var hahoe = place(1, "안동하회마을", "여행 > 관광,명소 > 관광단지");
+        var dosan = place(2, "도산서원", "여행 > 관광,명소 > 문화유적 > 서원");
+        var gasong = place(3, "가송농촌전통테마마을", "여행 > 체험여행 > 정보화,체험마을");
+        var gyeonggwang = place(4, "경광서원", "여행 > 관광,명소 > 문화유적 > 서원");
+        var aquarium = place(5, "경포아쿠아리움", "여행 > 관광,명소 > 아쿠아리움");
+        var pool = List.of(hahoe, dosan, gasong, gyeonggwang, aquarium);
+        assertThat(CenterPlaces.notCoveredByCenters(pool, List.of(3L, 4L, 5L), List.of(1L, 2L))).containsExactly(5L);
+        assertThat(CenterPlaces.notCoveredByCenters(pool, List.of(3L, 4L), List.of(1L))).containsExactly(4L);
+        // 넓은 분류 "관광,명소"만 같은 곳은 같은 종류로 보지 않는다.
+        var hanok = place(6, "전주한옥마을", "여행 > 관광,명소");
+        var mural = place(7, "자만벽화길", "여행 > 관광,명소");
+        assertThat(CenterPlaces.notCoveredByCenters(List.of(hanok, mural), List.of(7L), List.of(6L))).containsExactly(7L);
+        assertThat(CenterPlaces.notCoveredByCenters(pool, List.of(3L), List.of())).containsExactly(3L);
+    }
+
     // 여행지 소개에서 조사를 떼고 일반 단어는 뺀 두 글자 이상 단어만 쓴다.
     @Test void descriptionWordsDropParticlesAndCommonWords() {
         assertThat(CenterPlaces.descriptionWords("한옥마을과 전통 문화, 비빔밥 등 지역 음식을 즐길 수 있는 지역입니다."))

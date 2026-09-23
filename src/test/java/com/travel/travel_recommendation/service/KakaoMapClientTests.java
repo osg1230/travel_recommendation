@@ -156,6 +156,26 @@ class KakaoMapClientTests {
         assertThat(calls.get()-before).isEqualTo(3);
         assertThat(path.get()).contains("page=3");
     }
+    // 사찰·성당은 "○○ 명소" 검색에 나오지 않아 따로 찾는다. 사찰은 앞 2곳만, 성당은 부속 시설과 다른 분류를 뺀다.
+    @Test void religiousSearchKeepsTemplesAndCathedralsOnly() {
+        String[][] temples={{"501","불국사"},{"502","석굴암"},{"503","골굴사"}};
+        var items=new java.util.ArrayList<java.util.Map<String,String>>();
+        for(var t:temples) { var item=searchItem(t[0],"경북 경주시 진현동 1"); item.put("place_name",t[1]); item.put("category_group_code","");
+            item.put("category_name","문화,예술 > 종교 > 불교 > 절,사찰"); items.add(item); }
+        var parking=searchItem("504","경북 경주시 진현동 2"); parking.put("category_name","교통,수송 > 교통시설 > 주차장"); items.add(0,parking);
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",items)));
+        assertThat(client("key").searchTemples("경상북도 경주시")).extracting(com.travel.travel_recommendation.dto.KakaoPlace::name)
+            .containsExactly("불국사","석굴암");
+        assertThat(java.net.URLDecoder.decode(path.get(),StandardCharsets.UTF_8)).contains("query=경주 사찰");
+
+        var church=searchItem("601","전북특별자치도 전주시 완산구 전동 1"); church.put("place_name","전동성당");
+        church.put("category_name","문화,예술 > 종교 > 천주교 > 성당");
+        var house=new java.util.HashMap<>(church); house.put("id","602"); house.put("place_name","전동성당 사제관"); house.put("place_url","http://place.map.kakao.com/602");
+        var convent=searchItem("603","전북특별자치도 전주시 완산구 전동 2"); convent.put("category_name","문화,예술 > 종교 > 수녀원,수도원");
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(church,house,convent))));
+        assertThat(client("key").searchCathedrals("전북특별자치도 전주시")).extracting(com.travel.travel_recommendation.dto.KakaoPlace::name)
+            .containsExactly("전동성당");
+    }
     // 목적 시설 전국 검색은 관광명소·문화시설만 받고, 주소가 서비스 여행지 안인 곳을 그 여행지 지역으로 돌려준다.
     @Test void nationwideSearchKeepsFacilitiesInsideServiceRegions() {
         var yeosu=searchItem("201","전남광주통합특별시 여수시 오동도로 61-11"); yeosu.put("category_group_code","CT1");

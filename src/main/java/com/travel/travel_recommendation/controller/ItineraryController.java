@@ -44,11 +44,13 @@ public class ItineraryController {
         var pool=service().attractionPool(id,destinationId,login(principal),hash(session));
         model.addAttribute("pool",pool);
         // 여행 목적 시설 중 첫 곳만 필수 방문 장소로 미리 골라 둔다. 여러 곳을 모두 필수로 두면 먼 시설까지 억지로 넣게 된다.
-        // 사용자가 체크를 풀거나 더 고를 수 있다.
-        var poolIds=pool.stream().map(p->p.placeId()).toList();
-        var purposeIds=service().purposePlaceIds(id,destinationId,login(principal),hash(session)).stream().filter(poolIds::contains).limit(1).toList();
-        model.addAttribute("purposePlaceIds",purposeIds);
+        // 중심 장소와 같은 종류(예: 서원)인 목적 시설은 중심 장소가 목적을 채우므로 고르지 않는다. 사용자가 체크를 풀거나 더 고를 수 있다.
         var centerIds=service().defaultCenterPlaceIds(id,destinationId,login(principal),hash(session));
+        var poolIds=pool.stream().map(p->p.placeId()).toList();
+        var purposeIds=CenterPlaces.notCoveredByCenters(pool,
+            service().purposePlaceIds(id,destinationId,login(principal),hash(session)).stream().filter(poolIds::contains).toList(),centerIds)
+            .stream().limit(1).toList();
+        model.addAttribute("purposePlaceIds",purposeIds);
         model.addAttribute("centerPlaceIds",centerIds);
         model.addAttribute("budgetItems",TripConstraints.BUDGET_ITEMS);
         model.addAttribute("maxDailyVisits",TripConstraints.MAX_DAILY);
