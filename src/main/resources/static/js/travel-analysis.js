@@ -3,12 +3,16 @@ document.querySelector('[data-analysis-form]')?.addEventListener('submit', event
     const form = event.currentTarget;
     form.querySelector('button').disabled = true;
     form.setAttribute('aria-busy', 'true');
-    form.querySelector('[data-analysis-status]').hidden = false;
+    status(form).hidden = false;
 });
 window.addEventListener('pageshow', () => {
     const form = document.querySelector('[data-analysis-form]');
     if (!form) return;
     form.querySelector('button').disabled = false;
     form.removeAttribute('aria-busy');
-    form.querySelector('[data-analysis-status]').hidden = true;
+    status(form).hidden = true;
 });
+// 안내 문구는 폼 안에 두거나, 홈처럼 한 줄 입력 폼이면 폼 바로 아래에 둔다.
+function status(form) {
+    return form.querySelector('[data-analysis-status]') ?? document.querySelector('[data-analysis-status]');
+}

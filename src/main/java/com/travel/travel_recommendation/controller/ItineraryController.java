@@ -5,7 +5,9 @@ import com.travel.travel_recommendation.service.*;
 import jakarta.servlet.http.*;
 import java.net.URI;
 import java.security.Principal;
+import java.time.LocalDate;
 import java.time.LocalTime;
+import org.springframework.format.annotation.DateTimeFormat;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
@@ -31,7 +33,7 @@ public class ItineraryController {
     public record ConstraintInput(UUID parent,LocalTime start,LocalTime end,KakaoMapClient.Transport transport,int visitMinutes,
                                   List<Long> required,Integer dailyVisits,boolean dailyRequired,String budgetBasis,
                                   List<String> budgetIncludes,String stayTier,List<TripConstraints.Conflict> conflicts,
-                                  Integer durationDays,Boolean accommodationNeeded) {}
+                                  Integer durationDays,Boolean accommodationNeeded,LocalDate startDate) {}
 
     @GetMapping("/{id}/destinations/{destinationId}/schedule")
     String form(@PathVariable UUID id,@PathVariable long destinationId,Principal principal,HttpSession session,
@@ -41,17 +43,20 @@ public class ItineraryController {
         model.addAttribute("options",options);
         var pool=service().attractionPool(id,destinationId,login(principal),hash(session));
         model.addAttribute("pool",pool);
-        // 여행 목적 시설은 필수 방문 장소로 미리 골라 둔다. 사용자가 체크를 풀 수 있다.
+        // 여행 목적 시설 중 첫 곳만 필수 방문 장소로 미리 골라 둔다. 여러 곳을 모두 필수로 두면 먼 시설까지 억지로 넣게 된다.
+        // 사용자가 체크를 풀거나 더 고를 수 있다.
         var poolIds=pool.stream().map(p->p.placeId()).toList();
-        var purposeIds=service().purposePlaceIds(id,destinationId,login(principal),hash(session)).stream().filter(poolIds::contains).toList();
+        var purposeIds=service().purposePlaceIds(id,destinationId,login(principal),hash(session)).stream().filter(poolIds::contains).limit(1).toList();
         model.addAttribute("purposePlaceIds",purposeIds);
         model.addAttribute("budgetItems",TripConstraints.BUDGET_ITEMS);
         model.addAttribute("maxDailyVisits",TripConstraints.MAX_DAILY);
         // 필수 조건이 모순돼 돌아온 경우 이유·선택지와 입력했던 값을 다시 보여 준다(한 번만).
         var conflict=session.getAttribute(CONFLICT_KEY) instanceof ConstraintInput previous && previous.parent().equals(id) ? previous : null;
         session.removeAttribute(CONFLICT_KEY);
-        model.addAttribute("values",conflict!=null?conflict:new ConstraintInput(id,options.start(),options.end(),options.transport(),
-            options.visitMinutes(),purposeIds,null,false,null,List.of(),null,List.of(),null,null));
+        // 여행 조건에서 이동수단을 정하지 않았다면 자동차로 미리 고르지 않고 사용자가 직접 고르게 한다.
+        var transport=options.conditions().keywordNames("TRANSPORTATION").isEmpty()?null:options.transport();
+        model.addAttribute("values",conflict!=null?conflict:new ConstraintInput(id,options.start(),options.end(),transport,
+            options.visitMinutes(),purposeIds,null,false,null,List.of(),null,List.of(),null,null,null));
         model.addAttribute("stayTiers",BudgetGuide.StayTier.values());
         synchronized(session) {
             var submission=new Submission(id,destinationId,login(principal),UUID.randomUUID().toString(),null);
@@ -67,6 +72,7 @@ public class ItineraryController {
             @RequestParam(required=false) String budgetBasis,@RequestParam(required=false) List<String> budgetIncludes,
             @RequestParam(required=false) String stayTier,
             @RequestParam(required=false) Integer durationDays,@RequestParam(required=false) Boolean accommodationNeeded,
+            @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate startDate,
             Principal principal,HttpSession session,
             @RequestHeader(value="Accept",defaultValue="") String accept) {
         if(!Set.of("REQUIRED","PREFERRED").contains(dailyMode)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"하루 방문 수의 구분을 다시 골라 주세요.");
@@ -83,11 +89,11 @@ public class ItineraryController {
                 job=submission.job(); service().view(job,login(principal),hash(session));
             } else {
                 try {
-                    job=service().create(id,destinationId,login(principal),hash(session),start,end,transport,visitMinutes,constraints,durationDays,accommodationNeeded);
+                    job=service().create(id,destinationId,login(principal),hash(session),start,end,transport,visitMinutes,constraints,durationDays,accommodationNeeded,startDate);
                 } catch(TripConstraints.ConflictException conflict) {
                     // 모순된 필수 조건은 임의로 완화하지 않고 입력 화면으로 돌아가 이유와 선택지를 보여 준다.
                     session.setAttribute(CONFLICT_KEY,new ConstraintInput(id,start,end,transport,visitMinutes,constraints.requiredPlaceIds(),
-                        dailyVisits,constraints.dailyVisitsRequired(),basis,constraints.budgetIncludes(),tier,conflict.conflicts(),durationDays,accommodationNeeded));
+                        dailyVisits,constraints.dailyVisitsRequired(),basis,constraints.budgetIncludes(),tier,conflict.conflicts(),durationDays,accommodationNeeded,startDate));
                     session.removeAttribute(SESSION_KEY);
                     return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create("/travel/recommendations/"+id+"/destinations/"+destinationId+"/schedule"))
                         .cacheControl(CacheControl.noStore()).build();
@@ -251,6 +257,8 @@ public class ItineraryController {
         else if(error instanceof RecommendationException e) message=e.getMessage();
         else { status=503; message="일정 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요."; }
         response.setStatus(status); response.setHeader("Cache-Control","no-store"); model.addAttribute("message",message);
+        // 찾을 수 없음(만료·다른 세션)이면 비회원에게 세션 만료 가능성을 함께 안내한다.
+        model.addAttribute("notFound",status==404);
         var submission=(Submission)session.getAttribute(SESSION_KEY);
         // 수정안을 만들지 못하면 원본 초안은 그대로이므로 원본으로 돌아가는 길을 안내한다.
         var revision=java.util.regex.Pattern.compile("^/travel/recommendations/itineraries/([0-9a-fA-F-]{36})/revisions$").matcher(request.getRequestURI().substring(request.getContextPath().length()));

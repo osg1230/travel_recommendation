@@ -2,6 +2,7 @@ package com.travel.travel_recommendation.controller;
 
 import com.travel.travel_recommendation.service.SavedItineraryService;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import java.security.Principal;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -26,8 +27,9 @@ public class SavedItineraryController {
     private final tools.jackson.databind.ObjectMapper mapper;
 
     @PostMapping
-    String save(@RequestParam UUID jobId, Principal principal, RedirectAttributes redirect) {
-        var saved=service().save(jobId,login(principal));
+    String save(@RequestParam UUID jobId, Principal principal, HttpSession session, RedirectAttributes redirect) {
+        // 로그인 전에 이 세션에서 만든 비회원 초안도 저장할 수 있도록 세션의 비회원 토큰을 함께 넘긴다.
+        var saved=service().save(jobId,login(principal),RecommendationJobController.guestHash(session,false));
         redirect.addFlashAttribute("savedMessage",saved.created()
             ?"내 일정으로 저장했어요. 이름은 아래에서 바꿀 수 있어요."
             :"이미 저장한 일정이에요. 저장해 둔 내용을 보여 드릴게요.");

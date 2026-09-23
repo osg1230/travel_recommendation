@@ -57,11 +57,16 @@ public class TravelConditionController {
         Object prefill = session.getAttribute(PREFILL_KEY);
         Object draft = prefill != null ? prefill : session.getAttribute(DRAFT_KEY);
         model.addAttribute("travelForm", draft != null ? draft : new TravelConditionForm());
+        model.addAttribute("inputToken", issueInputToken(session));
+        return "travel/conditions";
+    }
+
+    /** 입력 화면(조건 입력·홈 문장 입력)마다 새 입력 토큰을 세션에 둔다. 분석 중이면 진행 중인 토큰을 유지한다. */
+    static String issueInputToken(HttpSession session) {
         String token = session.getAttribute("travelConditionAnalyzing") != null
             && session.getAttribute("travelInputToken") instanceof String existing ? existing : java.util.UUID.randomUUID().toString();
         session.setAttribute("travelInputToken", token);
-        model.addAttribute("inputToken", token);
-        return "travel/conditions";
+        return token;
     }
 
     @PostMapping

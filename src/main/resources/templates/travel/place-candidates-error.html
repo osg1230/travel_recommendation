@@ -6,5 +6,6 @@
     <h1>장소를 조회할 수 없어요</h1>
     <p class="intro" role="alert" th:text="${message}"></p>
     <p th:if="${jobId != null}"><a th:href="@{/travel/recommendations/{id}(id=${jobId})}">추천 결과로 돌아가기</a></p>
-    <a th:href="@{/travel/conditions}">여행 조건 다시 입력하기</a>
+    <th:block th:if="${notFound}"><p th:replace="~{fragments/guest-session :: expired}"></p></th:block>
+<a th:href="@{/travel/conditions}">여행 조건 다시 입력하기</a>
 </main></body></html>

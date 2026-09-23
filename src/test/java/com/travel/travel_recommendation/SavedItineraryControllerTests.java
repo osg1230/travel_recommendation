@@ -37,7 +37,7 @@ class SavedItineraryControllerTests {
 
     @Test void savesDraftAndShowsSavedItinerary() throws Exception {
         UUID job=UUID.randomUUID();
-        when(service.save(job,"member")).thenReturn(new SavedItineraryService.Saved(7L,true));
+        when(service.save(eq(job),eq("member"),any())).thenReturn(new SavedItineraryService.Saved(7L,true));
         mvc.perform(post("/my/itineraries").with(user("member")).with(csrf()).param("jobId",job.toString()))
             .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/my/itineraries/7"))
             .andExpect(flash().attribute("savedMessage",containsString("저장했어요")));
@@ -55,7 +55,7 @@ class SavedItineraryControllerTests {
 
     @Test void showsGuidanceWhenDraftCannotBeSaved() throws Exception {
         UUID job=UUID.randomUUID();
-        when(service.save(eq(job),anyString())).thenThrow(new ResponseStatusException(HttpStatus.CONFLICT,
+        when(service.save(eq(job),anyString(),any())).thenThrow(new ResponseStatusException(HttpStatus.CONFLICT,
             "여행 날짜가 정해지지 않은 초안이에요. 여행 조건에서 출발일을 정하고 일정을 다시 만들어 주세요."));
         mvc.perform(post("/my/itineraries").with(user("member")).with(csrf()).param("jobId",job.toString()))
             .andExpect(status().isConflict()).andExpect(content().string(containsString("출발일을 정하고")));

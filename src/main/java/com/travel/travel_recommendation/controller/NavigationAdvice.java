@@ -29,6 +29,15 @@ public class NavigationAdvice {
             .anyMatch(authority -> authority.getAuthority().equals("ROLE_ADMIN"));
     }
 
+    /**
+     * 비회원 결과가 남아 있는 시간(분). 세션이 이 시간 동안 아무 동작이 없으면 끝나고 비회원 추천·초안도 열 수 없다.
+     * 오류 처리 화면에는 공통 모델 값이 들어가지 않아 템플릿에서 @navigationAdvice로 직접 부른다.
+     */
+    public long guestSessionMinutes() {
+        return environment.getProperty("server.servlet.session.timeout", java.time.Duration.class,
+            java.time.Duration.ofMinutes(30)).toMinutes();
+    }
+
     @ModelAttribute("signupEnabled")
     boolean signupEnabled() {
         return environment.acceptsProfiles(Profiles.of("sqlserver", "sqlserver-windows"));

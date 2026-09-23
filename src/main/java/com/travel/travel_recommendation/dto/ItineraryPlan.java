@@ -65,7 +65,13 @@ public final class ItineraryPlan {
         }
     }
     public record Item(String type, Long placeId, String name, LocalTime start, LocalTime end,
-                       String note, String mapUrl, String sourceUrl, Integer travelSeconds, Instant checkedAt) {}
+                       String note, String mapUrl, String sourceUrl, Integer travelSeconds, Instant checkedAt) {
+        /** 화면용 조회 시각(한국 시간, 분 단위). 저장 JSON에는 들어가지 않는다. */
+        public String checkedAtText() {
+            return checkedAt == null ? null : java.time.format.DateTimeFormatter.ofPattern("M월 d일 HH:mm")
+                .withZone(java.time.ZoneId.of("Asia/Seoul")).format(checkedAt);
+        }
+    }
     public record Day(int number, LocalDate date, List<Item> items) {}
     /** AI가 작성한 보조 안내. 서버가 만든 시각·장소·순서를 바꾸지 않으며 검증 완료를 뜻하지 않는다. */
     public record Assist(String summary, List<DayAdvice> days, Instant createdAt) {}

@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation.controller;
 
+import com.travel.travel_recommendation.dto.PlaceCandidateView;
 import com.travel.travel_recommendation.service.PlaceCandidateService;
 import com.travel.travel_recommendation.service.PlaceDiscoveryService;
 import com.travel.travel_recommendation.service.PlaceOperatingService;
@@ -92,8 +93,27 @@ public class PlaceCandidateController {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                 "장소 정보를 불러올 수 없어요. 잠시 후 다시 시도해 주세요.");
         }
-        var places = service.find(id, destinationId,
-            principal == null ? null : principal.getName(), RecommendationJobController.guestHash(session, false));
+        String login = principal == null ? null : principal.getName();
+        byte[] guest = RecommendationJobController.guestHash(session, false);
+        var places = service.find(id, destinationId, login, guest);
+        // 저장된 후보가 일정을 만들기에 부족하면(예: 음식점 1곳뿐) 사용자가 버튼을 찾지 않아도 카카오에서 한 번 더 찾아 온다.
+        // 같은 추천·지역에서는 세션당 한 번만 자동으로 조회하고, 실패해도 기존 후보로 화면을 보여 준다.
+        var discovery = discoveries.getIfAvailable();
+        String autoKey = "autoPlaceLookup:" + id + ":" + destinationId;
+        if (discovery != null && tooFewPlaces(places) && session.getAttribute(autoKey) == null) {
+            session.setAttribute(autoKey, Boolean.TRUE);
+            try {
+                int count = discovery.refresh(id, destinationId, login, guest);
+                if (count > 0) {
+                    places = service.find(id, destinationId, login, guest);
+                    if (!model.containsAttribute("lookupMessage"))
+                        model.addAttribute("lookupMessage", "후보가 적어 카카오에서 " + count + "곳을 더 찾아 함께 보여 드려요.");
+                }
+            } catch (RuntimeException lookupFailed) {
+                if (!model.containsAttribute("lookupMessage"))
+                    model.addAttribute("lookupMessage", "장소를 더 찾아보지 못했어요. 지금 확인된 후보만 보여 드려요.");
+            }
+        }
         model.addAttribute("places", places);
         // 여행 목적 시설(예: 아쿠아리움)은 목록에서 따로 표시한다.
         model.addAttribute("purpose", service.purpose(id, destinationId,
@@ -114,11 +134,18 @@ public class PlaceCandidateController {
         return "travel/place-candidates";
     }
 
+    /** 여러 끼 식사와 숙소를 고를 만큼 후보가 있는지. 부족하면 같은 식당·숙소가 반복된다. */
+    private boolean tooFewPlaces(PlaceCandidateView places) {
+        return places.attractions().size() < 5 || places.restaurants().size() < 3
+            || (places.accommodationNeeded() && places.accommodations().size() < 2);
+    }
+
     @ExceptionHandler(ResponseStatusException.class)
     String unavailable(ResponseStatusException error, HttpServletResponse response, Model model) {
         response.setStatus(error.getStatusCode().value());
         response.setHeader("Cache-Control", "no-store");
         model.addAttribute("message", error.getReason());
+        model.addAttribute("notFound", error.getStatusCode().value() == 404);
         return "travel/place-candidates-error";
     }
 

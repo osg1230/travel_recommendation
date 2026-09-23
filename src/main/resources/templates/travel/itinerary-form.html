@@ -11,23 +11,26 @@
 <p>기본 시간은 09:00~18:00, 관광지 체류는 90분이에요. 원하는 시간으로 바꿔 주세요. 모든 날짜에 같은 시간을 적용해요.</p>
 <p class="help">하루 방문 수를 정하지 않으면 시간에 맞게 관광지를 골라요(전체 최대 16곳). 실제 이동시간을 넣어 보고 시간이 모자라면 그날은 줄여요. 이미 정한 조건을 바꾸려면 <a th:href="@{/travel/conditions/edit(recommendationId=${options.recommendationId})}">조건 수정하기</a>를 이용해 주세요.</p>
 <div class="notice" role="alert" th:if="${!values.conflicts.isEmpty()}">
-<p><strong>반드시 지킬 조건끼리 맞지 않아 일정을 만들지 않았어요.</strong> 조건을 임의로 바꾸지 않았으니 아래 선택지 중 하나로 고쳐 주세요.</p>
+<p><strong>아래 내용 때문에 일정을 만들지 않았어요.</strong> 조건을 임의로 바꾸지 않았으니 안내에 따라 고친 뒤 다시 만들어 주세요.</p>
 <ul><li th:each="c : ${values.conflicts}"><span th:text="${c.reason}"></span>
 <ul><li th:each="choice : ${c.choices}" th:text="${choice}"></li></ul></li></ul>
 </div>
 <form method="post" th:action="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${options.recommendationId},dest=${options.places.destination.placeId})}">
 <input type="hidden" name="submissionToken" th:value="${submissionToken}">
-<section class="condition-section" th:if="${options.conditions.durationDays == null or options.conditions.accommodationNeeded == null}">
+<section class="condition-section" th:if="${options.conditions.durationDays == null or options.conditions.accommodationNeeded == null or options.conditions.startDate == null}">
 <h2>일정을 만들기 위해 필요한 정보예요</h2>
 <p th:if="${options.conditions.durationDays == null}"><label for="durationDays">여행 일수 (필수)</label>
 <select id="durationDays" name="durationDays" required><option value="">선택해 주세요</option>
 <option th:each="n : ${#numbers.sequence(1,7)}" th:value="${n}" th:text="${n == 1 ? '당일' : n + '일'}" th:selected="${values.durationDays == n}"></option></select></p>
 <p th:if="${options.conditions.accommodationNeeded == null and (options.conditions.durationDays == null or options.conditions.durationDays > 1)}">
 <label for="accommodationNeeded">숙소가 필요한가요? (여러 날 여행이면 필수)</label>
-<select id="accommodationNeeded" name="accommodationNeeded"><option value="">당일 여행이면 선택하지 않아도 돼요</option>
+<select id="accommodationNeeded" name="accommodationNeeded" th:required="${options.conditions.durationDays != null}">
+<option value="" th:text="${options.conditions.durationDays == null ? '당일 여행이면 선택하지 않아도 돼요' : '선택해 주세요'}"></option>
 <option value="true" th:selected="${values.accommodationNeeded == true}">숙소 포함</option>
 <option value="false" th:selected="${values.accommodationNeeded == false}">숙소는 따로 정할게요</option></select></p>
-<p class="help">정확한 출발 날짜 없이도 일차별 초안을 만들 수 있어요.</p>
+<p th:if="${options.conditions.startDate == null}"><label for="startDate">출발일 (선택)</label>
+<input id="startDate" name="startDate" type="date" th:min="${#temporals.format(#temporals.createToday(), 'yyyy-MM-dd')}" th:value="${values.startDate}"></p>
+<p class="help" th:if="${options.conditions.startDate == null}">출발일을 정하면 날짜별 운영 여부를 확인하고 내 일정으로 저장할 수 있어요. 비워 두면 날짜 없는 초안만 만들어져 저장할 수 없어요.</p>
 </section>
 <div class="condition-section">
 <h2>하루 시간</h2>
@@ -35,8 +38,10 @@
 <p><label for="end">하루 종료 시간 (필수)</label><input id="end" name="end" type="time" min="12:00" max="21:00" th:value="${values.end}" required></p>
 <p class="help">08:00~21:00 사이, 최소 4시간을 확보해 주세요.</p>
 <p><label for="transport">이동수단 (필수)</label><select id="transport" name="transport" required>
-<option value="CAR" th:selected="${values.transport.name() == 'CAR'}">자동차</option>
-<option value="PUBLIC_TRANSIT" th:selected="${values.transport.name() == 'PUBLIC_TRANSIT'}">대중교통</option></select></p>
+<option value="" th:if="${values.transport == null}" selected>선택해 주세요</option>
+<option value="CAR" th:selected="${values.transport != null and values.transport.name() == 'CAR'}">자동차</option>
+<option value="PUBLIC_TRANSIT" th:selected="${values.transport != null and values.transport.name() == 'PUBLIC_TRANSIT'}">대중교통</option></select></p>
+<p class="help" th:if="${values.transport == null}">여행 조건에서 이동수단을 정하지 않았어요. 자동차와 대중교통은 이동시간과 동선이 달라지니 직접 골라 주세요.</p>
 <p><label for="visitMinutes">관광지 한 곳의 체류시간 (분, 필수)</label><input id="visitMinutes" name="visitMinutes" type="number" min="30" max="180" th:value="${values.visitMinutes}" required></p>
 </div>
 
@@ -48,7 +53,7 @@
 </fieldset>
 <p class="help" th:if="${pool.isEmpty()}">확인된 관광지 후보가 없어요. 장소 목록에서 후보를 먼저 찾아 주세요.</p>
 <p class="help">고른 관광지는 빠짐없이 일정에 넣고, 나중에 수정안을 만들 때도 바꾸지 않아요.</p>
-<p class="notice" th:if="${purposePlaceIds != null and !purposePlaceIds.isEmpty()}">여행 목적으로 찾은 시설을 미리 골라 두었어요. 빼고 싶으면 체크를 풀어 주세요.</p>
+<p class="notice" th:if="${purposePlaceIds != null and !purposePlaceIds.isEmpty()}">여행 목적으로 찾은 시설 한 곳을 미리 골라 두었어요. 다른 곳도 꼭 가고 싶으면 더 고르고, 빼고 싶으면 체크를 풀어 주세요.</p>
 <div class="field-grid">
 <div><label for="dailyVisits">하루 방문할 관광지 수 (선택)</label><select id="dailyVisits" name="dailyVisits">
 <option value="" th:selected="${values.dailyVisits == null}">정하지 않음</option>

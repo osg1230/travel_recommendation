@@ -33,6 +33,11 @@ public record ConfirmedTravelConditions(String inputMode, String originalText, S
         return new ConfirmedTravelConditions(inputMode, originalText, region, startDate, endDate, days,
             budget, partySize, stay, includeNearby, selectedKeywords, interpretationSummary, directRecommendation, travelPurpose, purposeSearch);
     }
+    /** 출발일이 미정이던 조건에 일정 생성 때 고른 출발일을 넣는다. 마지막 날은 여행 일수로 계산한다. */
+    public ConfirmedTravelConditions withStartDate(LocalDate start) {
+        return new ConfirmedTravelConditions(inputMode, originalText, region, start, start.plusDays(durationDays - 1), durationDays,
+            budget, partySize, accommodationNeeded, includeNearby, selectedKeywords, interpretationSummary, directRecommendation, travelPurpose, purposeSearch);
+    }
     public ConfirmedTravelConditions withPurpose(String purpose) {
         return new ConfirmedTravelConditions(inputMode, originalText, region, startDate, endDate, durationDays,
             budget, partySize, accommodationNeeded, includeNearby, selectedKeywords, interpretationSummary, directRecommendation, purpose, purposeSearch);

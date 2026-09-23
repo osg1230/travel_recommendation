@@ -70,6 +70,20 @@ class DestinationRecommendationIntegrationTests {
         assertThat(view.recommendations().getFirst().destination().name()).isEqualTo("강릉");
         assertThat(view.pending()).isFalse();assertThat(view.canRecommend()).isFalse();
     }
+    @Test void guestJobStaysOpenAfterLoginInSameSessionOnly() {
+        // 비회원으로 만든 추천은 같은 세션(같은 토큰)에서 로그인해도 이어서 볼 수 있고, 다른 토큰으로는 열 수 없다.
+        String suffix=UUID.randomUUID().toString().substring(0,8);
+        var member=users.saveAndFlush(new User("guest_"+suffix,"unused-hash","이어보기"+suffix));
+        UUID id=prepared("강릉",null);
+        assertThat(jobs.view(id,member.getLoginId(),guestHash).status()).isNotBlank();
+        byte[] otherHash=new byte[32]; otherHash[0]=1;
+        assertThatThrownBy(()->jobs.view(id,member.getLoginId(),otherHash)).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThatThrownBy(()->jobs.view(id,member.getLoginId(),null)).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        // 저장 상세처럼 "열 수 있는지"만 볼 때는 예외 없이 빈 값을 받는다(예외가 나면 바깥 트랜잭션이 롤백 전용이 된다).
+        assertThat(jobs.findOwned(id,member.getLoginId(),null,"RECOMMENDATION")).isEmpty();
+        assertThat(jobs.findOwned(id,member.getLoginId(),guestHash,"RECOMMENDATION")).isPresent();
+        assertThat(jobs.findOwned(id,"no_such_user",guestHash,"RECOMMENDATION")).isEmpty();
+    }
     @Test void retryIsExplicitBoundedAndOldSubmissionDoesNotRetryFailure() {
         UUID id=prepared("부산",null);
         for(int attempt=0;attempt<3;attempt++) {

@@ -95,6 +95,21 @@ class PlaceDiscoveryIntegrationTests {
                 }
             });
     }
+    @Test void placesPageFetchesMoreOnceWhenCandidatesAreTooFew() throws Exception {
+        // 저장된 강릉 후보만으로는 음식점이 모자라, 장소 목록을 처음 열 때 카카오에서 한 번 더 찾아 온다.
+        mvc.perform(get(url()).session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("카카오에서 10곳을 더 찾아")))
+            .andExpect(content().string(containsString("조회 장소 20")));
+        verify(maps,times(3)).searchPlaces(eq(region),anyString());
+        // 같은 추천·지역은 세션당 한 번만 자동 조회한다.
+        mvc.perform(get(url()).session(session)).andExpect(status().isOk());
+        verify(maps,times(3)).searchPlaces(eq(region),anyString());
+    }
+    @Test void placesPageStillOpensWhenAutomaticLookupFails() throws Exception {
+        doThrow(new RecommendationException("MAP_AUTH","인증 확인")).when(maps).searchPlaces(region,"RESTAURANT");
+        mvc.perform(get(url()).session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("장소를 더 찾아보지 못했어요")));
+    }
     @Test void failureDoesNotPartiallyPersistAndEmptyResultKeepsExistingPlaces() {
         int count=jdbc.queryForObject("SELECT COUNT(*) FROM dbo.places",Integer.class);
         doThrow(new RecommendationException("MAP_AUTH","인증 확인")).when(maps).searchPlaces(region,"RESTAURANT");

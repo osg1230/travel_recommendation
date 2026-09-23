@@ -32,6 +32,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("sqlserver-windows")
 @Transactional
 class PlaceCandidateIntegrationTests {
+    // 장소 목록은 후보가 적으면 카카오를 자동 조회한다. 테스트에서 실제 외부 API를 부르지 않도록 빈 결과를 돌려주는 목으로 바꾼다.
+    @org.springframework.test.context.bean.override.mockito.MockitoBean com.travel.travel_recommendation.service.KakaoMapClient maps;
     @Autowired RecommendationJobService jobs;
     @Autowired PlaceCandidateService service;
     @Autowired AiJobRepository jobRepository;
