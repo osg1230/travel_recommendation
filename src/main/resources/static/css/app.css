@@ -161,6 +161,19 @@ button:hover, .button:hover { background: var(--brand-strong); color: #fff; }
 .button-quiet:hover, form.button-quiet button:hover { background: var(--brand-soft); color: var(--brand-strong); }
 .form-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
 
+/* 누르거나 올려 둘 수 있는 요소는 색이 부드럽게 바뀌고, 버튼은 누르는 순간 살짝 내려가 눌렸음을 알린다. */
+a, button, .button, input, textarea, select, .shortcut,
+.mode-switch label, .discover-option, .tag-choices label {
+    transition: background-color .2s ease, border-color .2s ease, color .2s ease, transform .2s ease;
+}
+button:not(:disabled):active, .button:active { transform: translateY(1px); }
+.shortcut:active { transform: translateY(0); }
+/* 움직임 줄이기를 켠 사용자에게는 전환 효과와 위치 이동을 보여 주지 않는다. */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; }
+    button:not(:disabled):active, .button:active, .shortcut:hover, .shortcut:active { transform: none; }
+}
+
 /* 상태 안내: 성공·오류·확인 필요 */
 [role=status], [role=alert] { border-radius: var(--radius-sm); }
 /* 안내는 파란 상자, 오류는 붉은 상자로 구분한다. */
