@@ -290,12 +290,26 @@ summary:has(.details-title) { cursor: pointer; }
 
 /* 바로가기: 설계서의 아이콘 메뉴 */
 .home { margin-top: -64px; position: relative; }
-.shortcuts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: var(--gap); }
+.shortcuts { display: grid; grid-template-columns: 1fr 1fr 1.15fr; gap: 12px; margin-bottom: var(--gap); }
 .shortcut { display: flex; flex-direction: column; gap: 4px; padding: 18px; background: var(--surface); border: 1px solid transparent; border-radius: var(--radius); box-shadow: var(--shadow); color: var(--text); text-decoration: none; }
 .shortcut:hover { border-color: var(--brand); color: var(--text); transform: translateY(-1px); }
 .shortcut svg { width: 28px; height: 28px; margin-bottom: 6px; fill: none; stroke: var(--brand); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .shortcut strong { font-size: 16px; }
 .shortcut span { font-size: 13px; color: var(--text-muted); }
+/* 새 여행 시작: 아이콘을 옅은 청록 칸에 넣고 화살표로 바로 시작할 수 있음을 보여 준다. */
+.shortcut-start { justify-content: flex-end; min-height: 160px; padding: 22px; }
+.shortcut-start svg { width: 44px; height: 44px; padding: 10px; margin-bottom: auto; border-radius: 12px; background: var(--brand-soft); }
+.shortcut-start strong { font-size: 18px; }
+.shortcut-start strong::after { content: " →"; color: var(--brand); }
+/* 지난 기록: 두 메뉴를 한 카드 안의 줄 목록으로 묶는다. */
+.shortcut-records { display: flex; flex-direction: column; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.shortcut-row {
+    flex: 1; display: grid; grid-template-columns: 28px 1fr; align-content: center; gap: 0 12px;
+    border: 0; border-radius: 0; box-shadow: none;
+}
+.shortcut-row + .shortcut-row { border-top: 1px solid var(--line); }
+.shortcut-row svg { grid-row: span 2; align-self: center; margin: 0; }
+.shortcut-row:hover { background: var(--brand-soft); transform: none; }
 .steps-list { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 0; padding: 0; list-style: none; counter-reset: step; }
 .steps-list li { counter-increment: step; display: flex; flex-direction: column; gap: 2px; font-size: 14px; color: var(--text-muted); }
 .steps-list li::before { content: counter(step); display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-bottom: 6px; border-radius: 50%; background: var(--brand-soft); color: var(--brand-strong); font-weight: 800; }
@@ -381,6 +395,8 @@ summary:has(.details-title) { cursor: pointer; }
     .hero h1 { font-size: 25px; }
     .hero-search { flex-direction: column; }
     .shortcuts, .steps-list { grid-template-columns: 1fr 1fr; }
+    .shortcut-records { grid-column: 1 / -1; }
+    .shortcut-row { padding: 14px 18px; }
     .auth-split { grid-template-columns: 1fr; margin-top: 20px; }
     .auth-intro { padding: 24px 22px 0; }
     .auth-art { max-width: 180px; }
