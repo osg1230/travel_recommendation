@@ -19,6 +19,8 @@
 <p th:if="${rev.reason != null and rev.request == null}" th:text="${'교체 이유: ' + T(com.travel.travel_recommendation.service.ItineraryJobService.ReplaceReason).valueOf(rev.reason).label}"></p>
 <p th:if="${rev.request != null}" th:text="${'요청한 내용: ' + rev.request}"></p>
 <p th:if="${rev.explanation != null}" th:text="${'AI 설명: ' + rev.explanation + ' (배치와 조건 확인은 서버가 다시 했어요)'}"></p>
+<p class="notice" th:unless="${rev.missingPlaces().isEmpty()}"
+   th:text="${'참고: 요청한 ''' + #strings.listJoin(rev.missingPlaces(), ''', ''') + '''은(는) 확인된 교체 후보에 없어서 비슷한 곳으로 바꿨어요. 원하는 장소가 있다면 장소 목록에서 ''카카오에서 장소 더 찾아보기''로 후보를 늘린 뒤 다시 요청해 보세요.'}"></p>
 <p>원래 초안은 바뀌지 않았어요. <a th:href="@{/travel/recommendations/itineraries/{id}(id=${rev.sourceJobId})}">원래 초안 보기</a> · 이 수정안이 마음에 들면 저장해서 적용해 주세요.</p>
 </div>
 <div role="status" data-poll-seconds="120" th:attr="data-job-pending=${job.pending},data-status-url=@{/travel/recommendations/itineraries/{id}/status(id=${job.id})}">

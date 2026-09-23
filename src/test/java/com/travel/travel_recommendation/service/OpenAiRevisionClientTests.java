@@ -48,6 +48,9 @@ class OpenAiRevisionClientTests {
             URI.create("http://127.0.0.1:"+server.getAddress().getPort()+"/responses"),Duration.ofSeconds(3));
     }
     private void output(String json) {
+        // 후보에 없는 장소 칸이 생기기 전의 응답 예시는 빈 값으로 채워 새 형식에 맞춘다.
+        if(json.startsWith("{\"action\"") && !json.contains("unavailablePlaces"))
+            json=json.substring(0,json.length()-1)+",\"unavailablePlaces\":[],\"exactPlace\":false}";
         response.set(mapper.writeValueAsString(Map.of("status","completed","output",List.of(Map.of("type","message","content",
             List.of(Map.of("type","output_text","text",json)))))));
     }
@@ -118,6 +121,28 @@ class OpenAiRevisionClientTests {
         output("{\"action\":\"REVISE\",\"question\":\"\",\"replace\":[2],\"add\":[3],\"start\":null,\"end\":null,\"visitMinutes\":null,\"explanation\":\"설명\"}");
         assertThatThrownBy(()->call(Set.of(2L))).isInstanceOfSatisfying(RecommendationException.class,
             e->assertThat(e.getMessage()).contains("fixedPlaceIds"));
+    }
+
+    // GPT가 "후보에 없다"고 한 장소는 요청 문장에 있고 후보 이름과 겹치지 않는 것만 남긴다. 콕 집었는지도 함께 받는다.
+    @Test void keepsOnlyUnavailablePlacesThatAreInTheRequestAndNotCandidates() {
+        output("{\"action\":\"REVISE\",\"question\":\"\",\"replace\":[1],\"add\":[3],\"start\":null,\"end\":null,\"visitMinutes\":null,"
+            +"\"explanation\":\"오죽헌 대신 안목해변으로 바꿨어요.\",\"unavailablePlaces\":[\"전동성당\",\"경포대\",\"없는 장소\",\"안목\"],\"exactPlace\":true}");
+        var proposal=client("test-key").propose(conditions(),input(),plan(),current,spare,Set.of(),"오죽헌을 전동 성당으로 바꿔 줘",null);
+        assertThat(proposal.unavailable()).containsExactly("전동성당");
+        assertThat(proposal.exactPlace()).isTrue();
+        // 남은 이름이 없으면 콕 집었다는 표시도 쓰지 않는다.
+        output("{\"action\":\"REVISE\",\"question\":\"\",\"replace\":[1],\"add\":[3],\"start\":null,\"end\":null,\"visitMinutes\":null,"
+            +"\"explanation\":\"설명\",\"unavailablePlaces\":[\"경포대\"],\"exactPlace\":true}");
+        var none=client("test-key").propose(conditions(),input(),plan(),current,spare,Set.of(),"오죽헌을 경포대 같은 곳으로",null);
+        assertThat(none.unavailable()).isEmpty(); assertThat(none.exactPlace()).isFalse();
+        assertThat(request.get()).contains("unavailablePlaces").contains("exactPlace");
+        // "○○ 같은 곳"은 GPT가 콕 집은 요청이라고 해도 비슷한 곳 요청으로 본다(실제 GPT에서 잘못 분류된 사례).
+        output("{\"action\":\"REVISE\",\"question\":\"\",\"replace\":[1],\"add\":[3],\"start\":null,\"end\":null,\"visitMinutes\":null,"
+            +"\"explanation\":\"설명\",\"unavailablePlaces\":[\"덕수궁\"],\"exactPlace\":true}");
+        var similar=client("test-key").propose(conditions(),input(),plan(),current,spare,Set.of(),"오죽헌 대신 덕수궁 같은 고궁으로 바꿔 주세요",null);
+        assertThat(similar.unavailable()).containsExactly("덕수궁"); assertThat(similar.exactPlace()).isFalse();
+        assertThat(OpenAiRevisionClient.asksSimilar("덕수궁처럼 조용한 곳","덕수궁")).isTrue();
+        assertThat(OpenAiRevisionClient.asksSimilar("오죽헌을 덕수궁으로 바꿔 줘","덕수궁")).isFalse();
     }
 
     @Test void mapsServiceFailuresAndMissingKey() {
