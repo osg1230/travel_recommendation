@@ -233,15 +233,23 @@ public class ItineraryJobService {
         if(spare.size()<chosen.size())
             throw new ResponseStatusException(HttpStatus.CONFLICT,"바꿀 수 있는 다른 관광지 후보가 부족해요. 장소 목록에서 후보를 더 찾아본 뒤 다시 시도해 주세요.");
         var added=spare.subList(0,chosen.size());
-        var attractions=new ArrayList<>(kept); attractions.addAll(added);
+        // 원본이 남는 시간에 더 넣은 관광지는 '유지해야 하는 곳'으로 묶지 않고 예비 관광지 맨 앞에 둔다.
+        // 하루 시간이 남으면 다시 들어가고, 시간을 줄인 수정안에서는 빠진다.
+        var firm=firmPlaceIds(original);
+        var keptFirm=kept.stream().filter(p->firm.contains(p.placeId())).toList();
+        if(keptFirm.isEmpty()) keptFirm=kept;
+        final var keptIds=keptFirm.stream().map(PlaceCandidate::placeId).toList();
+        var extras=kept.stream().filter(p->!keptIds.contains(p.placeId())).toList();
+        var attractions=new ArrayList<>(keptFirm); attractions.addAll(added);
         var places=new PlaceCandidateView(pool.jobId(),pool.destination(),pool.durationDays(),
             pool.accommodationNeeded(),List.copyOf(attractions),pool.accommodations(),pool.restaurants());
-        var revision=new Revision(sourceId,refs(kept),refs(placed.stream().filter(p->chosen.contains(p.placeId())).toList()),
+        var revision=new Revision(sourceId,refs(keptFirm),refs(placed.stream().filter(p->chosen.contains(p.placeId())).toList()),
             refs(added),chosen.isEmpty() && reason!=ReplaceReason.AI_REQUEST?null:reason.name(),Instant.now(),request,explanation,
             List.copyOf(unavailable));
         // 새로 넣지 않고 남은 후보는 이 수정안의 예비 관광지로 둔다.
-        var spareLeft=spare.subList(chosen.size(),spare.size()).stream().limit(MAX_RESERVE).toList();
-        var input=new Input(original.recommendationId(),places,original.conditions(),start,end,original.transport(),visitMinutes,revision,original.constraints(),spareLeft);
+        var spareLeft=new ArrayList<>(extras);
+        spare.subList(chosen.size(),spare.size()).stream().limit(MAX_RESERVE).forEach(spareLeft::add);
+        var input=new Input(original.recommendationId(),places,original.conditions(),start,end,original.transport(),visitMinutes,revision,original.constraints(),List.copyOf(spareLeft));
         generator.checkInput(input);
         var parent=access.owned(original.recommendationId(),login,hash,"RECOMMENDATION");
         return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();
@@ -423,6 +431,20 @@ public class ItineraryJobService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,"가격을 찾는 동안 일정이 바뀌었어요. 다시 시도해 주세요.");
         job.attachToResult(mapper.writeValueAsString(mapper.readValue(expectedResult,Result.class).withPrices(prices)));
         jobs.flush();
+    }
+
+    /**
+     * 원본 초안에서 빠지면 안 되던 관광지. 새 초안이면 일정에 쓰기로 고른 관광지 전체, 수정안이면 유지·새로 넣은 곳이다.
+     * 남는 시간에 더한 예비 관광지는 여기에 들지 않는다.
+     */
+    private static Set<Long> firmPlaceIds(Input source) {
+        Set<Long> ids=new HashSet<>();
+        if(source.revision()==null) source.places().attractions().forEach(p->ids.add(p.placeId()));
+        else {
+            source.revision().kept().forEach(p->ids.add(p.placeId()));
+            source.revision().added().forEach(p->ids.add(p.placeId()));
+        }
+        return ids;
     }
 
     /** 초안에 실제로 배치된 관광지. 시간이 부족하거나 너무 멀어 빠진 관광지(skipped)는 유지·교체 대상에서 뺀다. */

@@ -227,6 +227,48 @@ class ItineraryGeneratorTests {
         assertThatThrownBy(()->generator.generate(required)).isInstanceOfSatisfying(RecommendationException.class,e->{
             assertThat(e.getCode()).isEqualTo("TRAVEL_TIME_EXCEEDED"); assertThat(e.getMessage()).contains("장소90"); });
     }
+    private PlaceCandidate restaurant(long id,String subtype) {
+        return new PlaceCandidate(id,"식당"+id,"강원 강릉시 경포로 "+id,subtype,"소개","https://www.gn.go.kr/","https://map.kakao.com/",LocalDateTime.of(2026,9,1,0,0));
+    }
+    private Input dayTrip(List<PlaceCandidate> attractions,List<PlaceCandidate> restaurants,int visitMinutes,List<PlaceCandidate> reserve) {
+        var base=input(1,LocalTime.of(18,0));
+        var pool=new PlaceCandidateView(base.places().jobId(),base.places().destination(),1,false,attractions,List.of(),restaurants);
+        return new Input(base.recommendationId(),pool,base.conditions(),base.start(),base.end(),base.transport(),visitMinutes,null,null,reserve);
+    }
+    // 가장 가까운 곳이 아이스크림 가게·술집이어도 끼니로는 일반 음식점을 고른다.
+    @Test void mealsSkipSnackAndBarPlaces() {
+        var input=dayTrip(List.of(place(1),place(2)),List.of(restaurant(3,"음식점 > 간식 > 아이스크림"),
+            restaurant(4,"음식점 > 술집 > 호프,요리주점"),restaurant(30,"음식점 > 한식")),90,List.of());
+        var result=generator.generate(input);
+        assertThat(result.days().getFirst().items().stream().filter(i->i.type().equals("MEAL")).map(Item::placeId)).containsExactly(30L);
+        generator.validate(input,result);
+    }
+    // 11시가 지나 다음 관광지를 마치면 13시 30분을 넘길 때는 점심을 먼저 먹는다(11:30에 첫 관광을 마치면 다음 관광은 14:21에 끝난다).
+    @Test void lunchComesBeforeAVisitThatWouldEndTooLate() {
+        var input=dayTrip(List.of(place(1),place(2),place(5)),List.of(place(3)),150,List.of());
+        var items=generator.generate(input).days().getFirst().items();
+        var meal=items.stream().filter(i->i.type().equals("MEAL")).findFirst().orElseThrow();
+        assertThat(meal.start()).isEqualTo(LocalTime.NOON);
+        assertThat(items.stream().filter(i->i.type().equals("VISIT")).filter(i->i.end().isBefore(meal.start()))).hasSize(1);
+    }
+    // 고른 관광지를 다 넣고도 시간이 남으면 예비 관광지로 채우되, 수정안의 교체 후보로 2곳은 남긴다(체류 30분이라 시간은 충분하다).
+    @Test void spareTimeIsFilledFromReserveKeepingTwoForRevisions() {
+        var input=dayTrip(List.of(place(1),place(2)),List.of(place(3)),30,List.of(place(5),place(6),place(7),place(8)));
+        var result=generator.generate(input);
+        var visits=result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).toList();
+        assertThat(visits).extracting(Item::placeId).startsWith(1L,2L).hasSize(4);
+        assertThat(visits.subList(2,4)).allSatisfy(i->assertThat(i.note()).contains("하루 시간이 남아 더 넣은 곳이에요."));
+        generator.validate(input,result);
+        // 체류 90분이면 14:03~15:33, 15:54~17:24 두 곳이 더 들어가고 하루 종료(18시)는 넘지 않는다.
+        var longer=dayTrip(List.of(place(1),place(2)),List.of(place(3)),90,List.of(place(5),place(6),place(7),place(8)));
+        var longVisits=generator.generate(longer).days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).toList();
+        assertThat(longVisits).hasSize(4);
+        assertThat(longVisits.getLast().end()).isEqualTo(LocalTime.of(17,24));
+        // 하루 방문 수를 정했으면 채우지 않는다.
+        var fixed=new Input(input.recommendationId(),input.places(),input.conditions(),input.start(),input.end(),input.transport(),90,null,
+            new Constraints(List.of(),2,false,null,List.of()),input.reserve());
+        assertThat(generator.generate(fixed).days().getFirst().items().stream().filter(i->i.type().equals("VISIT"))).hasSize(2);
+    }
     // 섬(장소 90)이 빠지면 그 자리를 예비 관광지로 채운다. 쓰지 않은 예비 관광지는 결과에 적지 않는다.
     @Test void reservePlaceFillsTheSlotOfAnUnreachableAttraction() {
         when(maps.travelTime(any(),any(),any())).thenAnswer(invocation->{

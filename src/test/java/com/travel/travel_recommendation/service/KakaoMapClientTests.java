@@ -156,6 +156,15 @@ class KakaoMapClientTests {
         assertThat(calls.get()-before).isEqualTo(3);
         assertThat(path.get()).contains("page=3");
     }
+    // 음식점은 끼니로 쓰므로 간식·술집 분류는 받지 않는다.
+    @Test void restaurantSearchSkipsSnackAndBarPlaces() {
+        var meal=searchItem("701","강원 강릉시 교동 1"); meal.put("category_group_code","FD6"); meal.put("category_name","음식점 > 한식");
+        var snack=searchItem("702","강원 강릉시 교동 2"); snack.put("category_group_code","FD6"); snack.put("category_name","음식점 > 간식 > 아이스크림");
+        var bar=searchItem("703","강원 강릉시 교동 3"); bar.put("category_group_code","FD6"); bar.put("category_name","음식점 > 술집 > 호프,요리주점");
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(snack,bar,meal))));
+        assertThat(client("key").searchPlaces("강원특별자치도 강릉시","RESTAURANT")).extracting(com.travel.travel_recommendation.dto.KakaoPlace::sourceId)
+            .containsExactly("701");
+    }
     // 사찰·성당은 "○○ 명소" 검색에 나오지 않아 따로 찾는다. 사찰은 앞 2곳만, 성당은 부속 시설과 다른 분류를 뺀다.
     @Test void religiousSearchKeepsTemplesAndCathedralsOnly() {
         String[][] temples={{"501","불국사"},{"502","석굴암"},{"503","골굴사"}};

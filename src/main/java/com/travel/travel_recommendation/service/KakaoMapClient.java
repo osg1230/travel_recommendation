@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.*;
 import java.util.*;
 import com.travel.travel_recommendation.dto.KakaoPlace;
+import com.travel.travel_recommendation.dto.PlaceCandidate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.*;
@@ -90,7 +91,9 @@ public class KakaoMapClient {
         var root=get(localEndpoint.resolve("/v2/local/search/keyword.json?query="
             +URLEncoder.encode(city+" "+keyword,StandardCharsets.UTF_8)
             +"&category_group_code="+code+"&rect=124,33,132,39&size=15&page=1&sort=accuracy"));
-        return places(root,item->code.equals(item.path("category_group_code").asText()),List.of(region),type,limit);
+        // 음식점은 일정의 끼니로 쓰므로 간식·술집·카페 분류는 받지 않는다(예: 아이스크림 가게가 저녁으로 들어가지 않게).
+        return places(root,item->code.equals(item.path("category_group_code").asText())
+            && !("RESTAURANT".equals(type) && PlaceCandidate.notForMeals(item.path("category_name").asText(""))),List.of(region),type,limit);
     }
 
     /**
