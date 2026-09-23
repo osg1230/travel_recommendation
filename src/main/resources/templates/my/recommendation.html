@@ -12,7 +12,7 @@
     <a class="back-link" th:href="@{/my/recommendations}">← 추천 이력 목록</a>
     <p class="eyebrow">내 여행 · 추천 이력</p>
     <h1 th:text="${history.summary.region + ' · ' + history.summary.period}"></h1>
-    <p class="help" th:text="${'요청: ' + #temporals.format(history.summary.requestedAt, 'yyyy-MM-dd HH:mm') + ' (UTC) · ' + history.summary.inputMode}"></p>
+    <p class="help" th:text="${'요청: ' + @timeText.dateTime(history.summary.requestedAt) + ' · ' + history.summary.inputMode}"></p>
 
     <section class="condition-section" aria-labelledby="conditions-title">
         <h2 id="conditions-title">입력한 조건</h2>

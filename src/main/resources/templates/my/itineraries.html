@@ -19,7 +19,7 @@
     <article class="place-row" th:each="itinerary : ${itineraries}">
         <h2><a th:href="@{/my/itineraries/{id}(id=${itinerary.id})}" th:text="${itinerary.title}"></a></h2>
         <p th:text="${itinerary.destination + ' · ' + itinerary.startDate + ' ~ ' + itinerary.endDate + ' (' + itinerary.dayCount + '일)'}"></p>
-        <p class="help" th:text="${'저장: ' + itinerary.savedAt + ' (UTC)'}"></p>
+        <p class="help" th:text="${'저장: ' + @timeText.dateTime(itinerary.savedAt)}"></p>
     </article>
     <p class="guide-note">영업시간·휴무일·예산·예약 가능 여부는 저장 이후에도 확인이 필요해요. 방문 전 각 장소의 출처에서 다시 확인해 주세요.</p>
 </main>

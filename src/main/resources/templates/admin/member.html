@@ -15,8 +15,8 @@
     <p>닉네임 <strong th:text="${member.summary.nickname}"></strong></p>
     <p>구분 <strong th:text="${member.summary.role}"></strong></p>
     <p>현재 상태 <strong th:text="${member.summary.statusName}"></strong></p>
-    <p th:text="${'가입 ' + member.summary.joinedAt + ' (UTC)'}"></p>
-    <p th:text="${'최근 변경 ' + member.updatedAt + ' (UTC)'}"></p>
+    <p th:text="${'가입 ' + @timeText.dateTime(member.summary.joinedAt)}"></p>
+    <p th:text="${'최근 변경 ' + @timeText.dateTime(member.updatedAt)}"></p>
     <p class="help">운영에 필요한 최소 정보만 표시합니다.</p>
 
     <h2>상태 변경</h2>
@@ -44,11 +44,11 @@
     <p role="status" th:if="${member.history.isEmpty()}">아직 상태를 바꾼 기록이 없습니다.</p>
     <table th:unless="${member.history.isEmpty()}">
         <caption>최근 10건</caption>
-        <thead><tr><th scope="col">변경 시각 (UTC)</th><th scope="col">이전</th><th scope="col">변경 후</th>
+        <thead><tr><th scope="col">변경 시각</th><th scope="col">이전</th><th scope="col">변경 후</th>
             <th scope="col">처리자</th><th scope="col">사유</th></tr></thead>
         <tbody>
         <tr th:each="change : ${member.history}">
-            <td th:text="${change.changedAt}"></td>
+            <td th:text="${@timeText.dateTime(change.changedAt)}"></td>
             <td th:text="${change.beforeStatus}"></td>
             <td th:text="${change.afterStatus}"></td>
             <td th:text="${change.adminLoginId}"></td>

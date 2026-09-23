@@ -22,7 +22,7 @@
             <span aria-hidden="true" th:text="${#strings.repeat('★', r.score) + #strings.repeat('☆', 5 - r.score)}"></span>
             <span th:text="${r.score + '점'}"></span></p>
         <p th:if="${!r.tags.isEmpty()}" th:text="${#strings.listJoin(r.tags, ' · ')}"></p>
-        <p class="help" th:text="${'최근 수정: ' + #temporals.format(r.updatedAt, 'yyyy-MM-dd HH:mm') + ' (UTC)'}"></p>
+        <p class="help" th:text="${'최근 수정: ' + @timeText.dateTime(r.updatedAt)}"></p>
     </article>
 </main>
 </body>
