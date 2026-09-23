@@ -47,7 +47,6 @@
     <section id="restaurants" class="condition-section">
         <h2 th:text="${'음식점 · ' + places.restaurants.size() + '곳'}"></h2>
         <p th:if="${places.restaurants.isEmpty()}" role="status">확인된 음식점 후보가 아직 없어요. 음식점 정보는 추가 확인이 필요해요.</p>
-        <p class="help">음식점은 즐겨찾기에 등록할 수 없어요.</p>
         <th:block th:each="place : ${places.restaurants}"><article th:replace="~{::placeRow(${place},false)}"></article></th:block>
     </section>
     <section id="accommodations" class="condition-section">
@@ -66,11 +65,12 @@
     <article th:fragment="placeRow(place,favoritable)" class="place-row">
         <h3 th:text="${place.name}"></h3>
         <p class="notice" th:if="${purpose != null and purpose.placeIds.contains(place.placeId)}"
-           th:text="${'여행 목적 관련 시설 · ' + purpose.purpose + ' 목적으로 찾은 곳이에요. 전시·체험 내용은 방문 전 확인해 주세요.'}"></p>
-        <p class="help" th:text="${place.subtype}"></p>
+           th:text="${'여행 목적(' + purpose.purpose + ')에 맞춰 찾은 곳이에요. 운영·체험 내용은 출처에서 확인해 주세요.'}"></p>
+        <p class="help" th:text="${place.subtypeLabel()}"></p>
         <p class="help" th:if="${place.religiousSite()}">종교 시설이라 미사·예불 등 행사 중에는 관람이 제한될 수 있어요.</p>
-        <p class="help" th:if="${place.sourceProvider == 'KAKAO'}">카카오 검색 · 주소와 좌표 확인 · 영업 여부 확인 필요</p>
-        <p th:text="${place.description}"></p>
+        <p class="help" th:if="${place.sourceProvider == 'KAKAO'}">카카오 검색 결과예요. 영업시간·휴무·가격은 출처에서 확인해 주세요.</p>
+        <!--/* 카카오 후보의 소개는 모든 곳이 같은 안내 문장이라 보여 주지 않는다. */-->
+        <p th:unless="${place.sourceProvider == 'KAKAO'}" th:text="${place.description}"></p>
         <p th:text="${place.address}"></p>
         <th:block th:with="summary=${ratingSummaries.get(place.placeId)}">
         <p class="rating-summary" th:if="${summary != null}"
