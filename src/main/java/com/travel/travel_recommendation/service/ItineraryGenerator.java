@@ -69,23 +69,46 @@ public class ItineraryGenerator {
         var reserve=new ArrayList<>(input.reserve());
         // 직전에 간 관광지 종류(예: 해변). 날이 바뀌어도 이어서 본다.
         String lastKind="";
+        // 일정의 중심 장소: 1일차부터 하루에 한 곳씩 그날 첫 관광지로 넣는다. 나머지 관광지는 가장 가까운 중심 장소의 날에 먼저 넣는다.
+        var centers=centerPlaces(input,dayCount);
+        Map<Long,Integer> dayOf=new HashMap<>();
+        for(var place:places.attractions()) {
+            int best=-1; double bestDistance=Double.MAX_VALUE;
+            for(int i=0;i<centers.size();i++) {
+                double d=distance(locations.get(centers.get(i).placeId()),locations.get(place.placeId()));
+                if(d<bestDistance) { bestDistance=d; best=i; }
+            }
+            if(best>=0) dayOf.put(place.placeId(),best+1);
+        }
         for(int day=1;day<=dayCount;day++) {
             var builder=new DayBuilder(input,locations,routes,deadline,previous,day,usedRestaurants,foods);
             PlaceCandidate stay=hotel!=null && day<dayCount?hotel:null;
             // 남은 관광지를 남은 날짜에 고르게 나눈 수가 오늘의 최대치다. 시간이 모자라면 그보다 적게 넣고 다음 날로 넘긴다.
             int target=(remaining.size()+dayCount-day)/(dayCount-day+1);
             PlaceCandidate last=null; int visits=0;
+            final int today=day;
+            PlaceCandidate dayCenter=day<=centers.size()?centers.get(day-1):null;
+            boolean centerTried=false; Set<Long> skipToday=new HashSet<>();
             while(visits<target && !remaining.isEmpty()) {
                 PlaceCandidate anchor=builder.previous; String previousKind=lastKind;
-                // 가까운 관광지를 이어서 고른다. 최단 경로 보장은 아니다.
+                // 오늘 고를 수 있는 곳: 다른 날의 중심 장소는 빼고, 가장 가까운 중심 장소가 오늘인 곳을 먼저 본다.
+                var choices=remaining.stream().filter(p->!skipToday.contains(p.placeId()) && !(centers.contains(p) && !p.equals(dayCenter))).toList();
+                if(choices.isEmpty()) choices=remaining.stream().filter(p->!skipToday.contains(p.placeId())).toList();
+                if(choices.isEmpty()) break;
+                var own=choices.stream().filter(p->dayOf.getOrDefault(p.placeId(),today)==today).toList();
+                final var pool=own.isEmpty()?choices:own;
+                // 하루의 첫 관광지는 그날의 중심 장소다. 그 뒤로는 가까운 관광지를 이어서 고른다. 최단 경로 보장은 아니다.
                 // 직전 관광지와 종류가 같으면(예: 해수욕장 다음 해수욕장) 거리를 두 배로 쳐서, 조금 멀어도 다른 종류를 먼저 고른다.
-                var next=remaining.stream().min(order(builder.date,p->anchor==null?remaining.indexOf(p)
+                boolean forceCenter=!centerTried && dayCenter!=null && remaining.contains(dayCenter);
+                centerTried=true;
+                var next=forceCenter?dayCenter:pool.stream().min(order(builder.date,p->anchor==null?remaining.indexOf(p)
                     :distance(locations.get(anchor.placeId()),locations.get(p.placeId()))
                         *(!previousKind.isEmpty() && previousKind.equals(TripConstraints.kind(p))?SAME_KIND_PENALTY:1))).orElseThrow();
                 var mark=builder.mark();
                 boolean hadLunch=builder.lunch;
                 try {
-                    builder.visit(next,"VISIT",input.visitMinutes(),"관광·관람 (계획한 체류시간)");
+                    builder.visit(next,"VISIT",input.visitMinutes(),"관광·관람 (계획한 체류시간)"
+                        +(centers.contains(next)?"\n이 날 일정의 중심으로 고른 곳이에요.":""));
                     if(!builder.lunch && !builder.time.isBefore(LocalTime.NOON)) eat(builder,next,false);
                     // 이 관광지를 넣어도 남은 점심·숙소 도착까지 하루 종료 시간 안에 끝나는지 미리 확인한다.
                     checkClosing(builder,next,stay);
@@ -100,6 +123,8 @@ public class ItineraryGenerator {
                         if(replacement!=null) remaining.add(replacement);
                         continue;
                     }
+                    // 중심 장소가 오늘 휴무 등으로 들어가지 않으면 오늘은 다른 곳부터 시작한다.
+                    if(forceCenter && DAY_FULL_CODES.contains(error.getCode())) { builder.reset(mark); skipToday.add(next.placeId()); continue; }
                     // 첫 관광지부터 들어가지 않으면 그대로 실패를 알린다. 그 뒤라면 오늘은 여기서 마치고 남은 곳은 다음 날로 넘긴다.
                     if(visits==0 || !DAY_FULL_CODES.contains(error.getCode())) throw error;
                     builder.reset(mark); break;
@@ -421,6 +446,14 @@ public class ItineraryGenerator {
         Set<Long> missing=new HashSet<>(expected); missing.removeAll(seen);
         Set<Long> notVisited=new HashSet<>(expected); notVisited.addAll(reserveIds); notVisited.removeAll(seen);
         if(!skipped.containsAll(missing) || !notVisited.containsAll(skipped) || skipped.stream().anyMatch(mustVisit(input)::contains)) throw invalid();
+    }
+
+    /** 일정 조건의 중심 장소 중 배치 대상에 있는 곳. 여행 일수만큼만 쓴다(수정안에서 바꾼 중심 장소는 빠진다). */
+    private static List<PlaceCandidate> centerPlaces(Input input,int dayCount) {
+        if(input.constraints()==null) return List.of();
+        return input.constraints().centerPlaceIds().stream()
+            .map(id->input.places().attractions().stream().filter(p->p.placeId().equals(id)).findFirst().orElse(null))
+            .filter(Objects::nonNull).limit(dayCount).toList();
     }
 
     /** 하루 항목 중 마지막 숙소 도착의 위치. 없으면 -1이다. */

@@ -46,6 +46,35 @@ public final class TripConstraints {
         return List.copyOf(ordered);
     }
     /**
+     * 중심 장소를 기준으로 관광지 순서를 정한다. 중심 장소를 맨 앞에 두고, 나머지는 가장 가까운 중심 장소와의 거리 순으로
+     * 같은 종류를 섞은 뒤 취향에 맞는 곳을 앞으로 옮긴다. 중심 장소가 없으면 지금처럼 전체 가운데에서 가까운 순이다.
+     */
+    public static List<PlaceCandidate> aroundCenters(List<PlaceCandidate> pool, List<Long> centerIds, List<String> themes) {
+        var centers = centerIds.stream().map(id -> pool.stream().filter(p -> p.placeId().equals(id)).findFirst().orElse(null))
+            .filter(Objects::nonNull).toList();
+        if (centers.isEmpty()) return ThemePlaces.themeFirst(mixKinds(nearCenterFirst(pool)), themes);
+        var rest = pool.stream().filter(p -> !centers.contains(p)).toList();
+        var located = rest.stream().filter(p -> p.latitude() != null && p.longitude() != null)
+            .sorted(Comparator.comparingDouble(p -> nearestCenterDistance(p, centers))).toList();
+        var ordered = new ArrayList<>(located);
+        rest.stream().filter(p -> p.latitude() == null || p.longitude() == null).forEach(ordered::add);
+        var result = new ArrayList<>(centers);
+        result.addAll(ThemePlaces.themeFirst(mixKinds(ordered), themes));
+        return List.copyOf(result);
+    }
+
+    /** 가장 가까운 중심 장소까지의 대략적인 거리(위도 기준 보정한 제곱 거리). 비교에만 쓴다. */
+    static double nearestCenterDistance(PlaceCandidate place, List<PlaceCandidate> centers) {
+        double best = Double.MAX_VALUE;
+        for (var center : centers) {
+            if (center.latitude() == null || center.longitude() == null) continue;
+            double scale = Math.cos(Math.toRadians(center.latitude()));
+            best = Math.min(best, Math.pow((place.longitude() - center.longitude()) * scale, 2) + Math.pow(place.latitude() - center.latitude(), 2));
+        }
+        return best;
+    }
+
+    /**
      * 관광지 종류. 카카오 분류(예: "여행 > 관광,명소 > 해수욕장,해변")는 마지막 단계를 쓰고, 해수욕장·해변은 하나로 묶는다.
      * 분류가 없으면 빈 문자열이다.
      */
@@ -114,6 +143,8 @@ public final class TripConstraints {
         var poolIds = pool.stream().map(PlaceCandidate::placeId).toList();
         if (!poolIds.containsAll(c.requiredPlaceIds()) || new HashSet<>(c.requiredPlaceIds()).size() != c.requiredPlaceIds().size())
             throw new IllegalArgumentException("Unknown required place");
+        if (!poolIds.containsAll(c.centerPlaceIds()) || new HashSet<>(c.centerPlaceIds()).size() != c.centerPlaceIds().size())
+            throw new IllegalArgumentException("Unknown center place");
         if (c.dailyVisits() != null && (c.dailyVisits() < 1 || c.dailyVisits() > MAX_DAILY))
             throw new IllegalArgumentException("Daily visits out of range");
         if (c.dailyVisitsRequired() && c.dailyVisits() == null) throw new IllegalArgumentException("Required daily visits missing");
@@ -125,6 +156,9 @@ public final class TripConstraints {
 
         int required = c.requiredPlaceIds().size(), capacity = estimatedDailyCapacity(start, end, visitMinutes);
         var conflicts = new ArrayList<Conflict>();
+        if (c.centerPlaceIds().size() > days)
+            conflicts.add(new Conflict("일정의 중심으로 삼을 곳은 여행 일수(" + days + "일)만큼 고를 수 있어요. 지금 " + c.centerPlaceIds().size() + "곳이에요.",
+                List.of("중심으로 삼을 곳을 " + days + "곳 이하로 줄이기", "여행 조건에서 기간 늘리기")));
         if (required > MAX_TOTAL)
             conflicts.add(new Conflict("필수 방문 장소는 한 일정에 최대 " + MAX_TOTAL + "곳까지 넣을 수 있어요. 지금 " + required + "곳이에요.",
                 List.of("필수 방문 장소를 " + MAX_TOTAL + "곳 이하로 줄이기", "일부를 필수에서 빼고 다른 일정으로 나누기")));

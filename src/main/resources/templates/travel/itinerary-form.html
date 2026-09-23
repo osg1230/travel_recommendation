@@ -54,6 +54,13 @@
 <p class="help" th:if="${pool.isEmpty()}">확인된 관광지 후보가 없어요. 장소 목록에서 후보를 먼저 찾아 주세요.</p>
 <p class="help">고른 관광지는 빠짐없이 일정에 넣고, 나중에 수정안을 만들 때도 바꾸지 않아요.</p>
 <p class="notice" th:if="${purposePlaceIds != null and !purposePlaceIds.isEmpty()}">여행 목적으로 찾은 시설 한 곳을 미리 골라 두었어요. 다른 곳도 꼭 가고 싶으면 더 고르고, 빼고 싶으면 체크를 풀어 주세요.</p>
+<fieldset class="theme-choices">
+<legend>일정의 중심으로 삼을 곳 (선택)</legend>
+<label th:each="place : ${pool}"><input type="checkbox" name="center" th:value="${place.placeId}" th:checked="${values.centers != null and values.centers.contains(place.placeId)}"><span th:text="${place.name}"></span></label>
+</fieldset>
+<p class="help" th:text="${centerPlaceIds.isEmpty()
+    ? '고르면 그 날 일정을 이 장소 주변으로 짜요. 여행 일수만큼(당일은 1곳) 고를 수 있어요. 시간이 모자라면 빠질 수 있어요.'
+    : '추천 이유와 관련된 곳을 미리 골라 두었어요. 빼거나 다른 곳으로 바꿀 수 있어요. 여행 일수만큼(당일은 1곳) 고르면 그 날 일정을 이 장소 주변으로 짜요. 시간이 모자라면 빠질 수 있어요.'}"></p>
 <div class="field-grid">
 <div><label for="dailyVisits">하루 방문할 관광지 수 (선택)</label><select id="dailyVisits" name="dailyVisits">
 <option value="" th:selected="${values.dailyVisits == null}">정하지 않음</option>

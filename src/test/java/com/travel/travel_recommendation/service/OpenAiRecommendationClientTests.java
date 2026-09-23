@@ -22,7 +22,7 @@ class OpenAiRecommendationClientTests {
         return new ConfirmedTravelConditions("TEXT","private-original-input","강릉",null,null,3,null,2,true,null,List.of(),"private-summary");
     }
     @BeforeEach void setup() throws Exception {
-        output("{\"recommendations\":[{\"placeId\":1,\"reason\":\"바다 여행을 즐기기 좋은 후보입니다.\"}]}");
+        output("{\"recommendations\":[{\"placeId\":1,\"reason\":\"바다 여행을 즐기기 좋은 후보입니다.\",\"places\":[\"경포해변\",\"<b>\",\"경포해변\",\"오\"]}]}");
         server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
         server.createContext("/responses",e->{
             calls.incrementAndGet();request.set(new String(e.getRequestBody().readAllBytes(),StandardCharsets.UTF_8));
@@ -43,6 +43,8 @@ class OpenAiRecommendationClientTests {
     @Test void sendsOnlyConfirmedConditionsAndCandidateFacts() {
         var result=client("test-key",Duration.ofSeconds(2)).recommend(conditions().withPurpose("상어 관람"),pool);
         assertThat(result).hasSize(1);assertThat(result.getFirst().rank()).isEqualTo(1);
+        // GPT가 적은 장소 이름은 중복·태그·한 글자를 빼고 받는다. 일정의 중심 장소를 고르는 근거로만 쓴다.
+        assertThat(result.getFirst().centerPlaces()).containsExactly("경포해변");
         assertThat(result.getFirst().destination()).isEqualTo(pool.getFirst());
         var body=mapper.readTree(request.get());
         assertThat(body.path("store").booleanValue()).isFalse();
@@ -54,19 +56,19 @@ class OpenAiRecommendationClientTests {
     @Test void rejectsUnknownDuplicateMissingAndMalformedResults() {
         var client=client("test-key",Duration.ofSeconds(2));
         for(String json:List.of("{}","{\"recommendations\":[]}",
-            "{\"recommendations\":[{\"placeId\":99,\"reason\":\"없는 후보\"}]}",
-            "{\"recommendations\":[{\"placeId\":1,\"reason\":\" \"}]}",
-            "{\"recommendations\":[{\"placeId\":1,\"reason\":\"<script>bad</script>\"}]}",
-            "{\"recommendations\":[{\"placeId\":\"1\",\"reason\":\"wrong type\"}]}",
+            "{\"recommendations\":[{\"placeId\":99,\"reason\":\"없는 후보\",\"places\":[]}]}",
+            "{\"recommendations\":[{\"placeId\":1,\"reason\":\" \",\"places\":[]}]}",
+            "{\"recommendations\":[{\"placeId\":1,\"reason\":\"<script>bad</script>\",\"places\":[]}]}",
+            "{\"recommendations\":[{\"placeId\":\"1\",\"reason\":\"wrong type\",\"places\":[]}]}",
             "{\"recommendations\":[{\"placeId\":1,\"reason\":\"x\",\"name\":\"fake\"}]}")) {
             output(json);assertThatThrownBy(()->client.recommend(conditions(),pool)).isInstanceOf(RecommendationException.class);
         }
         var second=new DestinationCandidate(2L,"부산","부산","해변", "https://www.visitbusan.net/kr/index.do",pool.getFirst().verifiedAt());
-        output("{\"recommendations\":[{\"placeId\":1,\"reason\":\"x\"},{\"placeId\":1,\"reason\":\"y\"}]}");
+        output("{\"recommendations\":[{\"placeId\":1,\"reason\":\"x\",\"places\":[]},{\"placeId\":1,\"reason\":\"y\",\"places\":[]}]}");
         assertThatThrownBy(()->client.recommend(conditions(),List.of(pool.getFirst(),second))).isInstanceOf(RecommendationException.class);
     }
     @Test void promptFieldNamesInReasonAreReplacedWithReadableWords() {
-        output("{\"recommendations\":[{\"placeId\":1,\"reason\":\"purposePlaces에 야경 명소 정보가 없어 `travelPurpose`와 THEME 연결은 확인이 필요합니다.\"}]}");
+        output("{\"recommendations\":[{\"placeId\":1,\"reason\":\"purposePlaces에 야경 명소 정보가 없어 `travelPurpose`와 THEME 연결은 확인이 필요합니다.\",\"places\":[]}]}");
         var result=client("test-key",Duration.ofSeconds(2)).recommend(conditions(),pool);
         assertThat(result.getFirst().reason())
             .isEqualTo("목적 시설 검색 결과에 야경 명소 정보가 없어 여행 목적과 여행 취향 연결은 확인이 필요합니다.");

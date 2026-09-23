@@ -51,6 +51,20 @@ public class ItineraryJobService {
         return candidates.purpose(parentId,destinationId,login,hash).placeIds();
     }
 
+    /**
+     * 일정 만들기 화면에서 미리 골라 둘 "일정의 중심으로 삼을 곳". 추천 결과에서 GPT가 이유와 함께 적은 장소 이름과
+     * 여행지 소개 문구를 실제 후보 이름과 맞춰 고른다. 여행 일수만큼(일수가 미정이면 1곳) 고른다.
+     */
+    @Transactional(readOnly=true,timeout=10)
+    public List<Long> defaultCenterPlaceIds(UUID parentId,long destinationId,String login,byte[] hash) {
+        var pool=candidates.find(parentId,destinationId,login,hash);
+        var ranked=access.view(parentId,login,hash).recommendations().stream()
+            .filter(r->r.destination().placeId()==destinationId).findFirst().orElse(null);
+        int days=pool.durationDays()==null?1:pool.durationDays();
+        return CenterPlaces.pick(pool.attractions(),pool.destination().name(),pool.destination().description(),
+            ranked==null?List.of():ranked.centerPlaces(),days);
+    }
+
     /** 필수 방문 장소로 고를 수 있는 전체 관광지 후보(최대 16곳). */
     @Transactional(readOnly=true,timeout=10)
     public List<PlaceCandidate> attractionPool(UUID parentId,long destinationId,String login,byte[] hash) {
@@ -119,9 +133,10 @@ public class ItineraryJobService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"하루 시작·종료 시간을 확인해 주세요.");
         // 하루 시간·체류시간으로 추정한 수만큼 관광지를 고른다. 실제로 다 들어가는지는 일정 생성 때 이동시간으로 다시 확인한다.
         List<PlaceCandidate> selected;
-        // 가운데에서 가까운 곳부터, 같은 종류(해수욕장 등)는 돌아가며 고른다. 고른 여행 취향에 맞는 곳은 그중에서도 먼저 고른다.
-        var ordered=ThemePlaces.themeFirst(TripConstraints.mixKinds(TripConstraints.nearCenterFirst(places.attractions())),
-            current.conditions().themeNames());
+        // 일정의 중심 장소가 있으면 맨 앞에 두고 그 주변부터, 없으면 가운데에서 가까운 곳부터 고른다.
+        // 같은 종류(해수욕장 등)는 돌아가며 고르고, 고른 여행 취향에 맞는 곳은 그중에서도 먼저 고른다.
+        var ordered=TripConstraints.aroundCenters(places.attractions(),
+            constraints==null?List.of():constraints.centerPlaceIds(),current.conditions().themeNames());
         try {
             selected=TripConstraints.select(ordered,days,start,end,visitMinutes,constraints);
         } catch(IllegalArgumentException invalid) {
