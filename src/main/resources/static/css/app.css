@@ -36,8 +36,9 @@
     --sky-top: #e6f6f3;
     --sky-bottom: #f6fbfa;
     --radius: 12px;
+    --radius-lg: 18px;
     --radius-sm: 8px;
-    --shadow: 0 1px 2px rgba(17, 45, 41, .06), 0 8px 24px rgba(17, 45, 41, .05);
+    --shadow: 0 1px 3px rgba(17, 45, 41, .07), 0 12px 32px rgba(17, 45, 41, .07);
     --gap: 16px;
     font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", "Apple SD Gothic Neo", "Segoe UI", sans-serif;
     color: var(--text);
@@ -98,8 +99,8 @@ a:hover { color: var(--brand-strong); }
 
 /* 로그인·회원가입·내 정보처럼 폼 한 개가 본문인 화면은 폼 자체를 카드로 보여 준다. */
 .account > form {
-    padding: 22px; margin-bottom: 16px; background: var(--surface);
-    border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 28px; margin-bottom: 16px; background: var(--surface);
+    border: 1px solid transparent; border-radius: var(--radius-lg); box-shadow: var(--shadow);
 }
 .account > form > :first-child { margin-top: 0; }
 
@@ -116,16 +117,17 @@ h3 { font-size: 17px; margin: 0 0 6px; }
 .help { margin: 6px 0 0; color: var(--text-muted); font-size: 13px; }
 .required-note { margin: 0 0 20px; font-size: 13px; color: var(--text-muted); }
 
-/* 카드: 화면의 기본 묶음 단위. 그림자는 바깥 카드에만 두고,
-   카드 안에 놓이는 목록 항목·표·요약은 테두리만 두어 겹친 카드처럼 보이지 않게 한다. */
+/* 카드: 화면의 기본 묶음 단위. 바깥 카드는 테두리 없이 그림자로만 띄우고,
+   카드 안에 놓이는 목록 항목·표·요약은 테두리만 두어 겹친 카드처럼 보이지 않게 한다.
+   테두리를 없애도 투명 테두리 1px을 남겨 두어 크기가 바뀌지 않고, 위험 구역처럼 색 테두리가 필요한 곳은 색만 바꾼다. */
 .card, .condition-section {
-    background: var(--surface); border: 1px solid var(--line);
-    border-radius: var(--radius); box-shadow: var(--shadow);
+    background: var(--surface); border: 1px solid transparent;
+    border-radius: var(--radius-lg); box-shadow: var(--shadow);
 }
 .place-row, .travel-story {
     background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
 }
-.card, .condition-section { padding: 22px; margin-bottom: var(--gap); }
+.card, .condition-section { padding: 28px; margin-bottom: var(--gap); }
 .condition-section { scroll-margin-top: 76px; }
 .card > :first-child, .condition-section > :first-child { margin-top: 0; }
 
@@ -256,7 +258,7 @@ summary:has(.details-title) { cursor: pointer; }
 .status-not_applicable { background: var(--surface-muted); color: var(--text-muted); border-color: var(--line); }
 
 /* 취향 탐색: 두 장면을 카드처럼 나란히 비교하고, 상관없음·건너뛰기는 작게 둔다. */
-.discover-question { border: 1px solid var(--line); }
+.discover-question { border: 1px solid transparent; }
 .discover-question legend { font-weight: 700; padding: 0 4px; }
 .discover-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
 .discover-option { display: flex; gap: 10px; align-items: flex-start; padding: 16px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; font-weight: 600; }
@@ -291,7 +293,7 @@ summary:has(.details-title) { cursor: pointer; }
 /* 바로가기: 설계서의 아이콘 메뉴 */
 .home { margin-top: -64px; position: relative; }
 .shortcuts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: var(--gap); }
-.shortcut { display: flex; flex-direction: column; gap: 4px; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); color: var(--text); text-decoration: none; }
+.shortcut { display: flex; flex-direction: column; gap: 4px; padding: 18px; background: var(--surface); border: 1px solid transparent; border-radius: var(--radius); box-shadow: var(--shadow); color: var(--text); text-decoration: none; }
 .shortcut:hover { border-color: var(--brand); color: var(--text); transform: translateY(-1px); }
 .shortcut svg { width: 28px; height: 28px; margin-bottom: 6px; fill: none; stroke: var(--brand); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .shortcut strong { font-size: 16px; }
@@ -343,7 +345,7 @@ summary:has(.details-title) { cursor: pointer; }
 .my-nav a.active { background: var(--brand); color: #fff; }
 
 /* 로그인: 왼쪽 소개, 오른쪽 폼 */
-.auth-split { display: grid; grid-template-columns: 1fr 1fr; width: min(100% - 32px, 900px); margin: 36px auto 72px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); overflow: hidden; }
+.auth-split { display: grid; grid-template-columns: 1fr 1fr; width: min(100% - 32px, 900px); margin: 36px auto 72px; background: var(--surface); border: 1px solid transparent; border-radius: var(--radius-lg); box-shadow: var(--shadow); overflow: hidden; }
 .auth-intro { display: flex; flex-direction: column; padding: 40px 36px 0; background: linear-gradient(180deg, var(--sky-top), var(--sky-bottom)); }
 .auth-intro-title { margin: 6px 0 10px; font-size: 26px; font-weight: 800; line-height: 1.35; letter-spacing: -.6px; }
 .auth-intro-text { margin: 0; color: var(--text-muted); font-size: 14px; }
@@ -370,6 +372,7 @@ summary:has(.details-title) { cursor: pointer; }
 @media (max-width: 600px) {
     h1 { font-size: 25px; }
     .page, .account, .travel { margin-top: 20px; }
+    .card, .condition-section, .account > form { padding: 20px; }
     .field-grid, .mode-switch { grid-template-columns: 1fr; flex-direction: column; }
     .condition-summary { grid-template-columns: 1fr; }
     .condition-summary dt { border-bottom: 0; padding-bottom: 0; background: var(--surface); }
