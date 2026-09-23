@@ -96,7 +96,7 @@ class ItineraryConditionReportTests {
         var report=ItineraryConditionReport.evaluate(required,result);
         assertThat(status(report,"필수 방문 장소")).isEqualTo(Status.MET);
         assertThat(status(report,"하루 방문 수")).isEqualTo(Status.MET);
-        assertThat(report.checks()).anySatisfy(c->{ assertThat(c.name()).isEqualTo("예산"); assertThat(c.detail()).contains("1인 기준").contains("식사").contains("숙박"); });
+        assertThat(report.checks()).anySatisfy(c->{ assertThat(c.name()).isEqualTo("예산"); assertThat(c.detail()).contains("1인 기준").contains("식사").contains("숙박").contains("직접 확인"); });
         // 하루 2곳을 필수로 요구했는데 1곳씩이면 미충족, 선호였다면 확인 필요로 구분한다.
         var strict=new Input(base.recommendationId(),base.places(),base.conditions(),base.start(),base.end(),base.transport(),base.visitMinutes(),null,
             new Constraints(List.of(),2,true,null,List.of()));

@@ -41,6 +41,11 @@ public class NearbyRegionService {
         "경주",new Terminal("경주시외버스터미널","경주시외","경주","경상북도 경주시 강변로 184",129.202469,35.839800),
         "울산",new Terminal("울산시외버스터미널","울산","울산","울산광역시 남구 화합로 133",129.339729,35.536562));
 
+    /** 주변 지역 추천을 제공하는 여행지인지. 추천·조건 화면에서 미리 알려 줄 때 쓴다. */
+    public static boolean supports(String destinationName) { return TERMINALS.containsKey(destinationName); }
+    /** 주변 지역 추천을 제공하는 여행지 이름(가나다순). */
+    public static String supportedNames() { return String.join("·",TERMINALS.keySet().stream().sorted().toList()); }
+
     private final PlaceRepository places;
     private final KakaoMapClient maps;
     private final IntercityBusClient buses;
@@ -58,7 +63,7 @@ public class NearbyRegionService {
         String reason=Boolean.TRUE.equals(wanted)?"조건에서 '주변 지역 포함'을 골라 주변 지역을 찾았어요."
             :"하루 일정에 약 "+spare/60+"시간 "+(spare%60>0?spare%60+"분 ":"")+"빈 시간이 있어 주변 지역을 찾았어요.";
         var origin=TERMINALS.get(input.places().destination().name());
-        if(origin==null) return new Nearby("UNSUPPORTED","이 여행지는 이동시간을 잴 기준 터미널이 없어 주변 지역을 찾지 못했어요.",basis,List.of(),null,checkedAt);
+        if(origin==null) return new Nearby("UNSUPPORTED","주변 지역 추천은 이동시간을 잴 기준 터미널을 확인한 여행지("+supportedNames()+")에서만 제공해요. 이 여행지는 아직 지원하지 않아요.",basis,List.of(),null,checkedAt);
         // 2) 탐색: 확인된 여행지 중 기준 시간 안에 닿는 곳만 남긴다.
         List<NearbyRegion> found=new ArrayList<>();
         // 시외버스 정보에 배차가 아예 없는 지역. 실제로 버스가 없다는 뜻이 아니라 판단하지 못한 곳이다.

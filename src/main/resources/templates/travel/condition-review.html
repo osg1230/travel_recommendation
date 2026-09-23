@@ -42,7 +42,7 @@
                 <div><label for="transportation">이동수단</label><select th:field="*{transportation}"><option value="">상관없음</option><option th:each="item : ${choices.transportation}" th:value="${item.selectionValue}" th:text="${item.name}"></option></select><p class="field-error" th:errors="*{transportation}"></p></div>
                 <div><label for="accommodationNeeded">숙박이 필요한가요?</label><select th:field="*{accommodationNeeded}"><option value="">아직 미정</option><option value="true">숙박 필요</option><option value="false">숙박 불필요</option></select><p class="field-error" th:errors="*{accommodationNeeded}"></p></div>
             </div>
-            <label for="includeNearby">주변 지역도 포함할까요?</label><select th:field="*{includeNearby}"><option value="">아직 미정</option><option value="true">주변 지역 포함</option><option value="false">선택 지역 중심</option></select><p class="field-error" th:errors="*{includeNearby}"></p>
+            <label for="includeNearby">주변 지역도 포함할까요?</label><select th:field="*{includeNearby}"><option value="">아직 미정</option><option value="true">주변 지역 포함</option><option value="false">선택 지역 중심</option></select><p class="field-error" th:errors="*{includeNearby}"></p><p class="help" th:text="${'주변 지역 추천은 지금 ' + T(com.travel.travel_recommendation.service.NearbyRegionService).supportedNames() + ' 여행지에서만 제공돼요.'}"></p>
         </section>
         <div class="form-actions"><button type="submit" th:text="${directFlow == true ? '수정한 조건으로 추천받기' : '이 조건으로 확정하기'}"></button><p class="help">바꾸고 싶은 조건만 수정해 주세요. 아직 정하지 않은 항목은 비워 둬도 괜찮아요.</p></div>
     </form>
