@@ -26,7 +26,7 @@
             <a th:if="${!#strings.isEmpty(favorite.mapUrl)}" th:href="${favorite.mapUrl}"
                target="_blank" rel="noopener noreferrer">지도에서 보기 (새 창)</a>
         </div>
-        <p class="help" th:text="${'등록: ' + favorite.createdAt + ' (UTC)'}"></p>
+        <p class="help" th:text="${'등록: ' + @timeText.dateTime(favorite.createdAt)}"></p>
         <form th:action="@{/my/favorites/{placeId}/delete(placeId=${favorite.placeId})}" method="post">
             <input type="hidden" name="returnTo" value="/my/favorites">
             <button type="submit">즐겨찾기 삭제</button>

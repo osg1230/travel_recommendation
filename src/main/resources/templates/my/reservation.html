@@ -27,7 +27,7 @@
             <tr th:if="${s.unit == 'ROOM'}"><th scope="row">객실</th><td th:text="${s.quantity + '실'}"></td></tr>
             <tr><th scope="row">인원</th><td th:text="${s.partySize + '명'}"></td></tr>
             <tr><th scope="row">가상 금액</th><td th:text="${#numbers.formatInteger(s.amount, 1, 'COMMA') + '원'}"></td></tr>
-            <tr><th scope="row">신청 시각</th><td th:text="${#temporals.format(s.createdAt, 'yyyy-MM-dd HH:mm') + ' (UTC)'}"></td></tr>
+            <tr><th scope="row">신청 시각</th><td th:text="${@timeText.dateTime(s.createdAt)}"></td></tr>
             </tbody>
         </table>
         <p class="help" th:if="${reservation.stock != null}" th:text="${reservation.stock.priceNote}"></p>
@@ -84,14 +84,14 @@
     <section class="condition-section" th:if="${!reservation.payments.isEmpty()}">
         <h2>결제 내역</h2>
         <table class="report-table">
-            <thead><tr><th scope="col">결제번호</th><th scope="col">상태</th><th scope="col">금액</th><th scope="col">처리 시각 (UTC)</th></tr></thead>
+            <thead><tr><th scope="col">결제번호</th><th scope="col">상태</th><th scope="col">금액</th><th scope="col">처리 시각</th></tr></thead>
             <tbody>
             <tr th:each="p : ${reservation.payments}">
                 <td th:text="${p.id}"></td>
                 <td th:text="${p.statusName() + (p.failureCode != null ? ' (' + p.failureCode + ')' : '')}"></td>
                 <td th:text="${#numbers.formatInteger(p.amount, 1, 'COMMA') + '원'}"></td>
-                <td th:text="${(p.processedAt != null ? #temporals.format(p.processedAt, 'yyyy-MM-dd HH:mm:ss') : '-')
-                    + (p.refundedAt != null ? ' · 환불 ' + #temporals.format(p.refundedAt, 'yyyy-MM-dd HH:mm:ss') : '')}"></td>
+                <td th:text="${(p.processedAt != null ? @timeText.seconds(p.processedAt) : '-')
+                    + (p.refundedAt != null ? ' · 환불 ' + @timeText.seconds(p.refundedAt) : '')}"></td>
             </tr>
             </tbody>
         </table>
@@ -100,13 +100,13 @@
     <section class="condition-section" th:if="${!reservation.logs.isEmpty()}">
         <h2>수량 변경 이력</h2>
         <table class="report-table">
-            <thead><tr><th scope="col">내용</th><th scope="col">남은 수량</th><th scope="col">상태</th><th scope="col">시각 (UTC)</th></tr></thead>
+            <thead><tr><th scope="col">내용</th><th scope="col">남은 수량</th><th scope="col">상태</th><th scope="col">시각</th></tr></thead>
             <tbody>
             <tr th:each="l : ${reservation.logs}">
                 <td th:text="${l.reason}"></td>
                 <td th:text="${l.beforeQuantity + ' → ' + l.afterQuantity + ' (' + (l.delta > 0 ? '+' : '') + l.delta + ')'}"></td>
                 <td th:text="${(l.beforeStatus != null ? l.beforeStatus + ' → ' : '') + l.afterStatus}"></td>
-                <td th:text="${#temporals.format(l.createdAt, 'yyyy-MM-dd HH:mm:ss')}"></td>
+                <td th:text="${@timeText.seconds(l.createdAt)}"></td>
             </tr>
             </tbody>
         </table>

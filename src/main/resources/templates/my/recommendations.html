@@ -25,7 +25,7 @@
             <span class="help" th:text="${h.inputMode}"></span>
         </p>
         <p th:if="${!h.destinations.isEmpty()}" th:text="${'추천 여행지: ' + #strings.listJoin(h.destinations, ', ')}"></p>
-        <p class="help" th:text="${'요청: ' + #temporals.format(h.requestedAt, 'yyyy-MM-dd HH:mm') + ' (UTC)'}"></p>
+        <p class="help" th:text="${'요청: ' + @timeText.dateTime(h.requestedAt)}"></p>
     </article>
     <p class="guide-note">추천 이력은 추천 당시의 조건과 결과예요. 장소 정보와 운영 여부는 그 뒤 바뀌었을 수 있어요. 비회원으로 받은 추천은 이력에 남지 않아요.</p>
 </main>

@@ -99,7 +99,7 @@
             <a th:href="${place.mapSearchUrl}" target="_blank" rel="noopener noreferrer">지도에서 검색 <span class="help">(새 창)</span></a>
             <a th:if="${place.operatingInfo != null}" href="https://api.visitkorea.or.kr/" target="_blank" rel="noopener noreferrer">운영정보 제공: 한국관광공사 (새 창)</a>
         </div>
-        <p class="help" th:text="${'출처 확인일: ' + #temporals.format(place.verifiedAt, 'yyyy-MM-dd') + ' (UTC)'}"></p>
+        <p class="help" th:text="${'출처 확인일: ' + @timeText.date(place.verifiedAt)}"></p>
     </article>
 </th:block>
 </body></html>
