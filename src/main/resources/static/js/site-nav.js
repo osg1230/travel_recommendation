@@ -9,3 +9,11 @@
     toggle.addEventListener('click', () => set(!header.classList.contains('nav-open')));
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape') set(false); });
 })();
+
+// 같은 화면 안의 접힌 절(예: 일정 초안의 '여행 조건 확인 결과')로 가는 링크를 누르면 그 절을 펼친다.
+document.addEventListener('click', (event) => {
+    const link = event.target.closest('a[href^="#"]');
+    const target = link && link.getAttribute('href').length > 1 && document.getElementById(link.getAttribute('href').slice(1));
+    const details = target && (target.matches('details') ? target : target.querySelector('details'));
+    if (details) details.open = true;
+});

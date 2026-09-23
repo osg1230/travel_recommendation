@@ -16,4 +16,11 @@ class TimeTextTests {
         assertThat(time.seconds(LocalDateTime.of(2026, 1, 1, 0, 0, 5))).isEqualTo("2026-01-01 09:00:05");
         assertThat(time.dateTime(null)).isEmpty();
     }
+
+    // 여행 날짜는 "10월 15일(목)"처럼 월·일·요일로 보여 준다.
+    @Test void showsTripDayWithWeekday() {
+        assertThat(time.day(LocalDate.of(2026, 10, 15))).isEqualTo("10월 15일(목)");
+        assertThat(time.day(LocalDate.of(2026, 10, 18))).isEqualTo("10월 18일(일)");
+        assertThat(time.day(null)).isEqualTo("날짜 미정");
+    }
 }

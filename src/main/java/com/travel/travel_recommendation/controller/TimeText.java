@@ -16,6 +16,12 @@ public class TimeText {
     public String date(Object utc) { return format(utc, "yyyy-MM-dd"); }
     public String seconds(Object utc) { return format(utc, "yyyy-MM-dd HH:mm:ss"); }
 
+    /** 여행 날짜(시간대 없는 날짜)를 "10월 15일(목)"처럼 보여 준다. 일정의 일차 제목에 쓴다. 날짜가 없으면 "날짜 미정"이다. */
+    public String day(LocalDate date) {
+        if (date == null) return "날짜 미정";
+        return date.getMonthValue() + "월 " + date.getDayOfMonth() + "일(" + "월화수목금토일".charAt(date.getDayOfWeek().getValue() - 1) + ")";
+    }
+
     private static String format(Object utc, String pattern) {
         Instant instant = utc instanceof Instant value ? value
             : utc instanceof LocalDateTime value ? value.toInstant(ZoneOffset.UTC) : null;

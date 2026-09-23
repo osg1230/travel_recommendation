@@ -21,7 +21,7 @@
     <section th:replace="~{fragments/map :: tripMap('지도로 보는 방문 순서', ${route.missing > 0 ? '좌표가 저장되지 않은 장소 ' + route.missing + '곳은 지도에서 빠져 있어요.' : '저장 당시 좌표로 일차별 방문 순서를 표시해요.'})}"></section>
 
     <section class="condition-section timeline" th:each="day : ${itinerary.days}">
-        <h2 th:text="${day.number + '일차 · ' + day.date}"></h2>
+        <h2 th:text="${day.number + '일차 · ' + @timeText.day(day.date)}"></h2>
         <article class="place-row schedule-item" th:each="item, st : ${day.items}" th:classappend="${'item-' + #strings.toLowerCase(item.type)}">
             <p class="schedule-time" th:text="${#temporals.format(item.start, 'HH:mm') + '–' + #temporals.format(item.end, 'HH:mm')}"></p>
             <div class="schedule-body">
