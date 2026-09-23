@@ -238,8 +238,9 @@ tbody tr:last-child td { border-bottom: 0; }
 .complete h1 { font-size: 26px; }
 
 /* 일정 항목: 시각과 내용을 한 줄로 읽히게 */
-.schedule-item { display: grid; grid-template-columns: 92px 1fr; gap: 0 18px; }
-.schedule-time { font-weight: 700; color: var(--brand-strong); font-variant-numeric: tabular-nums; }
+.schedule-item { display: grid; grid-template-columns: 104px 1fr; gap: 0 18px; }
+/* 시각은 한 줄로 두고 숫자 폭을 맞춰 위아래 줄의 시각이 가지런히 보이게 한다. */
+.schedule-time { font-size: 15px; font-weight: 700; color: var(--brand-strong); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .schedule-body { min-width: 0; }
 .schedule-body > :first-child { margin-top: 0; }
 
@@ -372,13 +373,27 @@ summary:has(.details-title) { cursor: pointer; }
 .timeline .schedule-item { position: relative; margin-bottom: 0; border-radius: 0; box-shadow: none; border-width: 0 0 1px 0; padding: 14px 4px 14px 32px; }
 .timeline .schedule-item:last-child { border-bottom: 0; }
 .timeline .schedule-item::before { content: ""; position: absolute; left: 6px; top: 0; bottom: 0; border-left: 2px solid var(--line); }
-.timeline .schedule-item::after { content: ""; position: absolute; left: 0; top: 20px; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); border: 3px solid var(--brand); }
-.timeline .item-meal::after { border-color: var(--meal); }
-.timeline .item-stay::after { border-color: var(--stay); }
-.timeline .item-free::after { border-color: var(--line-strong); }
+.timeline .schedule-item::after { content: ""; position: absolute; left: 0; top: 20px; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); border: 3px solid var(--item-color); }
+/* 일정 종류별 색: 점과 종류 표시에 같은 색을 쓴다. 관광은 대표 색, 식사·숙소는 지도와 같은 색이다. */
+.timeline .schedule-item { --item-color: var(--brand); }
+.timeline .item-meal { --item-color: var(--meal); }
+.timeline .item-stay { --item-color: var(--stay); }
+.timeline .item-free, .timeline .item-transit { --item-color: var(--text-muted); }
+.timeline h3 { font-size: 18px; }
+.schedule-type {
+    display: inline-block; margin: 0 0 4px; padding: 1px 9px; border-radius: 999px;
+    font-size: 12px; font-weight: 700; color: var(--item-color, var(--brand));
+    background: color-mix(in srgb, var(--item-color, var(--brand)) 10%, var(--surface));
+}
+/* 일정 안의 링크는 본문보다 작게, 밑줄 없이 두어 장소 이름이 먼저 읽히게 한다. */
+.timeline .place-links { font-size: 13.5px; }
+.timeline .place-links a { font-weight: 600; text-decoration: none; }
+.timeline .place-links a:hover { text-decoration: underline; }
+/* 이동 구간은 장소 사이의 보조 정보라 작고 흐리게 보여 준다. */
 .timeline .item-transit { padding-top: 8px; padding-bottom: 8px; background: var(--surface-muted); }
 .timeline .item-transit::after { top: 14px; width: 10px; height: 10px; left: 2px; border-width: 2px; border-color: var(--line-strong); }
 .timeline .item-transit h3 { font-size: 14px; color: var(--text-muted); font-weight: 600; }
+.timeline .item-transit .schedule-body p { margin: 2px 0; font-size: 14px; color: var(--text-muted); }
 .timeline .item-transit .schedule-time { font-weight: 600; color: var(--text-muted); font-size: 13px; }
 
 @media (max-width: 600px) {

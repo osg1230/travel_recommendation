@@ -25,7 +25,7 @@
         <article class="place-row schedule-item" th:each="item, st : ${day.items}" th:classappend="${'item-' + #strings.toLowerCase(item.type)}">
             <p class="schedule-time" th:text="${#temporals.format(item.start, 'HH:mm') + '–' + #temporals.format(item.end, 'HH:mm')}"></p>
             <div class="schedule-body">
-            <p class="help" th:text="${item.typeName}"></p>
+            <p class="schedule-type" th:text="${item.typeName}"></p>
             <h3 th:text="${item.name}"></h3>
             <p style="white-space: pre-line" th:text="${item.note}"></p>
             <p class="help" th:if="${item.travelMinutes != null}" th:text="${'저장 당시 예상 이동시간 약 ' + item.travelMinutes + '분'}"></p>
