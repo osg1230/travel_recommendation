@@ -21,6 +21,12 @@ public class ItineraryGenerator {
     private static final double SAME_KIND_PENALTY=4;
     /** 저녁 식사는 이 시각 이후에만 넣는다. */
     private static final LocalTime DINNER_FROM=LocalTime.of(17,0);
+    /** 이 시각이 지났는데 다음 관광지를 마치면 LUNCH_UNTIL을 넘기면 관광지보다 점심을 먼저 넣는다. */
+    private static final LocalTime LUNCH_FROM=LocalTime.of(11,0), LUNCH_UNTIL=LocalTime.of(13,30);
+    /** 남는 시간을 예비 관광지로 채울 때도 수정안의 교체 후보로 남겨 둘 예비 관광지 수. */
+    private static final int SPARE_KEPT=2;
+    /** 하루에 시간이 모자라 넣지 못한 관광지가 이만큼 나오면 그날은 마친다(이동시간 조회를 무한히 늘리지 않게). */
+    private static final int MAX_MISSES=3;
     /** 관광지를 더 넣어 볼 때 이 오류가 나면 실패가 아니라 '오늘은 더 들어가지 않음'으로 본다. */
     private static final Set<String> DAY_FULL_CODES=Set.of("TIME_OVERLAP","OPERATING_CONFLICT");
     /** 이 오류가 나면 그 관광지만 뺀다. 한 구간 2시간 초과(섬 등)와 경로 없음이다. */
@@ -71,6 +77,8 @@ public class ItineraryGenerator {
         String lastKind="";
         // 일정의 중심 장소: 1일차부터 하루에 한 곳씩 그날 첫 관광지로 넣는다. 나머지 관광지는 가장 가까운 중심 장소의 날에 먼저 넣는다.
         var centers=centerPlaces(input,dayCount);
+        // 하루 방문 수를 정했으면 정한 수만 넣고, 남는 시간을 예비 관광지로 채우지 않는다.
+        boolean fillSpareTime=constraints==null || constraints.dailyVisits()==null;
         Map<Long,Integer> dayOf=new HashMap<>();
         for(var place:places.attractions()) {
             int best=-1; double bestDistance=Double.MAX_VALUE;
@@ -88,18 +96,29 @@ public class ItineraryGenerator {
             PlaceCandidate last=null; int visits=0;
             final int today=day;
             PlaceCandidate dayCenter=day<=centers.size()?centers.get(day-1):null;
-            boolean centerTried=false; Set<Long> skipToday=new HashSet<>();
-            while(visits<target && !remaining.isEmpty()) {
+            boolean centerTried=false; Set<Long> skipToday=new HashSet<>(); int misses=0;
+            while(misses<MAX_MISSES) {
+                // 오늘 몫을 다 넣었거나 남은 관광지가 오늘 시간에 들어가지 않으면, 하루 시간이 남는 한 예비 관광지 중 가까운 곳을 더 넣는다.
+                boolean spare=visits>=target || remaining.stream().allMatch(p->skipToday.contains(p.placeId()));
+                if(spare && (!fillSpareTime || visits==0)) break;
                 PlaceCandidate anchor=builder.previous; String previousKind=lastKind;
-                // 오늘 고를 수 있는 곳: 다른 날의 중심 장소는 빼고, 가장 가까운 중심 장소가 오늘인 곳을 먼저 본다.
-                var choices=remaining.stream().filter(p->!skipToday.contains(p.placeId()) && !(centers.contains(p) && !p.equals(dayCenter))).toList();
-                if(choices.isEmpty()) choices=remaining.stream().filter(p->!skipToday.contains(p.placeId())).toList();
-                if(choices.isEmpty()) break;
-                var own=choices.stream().filter(p->dayOf.getOrDefault(p.placeId(),today)==today).toList();
-                final var pool=own.isEmpty()?choices:own;
+                List<PlaceCandidate> pool;
+                if(spare) {
+                    // 예비 관광지는 수정안에서 바꿔 넣을 후보로도 쓰이므로 SPARE_KEPT곳은 남겨 둔다.
+                    var located=locatedReserve(reserve,locations,addresses,deadline);
+                    pool=located.stream().filter(p->!skipToday.contains(p.placeId())).toList();
+                    if(located.size()<=SPARE_KEPT || pool.isEmpty()) break;
+                } else {
+                    // 오늘 고를 수 있는 곳: 다른 날의 중심 장소는 빼고, 가장 가까운 중심 장소가 오늘인 곳을 먼저 본다.
+                    var choices=remaining.stream().filter(p->!skipToday.contains(p.placeId()) && !(centers.contains(p) && !p.equals(dayCenter))).toList();
+                    if(choices.isEmpty()) choices=remaining.stream().filter(p->!skipToday.contains(p.placeId())).toList();
+                    if(choices.isEmpty()) break;
+                    var own=choices.stream().filter(p->dayOf.getOrDefault(p.placeId(),today)==today).toList();
+                    pool=own.isEmpty()?choices:own;
+                }
                 // 하루의 첫 관광지는 그날의 중심 장소다. 그 뒤로는 가까운 관광지를 이어서 고른다. 최단 경로 보장은 아니다.
                 // 직전 관광지와 종류가 같으면(예: 해수욕장 다음 해수욕장) 거리를 두 배로 쳐서, 조금 멀어도 다른 종류를 먼저 고른다.
-                boolean forceCenter=!centerTried && dayCenter!=null && remaining.contains(dayCenter);
+                boolean forceCenter=!spare && !centerTried && dayCenter!=null && remaining.contains(dayCenter);
                 centerTried=true;
                 var next=forceCenter?dayCenter:pool.stream().min(order(builder.date,p->anchor==null?remaining.indexOf(p)
                     :distance(locations.get(anchor.placeId()),locations.get(p.placeId()))
@@ -107,13 +126,18 @@ public class ItineraryGenerator {
                 var mark=builder.mark();
                 boolean hadLunch=builder.lunch;
                 try {
+                    // 점심때가 됐는데 이 관광지를 마치면 너무 늦어지면(예: 12:06~13:36) 점심을 먼저 먹는다.
+                    if(!builder.lunch && lunchFirst(builder,next)) eat(builder,builder.previous,false);
                     builder.visit(next,"VISIT",input.visitMinutes(),"관광·관람 (계획한 체류시간)"
+                        +(spare?"\n하루 시간이 남아 더 넣은 곳이에요.":"")
                         +(centers.contains(next)?"\n이 날 일정의 중심으로 고른 곳이에요.":"")
                         +(next.religiousSite()?"\n종교 시설이라 미사·예불 등 행사 중에는 관람이 제한될 수 있어요. 방문 전 관람 가능 시간을 확인해 주세요.":""));
                     if(!builder.lunch && !builder.time.isBefore(LocalTime.NOON)) eat(builder,next,false);
                     // 이 관광지를 넣어도 남은 점심·숙소 도착까지 하루 종료 시간 안에 끝나는지 미리 확인한다.
                     checkClosing(builder,next,stay);
                 } catch(RecommendationException error) {
+                    // 더 넣어 보던 예비 관광지가 멀면 그곳만 빼고 다른 예비 관광지를 본다.
+                    if(spare && UNREACHABLE_CODES.contains(error.getCode())) { builder.reset(mark); reserve.remove(next); continue; }
                     // 이 관광지를 넣으려다 한 구간이 2시간을 넘거나 경로가 없으면 이 곳만 빼고 다음 후보를 본다.
                     if(UNREACHABLE_CODES.contains(error.getCode())) {
                         if(mustVisit.contains(next.placeId()))
@@ -126,11 +150,12 @@ public class ItineraryGenerator {
                     }
                     // 중심 장소가 오늘 휴무 등으로 들어가지 않으면 오늘은 다른 곳부터 시작한다.
                     if(forceCenter && DAY_FULL_CODES.contains(error.getCode())) { builder.reset(mark); skipToday.add(next.placeId()); continue; }
-                    // 첫 관광지부터 들어가지 않으면 그대로 실패를 알린다. 그 뒤라면 오늘은 여기서 마치고 남은 곳은 다음 날로 넘긴다.
+                    // 첫 관광지부터 들어가지 않으면 그대로 실패를 알린다. 그 뒤라면 이 곳은 다음 날로 넘기고 오늘 들어갈 다른 곳을 본다.
                     if(visits==0 || !DAY_FULL_CODES.contains(error.getCode())) throw error;
-                    builder.reset(mark); break;
+                    builder.reset(mark); skipToday.add(next.placeId()); misses++; continue;
                 }
-                remaining.remove(next); last=next; visits++; lastKind=TripConstraints.kind(next);
+                if(spare) reserve.remove(next); else remaining.remove(next);
+                last=next; visits++; lastKind=TripConstraints.kind(next);
                 // 점심 뒤에 관광을 이어 가 17시가 지났으면 저녁 식사도 넣어 본다. 시간이 안 되면 저녁 없이 마친다.
                 if(dinnerDay && hadLunch && !builder.dinner && !builder.time.isBefore(DINNER_FROM)) {
                     var beforeDinner=builder.mark();
@@ -171,9 +196,14 @@ public class ItineraryGenerator {
         eat(builder,after,dinner,pickRestaurant(builder,after));
     }
 
-    /** after에서 가장 가까운 음식점. 이미 간 곳은 후보가 모자랄 때만 다시 고른다. */
+    /**
+     * after에서 가장 가까운 음식점. 이미 간 곳은 후보가 모자랄 때만 다시 고른다.
+     * 간식·술집·카페는 끼니로 어울리지 않아, 다른 음식점이 하나도 없을 때만 고른다.
+     */
     private PlaceCandidate pickRestaurant(DayBuilder builder,PlaceCandidate after) {
-        var restaurants=builder.input.places().restaurants();
+        var all=builder.input.places().restaurants();
+        var meals=all.stream().filter(p->!PlaceCandidate.notForMeals(p.subtype())).toList();
+        var restaurants=meals.isEmpty()?all:meals;
         var fresh=restaurants.stream().filter(p->!builder.usedRestaurants.contains(p.placeId())).toList();
         return (fresh.isEmpty()?restaurants:fresh).stream().min(order(builder.date,
             p->distance(builder.locations.get(after.placeId()),builder.locations.get(p.placeId())))).orElseThrow();
@@ -239,6 +269,25 @@ public class ItineraryGenerator {
             if(!builder.lunch) eat(builder,last,false);
             if(stay!=null) builder.visit(stay,"STAY",30,"");
         } finally { builder.reset(mark); }
+    }
+
+    /** 11시가 지났고, 다음 관광지까지 가서 체류를 마치면 13시 30분을 넘기면 true다. 하루의 첫 관광지 전에는 보지 않는다. */
+    private boolean lunchFirst(DayBuilder builder,PlaceCandidate next) {
+        if(builder.previous==null || builder.time.isBefore(LUNCH_FROM)) return false;
+        var end=builder.time.plusMinutes(builder.travelMinutes(builder.previous,next)+builder.input.visitMinutes());
+        return end.isBefore(builder.time) || end.isAfter(LUNCH_UNTIL);
+    }
+
+    /** 위치를 확인한 예비 관광지. 위치를 찾지 못한 곳은 예비에서 뺀다. */
+    private List<PlaceCandidate> locatedReserve(List<PlaceCandidate> reserve,Map<Long,KakaoMapClient.Location> locations,
+                                                Map<String,KakaoMapClient.Location> addresses,Instant deadline) {
+        for(var place:List.copyOf(reserve)) {
+            if(locations.containsKey(place.placeId())) continue;
+            checkDeadline(deadline);
+            try { locations.put(place.placeId(),locate(place,addresses)); }
+            catch(RecommendationException error) { if("SCHEDULE_TIMEOUT".equals(error.getCode())) throw error; reserve.remove(place); }
+        }
+        return List.copyOf(reserve);
     }
 
     /**

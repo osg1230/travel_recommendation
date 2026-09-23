@@ -14,6 +14,11 @@ public record PlaceCandidate(Long placeId, String name, String address, String s
         this(id,name,address,subtype,description,sourceUrl,mapUrl,verifiedAt,null,null,"SYSTEM");
     }
 
+    /** 간식·술집·카페처럼 끼니로 어울리지 않는 음식점 분류(예: 카카오 "음식점 > 간식 > 아이스크림", "음식점 > 술집 > 호프,요리주점"). */
+    public static boolean notForMeals(String subtype) {
+        return subtype != null && (subtype.contains("간식") || subtype.contains("술집") || subtype.contains("카페"));
+    }
+
     /** 분류로 본 종교 시설(성당·사찰·성지). 미사·예불 중에는 관람이 제한될 수 있어 화면과 일정에 안내한다. */
     public boolean religiousSite() {
         return subtype != null && (subtype.contains("종교") || subtype.contains("사찰") || subtype.contains("성당"));

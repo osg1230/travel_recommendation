@@ -8,8 +8,8 @@ import java.util.*;
 public final class ItineraryPlan {
     private ItineraryPlan() {}
     /**
-     * reserve는 일정에 쓰려고 고른 관광지(places.attractions)가 섬처럼 갈 수 없어 빠질 때 대신 넣을 예비 관광지다.
-     * 쓰지 않은 예비 관광지는 결과에 적지 않는다.
+     * reserve는 일정에 쓰려고 고른 관광지(places.attractions)가 섬처럼 갈 수 없어 빠질 때 대신 넣거나,
+     * 고른 관광지를 다 넣고도 하루 시간이 남을 때 더 넣는 예비 관광지다. 쓰지 않은 예비 관광지는 결과에 적지 않는다.
      */
     public record Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
                         LocalTime start, LocalTime end, Transport transport, int visitMinutes, Revision revision,
