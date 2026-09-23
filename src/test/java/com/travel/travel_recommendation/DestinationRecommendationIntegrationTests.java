@@ -32,6 +32,7 @@ class DestinationRecommendationIntegrationTests {
     @Autowired AiJobRepository jobRepository;
     @Autowired UserRepository users;
     @Autowired RecommendationCandidateRepository results;
+    @Autowired com.travel.travel_recommendation.repository.RecommendationRequestRepository requests;
     @Autowired MockMvc mvc;
     @MockitoSpyBean OpenAiRecommendationClient client;
     @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
@@ -83,6 +84,43 @@ class DestinationRecommendationIntegrationTests {
         assertThat(jobs.findOwned(id,member.getLoginId(),null,"RECOMMENDATION")).isEmpty();
         assertThat(jobs.findOwned(id,member.getLoginId(),guestHash,"RECOMMENDATION")).isPresent();
         assertThat(jobs.findOwned(id,"no_such_user",guestHash,"RECOMMENDATION")).isEmpty();
+    }
+    // 로그인하면 이 세션의 비회원 추천을 회원 추천 이력으로 옮긴다. 다른 세션·만료된 추천은 옮기지 않는다.
+    @Test void loginAdoptsThisSessionsGuestRecommendationsIntoHistory() {
+        String suffix=UUID.randomUUID().toString().substring(0,8);
+        var member=users.saveAndFlush(new User("adopt_"+suffix,"unused-hash","옮기기"+suffix));
+        UUID done=prepared("강릉",null); service.enqueue(done,null,guestHash,0);
+        var work=service.claim(done); service.complete(work,ranked(work));
+        // 추천을 계산하는 중에 로그인한 경우: 옮긴 뒤 끝나도 회원 결과로 남아야 한다.
+        UUID running=prepared("부산",null); service.enqueue(running,null,guestHash,0); var runningWork=service.claim(running);
+        byte[] otherHash=new byte[32]; otherHash[0]=7;
+        UUID other=jobs.create(new ConfirmedTravelConditions("KEYWORD","","경주",null,null,2,null,2,true,null,List.of(),""),null,otherHash);
+        UUID expired=prepared("속초",null);
+        em.flush(); jdbc.update("UPDATE dbo.ai_jobs SET expires_at=DATEADD(hour,-1,SYSUTCDATETIME()) WHERE job_id=?",expired.toString()); em.clear();
+        var requestedAt=jobRepository.findById(done).orElseThrow().getCreatedAt();
+
+        assertThat(jobs.adoptGuestJobs(member.getLoginId(),guestHash)).isEqualTo(2);
+        em.flush(); em.clear();
+        var adopted=jobRepository.findById(done).orElseThrow();
+        assertThat(adopted.getUserId()).isEqualTo(member.getId()); assertThat(adopted.getGuestTokenHash()).isNull();
+        var history=requests.findTop100ByUserIdOrderByCreatedAtDescIdDesc(member.getId());
+        assertThat(history).hasSize(2);
+        var doneRequest=history.stream().filter(r->r.getId().equals(adopted.getRequestId())).findFirst().orElseThrow();
+        assertThat(doneRequest.getCreatedAt()).isEqualTo(requestedAt);
+        assertThat(results.findByRequestIdOrderByRank(adopted.getRequestId())).hasSize(1);
+        // 옮긴 뒤에는 회원으로 열리고, 비회원 토큰으로는 더 이상 열리지 않는다.
+        assertThat(jobs.view(done,member.getLoginId(),null).recommendations()).hasSize(1);
+        assertThatThrownBy(()->jobs.view(done,null,guestHash)).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        // 처리 중이던 추천은 끝날 때 회원 결과로 저장된다.
+        service.complete(runningWork,ranked(runningWork)); em.flush();
+        var runningJob=jobRepository.findById(running).orElseThrow();
+        assertThat(runningJob.getStatus()).isEqualTo("COMPLETED");
+        assertThat(results.findByRequestIdOrderByRank(runningJob.getRequestId())).hasSize(1);
+        // 다른 세션의 추천과 만료된 추천은 그대로 비회원 작업이다.
+        assertThat(jobRepository.findById(other).orElseThrow().getUserId()).isNull();
+        assertThat(jobRepository.findById(expired).orElseThrow().getUserId()).isNull();
+        // 같은 세션으로 다시 로그인해도 더 옮길 것이 없다.
+        assertThat(jobs.adoptGuestJobs(member.getLoginId(),guestHash)).isZero();
     }
     @Test void retryIsExplicitBoundedAndOldSubmissionDoesNotRetryFailure() {
         UUID id=prepared("부산",null);

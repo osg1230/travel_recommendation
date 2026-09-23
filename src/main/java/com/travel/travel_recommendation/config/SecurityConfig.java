@@ -1,5 +1,8 @@
 package com.travel.travel_recommendation.config;
 
+import com.travel.travel_recommendation.controller.RecommendationJobController;
+import com.travel.travel_recommendation.service.RecommendationJobService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -17,7 +20,7 @@ import org.springframework.security.web.SecurityFilterChain;
 @Configuration
 public class SecurityConfig {
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectProvider<RecommendationJobService> jobServices) throws Exception {
         // 회원가입에도 CSRF 보호를 유지한다. 새 기능은 구현할 때 접근 규칙을 추가한다.
         return http.addFilterBefore(new LoginInputFilter(), org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
@@ -38,6 +41,7 @@ public class SecurityConfig {
                         var session = request.getSession(false);
                         Object back = session == null ? null : session.getAttribute(LOGIN_RETURN);
                         if (session != null) session.removeAttribute(LOGIN_RETURN);
+                        adoptGuestRecommendations(session, authentication, jobServices.getIfAvailable());
                         boolean admin = startPage(authentication).equals("/admin");
                         String target = !admin && back instanceof String path && isReturnPath(path) ? path : startPage(authentication);
                         response.sendRedirect(request.getContextPath() + target);
@@ -56,6 +60,26 @@ public class SecurityConfig {
     }
 
     public static final String LOGIN_RETURN = "loginReturnPath";
+    /** 로그인 전에 받은 추천을 옮긴 수. 다음 화면에서 한 번 안내하고 지운다(NavigationAdvice). */
+    public static final String ADOPTED_NOTICE = "adoptedGuestRecommendations";
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(SecurityConfig.class);
+
+    /**
+     * 로그인 전에 이 세션에서 받은 비회원 추천·일정 초안을 회원 것으로 옮겨 추천 이력에 남긴다.
+     * 옮기다 실패해도 로그인은 그대로 진행하고, 비회원 초안은 같은 세션에서 계속 열 수 있다.
+     */
+    private static void adoptGuestRecommendations(jakarta.servlet.http.HttpSession session, Authentication authentication,
+                                                  RecommendationJobService service) {
+        if (session == null || service == null) return;
+        try {
+            byte[] hash = RecommendationJobController.guestHash(session, false);
+            if (hash == null) return;
+            int adopted = service.adoptGuestJobs(authentication.getName(), hash);
+            if (adopted > 0) session.setAttribute(ADOPTED_NOTICE, adopted);
+        } catch (RuntimeException error) {
+            log.warn("로그인 전 비회원 추천을 옮기지 못했어요 ({})", error.getClass().getSimpleName());
+        }
+    }
 
     /** 로그인 후 돌아갈 수 있는 주소. 외부 주소로 보내지 않도록 일정 초안 주소 형식만 허용한다. */
     public static boolean isReturnPath(String path) {

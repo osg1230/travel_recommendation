@@ -27,6 +27,11 @@ public class RecommendationRequest {
     @Column(name="created_at", nullable=false, columnDefinition="datetime2(3)") private LocalDateTime createdAt;
     @Column(name="updated_at", nullable=false, columnDefinition="datetime2(3)") private LocalDateTime updatedAt;
 
+    /** 로그인 전에 받은 비회원 추천을 옮길 때 쓴다. 이력에는 원래 추천을 요청한 시각을 남긴다. */
+    public RecommendationRequest(Long userId, ConfirmedTravelConditions c, String json, LocalDateTime requestedAt) {
+        this(userId, c, json);
+        createdAt=updatedAt=requestedAt;
+    }
     public RecommendationRequest(Long userId, ConfirmedTravelConditions c, String json) {
         this.userId=userId; inputMode=c.inputMode(); originalText=c.originalText();
         conditionsJson=json; region=c.region().isBlank()?null:c.region();

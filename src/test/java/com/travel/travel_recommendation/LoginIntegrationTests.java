@@ -81,6 +81,27 @@ class LoginIntegrationTests {
                 .andExpect(redirectedUrl("/"));
     }
 
+    @Autowired com.travel.travel_recommendation.service.RecommendationJobService recommendations;
+
+    @Test
+    void loginMovesGuestRecommendationsAndShowsNoticeOnce() throws Exception {
+        var user = member();
+        MockHttpSession session = new MockHttpSession();
+        String token = UUID.randomUUID().toString();
+        session.setAttribute("recommendationGuestToken", token);
+        byte[] hash = java.security.MessageDigest.getInstance("SHA-256").digest(token.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        var conditions = new com.travel.travel_recommendation.dto.ConfirmedTravelConditions("KEYWORD", "", "강릉", null, null, 2, null, 2, true, null, java.util.List.of(), "");
+        UUID job = recommendations.create(conditions, null, hash);
+        var result = mvc.perform(post("/login").servletPath("/login").with(csrf()).session(session)
+                .param("loginId", user.getLoginId()).param("password", "Travel123!"))
+                .andExpect(redirectedUrl("/")).andReturn();
+        var loggedIn = (MockHttpSession) result.getRequest().getSession(false);
+        mvc.perform(get("/").session(loggedIn)).andExpect(content().string(containsString("로그인 전에 받은 추천 1건을 추천 이력에 옮겼어요")));
+        mvc.perform(get("/").session(loggedIn)).andExpect(content().string(org.hamcrest.Matchers.not(containsString("로그인 전에 받은 추천"))));
+        em.flush(); em.clear();
+        assertThat(recommendations.view(job, user.getLoginId(), null).status()).isNotBlank();
+    }
+
     @Test
     void adminGetsItsOwnStartPage() throws Exception {
         var user = member();
