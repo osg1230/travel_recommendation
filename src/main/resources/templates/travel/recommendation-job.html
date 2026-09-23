@@ -42,6 +42,10 @@
             <h2 th:text="${item.rank + '순위 · ' + item.destination.name}"></h2>
             <p th:text="${item.destination.region}"></p>
             <p th:text="${item.reason}"></p>
+            <p class="help" th:if="${conditions != null and conditions.includeNearby != null and conditions.includeNearby
+                    and !T(com.travel.travel_recommendation.service.NearbyRegionService).supports(item.destination.name)}"
+               th:text="${'주변 지역 포함을 골랐지만 이 여행지는 주변 지역 추천을 아직 지원하지 않아요(지원: '
+                    + T(com.travel.travel_recommendation.service.NearbyRegionService).supportedNames() + ').'}"></p>
             <ul th:if="${conditions != null and conditions.purposeSearch != null and !conditions.purposeSearch.placesIn(item.destination.placeId).isEmpty()}">
                 <li th:each="facility : ${conditions.purposeSearch.placesIn(item.destination.placeId)}">
                     <span th:text="${'목적 시설 · ' + facility.name + ' (' + facility.address + ')'}"></span>

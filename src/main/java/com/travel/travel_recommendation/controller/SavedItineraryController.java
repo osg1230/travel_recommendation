@@ -20,6 +20,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 @RequestMapping("/my/itineraries")
 public class SavedItineraryController {
     private final ObjectProvider<SavedItineraryService> services;
+    private final ObjectProvider<com.travel.travel_recommendation.service.SavedItineraryEditService> edits;
     private final ObjectProvider<com.travel.travel_recommendation.service.PlaceRatingService> ratings;
     private final ObjectProvider<com.travel.travel_recommendation.service.VirtualReservationService> reservations;
     private final tools.jackson.databind.ObjectMapper mapper;
@@ -72,6 +73,17 @@ public class SavedItineraryController {
         service().apply(id,jobId,version,login(principal));
         redirect.addFlashAttribute("savedMessage","수정안을 이 일정에 적용했어요.");
         return "redirect:/my/itineraries/"+id;
+    }
+
+    /** 수정할 초안으로 이동한다. 원래 초안이 없으면 저장한 일정으로 다시 만든다. */
+    @PostMapping("/{id}/edit")
+    String edit(@PathVariable long id, Principal principal, RedirectAttributes redirect) {
+        var edit=edits.getIfAvailable();
+        if(edit==null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"내 일정은 DB 연결 후 이용할 수 있어요.");
+        var draft=edit.prepare(id,login(principal));
+        if(!draft.missingPlaces().isEmpty()) redirect.addFlashAttribute("editNotice",
+            "지금 확인된 관광지 후보에 없는 곳이 있어요: "+String.join(", ",draft.missingPlaces())+". 수정안을 만들 때 이 관광지는 바꿔 주세요.");
+        return "redirect:/travel/recommendations/itineraries/"+draft.jobId()+"#revise-title";
     }
 
     @PostMapping("/{id}/title")

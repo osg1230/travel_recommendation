@@ -11,6 +11,7 @@
 <a class="back-link" th:href="@{/travel/recommendations/{id}/destinations/{dest}/places(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">← 장소 목록</a>
 <p class="eyebrow">여행 준비 · 일정 초안</p>
 <h1 th:text="${job.input.places.destination.name + (job.input.revision == null ? ' 일정 초안' : ' 일정 수정안')}"></h1>
+<div class="notice" role="status" th:if="${editNotice != null}"><p th:text="${editNotice}"></p></div>
 <div class="notice" th:if="${job.input.revision != null}" th:with="rev=${job.input.revision}">
 <p th:if="${!rev.replaced.isEmpty()}" th:text="${'바꾼 관광지: ' + #strings.listJoin(rev.replaced.![name], ', ') + ' → ' + #strings.listJoin(rev.added.![name], ', ')}"></p>
 <p th:if="${rev.replaced.isEmpty()}">관광지는 그대로 두고 하루 시간과 체류시간만 바꾼 수정안이에요.</p>
@@ -186,6 +187,7 @@
 
 <section class="condition-section" th:if="${job.result != null}" aria-labelledby="ai-revise-title">
 <h2 id="ai-revise-title">문장으로 수정 요청하기</h2>
+<div th:replace="~{fragments/revision-scope :: scope}"></div>
 <p class="help">바꾸고 싶은 점을 문장으로 적으면 AI가 확인된 후보 안에서 바꿀 관광지와 시간을 골라 새 수정안을 만들어요. 서버가 다시 배치·검증하며, 이 초안은 바뀌지 않아요.</p>
 <p class="notice" role="status" th:if="${aiQuestion != null}" th:text="${'확인이 필요해요 · ' + aiQuestion}"></p>
 <p class="notice" role="status" th:if="${aiNotice != null}" th:text="${'바꿀 수 없는 요청이에요 · ' + aiNotice}"></p>
@@ -195,13 +197,14 @@
 <textarea id="ai-request" name="request" maxlength="300" required rows="3"
           placeholder="예) 첫째 날 박물관은 빼고 바다가 보이는 곳으로 바꿔 줘. 아침은 10시부터 시작하고 싶어요."
           th:text="${aiRequest}"></textarea>
-<p class="help">할 수 있는 것: 관광지 바꾸기(확인된 후보 안에서), 하루 시작·종료 시간, 관광지 체류시간. 식사·숙소·날짜 변경은 아직 할 수 없어요. 이름·연락처 같은 개인정보는 적지 마세요. 요청 문장은 OpenAI로 보내지고 사용량이 발생해요.</p>
+<p class="help">이름·연락처 같은 개인정보는 적지 마세요. 요청 문장은 OpenAI로 보내지고 사용량이 발생해요.</p>
 <div class="form-actions"><button type="submit">AI에게 수정안 요청하기</button></div>
 </form>
 </section>
 
 <section class="condition-section" th:if="${job.result != null}" aria-labelledby="revise-title">
 <h2 id="revise-title">장소 바꿔서 수정안 만들기</h2>
+<div th:replace="~{fragments/revision-scope :: scope}"></div>
 <p class="help">바꾸고 싶은 관광지만 고르세요. 고르지 않은 관광지는 그대로 유지하고, 바꿀 관광지는 확인된 다른 후보로 채워요. 식사·숙소 후보와 이동수단은 그대로예요. 수정안은 새 초안으로 만들어지고 이 초안은 바뀌지 않아요.</p>
 <form method="post" th:action="@{/travel/recommendations/itineraries/{id}/revisions(id=${job.id})}">
 <fieldset class="theme-choices"><legend>바꿀 관광지 (고르지 않은 곳은 유지)</legend>

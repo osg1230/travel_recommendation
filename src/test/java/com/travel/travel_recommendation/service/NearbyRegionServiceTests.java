@@ -161,4 +161,10 @@ class NearbyRegionServiceTests {
         assertThat(NearbyRegionService.spareMinutes(input(null,Transport.CAR),plan(LocalTime.of(13,45)))).isEqualTo(255);
         assertThat(NearbyRegionService.spareMinutes(input(null,Transport.CAR),plan(LocalTime.of(18,0)))).isZero();
     }
+
+    @Test void supportedDestinationsAreListedForScreens() {
+        assertThat(NearbyRegionService.supports("강릉")).isTrue();
+        assertThat(NearbyRegionService.supports("여수")).isFalse();
+        assertThat(NearbyRegionService.supportedNames()).isEqualTo("강릉·경주·부산·속초·양양·울산");
+    }
 }

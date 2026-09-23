@@ -12,7 +12,7 @@
 
 - 8·9절 정의서의 컬럼·CHECK·UNIQUE를 그대로 [008 SQL](sql/008_create_itineraries.sql)로 생성했다. `itineraries`, `itinerary_items` 두 테이블만 추가하며 기존 테이블·컬럼·관계는 변경하지 않는다. row_version은 SQL Server가 생성한다.
 - 저장 대상은 COMPLETED 상태이고 날짜가 확정된 ITINERARY 작업의 result_json이다. 날짜 미확정 초안은 저장하지 않고 ai_jobs에만 임시 보관한다. 저장은 회원만 가능하며 본인 작업인지 확인한다.
-- `conditions_snapshot_json`은 저장 근거를 남기기 위해 schemaVersion, 원본 작업 ID(jobId), 지역(placeId·이름·지역명), 하루 시작·종료 시각·이동수단·체류시간·일차 수, 확정 조건 스냅샷을 담는다. 같은 jobId를 다시 저장하면 새 행을 만들지 않고 저장해 둔 일정을 보여 준다.
+- `conditions_snapshot_json`은 저장 근거를 남기기 위해 schemaVersion, 원본 작업 ID(jobId), 지역(placeId·이름·지역명), 하루 시작·종료 시각·이동수단·체류시간·일차 수, 확정 조건 스냅샷을 담는다. schemaVersion 2부터 저장(또는 수정안 적용) 당시의 조건 확인 결과(conditionChecks: 항목·상태·내용)와 조회한 참고 가격(prices: 장소별 가격·출처·확인 수준·조회 시각)을 함께 담는다. 수정안을 적용하면 그 수정안 기준으로 다시 쓰며 이전 가격은 남기지 않는다. 컬럼 구조는 바뀌지 않는다. 같은 jobId를 다시 저장하면 새 행을 만들지 않고 저장해 둔 일정을 보여 준다.
 - `itinerary_items`는 초안의 일차·순서를 day_no·sequence_no로, 시각을 날짜와 합친 KST 값으로 저장한다. activity는 유형명과 장소 이름이고 `place_snapshot_json`에 이름·안내·지도 링크·출처 링크·이동시간 조회 시각을 보관한다. TRANSIT 항목은 도착 장소의 place_id와 travel_minutes를 저장한다. transport_json·food_guide_json은 아직 사용하지 않는다.
 - 이동수단은 초안이 만드는 CAR·TRANSIT만 저장한다. 수정은 제목(title)만 허용하고 시각·장소·순서는 바꾸지 않는다. 삭제는 세부 항목과 기본정보를 같은 트랜잭션에서 제거한다.
 - 저장은 운영시간·휴무·예산·예약 가능 여부를 검증한다는 뜻이 아니다. 저장 당시 초안을 그대로 보관하며 화면에도 확인 필요 안내를 유지한다.

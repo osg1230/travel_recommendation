@@ -126,14 +126,17 @@ public class PlaceCandidateService {
 
     private List<PlaceCandidate> ofType(List<Place> candidates, String type) {
         int limit="ATTRACTION".equals(type)?16:"RESTAURANT".equals(type)?8:5;
-        return candidates.stream().filter(place -> type.equals(place.getPlaceType())).limit(limit).map(place -> {
-            // 주소 검색 링크이며 확정 좌표나 길찾기 결과로 표시하지 않는다.
-            String query = URLEncoder.encode(place.getAddress() + " " + place.getName(), StandardCharsets.UTF_8)
-                .replace("+", "%20");
-            return new PlaceCandidate(place.getId(), place.getName(), place.getAddress(), place.getSubtype(),
-                place.getDescription(), place.getSourceUrl(), "KAKAO".equals(place.getSourceProvider())?place.getSourceUrl():"https://map.kakao.com/link/search/" + query,
-                place.getVerifiedAt(),place.getLongitude()==null?null:place.getLongitude().doubleValue(),
-                place.getLatitude()==null?null:place.getLatitude().doubleValue(),place.getSourceProvider(),PlaceOperatingDetails.read(place,mapper));
-        }).toList();
+        return candidates.stream().filter(place -> type.equals(place.getPlaceType())).limit(limit).map(this::candidate).toList();
+    }
+
+    /** 장소 한 곳을 일정 후보 형식으로 바꾼다. 저장한 일정에서 수정 초안을 다시 만들 때도 쓴다. */
+    public PlaceCandidate candidate(Place place) {
+        // 주소 검색 링크이며 확정 좌표나 길찾기 결과로 표시하지 않는다.
+        String query = URLEncoder.encode(place.getAddress() + " " + place.getName(), StandardCharsets.UTF_8)
+            .replace("+", "%20");
+        return new PlaceCandidate(place.getId(), place.getName(), place.getAddress(), place.getSubtype(),
+            place.getDescription(), place.getSourceUrl(), "KAKAO".equals(place.getSourceProvider())?place.getSourceUrl():"https://map.kakao.com/link/search/" + query,
+            place.getVerifiedAt(),place.getLongitude()==null?null:place.getLongitude().doubleValue(),
+            place.getLatitude()==null?null:place.getLatitude().doubleValue(),place.getSourceProvider(),PlaceOperatingDetails.read(place,mapper));
     }
 }

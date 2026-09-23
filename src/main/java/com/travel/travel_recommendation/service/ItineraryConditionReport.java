@@ -173,7 +173,7 @@ public final class ItineraryConditionReport {
         String scope = c == null || c.budgetIncludes().isEmpty() ? "포함 비용 미확인"
             : "포함: " + String.join("·", c.budgetIncludes().stream().map(TripConstraints.BUDGET_ITEMS::get).toList());
         return new Check("예산", Status.NEEDS_CHECK, "입력 예산 " + String.format("%,d원", budget.longValue()) + " (" + basis + ", " + scope
-            + ") · 가격 자료가 없어 충족 여부를 판단하지 않았어요.");
+            + ") · 예산 충족 여부는 판단하지 않았어요. 참고 가격은 날짜·객실별 요금이 아니니, 찾았다면 합계와 비교해 직접 확인해 주세요.");
     }
 
     private static List<Item> visits(Result result) {

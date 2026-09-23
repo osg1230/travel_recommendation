@@ -18,7 +18,8 @@
     const failed = setTimeout(() => tell('지도를 불러오지 못했어요. 카카오 JavaScript 키와 사이트 도메인 등록을 확인해 주세요. 아래 목록과 링크는 그대로 쓸 수 있어요.'), 8000);
     const script = document.createElement('script');
     script.src = 'https://dapi.kakao.com/v2/maps/sdk.js?autoload=false&libraries=services&appkey=' + encodeURIComponent(key);
-    script.onerror = () => { clearTimeout(failed); tell('지도를 불러오지 못했어요. 네트워크 연결을 확인해 주세요. 아래 목록과 링크는 그대로 쓸 수 있어요.'); };
+    // 등록하지 않은 사이트 도메인(401)도 네트워크 오류처럼 onerror로만 알려져 두 원인을 함께 안내한다.
+    script.onerror = () => { clearTimeout(failed); tell('지도를 불러오지 못했어요. 네트워크 연결과, 카카오 개발자 콘솔에 이 사이트 주소(예: http://localhost:8080)가 웹 도메인으로 등록됐는지 확인해 주세요. 아래 목록과 링크는 그대로 쓸 수 있어요.'); };
     script.onload = () => window.kakao.maps.load(() => { clearTimeout(failed); canvas.hidden = false; draw(); });
     document.head.appendChild(script);
 

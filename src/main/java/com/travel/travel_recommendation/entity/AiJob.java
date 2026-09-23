@@ -45,6 +45,20 @@ public class AiJob {
         job.message="장소 좌표와 이동시간을 확인할 준비를 하고 있어요.";
         return job;
     }
+    /** 저장한 일정에서 수정을 이어 가려고 다시 만든 추천 작업. 저장한 여행지 하나만 결과로 두고 추천 이력에는 연결하지 않는다. */
+    public static AiJob restoredRecommendation(Long userId, String input, String result, LocalDateTime expiresAt) {
+        var job=new AiJob(userId,null,null,input,expiresAt);
+        job.completeRecommendation(result);
+        job.message="저장한 일정에서 수정을 이어 가려고 여행지를 다시 불러왔어요.";
+        return job;
+    }
+    /** 저장한 일정의 시각·장소를 그대로 옮긴 완성 초안. 새로 배치하지 않으며 이 초안에서 수정안을 만든다. */
+    public static AiJob restoredItinerary(AiJob parent, String input, String result) {
+        var job=itinerary(parent,input);
+        job.completeSchedule(result);
+        job.message="저장한 일정으로 수정할 초안을 다시 만들었어요.";
+        return job;
+    }
     public void generatingSchedule() {
         status="GENERATING_SCHEDULE"; startedAt=LocalDateTime.now(ZoneOffset.UTC); attemptCount++;
         message="장소 좌표와 이동시간을 확인하고 날짜별로 배치하고 있어요.";
