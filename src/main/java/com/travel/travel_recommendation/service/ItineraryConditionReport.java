@@ -25,7 +25,7 @@ public final class ItineraryConditionReport {
 
     public static Report evaluate(Input input, Result result) {
         var checks = new ArrayList<>(List.of(period(input, result), required(input, result), attractions(input, result), duplicates(result),
-            dailyVisits(input, result), timeline(input, result), travelTimes(result), operating(input, result),
+            dailyVisits(input, result), themes(input, result), timeline(input, result), travelTimes(result), operating(input, result),
             accommodation(input, result), budget(input)));
         if (input.revision() != null) checks.add(2, kept(input, result));
         return new Report(List.copyOf(checks), checks.stream().noneMatch(c -> c.status() == Status.UNMET));
@@ -100,6 +100,25 @@ public final class ItineraryConditionReport {
         if (every) return new Check("하루 방문 수", Status.MET, "하루 " + want + "곳 (" + (c.dailyVisitsRequired() ? "필수" : "선호") + ") · " + String.join(" · ", counts));
         if (c.dailyVisitsRequired()) return new Check("하루 방문 수", Status.UNMET, "필수 조건 하루 " + want + "곳과 달라요 · " + String.join(" · ", counts));
         return new Check("하루 방문 수", Status.NEEDS_CHECK, "선호 조건 하루 " + want + "곳은 시간·후보에 맞춰 가능한 만큼만 반영했어요 · " + String.join(" · ", counts));
+    }
+
+    // 고른 여행 취향마다 맞는 관광지가 일정에 들어갔는지 본다. 취향은 선호 조건이라 없으면 미충족이 아니라 확인 필요로 둔다.
+    // 판단은 장소 분류·이름 기준이다(ThemePlaces). 맛집은 식사 장소 취향이라 여기서 보지 않는다.
+    private static Check themes(Input input, Result result) {
+        var themes = ThemePlaces.placeThemes(input.conditions().themeNames());
+        if (themes.isEmpty()) return new Check("여행 취향", Status.NOT_APPLICABLE, "관광지로 반영할 여행 취향을 고르지 않았어요.");
+        var candidates = new HashMap<Long, com.travel.travel_recommendation.dto.PlaceCandidate>();
+        input.attractionsWithReserve().forEach(p -> candidates.put(p.placeId(), p));
+        var visited = visits(result).stream().map(i -> candidates.get(i.placeId())).filter(Objects::nonNull).distinct().toList();
+        var found = new ArrayList<String>(); var missing = new ArrayList<String>();
+        for (var theme : themes) {
+            var names = visited.stream().filter(p -> !ThemePlaces.matched(p.name(), p.subtype(), List.of(theme)).isEmpty()).map(p -> p.name()).toList();
+            if (names.isEmpty()) missing.add(theme); else found.add(theme + " " + names.size() + "곳(" + String.join(", ", names) + ")");
+        }
+        String basis = " 장소 분류와 이름으로 판단했어요.";
+        if (missing.isEmpty()) return new Check("여행 취향", Status.MET, String.join(" · ", found) + " ·" + basis);
+        return new Check("여행 취향", Status.NEEDS_CHECK, (found.isEmpty() ? "" : String.join(" · ", found) + " · ")
+            + String.join("·", missing) + "에 맞는 관광지는 확인된 후보에서 찾지 못했어요." + basis);
     }
 
     private static Check timeline(Input input, Result result) {
