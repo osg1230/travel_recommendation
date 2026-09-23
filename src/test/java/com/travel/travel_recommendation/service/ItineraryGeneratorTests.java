@@ -125,6 +125,25 @@ class ItineraryGeneratorTests {
         assertThat(result.days().get(1).items().stream().filter(i->i.type().equals("MEAL"))).hasSize(1);
         generator.validate(late,result);
     }
+    // 중심 장소가 둘이면 날마다 하나씩 그날 첫 관광지로 넣고, 가까운 관광지는 그 중심 장소의 날에 넣는다.
+    @Test void eachDayStartsAtItsCenterPlaceWithNearbyAttractions() {
+        var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,null,2,true,false,List.of(),"");
+        // 1·2·3은 서로 가깝고, 29·30·31은 그쪽과 멀리 떨어진 무리다(경도 0.001 = 약 90m).
+        var pool=new PlaceCandidateView(UUID.randomUUID(),new DestinationCandidate(99L,"강릉","강원","소개","https://www.gn.go.kr/",LocalDateTime.of(2026,9,1,0,0)),2,true,
+            List.of(place(2),place(29),place(3),place(31),place(1),place(30)),List.of(place(16)),List.of(place(4),place(28)));
+        var input=new Input(pool.jobId(),pool,conditions,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,60,
+            null,new Constraints(List.of(),null,false,null,List.of(),null,List.of(30L,1L)),List.of());
+        var result=generator.generate(input);
+        var day1=result.days().get(0).items().stream().filter(i->i.type().equals("VISIT")).toList();
+        var day2=result.days().get(1).items().stream().filter(i->i.type().equals("VISIT")).toList();
+        assertThat(day1.getFirst().placeId()).isEqualTo(30L);
+        assertThat(day1.getFirst().note()).contains("이 날 일정의 중심으로 고른 곳이에요");
+        assertThat(day1).extracting(Item::placeId).containsExactlyInAnyOrder(30L,29L,31L);
+        assertThat(day2.getFirst().placeId()).isEqualTo(1L);
+        assertThat(day2).extracting(Item::placeId).containsExactlyInAnyOrder(1L,2L,3L);
+        assertThat(day1.get(1).note()).doesNotContain("중심으로 고른");
+        generator.validate(input,result);
+    }
     @Test void hotelWithoutLocationIsSkippedWhenAnotherCanBeUsed() {
         var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,null,2,true,false,List.of(),"");
         var noRoad=new PlaceCandidate(41L,"주소 없는 숙소","강원 강릉시 어딘가","호텔","소개","https://www.gn.go.kr/","https://map.kakao.com/",LocalDateTime.of(2026,9,1,0,0));

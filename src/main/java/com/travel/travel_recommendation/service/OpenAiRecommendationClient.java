@@ -59,7 +59,10 @@ public class OpenAiRecommendationClient {
                 travelPurpose에 '조용한'·'사람 적은' 같은 분위기 조건이 있으면 각 reason에서 다루되, 혼잡도는 확인하지 않았으니
                 소개에 근거가 없으면 그 분위기인지는 확인하지 못했다고 쓴다. COMPANION(동행자)이 있으면 그 동행자에게 맞는 점이나 한계를 짧게 밝힌다.
                 특정 지역 후보 하나만 있으면 다른 지역을 추가하지 말고 그 지역의 적합성과 한계를 설명한다.
-                각 reason은 띄어쓰기와 맞춤법을 지킨 일반 텍스트 1~3문장으로 작성하고 HTML·URL·연락처는 넣지 않는다.
+                각 reason은 띄어쓰기와 맞춤법을 지킨 일반 텍스트 1~2문장, 120자 안팎으로 짧게 쓰고 HTML·URL·연락처는 넣지 않는다.
+                places에는 reason과 관련해 그 지역을 여행하는 사람들이 널리 찾는, 실제로 있는 관광 장소 이름을 0~3개 쓴다
+                (예: 전주는 한옥마을·경기전, 안동은 하회마을·도산서원). 목적 시설 검색 결과의 시설 이름을 그대로 옮기지 않는다.
+                음식점·숙소·지역 이름 자체는 넣지 않고, 이름을 확실히 모르면 비워 둔다. 이 이름은 서버가 실제 장소 후보와 맞춰 본다.
                 reason은 사용자에게 그대로 보인다. purposePlaces·travelPurpose·THEME 같은 입력 필드 이름을 쓰지 말고
                 "목적 시설 검색 결과", "여행 목적", "여행 취향"처럼 풀어서 쓴다.
                 """,
@@ -108,13 +111,26 @@ public class OpenAiRecommendationClient {
         List<RankedDestination> result=new ArrayList<>();
         for(JsonNode item:items) {
             var id=item.path("placeId"); var text=item.path("reason");
-            if(!item.isObject() || item.size()!=2 || !id.isIntegralNumber() || !id.canConvertToLong() || !text.isTextual()) throw invalid();
+            if(!item.isObject() || item.size()!=3 || !id.isIntegralNumber() || !id.canConvertToLong() || !text.isTextual()) throw invalid();
             DestinationCandidate candidate=allowed.remove(id.longValue());
             String reason=readable(ReadableText.withoutIds(text.asText(),candidates.stream().map(DestinationCandidate::placeId).toList()).strip());
             if(candidate==null || reason.isEmpty() || reason.length()>2000 || reason.contains("<") || reason.contains(">")) throw invalid();
-            result.add(new RankedDestination(result.size()+1,candidate,reason));
+            result.add(new RankedDestination(result.size()+1,candidate,reason,placeNames(item.path("places"))));
         }
         return List.copyOf(result);
+    }
+    /** GPT가 적은 장소 이름. 일정의 중심 장소를 고를 때 실제 후보와 맞춰 보는 데만 쓴다. 형식이 맞지 않는 이름은 버린다. */
+    static List<String> placeNames(JsonNode node) {
+        if(!node.isArray()) throw new RecommendationException("AI_INVALID_RESPONSE","추천 결과를 검증하지 못했어요. 다시 시도하거나 조건을 수정해 주세요.");
+        var names=new ArrayList<String>();
+        for(JsonNode item:node) {
+            if(!item.isTextual()) continue;
+            String name=item.asText().strip();
+            if(name.length()<2 || name.length()>30 || name.contains("<") || name.contains(">") || names.contains(name)) continue;
+            names.add(name);
+            if(names.size()==3) break;
+        }
+        return List.copyOf(names);
     }
     // 프롬프트가 지시를 어겨 입력 필드 이름을 쓰면 화면에 보일 말로 바꾼다.
     private static final ReadableText FIELD_NAMES=new ReadableText(fieldNames());
@@ -132,9 +148,10 @@ public class OpenAiRecommendationClient {
     private Map<String,Object> schema(List<DestinationCandidate> candidates) {
         return Map.of("type","object","additionalProperties",false,"required",List.of("recommendations"),
             "properties",Map.of("recommendations",Map.of("type","array","minItems",candidates.size(),"maxItems",candidates.size(),
-                "items",Map.of("type","object","additionalProperties",false,"required",List.of("placeId","reason"),
+                "items",Map.of("type","object","additionalProperties",false,"required",List.of("placeId","reason","places"),
                     "properties",Map.of("placeId",Map.of("type","integer","enum",candidates.stream().map(DestinationCandidate::placeId).toList()),
-                        "reason",Map.of("type","string","minLength",1,"maxLength",2000))))));
+                        "reason",Map.of("type","string","minLength",1,"maxLength",300),
+                        "places",Map.of("type","array","maxItems",3,"items",Map.of("type","string","maxLength",30)))))));
     }
     // 그 후보 지역에서 찾은 목적 시설 이름. 목적 검색을 하지 않았거나 찾지 못했으면 빈 목록이다.
     private static List<String> purposePlaces(ConfirmedTravelConditions c,DestinationCandidate candidate) {

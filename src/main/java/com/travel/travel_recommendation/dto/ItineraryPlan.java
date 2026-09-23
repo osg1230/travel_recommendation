@@ -39,11 +39,17 @@ public final class ItineraryPlan {
      * 필수·선호 조건 구분(SFR-02-07). 필수 장소는 반드시 넣고, 하루 방문 수는 required이면 반드시 지키고
      * 아니면 가능한 경우에만 반영한다. 예산 기준·포함 비용은 가격 자료가 없어 확인 필요 표시에만 쓴다.
      */
+    /** centerPlaceIds는 날마다 일정의 중심으로 삼을 관광지(느슨한 조건, 1일차부터 차례로)다. 이전 작업 JSON에는 없다. */
     public record Constraints(List<Long> requiredPlaceIds, Integer dailyVisits, boolean dailyVisitsRequired,
-                              String budgetBasis, List<String> budgetIncludes, String stayTier) {
+                              String budgetBasis, List<String> budgetIncludes, String stayTier, List<Long> centerPlaceIds) {
         public Constraints {
             requiredPlaceIds = requiredPlaceIds == null ? List.of() : List.copyOf(requiredPlaceIds);
             budgetIncludes = budgetIncludes == null ? List.of() : List.copyOf(budgetIncludes);
+            centerPlaceIds = centerPlaceIds == null ? List.of() : List.copyOf(centerPlaceIds);
+        }
+        public Constraints(List<Long> requiredPlaceIds, Integer dailyVisits, boolean dailyVisitsRequired,
+                           String budgetBasis, List<String> budgetIncludes, String stayTier) {
+            this(requiredPlaceIds, dailyVisits, dailyVisitsRequired, budgetBasis, budgetIncludes, stayTier, null);
         }
         // stayTier는 예산을 입력하지 않았을 때 고르는 숙소 예산대(SFR-03-03)다. 이전 작업 JSON에는 없다.
         public Constraints(List<Long> requiredPlaceIds, Integer dailyVisits, boolean dailyVisitsRequired,

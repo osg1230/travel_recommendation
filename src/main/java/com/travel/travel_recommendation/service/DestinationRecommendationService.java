@@ -72,7 +72,7 @@ public class DestinationRecommendationService {
         }
         // 저장 직전에도 ID·개수·중복·이유를 검증하고 명칭·출처는 DB에서 얻은 스냅샷으로 고정한다.
         var validated=client.validate(mapper.valueToTree(Map.of("recommendations",ranked.stream().map(r->
-            Map.of("placeId",r.destination().placeId(),"reason",r.reason())).toList())),work.candidates());
+            Map.of("placeId",r.destination().placeId(),"reason",r.reason(),"places",r.centerPlaces())).toList())),work.candidates());
         if(job.getUserId()!=null) {
             var request=requests.findById(job.getRequestId()).orElseThrow(()->new IllegalStateException("Request missing"));
             if(!job.getUserId().equals(request.getUserId())) throw new IllegalStateException("Owner mismatch");
