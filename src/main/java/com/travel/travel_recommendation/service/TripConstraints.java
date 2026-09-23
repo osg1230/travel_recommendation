@@ -80,6 +80,18 @@ public final class TripConstraints {
         return !end.isBefore(DINNER_DAY_END);
     }
 
+    /** 숙박하는 날 숙소 도착 뒤 저녁을 먹는 기준 시각. */
+    public static final LocalTime STAY_DINNER_AT = LocalTime.of(18, 0);
+
+    /**
+     * 숙박하는 날에는 하루 종료 시간을 "관광을 마치는 시간"으로 보고, 숙소 도착과 숙소 근처 저녁은 이 시각까지 둘 수 있다.
+     * 사용자가 더 늦게 끝나도록 정했으면 그 시간을 쓴다.
+     */
+    public static LocalTime eveningLimit(LocalTime end) {
+        LocalTime evening = LocalTime.of(21, 0);
+        return end.isAfter(evening) ? end : evening;
+    }
+
     /**
      * 하루 시간에서 식사(식당까지 이동 포함)를 빼고 남은 시간에 관광지가 몇 곳 들어가는지 추정한다(최소 1곳).
      * 관광지 한 곳에는 체류시간과 이동 약 30분이 든다고 본다. 예) 09:00~18:00, 체류 90분이면 3곳.

@@ -121,17 +121,27 @@ public final class ItineraryConditionReport {
             + String.join("·", missing) + "에 맞는 관광지는 확인된 후보에서 찾지 못했어요." + basis);
     }
 
+    // 숙박하는 날은 숙소 도착부터 숙소 근처 저녁까지 저녁 한도(21시)를 쓴다. 관광은 하루 종료 시간 안이어야 한다.
     private static Check timeline(Input input, Result result) {
+        var evening = TripConstraints.eveningLimit(input.end());
+        boolean eveningUsed = false;
         for (var day : result.days()) {
             LocalTime end = input.start();
-            for (var item : day.items()) {
+            boolean stayDay = input.places().accommodationNeeded() && day.number() < result.days().size();
+            int stayAt = stayDay ? ItineraryGenerator.stayIndex(day.items()) : -1;
+            for (int i = 0; i < day.items().size(); i++) {
+                var item = day.items().get(i);
+                var limit = stayAt >= 0 && i >= stayAt ? evening : input.end();
                 if (item.start() == null || item.end() == null || item.start().isBefore(end) || !item.end().isAfter(item.start()))
                     return new Check("시간 충돌", Status.UNMET, day.number() + "일차 '" + item.name() + "' 시간이 앞 활동과 겹쳐요.");
-                if (item.end().isAfter(input.end()))
-                    return new Check("시간 충돌", Status.UNMET, day.number() + "일차 '" + item.name() + "'이(가) 하루 종료 시간 " + input.end() + "을 넘어요.");
+                if (item.end().isAfter(limit))
+                    return new Check("시간 충돌", Status.UNMET, day.number() + "일차 '" + item.name() + "'이(가) " + (stayAt >= 0 && i >= stayAt ? "저녁 한도 " : "하루 종료 시간 ") + limit + "을 넘어요.");
+                if (item.end().isAfter(input.end())) eveningUsed = true;
                 end = item.end();
             }
         }
+        if (eveningUsed) return new Check("시간 충돌", Status.MET, "관광은 " + input.start() + "~" + input.end()
+            + " 안이고, 숙박하는 날 숙소 도착과 숙소 근처 저녁은 " + evening + "까지예요. 겹치는 활동은 없어요.");
         return new Check("시간 충돌", Status.MET, "모든 활동이 " + input.start() + "~" + input.end() + " 안에서 겹치지 않아요.");
     }
 
@@ -170,10 +180,15 @@ public final class ItineraryConditionReport {
     private static Check accommodation(Input input, Result result) {
         if (!input.places().accommodationNeeded() || result.days().size() < 2)
             return new Check("숙박", Status.NOT_APPLICABLE, "숙박이 필요하지 않은 일정이에요.");
-        for (var day : result.days().subList(0, result.days().size() - 1))
-            if (day.items().isEmpty() || !"STAY".equals(day.items().getLast().type()))
+        boolean dinner = false;
+        for (var day : result.days().subList(0, result.days().size() - 1)) {
+            int stayAt = ItineraryGenerator.stayIndex(day.items());
+            if (stayAt < 0 || !ItineraryGenerator.afterStayIsDinnerOnly(day.items(), stayAt))
                 return new Check("숙박", Status.UNMET, day.number() + "일차가 숙소에서 끝나지 않아요.");
-        return new Check("숙박", Status.NEEDS_CHECK, "마지막 날을 제외한 매일 숙소로 돌아가요. 체크인 시간과 예약 가능 여부는 확인해 주세요.");
+            if (stayAt < day.items().size() - 1) dinner = true;
+        }
+        return new Check("숙박", Status.NEEDS_CHECK, "마지막 날을 제외한 매일 숙소로 돌아가요."
+            + (dinner ? " 숙소에 도착해 쉬었다가 숙소 근처에서 저녁을 먹어요." : "") + " 체크인 시간과 예약 가능 여부는 확인해 주세요.");
     }
 
     // 가격 자료를 모으지 않으므로 예산은 충족으로 확정하지 않는다.
