@@ -93,5 +93,5 @@
         <button class="button" type="submit">현재 확정 조건으로 다시 조회</button><p role="status" data-submit-status></p>
     </form>
     <div class="form-actions"><a th:href="@{/travel/conditions}">여행 조건 입력하기</a><a th:href="@{/travel/recommendations/{id}(id=${job.jobId})}">상태 새로고침</a></div>
-    <p class="help">비회원 요청은 세션이 종료되거나 보관 기간이 지나면 조회할 수 없어요.</p>
+    <p th:replace="~{fragments/guest-session :: notice}"></p>
 </main><script defer th:src="@{/js/recommendation-job.js}"></script></body></html>

@@ -243,6 +243,7 @@
 </form>
 <p th:if="${job.input.conditions.startDate == null}">여행 날짜가 정해지지 않은 초안이라 저장할 수 없어요. <a th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">출발일을 넣어 일정 다시 만들기</a></p>
 <p th:if="${loggedIn and job.input.conditions.startDate != null and !report.complete}">미충족 조건이 있어 저장할 수 없어요. <a th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">시간을 조정해서 다시 만들기</a></p>
+<p th:replace="~{fragments/guest-session :: notice}"></p>
 <p th:if="${!loggedIn and job.input.conditions.startDate != null}"><a th:href="@{/login(next=${'/travel/recommendations/itineraries/' + job.id})}">로그인</a>하면 이 초안으로 돌아와 내 일정으로 저장할 수 있어요. 계정이 없다면 로그인 화면에서 회원가입부터 해 주세요.</p>
 </section>
 <p th:unless="${job.pending or job.result != null}"><a th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">시간을 조정해서 다시 만들기</a></p>

@@ -257,6 +257,8 @@ public class ItineraryController {
         else if(error instanceof RecommendationException e) message=e.getMessage();
         else { status=503; message="일정 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요."; }
         response.setStatus(status); response.setHeader("Cache-Control","no-store"); model.addAttribute("message",message);
+        // 찾을 수 없음(만료·다른 세션)이면 비회원에게 세션 만료 가능성을 함께 안내한다.
+        model.addAttribute("notFound",status==404);
         var submission=(Submission)session.getAttribute(SESSION_KEY);
         // 수정안을 만들지 못하면 원본 초안은 그대로이므로 원본으로 돌아가는 길을 안내한다.
         var revision=java.util.regex.Pattern.compile("^/travel/recommendations/itineraries/([0-9a-fA-F-]{36})/revisions$").matcher(request.getRequestURI().substring(request.getContextPath().length()));

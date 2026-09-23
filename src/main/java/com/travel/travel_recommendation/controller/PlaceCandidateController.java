@@ -145,6 +145,7 @@ public class PlaceCandidateController {
         response.setStatus(error.getStatusCode().value());
         response.setHeader("Cache-Control", "no-store");
         model.addAttribute("message", error.getReason());
+        model.addAttribute("notFound", error.getStatusCode().value() == 404);
         return "travel/place-candidates-error";
     }
 

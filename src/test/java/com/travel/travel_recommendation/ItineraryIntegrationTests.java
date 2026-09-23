@@ -112,7 +112,9 @@ class ItineraryIntegrationTests {
         assertThat(result.days().stream().flatMap(d->d.items().stream()).filter(i->i.type().equals("VISIT")).map(i->i.note()))
             .anyMatch(note->note.contains("명절 부분 휴관") && note.contains("확인 필요"));
         schedules.complete(work,result);
-        mvc.perform(get(resultUrl(id)).session(session)).andExpect(status().isOk()).andExpect(content().string(containsString("명절 부분 휴관")));
+        mvc.perform(get(resultUrl(id)).session(session)).andExpect(status().isOk()).andExpect(content().string(containsString("명절 부분 휴관")))
+            // 완성된 비회원 초안에는 저장 전에 세션 만료 시간을 알린다.
+            .andExpect(content().string(containsString("30분 동안 아무 동작이 없거나 브라우저를 닫으면 다시 열 수 없어요")));
         var second=create(); var secondWork=schedules.claim(second); var secondResult=schedules.generate(secondWork);
         placeRepository.findById(candidate.placeId()).orElseThrow().updateDetails("{}"); em.flush();
         schedules.complete(secondWork,secondResult);
@@ -239,7 +241,9 @@ class ItineraryIntegrationTests {
     }
     @Test void refusesOtherGuestWrongTypeAndExpiredJob() throws Exception {
         var id=create();
-        mvc.perform(get(resultUrl(id)).session(new MockHttpSession())).andExpect(status().isNotFound());
+        // 세션이 끝난 비회원(새 세션)에게는 세션 만료 가능성을 안내한다.
+        mvc.perform(get(resultUrl(id)).session(new MockHttpSession())).andExpect(status().isNotFound())
+            .andExpect(content().string(containsString("30분 넘게 아무 동작이 없어 세션이 끝났을 수 있어요")));
         mvc.perform(get(resultUrl(parent)).session(session)).andExpect(status().isNotFound());
         em.flush(); jdbc.update("UPDATE dbo.ai_jobs SET expires_at=DATEADD(hour,-1,SYSUTCDATETIME()) WHERE job_id=?",id.toString()); em.clear();
         mvc.perform(get(resultUrl(id)).session(session)).andExpect(status().isNotFound());

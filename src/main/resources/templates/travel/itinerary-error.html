@@ -5,5 +5,6 @@
 <h1>일정을 만들 수 없어요</h1><p class="intro" role="alert" th:text="${message}"></p>
 <p th:if="${sourceUrl != null}"><a th:href="${sourceUrl}">원래 일정 초안으로 돌아가기</a> · 원래 초안은 바뀌지 않았어요.</p>
 <p th:if="${editUrl != null}"><a th:href="${editUrl}">일정 시간 다시 정하기</a></p>
+<th:block th:if="${notFound}"><p th:replace="~{fragments/guest-session :: expired}"></p></th:block>
 <a th:href="@{/travel/conditions}">여행 조건 다시 입력하기</a>
 </main></body></html>
