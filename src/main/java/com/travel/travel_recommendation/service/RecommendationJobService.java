@@ -40,6 +40,20 @@ public class RecommendationJobService {
         return job.getId();
     }
 
+    /**
+     * 저장한 일정의 원래 추천이 만료·삭제됐을 때 수정을 이어 가기 위한 추천 작업을 만든다.
+     * AI 추천을 다시 하지 않고 저장한 여행지 하나만 결과로 둔다. 새 보관 기간을 받는다.
+     */
+    @Transactional(timeout=10)
+    public UUID restoreForEdit(ConfirmedTravelConditions conditions, DestinationCandidate destination, String loginId) {
+        Long userId=activeUser(loginId);
+        if(userId==null) throw new AccessDeniedException("Login required");
+        var result=List.of(new RankedDestination(1,destination,"저장한 일정의 여행지예요."));
+        var job=AiJob.restoredRecommendation(userId,mapper.writeValueAsString(conditions),mapper.writeValueAsString(result),
+            now().plusHours(Math.max(1,Math.min(168,retentionHours))));
+        return jobs.saveAndFlush(job).getId();
+    }
+
     @Transactional(readOnly=true, timeout=10)
     public RecommendationJobView view(UUID id,String loginId,byte[] guestHash) {
         AiJob job=owned(id,loginId,guestHash,"RECOMMENDATION");

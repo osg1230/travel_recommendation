@@ -1,7 +1,7 @@
 package com.travel.travel_recommendation.service;
 
 import com.travel.travel_recommendation.dto.ItineraryPlan.*;
-import com.travel.travel_recommendation.dto.SavedItinerary;
+import com.travel.travel_recommendation.dto.*;
 import com.travel.travel_recommendation.entity.*;
 import com.travel.travel_recommendation.repository.*;
 import java.time.*;
@@ -25,10 +25,16 @@ public class SavedItineraryService {
     private final ItineraryItemRepository items;
     private final AiJobRepository jobs;
     private final UserRepository users;
+    private final PlaceRepository places;
+    private final PlaceCandidateService placeCandidates;
     private final ObjectMapper mapper;
     private final org.springframework.beans.factory.ObjectProvider<VirtualReservationService> reservations;
     /** 저장 결과. created=false이면 같은 초안을 이미 저장해 둔 일정이다. */
     public record Saved(Long id, boolean created) {}
+    /** 수정 초안을 다시 만들 때 필요한 저장 정보. editableJobId가 있으면 원래 초안을 그대로 쓰면 된다. */
+    public record EditSource(UUID editableJobId, ConfirmedTravelConditions conditions, DestinationCandidate destination) {}
+    /** 수정할 초안. missingPlaces는 지금 확인된 관광지 후보에 없어 수정안에서 바꿔야 하는 관광지 이름이다. */
+    public record EditDraft(UUID jobId, List<String> missingPlaces) {}
 
     @Transactional(timeout=10)
     public Saved save(UUID jobId, String loginId) {
@@ -89,7 +95,8 @@ public class SavedItineraryService {
         }
         items.deleteByItineraryId(itinerary.getId());
         items.flush();
-        itinerary.applyRevision(job.getRequestId(),result.days().getFirst().date(),result.days().getLast().date(),
+        // 저장한 일정에서 다시 만든 초안은 추천 이력과 연결되지 않으므로 기존 이력 연결을 유지한다.
+        itinerary.applyRevision(job.getRequestId()!=null?job.getRequestId():itinerary.getRequestId(),result.days().getFirst().date(),result.days().getLast().date(),
             transportation(input),mapper.writeValueAsString(snapshot(jobId,input,result)));
         itineraries.flush();
         writeItems(itinerary.getId(),result);
@@ -168,6 +175,90 @@ public class SavedItineraryService {
         items.deleteByItineraryId(itinerary.getId());
         itineraries.delete(itinerary);
         itineraries.flush();
+    }
+
+    /** 수정 초안을 다시 만들기 전에 저장한 조건과 여행지를 읽는다. 원래 초안을 쓸 수 있으면 그 ID만 돌려준다. */
+    @Transactional(readOnly=true,timeout=10)
+    public EditSource editSource(Long id, String loginId) {
+        var itinerary=owned(id,loginId);
+        var editable=editable(itinerary,loginId);
+        if(editable!=null) return new EditSource(editable,null,null);
+        var snapshot=mapper.readTree(itinerary.getConditionsSnapshotJson());
+        // 여행지는 저장 당시 이름이 아니라 지금 장소 정보로 확인한다.
+        var destination=places.findById(itinerary.getDestinationPlaceId())
+            .filter(p->p.isActive() && "DESTINATION".equals(p.getPlaceType()))
+            .orElseThrow(()->new ResponseStatusException(HttpStatus.CONFLICT,"이 일정의 여행지 정보가 바뀌어 수정할 수 없어요. 여행 조건부터 새 일정을 만들어 주세요."));
+        return new EditSource(null,savedConditions(snapshot),new DestinationCandidate(destination.getId(),destination.getName(),
+            destination.getRegion(),destination.getDescription(),destination.getSourceUrl(),destination.getVerifiedAt()));
+    }
+
+    /**
+     * 원래 초안이 만료·삭제된 저장 일정을, 저장한 조건·항목과 지금 확인된 장소 후보로 수정용 초안으로 다시 만든다.
+     * 시각·장소는 저장한 그대로 옮기며, 이 일정이 새 초안을 가리키게 해 이후 수정안 적용 흐름을 그대로 쓴다.
+     */
+    @Transactional(timeout=10)
+    public EditDraft restoreDraft(Long id, UUID parentId, String loginId) {
+        var itinerary=itineraries.lockByIdAndUserId(id,member(loginId))
+            .orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"저장한 일정을 찾을 수 없어요."));
+        // 다른 화면에서 먼저 다시 만들었으면 그 초안을 쓴다.
+        var editable=editable(itinerary,loginId);
+        if(editable!=null) return new EditDraft(editable,List.of());
+        var snapshot=mapper.readTree(itinerary.getConditionsSnapshotJson());
+        var schedule=snapshot.path("schedule");
+        if(!schedule.path("dayStart").isTextual() || !schedule.path("dayEnd").isTextual() || !schedule.path("transport").isTextual())
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"예전 형식으로 저장한 일정이라 수정할 수 없어요. 여행 조건부터 새 일정을 만들어 주세요.");
+        var conditions=savedConditions(snapshot);
+        var pool=placeCandidates.findForSchedule(parentId,itinerary.getDestinationPlaceId(),loginId,null,conditions);
+        var savedItems=items.findByItineraryIdOrderByDayNoAscSequenceNoAsc(id);
+        // 방문한 관광지는 지금 확인된 후보에서 찾는다. 후보에 없는 곳은 장소 정보로 넣되 수정안에서 바꾸도록 안내한다.
+        var attractions=new ArrayList<PlaceCandidate>(); var missing=new ArrayList<String>();
+        for(var item:savedItems) {
+            if(!"VISIT".equals(item.getItemType()) || item.getPlaceId()==null
+                || attractions.stream().anyMatch(p->p.placeId().equals(item.getPlaceId()))) continue;
+            var current=pool.attractions().stream().filter(p->p.placeId().equals(item.getPlaceId())).findFirst();
+            if(current.isPresent()) { attractions.add(current.get()); continue; }
+            var place=places.findById(item.getPlaceId()).orElseThrow(()->
+                new ResponseStatusException(HttpStatus.CONFLICT,"저장한 관광지를 찾을 수 없어 수정할 수 없어요."));
+            attractions.add(placeCandidates.candidate(place)); missing.add(place.getName());
+        }
+        var candidates=new PlaceCandidateView(parentId,pool.destination(),pool.durationDays(),pool.accommodationNeeded(),
+            List.copyOf(attractions),pool.accommodations(),pool.restaurants());
+        var input=new Input(parentId,candidates,conditions,LocalTime.parse(schedule.path("dayStart").asText()),
+            LocalTime.parse(schedule.path("dayEnd").asText()),KakaoMapClient.Transport.valueOf(schedule.path("transport").asText()),
+            schedule.path("visitMinutes").asInt(90));
+        var result=restoredResult(pool.destination().name(),input.transport(),savedItems);
+        var parent=access.owned(parentId,loginId,null,"RECOMMENDATION");
+        var job=jobs.saveAndFlush(AiJob.restoredItinerary(parent,mapper.writeValueAsString(input),mapper.writeValueAsString(result)));
+        // 내용이 같은 초안으로 연결만 바꾼다. 저장한 일정의 시각·장소는 그대로다.
+        var relinked=(tools.jackson.databind.node.ObjectNode)snapshot;
+        relinked.put("jobId",job.getId().toString());
+        itinerary.relinkDraft(mapper.writeValueAsString(relinked));
+        itineraries.flush();
+        return new EditDraft(job.getId(),List.copyOf(missing));
+    }
+    private ConfirmedTravelConditions savedConditions(tools.jackson.databind.JsonNode snapshot) {
+        if(!snapshot.path("conditions").isObject())
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"예전 형식으로 저장한 일정이라 수정할 수 없어요. 여행 조건부터 새 일정을 만들어 주세요.");
+        return mapper.treeToValue(snapshot.path("conditions"),ConfirmedTravelConditions.class);
+    }
+    // 저장한 항목을 일정 초안 결과 형식으로 되돌린다. AI 안내·주변 지역·참고 가격은 다시 만들지 않는다.
+    private Result restoredResult(String destination, KakaoMapClient.Transport transport, List<ItineraryItem> savedItems) {
+        var days=new ArrayList<Day>(); Long stayPlaceId=null;
+        for(var item:savedItems) {
+            if(days.isEmpty() || days.getLast().number()!=item.getDayNo())
+                days.add(new Day(item.getDayNo(),item.getStartAt().toLocalDate(),new ArrayList<>()));
+            var snapshot=mapper.readTree(item.getPlaceSnapshotJson()==null?"{}":item.getPlaceSnapshotJson());
+            var checkedAt=snapshot.path("checkedAt").isTextual()?Instant.parse(snapshot.path("checkedAt").asText()):null;
+            days.getLast().items().add(new Item(item.getItemType(),item.getPlaceId(),snapshot.path("name").asText(item.getActivity()),
+                item.getStartAt().toLocalTime(),item.getEndAt().toLocalTime(),text(snapshot,"note"),text(snapshot,"mapUrl"),
+                text(snapshot,"sourceUrl"),item.getTravelMinutes()==null?null:item.getTravelMinutes()*60,checkedAt));
+            if("STAY".equals(item.getItemType()) && stayPlaceId==null) stayPlaceId=item.getPlaceId();
+        }
+        var lodging=stayPlaceId==null?null:new Lodging(stayPlaceId,"저장한 일정에 넣은 숙소예요.",List.of());
+        return new Result(destination,days,transport,Instant.now(),null,null,lodging,List.of(),null);
+    }
+    private static String text(tools.jackson.databind.JsonNode node, String field) {
+        return node.path(field).isTextual()?node.path(field).asText():null;
     }
 
     // 원래 초안이 만료 전이고 본인 것일 때만 그 초안에서 수정안을 만들 수 있다.

@@ -11,6 +11,7 @@
 <a class="back-link" th:href="@{/travel/recommendations/{id}/destinations/{dest}/places(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">← 장소 목록</a>
 <p class="eyebrow">여행 준비 · 일정 초안</p>
 <h1 th:text="${job.input.places.destination.name + (job.input.revision == null ? ' 일정 초안' : ' 일정 수정안')}"></h1>
+<div class="notice" role="status" th:if="${editNotice != null}"><p th:text="${editNotice}"></p></div>
 <div class="notice" th:if="${job.input.revision != null}" th:with="rev=${job.input.revision}">
 <p th:if="${!rev.replaced.isEmpty()}" th:text="${'바꾼 관광지: ' + #strings.listJoin(rev.replaced.![name], ', ') + ' → ' + #strings.listJoin(rev.added.![name], ', ')}"></p>
 <p th:if="${rev.replaced.isEmpty()}">관광지는 그대로 두고 하루 시간과 체류시간만 바꾼 수정안이에요.</p>

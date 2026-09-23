@@ -37,6 +37,9 @@ class SavedItineraryRevisionIntegrationTests {
     @Autowired RecommendationJobService recommendations;
     @Autowired ItineraryJobService schedules;
     @Autowired SavedItineraryService saved;
+    @Autowired SavedItineraryEditService edits;
+    @Autowired RecommendationHistoryService histories;
+    @Autowired ItineraryRepository itineraries;
     @Autowired AiJobRepository jobs;
     @Autowired UserRepository users;
     @Autowired PasswordEncoder encoder;
@@ -159,5 +162,75 @@ class SavedItineraryRevisionIntegrationTests {
                 .param("jobId",revised.toString()).param("version",version))
             .andExpect(status().isConflict());
         assertThat(firstStart()).isEqualTo(LocalTime.of(10,0));
+    }
+
+    // 이 회원의 모든 작업을 보관 기간이 지난 상태로 만든다.
+    private void expireJobs() {
+        em.flush();
+        em.createQuery("update AiJob j set j.expiresAt=:past where j.userId=:user")
+            .setParameter("past",LocalDateTime.now(ZoneOffset.UTC).minusMinutes(1)).setParameter("user",owner.getId()).executeUpdate();
+        em.clear();
+    }
+    private void editRestoredDraftAndApply(UUID draft) {
+        var detail=saved.detail(itineraryId,owner.getLoginId());
+        assertThat(detail.editableJobId()).isEqualTo(draft);
+        // 다시 만든 초안은 저장한 시각을 그대로 가진다.
+        var view=schedules.view(draft,owner.getLoginId(),null);
+        assertThat(view.result().days().getFirst().items().getFirst().start()).isEqualTo(LocalTime.of(9,0));
+        var revised=revision(draft,LocalTime.of(10,0));
+        var targets=saved.targets(revised,owner.getLoginId());
+        assertThat(targets).extracting(SavedItinerary.Target::id).containsExactly(itineraryId);
+        saved.apply(itineraryId,revised,targets.getFirst().version(),owner.getLoginId());
+        assertThat(firstStart()).isEqualTo(LocalTime.of(10,0));
+    }
+
+    @Test void expiredDraftIsRestoredFromSavedItinerary() {
+        Long requestId=itineraries.findById(itineraryId).orElseThrow().getRequestId();
+        String version=saved.detail(itineraryId,owner.getLoginId()).version();
+        expireJobs();
+        assertThat(saved.detail(itineraryId,owner.getLoginId()).editableJobId()).isNull();
+
+        var draft=edits.prepare(itineraryId,owner.getLoginId());
+        assertThat(draft.jobId()).isNotEqualTo(original);
+        assertThat(draft.missingPlaces()).isEmpty();
+        em.flush(); em.clear();
+        // 초안만 다시 연결했으므로 저장 일정 버전과 내용은 그대로다.
+        assertThat(saved.detail(itineraryId,owner.getLoginId()).version()).isEqualTo(version);
+        assertThat(firstStart()).isEqualTo(LocalTime.of(9,0));
+        // 다시 눌러도 같은 초안을 쓴다.
+        assertThat(edits.prepare(itineraryId,owner.getLoginId()).jobId()).isEqualTo(draft.jobId());
+
+        editRestoredDraftAndApply(draft.jobId());
+        // 다시 만든 초안은 추천 이력에 연결하지 않지만 저장 일정의 기존 이력 연결은 유지한다.
+        assertThat(itineraries.findById(itineraryId).orElseThrow().getRequestId()).isEqualTo(requestId);
+    }
+
+    @Test void deletedHistoryDraftIsRestoredFromSavedItinerary() {
+        Long requestId=itineraries.findById(itineraryId).orElseThrow().getRequestId();
+        histories.delete(requestId,owner.getLoginId());
+        em.flush(); em.clear();
+        assertThat(jobs.findById(original)).isEmpty();
+        assertThat(saved.detail(itineraryId,owner.getLoginId()).editableJobId()).isNull();
+
+        var draft=edits.prepare(itineraryId,owner.getLoginId());
+        em.flush(); em.clear();
+        editRestoredDraftAndApply(draft.jobId());
+    }
+
+    @Test void restoreScreenAndOtherMemberRefused() throws Exception {
+        expireJobs();
+        mvc.perform(get("/my/itineraries/"+itineraryId).with(user(owner.getLoginId())))
+            .andExpect(status().isOk()).andExpect(content().string(containsString("수정 준비하기")));
+        var other=member();
+        mvc.perform(post("/my/itineraries/"+itineraryId+"/edit").with(user(other.getLoginId())).with(csrf()))
+            .andExpect(status().isNotFound());
+        mvc.perform(post("/my/itineraries/"+itineraryId+"/edit").with(user(owner.getLoginId())).with(csrf()))
+            .andExpect(status().is3xxRedirection())
+            .andExpect(redirectedUrlPattern("/travel/recommendations/itineraries/*#revise-title"));
+        em.flush(); em.clear();
+        var draft=saved.detail(itineraryId,owner.getLoginId()).editableJobId();
+        assertThat(draft).isNotNull().isNotEqualTo(original);
+        mvc.perform(get("/travel/recommendations/itineraries/"+draft).with(user(owner.getLoginId())))
+            .andExpect(status().isOk()).andExpect(content().string(containsString("장소 바꿔서 수정안 만들기")));
     }
 }
