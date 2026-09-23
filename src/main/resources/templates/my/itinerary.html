@@ -96,6 +96,7 @@
 
     <section class="condition-section" aria-labelledby="edit-title">
         <h2 id="edit-title">일정 수정하기</h2>
+        <div th:replace="~{fragments/revision-scope :: scope}"></div>
         <th:block th:if="${itinerary.editableJobId != null}">
             <p class="help">원래 초안에서 바꿀 관광지와 하루 시간을 골라 수정안을 만들어요. 수정안을 확인하고 '이 일정에 적용하기'를 눌러야 바뀌며, 그 전까지 이 일정은 그대로예요.</p>
             <div class="form-actions"><a class="button" th:href="@{/travel/recommendations/itineraries/{id}(id=${itinerary.editableJobId})}">수정안 만들러 가기</a></div>

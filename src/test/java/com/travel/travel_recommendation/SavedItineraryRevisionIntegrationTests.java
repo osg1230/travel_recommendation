@@ -150,10 +150,12 @@ class SavedItineraryRevisionIntegrationTests {
     @Test void screensOfferEditAndApply() throws Exception {
         mvc.perform(get("/my/itineraries/"+itineraryId).with(user(owner.getLoginId())))
             .andExpect(status().isOk()).andExpect(content().string(containsString("수정안 만들러 가기")))
+            .andExpect(content().string(containsString("바꿀 수 없는 것")))
             .andExpect(content().string(containsString("이 장소 평가하기")));
         var revised=revision(original,LocalTime.of(10,0));
         mvc.perform(get("/travel/recommendations/itineraries/"+revised).with(user(owner.getLoginId())))
-            .andExpect(status().isOk()).andExpect(content().string(containsString("저장한 일정에 적용")));
+            .andExpect(status().isOk()).andExpect(content().string(containsString("저장한 일정에 적용")))
+            .andExpect(content().string(containsString("수정안으로 바꿀 수 있는 것")));
         String version=saved.detail(itineraryId,owner.getLoginId()).version();
         mvc.perform(post("/my/itineraries/"+itineraryId+"/apply").with(user(owner.getLoginId())).with(csrf())
                 .param("jobId",revised.toString()).param("version",version))
