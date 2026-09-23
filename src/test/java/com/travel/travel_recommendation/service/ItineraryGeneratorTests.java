@@ -62,12 +62,14 @@ class ItineraryGeneratorTests {
         var firstDay=result.days().getFirst().items();
         var stay=firstDay.get(ItineraryGenerator.stayIndex(firstDay));
         assertThat(stay.placeId()).isEqualTo(5L);
-        assertThat(stay.note()).contains("추천 이유:");
+        // 숙소를 고른 이유는 '숙소 추천' 절에 한 번만 보여 주므로 항목마다 적지 않는다.
+        assertThat(stay.note()).isEqualTo("숙소 도착·휴식");
         // 이틀 동안 식사 3번(1일차 점심·저녁, 2일차 점심)에 음식점 후보가 3곳이면 같은 곳을 반복하지 않는다.
         var meals=result.days().stream().flatMap(d->d.items().stream()).filter(i->i.type().equals("MEAL")).toList();
         assertThat(meals).extracting(Item::placeId).doesNotHaveDuplicates();
-        // 식사 항목에 음식 분류·고른 이유와 공식 자료의 지역 대표 음식을 적는다.
-        assertThat(meals.getFirst().note()).contains("음식 분류: 유형").contains("라 골랐어요").contains("초당두부").contains("확인 필요");
+        // 식사 항목에 음식 분류·고른 이유를 적고, 지역 대표 음식은 첫 식사에만 적는다. 운영정보가 없으면 '확인 필요' 줄을 붙이지 않는다.
+        assertThat(meals.getFirst().note()).contains("음식 분류: 유형").contains("라 골랐어요").contains("초당두부").doesNotContain("확인 필요");
+        assertThat(meals.subList(1,meals.size())).allSatisfy(m->assertThat(m.note()).doesNotContain("초당두부"));
         generator.validate(input,result);
         // 날마다 다른 숙소로 바꾼 결과는 받지 않는다.
         var days=new ArrayList<>(result.days());

@@ -14,6 +14,13 @@ public record PlaceCandidate(Long placeId, String name, String address, String s
         this(id,name,address,subtype,description,sourceUrl,mapUrl,verifiedAt,null,null,"SYSTEM");
     }
 
+    /** 화면용 분류 이름. 카카오 분류(예: "여행 > 관광,명소 > 해수욕장,해변")는 마지막 단계만 "해수욕장·해변"처럼 보여 준다. */
+    public String subtypeLabel() {
+        if (subtype == null || subtype.isBlank()) return "";
+        String last = subtype.contains(">") ? subtype.substring(subtype.lastIndexOf('>') + 1).strip() : subtype.strip();
+        return last.replace(",", "·");
+    }
+
     /** 간식·술집·카페처럼 끼니로 어울리지 않는 음식점 분류(예: 카카오 "음식점 > 간식 > 아이스크림", "음식점 > 술집 > 호프,요리주점"). */
     public static boolean notForMeals(String subtype) {
         return subtype != null && (subtype.contains("간식") || subtype.contains("술집") || subtype.contains("카페"));

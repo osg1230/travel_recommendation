@@ -128,7 +128,7 @@ public class ItineraryGenerator {
                 try {
                     // 점심때가 됐는데 이 관광지를 마치면 너무 늦어지면(예: 12:06~13:36) 점심을 먼저 먹는다.
                     if(!builder.lunch && lunchFirst(builder,next)) eat(builder,builder.previous,false);
-                    builder.visit(next,"VISIT",input.visitMinutes(),"관광·관람 (계획한 체류시간)"
+                    builder.visit(next,"VISIT",input.visitMinutes(),"관광·관람"
                         +(spare?"\n하루 시간이 남아 더 넣은 곳이에요.":"")
                         +(centers.contains(next)?"\n이 날 일정의 중심으로 고른 곳이에요.":"")
                         +(next.religiousSite()?"\n종교 시설이라 미사·예불 등 행사 중에는 관람이 제한될 수 있어요. 방문 전 관람 가능 시간을 확인해 주세요.":""));
@@ -170,7 +170,8 @@ public class ItineraryGenerator {
             if(visits==0) throw routeError!=null?routeError:failure("INSUFFICIENT_PLACES",day+"일차에 넣을 관광지가 부족해요. 여행 기간을 줄이거나 장소 목록에서 후보를 더 찾아 주세요.");
             // 점심을 아직 넣지 못했으면 마지막 관광지 뒤에 넣는다. 들어가는지는 위에서 확인했다.
             if(!builder.lunch) eat(builder,last,false);
-            if(stay!=null) arriveAndDine(builder,stay,"숙소 도착·휴식 (체크인 시간·예약 확인 필요)\n추천 이유: "+lodging.reason());
+            // 숙소를 고른 이유와 체크인 확인 안내는 '숙소 추천' 절에 한 번만 보여 준다.
+            if(stay!=null) arriveAndDine(builder,stay,"숙소 도착·휴식");
             // 하루 방문 수가 필수 조건이면 시간 때문에 줄어든 날을 그대로 두지 않고 이유를 알린다.
             if(constraints!=null && constraints.dailyVisitsRequired() && visits!=constraints.dailyVisits())
                 throw failure("TIME_OVERLAP",day+"일차에 관광지 "+constraints.dailyVisits()+"곳을 하루 시간 안에 넣지 못했어요. 하루 시간을 늘리거나 체류시간·하루 방문 수를 줄여 주세요.");
@@ -215,11 +216,13 @@ public class ItineraryGenerator {
         builder.move(restaurant);
         if(!dinner && builder.time.isBefore(LocalTime.NOON) && !builder.input.end().isBefore(LocalTime.of(13,0)))
             builder.add("FREE",restaurant,"식사 전 자유시간",(int)Duration.between(builder.time,LocalTime.NOON).toMinutes(),"주변 휴식·자유시간",null,null);
-        // 음식 분류와 고른 이유(직전 관광지와의 거리), 지역 대표 음식을 함께 적는다(SFR-17-01·02).
-        String mealNote=(dinner?"저녁 식사":"식사")+" (가격 확인 필요)\n"
-            +(restaurant.subtype()==null || restaurant.subtype().isBlank()?"":"음식 분류: "+restaurant.subtype()+" · ")
+        // 음식 분류와 고른 이유(직전 관광지와의 거리)를 적는다(SFR-17-01). 지역 대표 음식(SFR-17-02)은 끼니마다 반복하지 않고
+        // 여행의 첫 식사에만 적는다. 저장한 일정 상세에는 대표 음식 절이 없어 이 한 줄로 남긴다.
+        boolean firstMeal=builder.usedRestaurants.size()==1 && fresh;
+        String mealNote=(dinner?"저녁 식사":"식사")+"\n"
+            +(restaurant.subtypeLabel().isEmpty()?"":"음식 분류: "+restaurant.subtypeLabel()+" · ")
             +after.name()+"에서 직선 약 "+kilometersText(builder.locations.get(after.placeId()),builder.locations.get(restaurant.placeId()))+"라 골랐어요."
-            +builder.foods.map(g->"\n이 지역 대표 "+(g.snack()?"간식":"음식")+": "+g.joined()+" (이 음식점에서 파는지는 확인 필요)").orElse("")
+            +(firstMeal?builder.foods.map(g->"\n이 지역 대표 "+(g.snack()?"간식":"음식")+": "+g.joined()+" (음식점마다 메뉴는 달라요)").orElse(""):"")
             // 확인된 음식점이 모자라 이미 들른 곳을 다시 넣었다면 숨기지 않고 알린다.
             +(!fresh?"\n확인된 음식점 후보가 적어 앞에서 들른 곳을 다시 넣었어요. 장소 목록에서 후보를 더 찾은 뒤 다시 만들 수 있어요.":"");
         builder.visit(restaurant,"MEAL",60,mealNote);
@@ -576,7 +579,8 @@ public class ItineraryGenerator {
             if(minutes<=0 || time.toSecondOfDay()+minutes*60>limit.toSecondOfDay())
                 throw failure("TIME_OVERLAP","방문·식사·이동 시간이 하루 종료 시간을 넘어요. 이용 시간을 늘리거나 관광지 체류시간을 줄여 주세요.");
             var location=locations.get(place.placeId());
-            if(Set.of("VISIT","MEAL","STAY").contains(type)) note += "\n" + OperatingHoursValidator.note(place.name(),place.operatingInfo(),date,time,time.plusMinutes(minutes));
+            // 운영정보를 조회한 곳만 항목에 판단 결과를 적는다. 정보가 없는 곳은 조건 확인 결과에 모아서 한 번 알린다.
+            if(Set.of("VISIT","MEAL","STAY").contains(type) && place.operatingInfo()!=null) note += "\n" + OperatingHoursValidator.note(place.name(),place.operatingInfo(),date,time,time.plusMinutes(minutes));
             String map="https://map.kakao.com/link/map/"+URLEncoder.encode(place.name(),StandardCharsets.UTF_8).replace("+","%20")+","+location.latitude()+","+location.longitude();
             items.add(new Item(type,place.placeId(),name,time,time.plusMinutes(minutes),note,map,place.sourceUrl(),seconds,checkedAt));
             time=time.plusMinutes(minutes);

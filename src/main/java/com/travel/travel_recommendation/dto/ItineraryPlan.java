@@ -147,6 +147,11 @@ public final class ItineraryPlan {
     public record Result(String destination, List<Day> days, Transport transport, Instant createdAt, Assist assist, Nearby nearby,
                          Lodging lodging, List<PlaceRef> skipped, Prices prices) {
         public Result { skipped = skipped == null ? List.of() : List.copyOf(skipped); }
+        /** 화면용: 이동시간을 처음 조회한 시각(한국 시간). 구간마다 적지 않고 일정 위에 한 번만 보여 준다. 저장 JSON에는 들어가지 않는다. */
+        public String routesCheckedAtText() {
+            return days.stream().flatMap(d -> d.items().stream()).filter(i -> i.checkedAt() != null)
+                .min(java.util.Comparator.comparing(Item::checkedAt)).map(Item::checkedAtText).orElse(null);
+        }
         // 보조 안내를 붙이기 전의 초안과 이전 작업 JSON은 assist·nearby·lodging·skipped·prices 없이 그대로 사용한다.
         public Result(String destination, List<Day> days, Transport transport, Instant createdAt) {
             this(destination, days, transport, createdAt, null, null, null, null, null);
