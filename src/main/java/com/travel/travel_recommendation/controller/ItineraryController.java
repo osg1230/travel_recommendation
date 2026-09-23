@@ -196,7 +196,8 @@ public class ItineraryController {
         try {
             var result=service().aiRevise(id,login(principal),hash(session),request);
             if(result.job()!=null) return "redirect:/travel/recommendations/itineraries/"+result.job();
-            redirect.addFlashAttribute("aiQuestion",result.question());
+            if(result.notice()!=null) redirect.addFlashAttribute("aiNotice",result.notice());
+            else redirect.addFlashAttribute("aiQuestion",result.question());
         } catch(RecommendationException e) {
             redirect.addFlashAttribute("aiError",e.getMessage()+" 원래 초안은 그대로예요.");
         } catch(ResponseStatusException e) {

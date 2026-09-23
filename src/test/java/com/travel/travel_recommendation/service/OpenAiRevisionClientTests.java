@@ -75,6 +75,30 @@ class OpenAiRevisionClientTests {
         assertThat(proposal.question()).isEqualTo("어느 날의 관광지를 바꿀까요?");
     }
 
+    // 식사·숙소·날짜처럼 할 수 없는 요청은 GPT 문장 대신 서버의 고정 안내를 쓴다.
+    @Test void unsupportedRequestUsesFixedNoticeWithoutChanges() {
+        output("{\"action\":\"UNSUPPORTED\",\"question\":\"어떤 식당으로 바꿀까요?\",\"replace\":[],\"add\":[],\"start\":null,\"end\":null,\"visitMinutes\":null,\"explanation\":\"\"}");
+        var proposal=call(Set.of());
+        assertThat(proposal.unsupported()).isTrue(); assertThat(proposal.clarify()).isFalse();
+        assertThat(proposal.question()).isEqualTo(OpenAiRevisionClient.UNSUPPORTED_MESSAGE).doesNotContain("어떤 식당");
+        assertThat(proposal.replace()).isEmpty();
+        var instructions=mapper.readTree(request.get()).path("instructions").asText();
+        assertThat(instructions).contains("UNSUPPORTED","임의로 고르지 말고","placeId 숫자나");
+        output("{\"action\":\"UNSUPPORTED\",\"question\":\"\",\"replace\":[1],\"add\":[3],\"start\":null,\"end\":null,\"visitMinutes\":null,\"explanation\":\"\"}");
+        assertThatThrownBy(()->call(Set.of())).isInstanceOfSatisfying(RecommendationException.class,
+            e->assertThat(e.getCode()).isEqualTo("AI_INVALID_RESPONSE"));
+    }
+
+    // 사용자에게 보이는 설명·질문에서 내부 장소 ID와 입력 필드 이름을 뺀다.
+    @Test void explanationAndQuestionHideInternalIdsAndFieldNames() {
+        output("{\"action\":\"REVISE\",\"question\":\"\",\"replace\":[1],\"add\":[3],\"start\":null,\"end\":null,\"visitMinutes\":null,"
+            +"\"explanation\":\"오죽헌(1)을 spareCandidates의 안목해변(placeId: 3)으로 바꾸고 경포대 placeId 2는 유지했어요. 10시(2곳)는 그대로예요.\"}");
+        assertThat(call(Set.of()).explanation())
+            .isEqualTo("오죽헌을 교체 후보의 안목해변으로 바꾸고 경포대는 유지했어요. 10시(2곳)는 그대로예요.");
+        output("{\"action\":\"CLARIFY\",\"question\":\"currentAttractions 중 오죽헌(1)과 경포대(2) 중 무엇을 바꿀까요?\",\"replace\":[],\"add\":[],\"start\":null,\"end\":null,\"visitMinutes\":null,\"explanation\":\"\"}");
+        assertThat(call(Set.of()).question()).isEqualTo("현재 일정의 관광지 중 오죽헌과 경포대 중 무엇을 바꿀까요?");
+    }
+
     @Test void rejectsIdsOutsideListsFixedPlacesMismatchedCountsAndBadTimes() {
         String[] invalid={
             "{\"action\":\"REVISE\",\"question\":\"\",\"replace\":[9],\"add\":[3],\"start\":null,\"end\":null,\"visitMinutes\":null,\"explanation\":\"설명\"}",

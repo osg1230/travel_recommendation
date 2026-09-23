@@ -8,7 +8,6 @@ import java.net.http.*;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
-import java.util.regex.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.*;
@@ -109,15 +108,15 @@ public class OpenAiRecommendationClient {
             var id=item.path("placeId"); var text=item.path("reason");
             if(!item.isObject() || item.size()!=2 || !id.isIntegralNumber() || !id.canConvertToLong() || !text.isTextual()) throw invalid();
             DestinationCandidate candidate=allowed.remove(id.longValue());
-            String reason=readable(text.asText().strip());
+            String reason=readable(ReadableText.withoutIds(text.asText(),candidates.stream().map(DestinationCandidate::placeId).toList()).strip());
             if(candidate==null || reason.isEmpty() || reason.length()>2000 || reason.contains("<") || reason.contains(">")) throw invalid();
             result.add(new RankedDestination(result.size()+1,candidate,reason));
         }
         return List.copyOf(result);
     }
     // 프롬프트가 지시를 어겨 입력 필드 이름을 쓰면 화면에 보일 말로 바꾼다.
-    private static final Map<Pattern,String> FIELD_NAMES=fieldNames();
-    private static Map<Pattern,String> fieldNames() {
+    private static final ReadableText FIELD_NAMES=new ReadableText(fieldNames());
+    private static Map<String,String> fieldNames() {
         Map<String,String> names=new LinkedHashMap<>();
         names.put("purposePlaces","목적 시설 검색 결과");names.put("purposeKeywords","목적 검색어");
         names.put("travelPurpose","여행 목적");names.put("placeId","후보");names.put("durationDays","여행 일수");
@@ -125,32 +124,9 @@ public class OpenAiRecommendationClient {
         names.put("includeNearby","주변 지역 포함 여부");names.put("startDate","출발일");names.put("endDate","도착일");
         names.put("THEME","여행 취향");names.put("SEASON","계절");names.put("COMPANION","동행자");
         names.put("TRANSPORTATION","이동수단");
-        Map<Pattern,String> patterns=new LinkedHashMap<>();
-        // 필드 이름 뒤의 조사도 함께 잡아 바꾼 말의 받침에 맞춘다.
-        names.forEach((name,label)->patterns.put(
-            Pattern.compile("`?\\b"+name+"\\b`?(?:(으로|와|과|은|는|을|를|이|가|로)(?![가-힣]))?"),label));
-        return Map.copyOf(patterns);
+        return names;
     }
-    static String readable(String reason) {
-        for(var e:FIELD_NAMES.entrySet()) {
-            String label=e.getValue();
-            reason=e.getKey().matcher(reason).replaceAll(m->Matcher.quoteReplacement(label+particle(label,m.group(1))));
-        }
-        return reason;
-    }
-    private static String particle(String word,String particle) {
-        if(particle==null) return "";
-        char last=word.charAt(word.length()-1);
-        int coda=last>='가' && last<='힣' ? (last-'가')%28 : 0;
-        return switch(particle) {
-            case "와","과" -> coda!=0 ? "과" : "와";
-            case "은","는" -> coda!=0 ? "은" : "는";
-            case "을","를" -> coda!=0 ? "을" : "를";
-            case "이","가" -> coda!=0 ? "이" : "가";
-            case "으로","로" -> coda!=0 && coda!=8 ? "으로" : "로";
-            default -> particle;
-        };
-    }
+    static String readable(String reason) { return FIELD_NAMES.apply(reason); }
     private Map<String,Object> schema(List<DestinationCandidate> candidates) {
         return Map.of("type","object","additionalProperties",false,"required",List.of("recommendations"),
             "properties",Map.of("recommendations",Map.of("type","array","minItems",candidates.size(),"maxItems",candidates.size(),
