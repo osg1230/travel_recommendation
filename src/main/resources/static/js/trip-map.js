@@ -12,7 +12,7 @@
     let data;
     try { data = JSON.parse(box.dataset.map || '{}'); } catch (error) { tell('지도 정보를 읽지 못했어요.'); return; }
 
-    const COLORS = ['#1d4ed8', '#c2410c', '#15803d', '#7c3aed', '#be123c', '#0e7490', '#a16207'];
+    const COLORS = ['#0f766e', '#c2410c', '#1d4ed8', '#7c3aed', '#be123c', '#15803d', '#a16207'];
     const TYPE_NAMES = { VISIT: '관광', MEAL: '식사', STAY: '숙소', ATTRACTION: '관광지', ACCOMMODATION: '숙소' };
 
     const failed = setTimeout(() => tell('지도를 불러오지 못했어요. 카카오 JavaScript 키와 사이트 도메인 등록을 확인해 주세요. 아래 목록과 링크는 그대로 쓸 수 있어요.'), 8000);
