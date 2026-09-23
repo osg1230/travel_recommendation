@@ -212,7 +212,19 @@ class ItineraryRevisionIntegrationTests {
             .thenReturn(new OpenAiRevisionClient.Proposal(true,"어느 관광지를 바꿀까요?",List.of(),List.of(),null,null,null,null));
         mvc.perform(post(url).session(session).with(csrf()).param("request","좀 바꿔 줘"))
             .andExpect(flash().attribute("aiQuestion","어느 관광지를 바꿀까요?"));
-        mvc.perform(get("/travel/recommendations/itineraries/"+original).session(session))
+        // 식사처럼 바꿀 수 없는 요청은 되묻지 않고 할 수 있는 것을 안내한다. 새 수정안은 만들지 않는다.
+        session.removeAttribute("itineraryAiRevisionNext");
+        when(ai.propose(any(),any(),any(),any(),any(),any(),eq("점심 식당 바꿔 줘"),any()))
+            .thenReturn(new OpenAiRevisionClient.Proposal(false,OpenAiRevisionClient.UNSUPPORTED_MESSAGE,List.of(),List.of(),null,null,null,null,true));
+        long before=jobs.count();
+        var flashed=mvc.perform(post(url).session(session).with(csrf()).param("request","점심 식당 바꿔 줘"))
+            .andExpect(flash().attribute("aiNotice",OpenAiRevisionClient.UNSUPPORTED_MESSAGE))
+            .andExpect(flash().attributeCount(2)).andReturn().getFlashMap();
+        assertThat(jobs.count()).isEqualTo(before);
+        // 앞선 요청들이 세션에 남긴 flash 값이 먼저 읽히지 않게 비우고, 이번 요청의 값만 넘긴다.
+        session.removeAttribute(org.springframework.web.servlet.support.SessionFlashMapManager.class.getName()+".FLASH_MAPS");
+        mvc.perform(get("/travel/recommendations/itineraries/"+original).session(session).flashAttrs(flashed))
+            .andExpect(content().string(containsString("바꿀 수 없는 요청이에요")))
             .andExpect(content().string(containsString("문장으로 수정 요청하기")));
     }
 

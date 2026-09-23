@@ -188,6 +188,7 @@
 <h2 id="ai-revise-title">문장으로 수정 요청하기</h2>
 <p class="help">바꾸고 싶은 점을 문장으로 적으면 AI가 확인된 후보 안에서 바꿀 관광지와 시간을 골라 새 수정안을 만들어요. 서버가 다시 배치·검증하며, 이 초안은 바뀌지 않아요.</p>
 <p class="notice" role="status" th:if="${aiQuestion != null}" th:text="${'확인이 필요해요 · ' + aiQuestion}"></p>
+<p class="notice" role="status" th:if="${aiNotice != null}" th:text="${'바꿀 수 없는 요청이에요 · ' + aiNotice}"></p>
 <p role="alert" th:if="${aiError != null}" th:text="${aiError}"></p>
 <form method="post" th:action="@{/travel/recommendations/itineraries/{id}/ai-revisions(id=${job.id})}">
 <label for="ai-request">수정 요청 (1~300자)</label>

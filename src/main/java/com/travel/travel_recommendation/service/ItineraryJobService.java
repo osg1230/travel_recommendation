@@ -215,8 +215,13 @@ public class ItineraryJobService {
         var parent=access.owned(original.recommendationId(),login,hash,"RECOMMENDATION");
         return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();
     }
-    /** AI 수정 결과. job이 있으면 새 수정안 작업, question이 있으면 일정을 바꾸지 않고 확인할 질문이다. */
-    public record AiRevision(UUID job,String question) {}
+    /**
+     * AI 수정 결과. job이 있으면 새 수정안 작업, question이 있으면 일정을 바꾸지 않고 확인할 질문,
+     * notice가 있으면 할 수 없는 요청이라 일정을 바꾸지 않았다는 안내다.
+     */
+    public record AiRevision(UUID job,String question,String notice) {
+        AiRevision(UUID job,String question) { this(job,question,null); }
+    }
 
     /**
      * 자연어 수정 요청(SFR-08-04)을 GPT로 수정안 형식으로 바꾼 뒤 기존 수정안 흐름으로 새 초안을 만든다.
@@ -237,6 +242,7 @@ public class ItineraryJobService {
                 failure=e.getMessage();
             }
         }
+        if(proposal.unsupported()) return new AiRevision(null,null,proposal.question());
         if(proposal.clarify()) return new AiRevision(null,proposal.question());
         var original=context.input();
         LocalTime start=proposal.start()==null?original.start():proposal.start();
