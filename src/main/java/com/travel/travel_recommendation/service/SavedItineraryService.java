@@ -60,7 +60,7 @@ public class SavedItineraryService {
         if(already!=null) return new Saved(already,false);
         var saved=itineraries.saveAndFlush(new Itinerary(userId,job.getRequestId(),destination.placeId(),
             defaultTitle(destination.name(),result.days().size()),result.days().getFirst().date(),result.days().getLast().date(),
-            transportation(input),mapper.writeValueAsString(snapshot(jobId,input,result))));
+            transportation(input),mapper.writeValueAsString(snapshot(jobId,input,result,report))));
         writeItems(saved.getId(),result);
         return new Saved(saved.getId(),true);
     }
@@ -97,7 +97,7 @@ public class SavedItineraryService {
         items.flush();
         // 저장한 일정에서 다시 만든 초안은 추천 이력과 연결되지 않으므로 기존 이력 연결을 유지한다.
         itinerary.applyRevision(job.getRequestId()!=null?job.getRequestId():itinerary.getRequestId(),result.days().getFirst().date(),result.days().getLast().date(),
-            transportation(input),mapper.writeValueAsString(snapshot(jobId,input,result)));
+            transportation(input),mapper.writeValueAsString(snapshot(jobId,input,result,report)));
         itineraries.flush();
         writeItems(itinerary.getId(),result);
     }
@@ -153,8 +153,17 @@ public class SavedItineraryService {
                 days.add(new SavedItinerary.Day(item.getDayNo(),item.getStartAt().toLocalDate(),new ArrayList<>()));
             days.getLast().items().add(view(item));
         }
+        var snapshot=mapper.readTree(itinerary.getConditionsSnapshotJson());
+        // 저장 당시 확인한 조건 결과와 참고 가격. 예전 형식의 일정에는 없어서 비어 있다.
+        var checks=new ArrayList<SavedItinerary.Check>();
+        for(var check:snapshot.path("conditionChecks")) {
+            var status=ItineraryConditionReport.Status.valueOf(check.path("status").asText());
+            checks.add(new SavedItinerary.Check(check.path("name").asText(),status.name(),status.getLabel(),check.path("detail").asText("")));
+        }
+        var prices=snapshot.path("prices").isObject()?mapper.treeToValue(snapshot.path("prices"),Prices.class):null;
         return new SavedItinerary.Detail(summary(itinerary),transportName(itinerary.getTransportation()),days,
-            editable(itinerary,loginId),itinerary.getUpdatedAt().toString());
+            editable(itinerary,loginId),itinerary.getUpdatedAt().toString(),List.copyOf(checks),
+            prices==null?List.of():prices.quotes(),prices==null?null:koreanTime(prices.checkedAt()));
     }
 
     @Transactional(timeout=10)
@@ -300,13 +309,22 @@ public class SavedItineraryService {
             snapshot.path("name").asText(item.getActivity()),snapshot.path("note").asText(""),
             snapshot.path("mapUrl").asText(""),snapshot.path("sourceUrl").asText(""),item.getTravelMinutes(),item.getPlaceId());
     }
-    private Map<String,Object> snapshot(UUID jobId, Input input, Result result) {
+    // schemaVersion 2부터 저장 당시 조건 확인 결과(conditionChecks)와 조회한 참고 가격(prices)을 함께 남긴다.
+    private Map<String,Object> snapshot(UUID jobId, Input input, Result result, ItineraryConditionReport.Report report) {
         var destination=input.places().destination();
-        return Map.of("schemaVersion",1,"jobId",jobId.toString(),
-            "destination",Map.of("placeId",destination.placeId(),"name",destination.name(),"region",destination.region()),
-            "schedule",Map.of("dayStart",input.start().toString(),"dayEnd",input.end().toString(),
-                "transport",input.transport().name(),"visitMinutes",input.visitMinutes(),"dayCount",result.days().size()),
-            "conditions",input.conditions());
+        var snapshot=new LinkedHashMap<String,Object>();
+        snapshot.put("schemaVersion",2); snapshot.put("jobId",jobId.toString());
+        snapshot.put("destination",Map.of("placeId",destination.placeId(),"name",destination.name(),"region",destination.region()));
+        snapshot.put("schedule",Map.of("dayStart",input.start().toString(),"dayEnd",input.end().toString(),
+            "transport",input.transport().name(),"visitMinutes",input.visitMinutes(),"dayCount",result.days().size()));
+        snapshot.put("conditions",input.conditions());
+        snapshot.put("conditionChecks",report.checks().stream()
+            .map(c->Map.of("name",c.name(),"status",c.status().name(),"detail",c.detail()==null?"":c.detail())).toList());
+        if(result.prices()!=null) snapshot.put("prices",result.prices());
+        return snapshot;
+    }
+    private static String koreanTime(Instant time) {
+        return time==null?null:java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").format(time.atZone(ZoneId.of("Asia/Seoul")));
     }
     private Map<String,Object> placeSnapshot(Item item) {
         var snapshot=new LinkedHashMap<String,Object>();

@@ -29,6 +29,10 @@
             <h3 th:text="${item.name}"></h3>
             <p style="white-space: pre-line" th:text="${item.note}"></p>
             <p class="help" th:if="${item.travelMinutes != null}" th:text="${'저장 당시 예상 이동시간 약 ' + item.travelMinutes + '분'}"></p>
+            <th:block th:if="${item.type == 'MEAL' or item.type == 'STAY'}" th:with="quote=${itinerary.price(item.placeId)}">
+                <p class="help" th:if="${quote != null and quote.found()}"
+                   th:text="${'저장 당시 참고 가격: ' + quote.priceText + ' (' + quote.basis + ') · ' + (quote.status == 'VERIFIED' ? '출처 페이지에서 상호·가격 확인' : 'AI 검색 결과, 출처에서 직접 확인 필요')}"></p>
+            </th:block>
             <th:block th:if="${item.placeId != null and (item.type == 'VISIT' or item.type == 'MEAL' or item.type == 'STAY')}"
                       th:with="summary=${ratingSummaries.get(item.placeId)}">
                 <p class="rating-summary" th:if="${summary != null}"
@@ -45,6 +49,33 @@
             </div>
             </div>
         </article>
+    </section>
+
+    <section class="condition-section" th:if="${!itinerary.checks.isEmpty() or !itinerary.prices.isEmpty()}" aria-labelledby="saved-checks-title">
+        <h2 id="saved-checks-title">저장 당시 확인한 정보</h2>
+        <p class="help">일정을 저장하거나 수정안을 적용할 때 확인한 결과예요. 지금 다시 확인한 값이 아니니, 여행 전에 출처에서 최신 정보를 확인해 주세요.</p>
+        <table class="report-table" th:if="${!itinerary.checks.isEmpty()}">
+            <caption>여행 조건 확인 결과</caption>
+            <thead><tr><th scope="col">항목</th><th scope="col">결과</th><th scope="col">내용</th></tr></thead>
+            <tbody><tr th:each="check : ${itinerary.checks}">
+                <th scope="row" th:text="${check.name}"></th>
+                <td><span class="status-badge" th:classappend="${'status-' + #strings.toLowerCase(check.status)}" th:text="${check.label}"></span></td>
+                <td th:text="${check.detail}"></td>
+            </tr></tbody>
+        </table>
+        <th:block th:if="${!itinerary.prices.isEmpty()}">
+            <h3>숙소·음식점 참고 가격</h3>
+            <p class="help" th:text="${'AI 웹 검색 조회: ' + itinerary.pricesCheckedAt + ' (한국 시간). 날짜·인원·메뉴에 따라 실제 가격은 달라요.'}"></p>
+            <article class="place-row" th:each="quote : ${itinerary.prices}">
+                <h3 th:text="${(quote.kind == 'ACCOMMODATION' ? '숙소 · ' : '음식점 · ') + quote.name}"></h3>
+                <th:block th:if="${quote.found()}">
+                    <p th:text="${quote.priceText + ' (' + quote.basis + ')'}"></p>
+                    <p class="help" th:text="${quote.status == 'VERIFIED' ? '저장 당시 출처 페이지에서 상호와 가격을 확인했어요.' : 'AI 검색 결과예요. 출처 페이지 내용은 확인하지 못했어요.'}"></p>
+                    <div class="place-links"><a th:href="${quote.sourceUrl}" target="_blank" rel="noopener noreferrer">가격 출처 보기 (새 창)</a></div>
+                </th:block>
+                <p class="help" th:unless="${quote.found()}">저장 당시 믿을 만한 가격 출처를 찾지 못했어요.</p>
+            </article>
+        </th:block>
     </section>
 
     <section class="condition-section" aria-labelledby="reserve-title">

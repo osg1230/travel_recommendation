@@ -233,4 +233,37 @@ class SavedItineraryRevisionIntegrationTests {
         mvc.perform(get("/travel/recommendations/itineraries/"+draft).with(user(owner.getLoginId())))
             .andExpect(status().isOk()).andExpect(content().string(containsString("장소 바꿔서 수정안 만들기")));
     }
+
+    @Test void savedDetailKeepsChecksAndPricesUntilRevisionReplacesThem() throws Exception {
+        // 참고 가격을 찾은 초안을 저장하면 조건 결과와 가격이 저장 상세로 이어진다.
+        var draft=completedDraft(owner);
+        var job=jobs.findById(draft).orElseThrow();
+        var result=mapper.readValue(job.getResultJson(),ItineraryPlan.Result.class);
+        var meal=result.days().stream().flatMap(d->d.items().stream()).filter(i->"MEAL".equals(i.type())).findFirst().orElseThrow();
+        var checkedAt=Instant.parse("2026-09-23T03:00:00Z");
+        var quote=new ItineraryPlan.PriceQuote(meal.placeId(),meal.name(),"RESTAURANT","VERIFIED","1인 12,000원",12000,12000,
+            "대표 메뉴 기준","https://example.com/menu",checkedAt);
+        schedules.savePrices(draft,owner.getLoginId(),null,job.getResultJson(),new ItineraryPlan.Prices(List.of(quote),checkedAt));
+        em.flush(); em.clear();
+        Long id=saved.save(draft,owner.getLoginId()).id();
+        em.flush(); em.clear();
+
+        var detail=saved.detail(id,owner.getLoginId());
+        assertThat(detail.checks()).isNotEmpty().extracting(SavedItinerary.Check::status).doesNotContain("UNMET");
+        assertThat(detail.prices()).extracting(ItineraryPlan.PriceQuote::priceText).containsExactly("1인 12,000원");
+        assertThat(detail.pricesCheckedAt()).isEqualTo("2026-09-23 12:00");
+        assertThat(detail.price(meal.placeId())).isNotNull();
+        mvc.perform(get("/my/itineraries/"+id).with(user(owner.getLoginId())))
+            .andExpect(status().isOk()).andExpect(content().string(containsString("저장 당시 확인한 정보")))
+            .andExpect(content().string(containsString("저장 당시 참고 가격: 1인 12,000원")));
+
+        // 가격을 찾지 않은 수정안을 적용하면 이전 초안의 가격은 남기지 않는다.
+        var revised=revision(draft,LocalTime.of(10,0));
+        saved.apply(id,revised,saved.targets(revised,owner.getLoginId()).getFirst().version(),owner.getLoginId());
+        em.flush(); em.clear();
+        var after=saved.detail(id,owner.getLoginId());
+        assertThat(after.prices()).isEmpty();
+        assertThat(after.pricesCheckedAt()).isNull();
+        assertThat(after.checks()).isNotEmpty();
+    }
 }
