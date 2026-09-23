@@ -12,7 +12,7 @@
     <p class="eyebrow">내 여행 · 장소 평가</p>
     <h1>내 평가</h1>
     <p class="intro">내가 별점을 남긴 장소예요. 최근에 바꾼 순서로 보여 줘요.</p>
-    <p role="status" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
+    <p role="status" class="status-ok" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
     <p role="status" th:if="${ratings.isEmpty()}">아직 평가한 장소가 없어요. 저장한 일정에서 다녀온 장소를 평가할 수 있어요.</p>
     <p th:if="${ratings.isEmpty()}"><a th:href="@{/my/itineraries}">저장한 일정 보러 가기 →</a></p>
     <article class="place-row" th:each="r : ${ratings}">

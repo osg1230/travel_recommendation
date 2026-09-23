@@ -14,7 +14,7 @@
     <p class="eyebrow">내 여행 · 장소 평가</p>
     <h1>장소 평가</h1>
     <p class="intro">다녀온 장소에 별점과 태그를 남겨 다른 사람이 여행을 고를 때 참고할 수 있게 해 주세요.</p>
-    <p role="status" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
+    <p role="status" class="status-ok" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
 
     <section class="card rating-place">
         <p class="help"><span class="type-chip" th:text="${form.place.typeName}"></span></p>

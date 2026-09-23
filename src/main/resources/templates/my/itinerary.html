@@ -13,7 +13,7 @@
     <a class="back-link" th:href="@{/my/itineraries}">← 내 일정 목록</a>
     <p class="eyebrow">내 여행 · 저장한 일정</p>
     <h1 th:text="${itinerary.summary.title}"></h1>
-    <p role="status" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
+    <p role="status" class="status-ok" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
     <p th:text="${itinerary.summary.destination + ' · ' + itinerary.summary.startDate + ' ~ ' + itinerary.summary.endDate
         + ' (' + itinerary.summary.dayCount + '일) · 이동수단 ' + itinerary.transportName}"></p>
     <p class="guide-note">저장할 때의 일정 초안이에요. 체류시간은 계획값이고 이동시간은 저장 당시의 예상값이에요. 영업시간·휴무일·예산·예약 가능 여부는 방문 전에 각 장소의 출처에서 확인해 주세요.</p>
