@@ -13,7 +13,10 @@ public class HomeController {
     private final Environment environment;
 
     @GetMapping("/")
-    public String home(Model model, org.springframework.security.core.Authentication authentication) {
+    public String home(Model model, org.springframework.security.core.Authentication authentication,
+                       jakarta.servlet.http.HttpSession session) {
+        // 홈의 문장 입력도 조건 입력 화면과 같이 한 번에 분석·추천까지 이어지도록 입력 토큰을 발급한다.
+        model.addAttribute("inputToken", TravelConditionController.issueInputToken(session));
         model.addAttribute("projectName", "travel_recommendation");
         model.addAttribute("loggedIn", authentication != null && authentication.isAuthenticated());
         model.addAttribute("loginId", authentication == null ? "" : authentication.getName());

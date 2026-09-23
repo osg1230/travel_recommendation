@@ -38,8 +38,14 @@ public class SavedItineraryService {
 
     @Transactional(timeout=10)
     public Saved save(UUID jobId, String loginId) {
+        return save(jobId,loginId,null);
+    }
+
+    /** guestHash는 로그인 전에 같은 세션에서 비회원으로 만든 초안을 저장할 때 쓴다. */
+    @Transactional(timeout=10)
+    public Saved save(UUID jobId, String loginId, byte[] guestHash) {
         Long userId=member(loginId);
-        var job=access.owned(jobId,loginId,null,"ITINERARY");
+        var job=access.owned(jobId,loginId,guestHash,"ITINERARY");
         if(!"COMPLETED".equals(job.getStatus()) || job.getResultJson()==null)
             throw new ResponseStatusException(HttpStatus.CONFLICT,"아직 완성되지 않은 일정이에요. 초안이 준비된 뒤 저장해 주세요.");
         var input=mapper.readValue(job.getRequestJson(),Input.class);
@@ -272,13 +278,11 @@ public class SavedItineraryService {
 
     // 원래 초안이 만료 전이고 본인 것일 때만 그 초안에서 수정안을 만들 수 있다.
     private UUID editable(Itinerary itinerary, String loginId) {
-        try {
-            var id=UUID.fromString(snapshotJobId(itinerary));
-            var job=access.owned(id,loginId,null,"ITINERARY");
-            return "COMPLETED".equals(job.getStatus())?id:null;
-        } catch(RuntimeException unavailable) {
-            return null;
-        }
+        // 원래 초안이 만료됐거나 비회원일 때 만든 초안이면 이어서 수정할 수 없다. 예외 없이 확인해 상세 화면의 트랜잭션을 깨지 않는다.
+        UUID id;
+        try { id=UUID.fromString(snapshotJobId(itinerary)); }
+        catch(RuntimeException noJobId) { return null; }
+        return access.findOwned(id,loginId,null,"ITINERARY").filter(job->"COMPLETED".equals(job.getStatus())).map(job->id).orElse(null);
     }
     private Itinerary owned(Long id, String loginId) {
         return itineraries.findByIdAndUserId(id,member(loginId))

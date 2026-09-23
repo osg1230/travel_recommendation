@@ -15,15 +15,18 @@
     <div class="hero-inner">
         <p role="status" class="hero-status" th:if="${param.logout}">로그아웃되었습니다.</p>
         <p role="status" class="hero-status" th:if="${param.withdrawn}">탈퇴가 완료되었습니다. 그동안 이용해 주셔서 감사합니다.</p>
-        <p class="eyebrow">강릉 · 부산 · 경주 여행 일정 만들기</p>
+        <p class="eyebrow">전국 28개 여행지 · 국내 여행 일정 만들기</p>
         <h1 id="hero-title">떠나고 싶은 마음만 알려 주세요.<br>여행지와 하루 일정은 같이 짜 드릴게요.</h1>
-        <form class="hero-search" th:action="@{/travel/conditions}" method="post">
+        <form class="hero-search" th:action="@{/travel/conditions/recommend}" method="post" data-analysis-form>
             <input type="hidden" name="inputMode" value="TEXT">
+            <input type="hidden" name="inputToken" th:value="${inputToken}">
             <label for="hero-text" class="visually-hidden">어떤 여행을 하고 싶은지 적어 주세요</label>
             <input id="hero-text" name="originalText" type="text" maxlength="500" required
                    placeholder="예) 바다 보면서 이틀 쉬고 싶어요, 사람 많은 곳은 피하고 싶어요">
-            <button type="submit">이 문장으로 시작하기</button>
+            <button type="submit">이 문장으로 여행지 추천받기</button>
         </form>
+        <p class="hero-help" role="status" data-analysis-status hidden>문장을 분석하고 여행지를 찾고 있어요. 10초쯤 걸릴 수 있어요.</p>
+        <p class="hero-help">입력한 문장은 조건 분석을 위해 OpenAI로 보내요. 이름·연락처 같은 개인정보는 빼고 적어 주세요.</p>
         <p class="hero-help">문장 대신 조건을 고르고 싶다면 <a th:href="@{/travel/conditions}">조건 고르기</a>, 무엇을 원하는지 아직 모르겠다면 <a th:href="@{/travel/conditions/discover}">여행 장면 고르기</a>로 시작해 보세요.</p>
     </div>
 </section>
@@ -66,5 +69,6 @@
 
     <p class="guide-note">추천과 일정은 저장된 지역·장소 정보와 지도 이동시간을 바탕으로 만들어요. 영업시간·휴무일·가격·예약 가능 여부는 방문 전에 각 장소의 출처에서 확인해 주세요.</p>
 </main>
+<script th:src="@{/js/travel-analysis.js}"></script>
 </body>
 </html>

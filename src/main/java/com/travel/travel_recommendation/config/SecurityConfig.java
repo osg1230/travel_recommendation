@@ -33,8 +33,15 @@ public class SecurityConfig {
                     .requestMatchers("/my", "/my/**").authenticated()
                     .anyRequest().denyAll())
                 .formLogin(form -> form.loginPage("/login").usernameParameter("loginId")
-                    .successHandler((request, response, authentication) ->
-                        response.sendRedirect(request.getContextPath() + startPage(authentication)))
+                    .successHandler((request, response, authentication) -> {
+                        // 일정 초안에서 로그인하러 온 경우 그 초안으로 돌려보내 바로 저장할 수 있게 한다.
+                        var session = request.getSession(false);
+                        Object back = session == null ? null : session.getAttribute(LOGIN_RETURN);
+                        if (session != null) session.removeAttribute(LOGIN_RETURN);
+                        boolean admin = startPage(authentication).equals("/admin");
+                        String target = !admin && back instanceof String path && isReturnPath(path) ? path : startPage(authentication);
+                        response.sendRedirect(request.getContextPath() + target);
+                    })
                     .failureHandler((request, response, exception) -> {
                         // 예외와 입력값을 세션에 남기지 않고 고정 코드만 화면에 전달한다.
                         String reason = exception instanceof InternalAuthenticationServiceException ? "unavailable" : "error";
@@ -46,6 +53,13 @@ public class SecurityConfig {
                 .logout(logout -> logout.logoutUrl("/logout").logoutSuccessUrl("/?logout")
                     .invalidateHttpSession(true).clearAuthentication(true).deleteCookies("JSESSIONID"))
                 .build();
+    }
+
+    public static final String LOGIN_RETURN = "loginReturnPath";
+
+    /** 로그인 후 돌아갈 수 있는 주소. 외부 주소로 보내지 않도록 일정 초안 주소 형식만 허용한다. */
+    public static boolean isReturnPath(String path) {
+        return path != null && path.matches("/travel/recommendations/itineraries/[0-9a-fA-F-]{36}");
     }
 
     public static String startPage(Authentication authentication) {

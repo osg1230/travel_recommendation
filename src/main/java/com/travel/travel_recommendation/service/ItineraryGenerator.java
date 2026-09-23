@@ -154,7 +154,9 @@ public class ItineraryGenerator {
         String mealNote=(dinner?"저녁 식사":"식사")+" (가격 확인 필요)\n"
             +(restaurant.subtype()==null || restaurant.subtype().isBlank()?"":"음식 분류: "+restaurant.subtype()+" · ")
             +after.name()+"에서 직선 약 "+kilometersText(builder.locations.get(after.placeId()),builder.locations.get(restaurant.placeId()))+"라 골랐어요."
-            +builder.foods.map(g->"\n이 지역 대표 "+(g.snack()?"간식":"음식")+": "+g.joined()+" (이 음식점에서 파는지는 확인 필요)").orElse("");
+            +builder.foods.map(g->"\n이 지역 대표 "+(g.snack()?"간식":"음식")+": "+g.joined()+" (이 음식점에서 파는지는 확인 필요)").orElse("")
+            // 확인된 음식점이 모자라 이미 들른 곳을 다시 넣었다면 숨기지 않고 알린다.
+            +(fresh.isEmpty()?"\n확인된 음식점 후보가 적어 앞에서 들른 곳을 다시 넣었어요. 장소 목록에서 후보를 더 찾은 뒤 다시 만들 수 있어요.":"");
         builder.visit(restaurant,"MEAL",60,mealNote);
         if(dinner) builder.dinner=true; else builder.lunch=true;
     }

@@ -44,6 +44,9 @@ public class ConditionReviewService {
         form.setTransportation(text(result, "transportation"));
         form.setPartySize(integer(result, "partySize"));
         form.setAccommodationNeeded(bool(result, "accommodationNeeded"));
+        // "2박 3일"처럼 박 수를 적었다면 숙박이 필요한 여행이다. AI가 비워 둔 경우에만 서버가 채운다.
+        if (form.getAccommodationNeeded().isEmpty() && draft.getOriginalText().matches("(?s).*[1-9][0-9]?\\s*박.*"))
+            form.setAccommodationNeeded("true");
         form.setIncludeNearby(bool(result, "includeNearby"));
         if(!result.get("travelPurpose").isTextual()) throw invalid();
         String purpose = result.get("travelPurpose").asText().strip();

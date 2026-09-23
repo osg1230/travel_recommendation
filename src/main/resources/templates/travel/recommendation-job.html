@@ -26,7 +26,7 @@
         <p class="help">원하는 내용과 다르게 해석됐다면 수정해 주세요. 날짜·예산이 미정이어도 추천을 볼 수 있어요.</p>
     </section>
     <div th:if="${!job.pending and !job.candidates.isEmpty()}">
-        <p class="help">공식 관광 사이트에서 확인해 저장한 지역 정보예요. GPT 추천을 받으면 확정한 조건에 따른 순위와 이유를 볼 수 있어요.</p>
+        <p class="help">공식 관광 사이트에서 확인해 저장한 지역 정보예요. 아래 버튼으로 확정한 조건에 따른 순위와 이유를 받아 보세요.</p>
         <section class="destination-candidate" th:each="candidate : ${job.candidates}">
             <h2 th:text="${candidate.name}"></h2>
             <p th:text="${candidate.region}"></p><p th:text="${candidate.description}"></p>
@@ -68,22 +68,24 @@
         <th:block th:if="${budgetTiers != null}">
             <article class="place-row" th:each="destination : ${budgetTiers}">
                 <h3 th:text="${destination.destination + ' 숙소 예산대'}"></h3>
-                <ul class="nearby-attractions">
-                    <li th:each="group : ${destination.tiers}">
+                <!-- 확인된 숙소가 있는 유형만 보여 주고, 없는 유형은 한 줄로 모아 같은 안내가 반복되지 않게 한다. -->
+                <ul class="nearby-attractions" th:unless="${destination.tiers.?[count > 0].isEmpty()}">
+                    <li th:each="group : ${destination.tiers.?[count > 0]}">
                         <strong th:text="${group.tier.label + ' · ' + group.count + '곳'}"></strong>
                         <span class="help" th:text="${group.tier.description}"></span>
-                        <p th:if="${group.count > 0}" th:text="${'예: ' + #strings.listJoin(group.examples, ', ') + (group.count > group.examples.size() ? ' 외 ' + (group.count - group.examples.size()) + '곳' : '')}"></p>
-                        <p class="help" th:if="${group.count == 0}">지금 확인된 후보가 없어요. 장소 목록에서 카카오 후보를 더 찾아볼 수 있어요.</p>
+                        <p th:text="${'예: ' + #strings.listJoin(group.examples, ', ') + (group.count > group.examples.size() ? ' 외 ' + (group.count - group.examples.size()) + '곳' : '')}"></p>
                     </li>
                 </ul>
+                <p class="help" th:unless="${destination.tiers.?[count == 0].isEmpty()}"
+                   th:text="${#strings.listJoin(destination.tiers.?[count == 0].![tier.label], '·') + ' 숙소는 아직 확인된 곳이 없어요. 여행지를 고른 뒤 장소 목록에서 더 찾아요.'}"></p>
             </article>
             <p class="help">숙소 유형 기준이라 실제 요금은 아니에요. 같은 유형이어도 요금 차이가 크니 예약 전 숙소 출처에서 확인해 주세요. 일정 입력 화면에서 숙소 예산대를 고르면 그 유형을 먼저 골라요.</p>
         </th:block>
     </section>
     <form th:if="${job.canRecommend}" th:action="@{/travel/recommendations/{id}/recommend(id=${job.jobId})}" method="post" data-recommendation-form>
         <input type="hidden" name="attempt" th:value="${job.attemptCount}">
-        <button class="button" type="submit" th:text="${job.attemptCount == 0 ? 'GPT 추천 받기' : 'GPT 추천 다시 받기'}"></button>
-        <p class="help">확정 조건으로 여행지를 비교해요. 추천 요청에는 API 사용량이 발생해요.</p>
+        <button class="button" type="submit" th:text="${job.attemptCount == 0 ? '추천 순위와 이유 받기' : '추천 다시 받기'}"></button>
+        <p class="help">확정한 조건으로 AI가 위 여행지를 비교해 순위와 이유를 알려 줘요. 10초쯤 걸릴 수 있어요.</p>
         <p role="status" data-submit-status></p>
     </form>
     <form th:if="${job.status == 'FAILED' and job.candidates.isEmpty() and confirmationToken != null}" th:action="@{/travel/recommendations}" method="post" data-recommendation-form>

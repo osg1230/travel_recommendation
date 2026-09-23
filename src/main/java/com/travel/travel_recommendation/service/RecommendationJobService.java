@@ -68,12 +68,27 @@ public class RecommendationJobService {
 
     @Transactional(readOnly=true, timeout=10)
     public AiJob owned(UUID id,String loginId,byte[] guestHash,String type) {
-        AiJob job=jobs.findById(id).orElseThrow(this::notFound);
         Long userId=activeUser(loginId);
+        return jobs.findById(id).filter(job->openable(job,userId,guestHash,type)).orElseThrow(this::notFound);
+    }
+
+    /**
+     * owned와 같은 검사를 하되 예외 대신 빈 값을 돌려준다. 다른 트랜잭션 안에서 "열 수 있는지"만 확인할 때 쓴다.
+     * 트랜잭션 메서드가 예외를 던지면 호출한 쪽에서 잡아도 바깥 트랜잭션이 롤백 전용이 되기 때문이다.
+     */
+    @Transactional(readOnly=true, timeout=10)
+    public Optional<AiJob> findOwned(UUID id,String loginId,byte[] guestHash,String type) {
+        Long userId=loginId==null?null:users.findByLoginId(loginId).filter(u->u.getStatus()==UserStatus.ACTIVE).map(User::getId).orElse(null);
+        if(loginId!=null && userId==null) return Optional.empty();
+        return jobs.findById(id).filter(job->openable(job,userId,guestHash,type));
+    }
+
+    private boolean openable(AiJob job,Long userId,byte[] guestHash,String type) {
+        // 비회원 작업은 만든 브라우저 세션의 토큰으로만 연다. 그 세션에서 로그인해도 토큰이 남아 있어
+        // 비회원일 때 만든 초안을 이어서 보고 저장할 수 있다. 다른 세션·다른 회원은 토큰이 없어 열 수 없다.
         boolean owner=job.getUserId()!=null ? job.getUserId().equals(userId)
-            : userId==null && guestHash!=null && MessageDigest.isEqual(job.getGuestTokenHash(),guestHash);
-        if(!owner || !job.getExpiresAt().isAfter(now()) || !type.equals(job.getJobType())) throw notFound();
-        return job;
+            : guestHash!=null && MessageDigest.isEqual(job.getGuestTokenHash(),guestHash);
+        return owner && job.getExpiresAt().isAfter(now()) && type.equals(job.getJobType());
     }
 
     @Transactional(readOnly=true)

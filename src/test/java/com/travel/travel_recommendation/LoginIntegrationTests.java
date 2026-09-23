@@ -63,6 +63,25 @@ class LoginIntegrationTests {
     }
 
     @Test
+    void loginFromDraftReturnsToDraftButIgnoresOtherAddresses() throws Exception {
+        // 일정 초안의 로그인 링크로 왔다면 로그인 뒤 그 초안으로 돌아간다. 외부·다른 주소는 무시하고 홈으로 보낸다.
+        var user = member();
+        String draft = "/travel/recommendations/itineraries/" + UUID.randomUUID();
+        MockHttpSession session = new MockHttpSession();
+        mvc.perform(get("/login").param("next", draft).session(session)).andExpect(status().isOk());
+        mvc.perform(post("/login").servletPath("/login").with(csrf()).session(session)
+                .param("loginId", user.getLoginId()).param("password", "Travel123!"))
+                .andExpect(redirectedUrl(draft));
+
+        MockHttpSession other = new MockHttpSession();
+        mvc.perform(get("/login").param("next", "https://example.com/travel/recommendations/itineraries/x").session(other));
+        mvc.perform(get("/login").param("next", "/my/account").session(other));
+        mvc.perform(post("/login").servletPath("/login").with(csrf()).session(other)
+                .param("loginId", user.getLoginId()).param("password", "Travel123!"))
+                .andExpect(redirectedUrl("/"));
+    }
+
+    @Test
     void adminGetsItsOwnStartPage() throws Exception {
         var user = member();
         em.createNativeQuery("UPDATE dbo.users SET role='ADMIN' WHERE user_id=:id").setParameter("id", user.getId()).executeUpdate();

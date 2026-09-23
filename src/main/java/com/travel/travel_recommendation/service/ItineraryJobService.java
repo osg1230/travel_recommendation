@@ -76,6 +76,13 @@ public class ItineraryJobService {
     @Transactional(timeout=10)
     public UUID create(UUID parentId,long destinationId,String login,byte[] hash,LocalTime start,LocalTime end,
                        KakaoMapClient.Transport transport,int visitMinutes,Constraints constraints,Integer durationDays,Boolean accommodationNeeded) {
+        return create(parentId,destinationId,login,hash,start,end,transport,visitMinutes,constraints,durationDays,accommodationNeeded,null);
+    }
+
+    @Transactional(timeout=10)
+    public UUID create(UUID parentId,long destinationId,String login,byte[] hash,LocalTime start,LocalTime end,
+                       KakaoMapClient.Transport transport,int visitMinutes,Constraints constraints,Integer durationDays,Boolean accommodationNeeded,
+                       LocalDate startDate) {
         var current=options(parentId,destinationId,login,hash);
         // 추천 때 미정이던 값만 일정 생성 시 받는다. 명시된 날짜·기간을 조용히 덮어쓰지 않는다.
         var c=current.conditions();
@@ -89,6 +96,13 @@ public class ItineraryJobService {
         if(daysToUse>1 && stay==null) throw scheduleConflict("여러 날 여행에는 숙소가 필요한지 골라 주세요.");
         if(daysToUse==1 && stay==null) stay=false;
         c=c.withSchedule(daysToUse,stay);
+        // 추천 때 출발일을 정하지 않았다면 여기서 받은 출발일로 날짜를 채운다. 날짜가 있어야 일정을 저장할 수 있다.
+        if(startDate!=null && c.startDate()!=null && !startDate.equals(c.startDate()))
+            throw scheduleConflict("이미 입력한 출발일과 달라요. 추천 화면에서 조건을 수정해 주세요.");
+        if(startDate!=null && c.startDate()==null) {
+            if(startDate.isBefore(LocalDate.now(ZoneId.of("Asia/Seoul")))) throw scheduleConflict("출발일은 오늘이나 그 이후 날짜로 골라 주세요.");
+            c=c.withStartDate(startDate);
+        }
         current=new Input(parentId,candidates.findForSchedule(parentId,destinationId,login,hash,c),c,
             current.start(),current.end(),current.transport(),current.visitMinutes());
         var fixed=confirmedTransport(current.conditions());
@@ -130,7 +144,7 @@ public class ItineraryJobService {
 
     private TripConstraints.ConflictException scheduleConflict(String message) {
         return new TripConstraints.ConflictException(List.of(new TripConstraints.Conflict(message,
-            List.of("아래 여행 기간·숙박 여부를 선택하거나 추천 화면의 조건 수정에서 변경해 주세요."))));
+            List.of("아래 여행 기간·숙박 여부·출발일을 고르거나 추천 화면의 조건 수정에서 변경해 주세요."))));
     }
 
     /** 교체 사유. 실내 변경만 후보 선택 순서에 반영하고 나머지는 기록·안내에만 사용한다. */

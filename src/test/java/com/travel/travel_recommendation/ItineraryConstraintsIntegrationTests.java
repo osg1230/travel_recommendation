@@ -53,6 +53,8 @@ class ItineraryConstraintsIntegrationTests {
     private long destination;
 
     @BeforeEach void setup() throws Exception {
+        // 브라우저 확인 등으로 쌓인 카카오 장소 캐시가 후보 수를 바꾸지 않도록 테스트 트랜잭션 안에서 만료시킨다(롤백됨).
+        ExternalPlaceCache.expireExisting(jdbc);
         // 강릉 기본 관광지 2곳에 테스트 관광지 3곳을 더해 5곳으로 확인한다(롤백됨).
         String[][] extra={{"하슬라 테스트 정원","2001"},{"해변 테스트 공원","2002"},{"허브 테스트 실내 체험관","2003"}};
         for(var place:extra) jdbc.update("""
@@ -108,6 +110,30 @@ class ItineraryConstraintsIntegrationTests {
             .isInstanceOf(ResponseStatusException.class).hasMessageContaining("필수 방문 장소");
     }
 
+    @Test void startDateChosenOnScheduleFormFillsTripDates() throws Exception {
+        // 추천 때 출발일을 정하지 않았다면 일정 만들기에서 받은 출발일로 날짜를 채워 저장할 수 있게 한다.
+        var start=LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).plusDays(10);
+        var location=mvc.perform(post(formUrl()).session(session).with(csrf()).param("submissionToken",token())
+                .param("start","09:00").param("end","18:00").param("transport","CAR").param("visitMinutes","90")
+                .param("startDate",start.toString()))
+            .andExpect(status().isSeeOther()).andReturn().getResponse().getHeader("Location");
+        var id=jobFrom(location);
+        var conditions=schedules.view(id,null,hash).input().conditions();
+        assertThat(conditions.startDate()).isEqualTo(start);
+        assertThat(conditions.endDate()).isEqualTo(start.plusDays(1));
+        finish(id);
+        assertThat(schedules.view(id,null,hash).result().days()).extracting(d->d.date()).containsExactly(start,start.plusDays(1));
+
+        // 지난 날짜는 일정을 만들지 않고 입력 화면에서 이유를 보여 준다.
+        long before=jobs.count();
+        mvc.perform(post(formUrl()).session(session).with(csrf()).param("submissionToken",token())
+                .param("start","09:00").param("end","18:00").param("transport","CAR").param("visitMinutes","90")
+                .param("startDate",start.minusDays(20).toString()))
+            .andExpect(status().isSeeOther()).andExpect(header().string("Location",formUrl()));
+        assertThat(jobs.count()).isEqualTo(before);
+        mvc.perform(get(formUrl()).session(session)).andExpect(content().string(containsString("출발일은 오늘이나 그 이후 날짜로")));
+    }
+
     @Test void contradictoryRequiredConditionsReturnToFormWithReasonsAndValues() throws Exception {
         long a=placeId("하슬라 테스트 정원"), b=placeId("해변 테스트 공원"), c=placeId("허브 테스트 실내 체험관");
         long before=jobs.count();
@@ -117,7 +143,7 @@ class ItineraryConstraintsIntegrationTests {
             .andExpect(status().isSeeOther()).andExpect(header().string("Location",formUrl()));
         assertThat(jobs.count()).isEqualTo(before);
         var html=mvc.perform(get(formUrl()).session(session)).andExpect(status().isOk())
-            .andExpect(content().string(containsString("반드시 지킬 조건끼리 맞지 않아")))
+            .andExpect(content().string(containsString("아래 내용 때문에 일정을 만들지 않았어요")))
             .andExpect(content().string(containsString("필수 방문 장소 3곳을 하루 1곳씩 2일")))
             .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
         if(Boolean.getBoolean("travel.ui.capture")) {
@@ -127,7 +153,7 @@ class ItineraryConstraintsIntegrationTests {
         // 입력했던 필수 장소 선택이 그대로 남아 있다.
         assertThat(html).containsPattern("value=\""+a+"\" checked");
         // 한 번 보여 준 충돌 안내는 다시 열면 사라진다.
-        mvc.perform(get(formUrl()).session(session)).andExpect(content().string(org.hamcrest.Matchers.not(containsString("반드시 지킬 조건끼리"))));
+        mvc.perform(get(formUrl()).session(session)).andExpect(content().string(org.hamcrest.Matchers.not(containsString("아래 내용 때문에"))));
     }
 
     @Test void preferredDailyCountDoesNotBlockAndForgedValuesAreRejected() throws Exception {

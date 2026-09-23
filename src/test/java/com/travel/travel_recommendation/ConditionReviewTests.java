@@ -113,6 +113,14 @@ class ConditionReviewTests {
         assertThat(session.getAttribute("confirmedTravelConditions")).isNull();
         mvc.perform(get("/travel/conditions/review").session(session)).andExpect(redirectedUrl("/travel/conditions/check"));
     }
+    @Test void nightsInTextMeanAccommodationIsNeededWhenAiLeftItBlank() {
+        when(client.analyze(anyString(), anyMap())).thenReturn(result.deepCopy().putNull("accommodationNeeded"));
+        TravelConditionForm source = new TravelConditionForm();
+        source.setOriginalText("부모님 모시고 2박 3일로 조용한 바닷가");
+        assertThat(service.analyze(source, options.getChoices()).form().getAccommodationNeeded()).isEqualTo("true");
+        source.setOriginalText("강릉 바다 여행");
+        assertThat(service.analyze(source, options.getChoices()).form().getAccommodationNeeded()).isEmpty();
+    }
     @Test void rejectsMalformedAiFieldsAndConditionConflicts() {
         TravelConditionForm source = new TravelConditionForm();
         source.setOriginalText("강릉 여행");
