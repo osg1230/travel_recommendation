@@ -110,6 +110,32 @@ public class KakaoMapClient {
         return withoutSubPlaces(found).stream().limit(15).toList();
     }
 
+    /**
+     * 불국사·전동성당 같은 사찰·성당은 카카오 분류가 '문화,예술 > 종교'라 "○○ 명소" 검색에 나오지 않아 따로 찾는다.
+     * 사찰은 "○○ 사찰" 검색의 정확도 앞 2곳만 쓴다(예: 경주 → 불국사·석굴암).
+     */
+    public List<KakaoPlace> searchTemples(String region) {
+        return searchReligious(region,"사찰","문화,예술 > 종교 > 불교 > 절,사찰",2);
+    }
+
+    /**
+     * 성당은 "○○ 성당" 검색 앞쪽에 동네 본당도 섞여 나온다. 여기서는 후보만 돌려주고, 관광지로 볼지는
+     * 관광공사 관광지와 위치가 맞는지로 호출하는 쪽({@link PlaceDiscoveryService})에서 판단한다.
+     */
+    public List<KakaoPlace> searchCathedrals(String region) {
+        return searchReligious(region,"성당","문화,예술 > 종교 > 천주교 > 성당",15);
+    }
+
+    private List<KakaoPlace> searchReligious(String region,String keyword,String category,int limit) {
+        String city=searchWord(region);
+        if(city==null) throw failure("MAP_REGION","여행지 지역 이름을 확인하지 못해 장소를 찾을 수 없어요.");
+        var root=get(localEndpoint.resolve("/v2/local/search/keyword.json?query="
+            +URLEncoder.encode(city+" "+keyword,StandardCharsets.UTF_8)+"&rect=124,33,132,39&size=15&page=1&sort=accuracy"));
+        // "전동성당 사제관"처럼 같은 분류로 나오는 부속 시설은 뺀다.
+        return withoutSubPlaces(places(root,item->item.path("category_name").asText("").startsWith(category),List.of(region),"ATTRACTION",15))
+            .stream().limit(limit).toList();
+    }
+
     /** 다른 후보 이름 뒤에 한 칸 띄고 이어지는 곳(예: "경기전 하마비", "○○전당 공연장")은 그 후보 안의 시설로 보고 뺀다. */
     static List<KakaoPlace> withoutSubPlaces(List<KakaoPlace> places) {
         return places.stream().filter(p->places.stream().noneMatch(other->other!=p

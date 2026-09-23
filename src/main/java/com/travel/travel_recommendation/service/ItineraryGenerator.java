@@ -108,7 +108,8 @@ public class ItineraryGenerator {
                 boolean hadLunch=builder.lunch;
                 try {
                     builder.visit(next,"VISIT",input.visitMinutes(),"관광·관람 (계획한 체류시간)"
-                        +(centers.contains(next)?"\n이 날 일정의 중심으로 고른 곳이에요.":""));
+                        +(centers.contains(next)?"\n이 날 일정의 중심으로 고른 곳이에요.":"")
+                        +(next.religiousSite()?"\n종교 시설이라 미사·예불 등 행사 중에는 관람이 제한될 수 있어요. 방문 전 관람 가능 시간을 확인해 주세요.":""));
                     if(!builder.lunch && !builder.time.isBefore(LocalTime.NOON)) eat(builder,next,false);
                     // 이 관광지를 넣어도 남은 점심·숙소 도착까지 하루 종료 시간 안에 끝나는지 미리 확인한다.
                     checkClosing(builder,next,stay);

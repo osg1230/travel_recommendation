@@ -45,6 +45,7 @@ class PlaceDiscoveryIntegrationTests {
     @Autowired JdbcTemplate jdbc;
     @Autowired MockMvc mvc;
     @MockitoBean KakaoMapClient maps;
+    @MockitoBean TourApiClient tour;
     private final String region="강원특별자치도 강릉시";
     private MockHttpSession session; private byte[] hash; private UUID parent; private long destination;
     @BeforeEach void setup() throws Exception {
@@ -133,6 +134,28 @@ class PlaceDiscoveryIntegrationTests {
         assertThat(candidates.find(parent,destination,null,hash).attractions().stream().filter(p->"KAKAO".equals(p.sourceProvider()))).hasSize(6);
         discovery.refresh(parent,destination,null,hash); em.flush();
         assertThat(places.findBySourceProviderAndSourcePlaceId("KAKAO","9000000000000002").orElseThrow().isActive()).isFalse();
+    }
+    // 사찰은 그대로 받고, 성당은 관광공사 관광지와 300m 안에 있는 곳만 받는다. 관광공사 조회가 실패하면 성당만 빼고 계속한다.
+    @Test void religiousPlacesAreAddedAndOnlyTouristCathedralsKept() {
+        var temple=new KakaoPlace("9100000000000001","ATTRACTION","테스트사",region,"강원 강릉시 사찰로 1","문화,예술 > 종교 > 불교 > 절,사찰",
+            128.80,37.70,"https://place.map.kakao.com/9100000000000001",LocalDateTime.now(ZoneOffset.UTC).withNano(0));
+        var listed=new KakaoPlace("9100000000000002","ATTRACTION","임당동성당",region,"강원 강릉시 성당로 1","문화,예술 > 종교 > 천주교 > 성당",
+            128.90,37.75,"https://place.map.kakao.com/9100000000000002",LocalDateTime.now(ZoneOffset.UTC).withNano(0));
+        var parish=new KakaoPlace("9100000000000003","ATTRACTION","동네성당",region,"강원 강릉시 성당로 2","문화,예술 > 종교 > 천주교 > 성당",
+            128.95,37.80,"https://place.map.kakao.com/9100000000000003",LocalDateTime.now(ZoneOffset.UTC).withNano(0));
+        when(maps.searchTemples(region)).thenReturn(List.of(temple));
+        when(maps.searchCathedrals(region)).thenReturn(List.of(listed,parish));
+        when(tour.configured()).thenReturn(true);
+        when(tour.searchFacilities("성당")).thenReturn(List.of(new TourApiClient.SearchPlace("1","12","임당동 성당","강원 강릉시",128.9005,37.7502)));
+        discovery.refresh(parent,destination,null,hash); em.flush();
+        assertThat(places.findBySourceProviderAndSourcePlaceId("KAKAO","9100000000000001")).isPresent();
+        assertThat(places.findBySourceProviderAndSourcePlaceId("KAKAO","9100000000000002")).isPresent();
+        assertThat(places.findBySourceProviderAndSourcePlaceId("KAKAO","9100000000000003")).isEmpty();
+
+        when(tour.searchFacilities("성당")).thenThrow(new RecommendationException("TOUR_UNAVAILABLE","관광정보 오류"));
+        jdbc.update("DELETE FROM dbo.places WHERE source_provider='KAKAO' AND source_place_id='9100000000000002'"); em.clear();
+        discovery.refresh(parent,destination,null,hash); em.flush();
+        assertThat(places.findBySourceProviderAndSourcePlaceId("KAKAO","9100000000000002")).isEmpty();
     }
     @Test void sameTypeAndBuildingAddressAreNotDuplicated() {
         var seed=candidates.find(parent,destination,null,hash).attractions().getFirst();

@@ -13,4 +13,9 @@ public record PlaceCandidate(Long placeId, String name, String address, String s
     public PlaceCandidate(Long id,String name,String address,String subtype,String description,String sourceUrl,String mapUrl,LocalDateTime verifiedAt) {
         this(id,name,address,subtype,description,sourceUrl,mapUrl,verifiedAt,null,null,"SYSTEM");
     }
+
+    /** 분류로 본 종교 시설(성당·사찰·성지). 미사·예불 중에는 관람이 제한될 수 있어 화면과 일정에 안내한다. */
+    public boolean religiousSite() {
+        return subtype != null && (subtype.contains("종교") || subtype.contains("사찰") || subtype.contains("성당"));
+    }
 }
