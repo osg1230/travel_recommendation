@@ -33,31 +33,36 @@
         <p class="help">공식 관광 사이트에서 확인해 저장한 지역 정보예요. 아래 버튼으로 확정한 조건에 따른 순위와 이유를 받아 보세요.</p>
         <section class="destination-candidate" th:each="candidate : ${job.candidates}">
             <h2 th:text="${candidate.name}"></h2>
-            <p th:text="${candidate.region}"></p><p th:text="${candidate.description}"></p>
-            <a th:href="${candidate.sourceUrl}" target="_blank" rel="noopener noreferrer">공식 관광 정보 보기</a>
-            <p class="help" th:text="${'출처 확인일: ' + @timeText.date(candidate.verifiedAt) + ' · 실시간 조회 아님'}"></p>
+            <p class="card-region" th:text="${candidate.region}"></p><p th:text="${candidate.description}"></p>
+            <div class="card-source">
+                <a th:href="${candidate.sourceUrl}" target="_blank" rel="noopener noreferrer">공식 관광 정보 보기</a>
+                <p class="help" th:text="${'출처 확인일: ' + @timeText.date(candidate.verifiedAt) + ' · 실시간 조회 아님'}"></p>
+            </div>
         </section>
     </div>
-    <div th:if="${job.status == 'COMPLETED'}">
+    <!--/* 추천 순위 카드: 1순위 카드는 테두리 색으로 한 번 더 구분한다. */-->
+    <div class="recommendation-list" th:if="${job.status == 'COMPLETED'}">
         <p class="help">추천 이유는 확정한 조건과 지역 소개를 바탕으로 AI가 썼어요. 목적에 맞는 곳은 이름·주소만 확인했으니 운영·체험 내용과 비용은 방문 전 공식 정보에서 확인해 주세요.</p>
         <p class="notice" th:if="${themes != null and !themes.isEmpty()}"
            th:text="${'반영한 여행 취향: ' + #strings.listJoin(themes, ', ')}"></p>
         <section class="destination-candidate" th:each="item : ${job.recommendations}">
             <h2 th:text="${item.rank + '순위 · ' + item.destination.name}"></h2>
-            <p th:text="${item.destination.region}"></p>
+            <p class="card-region" th:text="${item.destination.region}"></p>
             <p th:text="${item.reason}"></p>
             <p class="help" th:if="${conditions != null and conditions.includeNearby != null and conditions.includeNearby
                     and !T(com.travel.travel_recommendation.service.NearbyRegionService).supports(item.destination.name)}"
                th:text="${'주변 지역 포함을 골랐지만 이 여행지는 주변 지역 추천을 아직 지원하지 않아요(지원: '
                     + T(com.travel.travel_recommendation.service.NearbyRegionService).supportedNames() + ').'}"></p>
-            <ul th:if="${conditions != null and conditions.purposeSearch != null and !conditions.purposeSearch.placesIn(item.destination.placeId).isEmpty()}">
+            <ul class="purpose-matches" th:if="${conditions != null and conditions.purposeSearch != null and !conditions.purposeSearch.placesIn(item.destination.placeId).isEmpty()}">
                 <li th:each="facility : ${conditions.purposeSearch.placesIn(item.destination.placeId)}">
                     <span th:text="${'목적에 맞는 곳 · ' + facility.name + ' (' + facility.address + ')'}"></span>
                     <a th:href="${facility.sourceUrl}" target="_blank" rel="noopener noreferrer">카카오맵 (새 창)</a>
                 </li>
             </ul>
-            <a th:href="${item.destination.sourceUrl}" target="_blank" rel="noopener noreferrer">공식 관광 정보 보기</a>
-            <p class="help" th:text="${'지역 정보 확인일: ' + #temporals.format(item.destination.verifiedAt,'yyyy-MM-dd') + ' · 실시간 조회 아님'}"></p>
+            <div class="card-source">
+                <a th:href="${item.destination.sourceUrl}" target="_blank" rel="noopener noreferrer">공식 관광 정보 보기</a>
+                <p class="help" th:text="${'지역 정보 확인일: ' + #temporals.format(item.destination.verifiedAt,'yyyy-MM-dd') + ' · 실시간 조회 아님'}"></p>
+            </div>
             <div class="form-actions"><a class="button" th:href="@{/travel/recommendations/{id}/destinations/{destinationId}/places(id=${job.jobId},destinationId=${item.destination.placeId})}" th:text="${item.destination.name + ' 선택하고 장소 보기'}"></a></div>
         </section>
         <p class="help">여행지를 선택해 장소를 살펴본 뒤, 하루 시간을 정하고 일정 초안을 만들 수 있어요.</p>
