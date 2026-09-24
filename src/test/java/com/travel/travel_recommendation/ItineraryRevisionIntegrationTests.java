@@ -258,7 +258,7 @@ class ItineraryRevisionIntegrationTests {
         session.removeAttribute(org.springframework.web.servlet.support.SessionFlashMapManager.class.getName()+".FLASH_MAPS");
         mvc.perform(get("/travel/recommendations/itineraries/"+original).session(session).flashAttrs(flashed))
             .andExpect(content().string(containsString("바꿀 수 없는 요청이에요")))
-            .andExpect(content().string(containsString("문장으로 수정 요청하기")));
+            .andExpect(content().string(containsString("일정 수정하기")));
     }
 
     @Test void timeOnlyRevisionKeepsEveryPlace() {
@@ -305,6 +305,6 @@ class ItineraryRevisionIntegrationTests {
                 .param("start","09:00").param("end","18:00").param("visitMinutes","90"))
             .andExpect(status().isBadRequest()).andExpect(content().string(containsString("원래 일정 초안으로 돌아가기")));
         mvc.perform(get("/travel/recommendations/itineraries/"+original).session(session)).andExpect(status().isOk())
-            .andExpect(content().string(containsString("장소 바꿔서 수정안 만들기")));
+            .andExpect(content().string(containsString("AI 없이 시간만 바꾸기")));
     }
 }

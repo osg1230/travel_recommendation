@@ -178,7 +178,7 @@ public class ItineraryGenerator {
             if(visits==0) throw routeError!=null?routeError:failure("INSUFFICIENT_PLACES",day+"일차에 넣을 관광지가 부족해요. 여행 기간을 줄이거나 장소 목록에서 후보를 더 찾아 주세요.");
             // 점심을 아직 넣지 못했으면 마지막 관광지 뒤에 넣는다. 들어가는지는 위에서 확인했다.
             if(!builder.lunch) eat(builder,last,false);
-            // 숙소를 고른 이유와 체크인 확인 안내는 '숙소 추천' 절에 한 번만 보여 준다.
+            // 숙소를 고른 이유는 따로 적지 않고, 다른 후보와 체크인 확인 안내는 초안의 첫 숙박 항목에 한 번만 보여 준다.
             if(stay!=null) arriveAndDine(builder,stay,"숙소 도착·휴식");
             // 하루 방문 수가 필수 조건이면 시간 때문에 줄어든 날을 그대로 두지 않고 이유를 알린다.
             if(constraints!=null && constraints.dailyVisitsRequired() && visits!=constraints.dailyVisits())

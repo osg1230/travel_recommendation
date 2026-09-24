@@ -30,7 +30,7 @@
     fit();
 })();
 
-// 같은 화면 안의 접힌 절(예: 일정 초안의 '여행 조건 확인 결과')로 가는 링크를 누르면 그 절을 펼친다.
+// 같은 화면 안의 접힌 절(예: 일정 초안의 접힌 참고 정보)로 가는 링크를 누르면 그 절을 펼친다.
 document.addEventListener('click', (event) => {
     const link = event.target.closest('a[href^="#"]');
     const target = link && link.getAttribute('href').length > 1 && document.getElementById(link.getAttribute('href').slice(1));

@@ -353,6 +353,12 @@ button.map-badge:hover { background: var(--badge, var(--brand)); transform: scal
 .place-photo figcaption { margin-top: 3px; font-size: 11px; color: var(--text-muted); text-align: right; }
 .schedule-body::after { content: ""; display: block; clear: both; }
 @media (max-width: 520px) { .place-photo { width: 104px; margin-left: 10px; } }
+/* 일정 초안 위쪽의 확인 필요·미충족 항목 */
+.report-issues { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 14px; }
+.report-issues .status-badge { margin-right: 6px; }
+/* 일정 수정하기 안의 'AI 없이 시간만 바꾸기' */
+.revise-time { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
+.revise-time summary { color: var(--brand); font-weight: 600; cursor: pointer; }
 /* 일정 항목의 '다른 곳으로 바꾸기': 접어 두었다가 누르면 이유 버튼을 보여 준다. */
 .item-replace { margin-top: 8px; font-size: 13.5px; }
 .item-replace summary { display: inline-block; color: var(--brand); font-weight: 600; cursor: pointer; }

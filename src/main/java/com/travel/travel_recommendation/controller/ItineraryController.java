@@ -276,7 +276,7 @@ public class ItineraryController {
     @PostMapping("/itineraries/{id}/ai-revisions")
     String aiRevise(@PathVariable UUID id,@RequestParam(defaultValue="") String request,Principal principal,HttpSession session,
                     org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
-        String back="redirect:/travel/recommendations/itineraries/"+id+"#ai-revise-title";
+        String back="redirect:/travel/recommendations/itineraries/"+id+"#revise-title";
         redirect.addFlashAttribute("aiRequest",request.length()>300?request.substring(0,300):request);
         // 유료 호출이므로 같은 세션에서 연달아 누르지 않도록 20초 간격을 둔다.
         synchronized(session) {

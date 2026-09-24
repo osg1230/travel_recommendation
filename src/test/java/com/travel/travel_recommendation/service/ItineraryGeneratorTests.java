@@ -62,7 +62,7 @@ class ItineraryGeneratorTests {
         var firstDay=result.days().getFirst().items();
         var stay=firstDay.get(ItineraryGenerator.stayIndex(firstDay));
         assertThat(stay.placeId()).isEqualTo(5L);
-        // 숙소를 고른 이유는 '숙소 추천' 절에 한 번만 보여 주므로 항목마다 적지 않는다.
+        // 숙소 후보와 확인 안내는 초안의 첫 숙박 항목에 한 번만 보여 주므로 항목마다 적지 않는다.
         assertThat(stay.note()).isEqualTo("숙소 도착·휴식");
         // 이틀 동안 식사 3번(1일차 점심·저녁, 2일차 점심)에 음식점 후보가 3곳이면 같은 곳을 반복하지 않는다.
         var meals=result.days().stream().flatMap(d->d.items().stream()).filter(i->i.type().equals("MEAL")).toList();
