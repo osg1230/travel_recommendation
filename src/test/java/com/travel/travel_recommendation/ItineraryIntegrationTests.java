@@ -45,6 +45,7 @@ class ItineraryIntegrationTests {
     @MockitoBean TourApiClient tour;
     @MockitoBean OpenAiPriceClient prices;
     @Autowired PlaceOperatingService operating;
+    @Autowired PlacePhotoService photos;
     @Autowired PlaceRepository placeRepository;
     @Autowired com.travel.travel_recommendation.repository.UserRepository users;
     @Autowired com.travel.travel_recommendation.service.SavedItineraryService saved;
@@ -189,6 +190,26 @@ class ItineraryIntegrationTests {
         when(prices.configured()).thenReturn(true);
         when(prices.lookup(any(),anyString())).thenAnswer(call->{ PlaceCandidate p=call.getArgument(0); String kind=call.getArgument(1);
             return new ItineraryPlan.PriceQuote(p.placeId(),p.name(),kind,"VERIFIED","참고 가격",20000,30000,"기준","https://price.example.kr/"+p.placeId()); });
+    }
+    // 일정에 들어간 관광지의 관광공사 사진을 한 번 찾아 저장하고, 초안 화면에 출처와 함께 보여 준다. 다음에는 다시 검색하지 않는다.
+    @Test void draftAttractionPhotosAreFoundOnceAndShownWithCredit() throws Exception {
+        var id=create(); var work=schedules.claim(id); var result=schedules.generate(work);
+        var visit=result.days().stream().flatMap(d->d.items().stream()).filter(i->"VISIT".equals(i.type())).findFirst().orElseThrow();
+        var candidate=work.input().attractionsWithReserve().stream().filter(p->p.placeId().equals(visit.placeId())).findFirst().orElseThrow();
+        String image="https://tong.visitkorea.or.kr/cms/resource/test_photo.jpg";
+        when(tour.configured()).thenReturn(true);
+        when(tour.searchPhotos(anyString())).thenReturn(List.of());
+        when(tour.searchPhotos(candidate.name())).thenReturn(List.of(new TourApiClient.SearchPlace("1","12",candidate.name(),candidate.address(),
+            candidate.longitude()==null?128.9:candidate.longitude(),candidate.latitude()==null?37.7:candidate.latitude(),image,"Type1")));
+        photos.findForItinerary(work.input(),result,Instant.now().plusSeconds(15));
+        schedules.complete(work,result); em.flush();
+        assertThat(schedules.view(id,null,hash).status()).isEqualTo("COMPLETED");
+        assertThat(photos.photos(List.of(visit.placeId())).get(visit.placeId()).url()).isEqualTo(image);
+        mvc.perform(get(resultUrl(id)).session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString(image))).andExpect(content().string(containsString("사진: 한국관광공사")));
+        clearInvocations(tour);
+        photos.findForItinerary(work.input(),result,Instant.now().plusSeconds(15));
+        verify(tour,never()).searchPhotos(candidate.name());
     }
     private UUID completedDraft() {
         var id=create(); var work=schedules.claim(id); schedules.complete(work,schedules.generate(work)); em.flush(); return id;

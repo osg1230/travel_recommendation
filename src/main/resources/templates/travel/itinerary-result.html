@@ -65,6 +65,11 @@
 <div class="schedule-body">
 <!--/* 종류 이름은 저장 일정 화면(SavedItineraryService.typeName)과 같은 말을 쓴다. */-->
 <p class="schedule-type" th:text="${item.type == 'VISIT' ? '관광' : (item.type == 'MEAL' ? '식사' : (item.type == 'STAY' ? '숙소' : (item.type == 'TRANSIT' ? '이동' : '자유 시간')))}"></p>
+<th:block th:if="${item.type == 'VISIT' and item.placeId != null and photoByPlace.get(item.placeId) != null}">
+<!--/* 관광공사 대표 사진. 출처 표시 조건(공공누리)에 따라 사진 아래에 출처를 적는다. */-->
+<figure class="place-photo"><img th:src="${photoByPlace.get(item.placeId).url}" th:alt="${item.name + ' 사진'}" loading="lazy" referrerpolicy="no-referrer">
+<figcaption>사진: 한국관광공사</figcaption></figure>
+</th:block>
 <h3 th:text="${item.name}"></h3><p style="white-space: pre-line" th:text="${item.note}"></p>
 <th:block th:if="${item.type == 'MEAL' or item.type == 'STAY'}" th:with="quote=${priceByPlace.get(item.placeId)}">
 <p class="help" th:if="${quote != null and quote.found()}"

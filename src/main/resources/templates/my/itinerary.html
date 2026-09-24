@@ -29,6 +29,11 @@
             <p class="schedule-time" th:text="${#temporals.format(item.start, 'HH:mm') + '–' + #temporals.format(item.end, 'HH:mm')}"></p>
             <div class="schedule-body">
             <p class="schedule-type" th:text="${item.typeName}"></p>
+            <th:block th:if="${item.type == 'VISIT' and item.placeId != null and photoByPlace.get(item.placeId) != null}">
+            <!--/* 관광공사 대표 사진. 출처 표시 조건(공공누리)에 따라 사진 아래에 출처를 적는다. */-->
+            <figure class="place-photo"><img th:src="${photoByPlace.get(item.placeId).url}" th:alt="${item.name + ' 사진'}" loading="lazy" referrerpolicy="no-referrer">
+            <figcaption>사진: 한국관광공사</figcaption></figure>
+            </th:block>
             <h3 th:text="${item.name}"></h3>
             <p style="white-space: pre-line" th:text="${item.note}"></p>
             <p class="help" th:if="${item.travelMinutes != null}" th:text="${'저장 당시 예상 이동시간 약 ' + item.travelMinutes + '분'}"></p>

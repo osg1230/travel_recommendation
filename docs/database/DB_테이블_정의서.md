@@ -363,6 +363,8 @@ details_json의 foods[]는 음식명·분류·설명·출처를 보관한다. �
 
 2026-09-22 참고 가격 보관: 기존 `details_json`에 선택 객체 `referencePrice`를 사용한다(테이블·컬럼 변경 없음). 구조는 `{name, address, quote:{placeId, name, kind, status, priceText, minWon, maxWon, basis, sourceUrl, checkedAt}}`이다. 일정 초안의 '참고 가격 찾기'가 AI 웹 검색으로 새로 찾은 결과를 장소별로 보관하고, 다른 초안에서 같은 장소를 찾을 때 이름·주소·종류(숙소/음식점)가 같고 검색 후 7일(찾지 못한 결과는 24시간) 안이면 다시 검색하지 않는다. 다른 키(`tourApiOperating` 등)는 보존하며, 운영정보와 가격 저장은 모두 장소 행을 잠그고 쓴다.
 
+2026-09-24 장소 사진 보관: 기존 `details_json`에 선택 객체 `tourApiPhoto`를 사용한다(테이블·컬럼 변경 없음). 구조는 `{name, address, photo:{url, copyright, checkedAt}}`이다. 일정 초안을 만들 때 일정에 들어간 관광지를 한국관광공사 키워드 검색으로 찾아, 이름(제목의 괄호 설명·앞 지역명 제외)이 같고 좌표 300m 안(좌표가 없으면 도로명 주소 일치)인 곳이 한 곳일 때 대표 사진 주소와 저작권 유형(Type1·Type3만)을 저장한다. 찾지 못하면 url 없이 기록한다. 찾은 사진은 30일, 못 찾은 기록은 7일 재사용하며 이름·주소가 바뀌면 쓰지 않는다. 화면에는 '사진: 한국관광공사' 출처를 함께 표시한다.
+
 조회 후 24시간, 동일한 이름·주소에만 운영정보를 재사용한다. 기존 필드 없음·읽기 실패는 미확인이다. ai_jobs의 일정 request_json 내 PlaceCandidate에 nullable operatingInfo를 추가하며 이전 작업 JSON의 누락 필드는 null로 읽는다. 완료 직전에 DB 운영정보와 입력 스냅샷이 다른 경우 PLACES_CHANGED로 실패시킨다. 원문·확인 범위는 결과 항목 note에 포함하며 해석 불가 예외를 검증 완료로 표시하지 않는다. 상세 기준은 [TourAPI 설정·연결](../ai/TourAPI_설정.md)을 따른다.
 
 ### 7.1 지역 내 장소 조회 (2026-09-18)

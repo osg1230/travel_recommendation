@@ -347,6 +347,12 @@ button.map-badge:hover { background: var(--badge, var(--brand)); transform: scal
 /* 지도 번호를 눌러 찾아간 일정 항목을 잠깐 강조한다. */
 @keyframes stop-focus { from { background-color: var(--brand-soft); } to { background-color: transparent; } }
 .schedule-item-focus { animation: stop-focus 2.4s ease-out; }
+/* 관광지 사진: 일정 항목 오른쪽에 작게 두고, 휴대폰에서는 더 작게 줄인다. */
+.place-photo { float: right; width: 148px; margin: 0 0 8px 14px; }
+.place-photo img { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: var(--radius-sm); background: var(--surface-muted); }
+.place-photo figcaption { margin-top: 3px; font-size: 11px; color: var(--text-muted); text-align: right; }
+.schedule-body::after { content: ""; display: block; clear: both; }
+@media (max-width: 520px) { .place-photo { width: 104px; margin-left: 10px; } }
 /* 일정 항목의 '다른 곳으로 바꾸기': 접어 두었다가 누르면 이유 버튼을 보여 준다. */
 .item-replace { margin-top: 8px; font-size: 13.5px; }
 .item-replace summary { display: inline-block; color: var(--brand); font-weight: 600; cursor: pointer; }

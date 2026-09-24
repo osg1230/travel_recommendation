@@ -68,7 +68,13 @@ public class TourApiClient {
             "32".equals(contentTypeId) ? text(item, "checkouttime") : "", Instant.now()));
     }
 
-    public record SearchPlace(String id, String type, String name, String address, double longitude, double latitude) {}
+    /** image·copyright는 사진 검색(searchPhotos) 결과의 대표 사진 주소와 저작권 유형(Type1 등)이다. 그 밖의 검색에서는 빈 문자열이다. */
+    public record SearchPlace(String id, String type, String name, String address, double longitude, double latitude,
+                              String image, String copyright) {
+        public SearchPlace(String id, String type, String name, String address, double longitude, double latitude) {
+            this(id, type, name, address, longitude, latitude, "", "");
+        }
+    }
 
     public List<SearchPlace> search(String name) {
         if (name == null || name.isBlank() || name.length() > 200) throw failure("TOUR_INPUT", "장소 이름을 확인해 주세요.");
@@ -83,6 +89,25 @@ public class TourApiClient {
             double x = coordinate(item, "mapx"), y = coordinate(item, "mapy");
             if (!Double.isFinite(x) || !Double.isFinite(y) || x < 124 || x > 132 || y < 33 || y > 39) continue;
             result.add(new SearchPlace(id, type, text(item, "title"), text(item, "addr1"), x, y));
+        }
+        return List.copyOf(result);
+    }
+
+    /**
+     * 장소 사진을 찾으려고 이름으로 관광지(12·14·28)를 검색한다. 운영정보 검색과 달리 결과가 많아도 앞 30건을 돌려주고,
+     * 같은 곳인지는 호출하는 쪽이 이름과 위치로 가린다.
+     */
+    public List<SearchPlace> searchPhotos(String name) {
+        if (name == null || name.isBlank() || name.length() > 200) throw failure("TOUR_INPUT", "장소 이름을 확인해 주세요.");
+        var data = get(endpoint.resolve("searchKeyword2"), 30, "&keyword=" + URLEncoder.encode(name, StandardCharsets.UTF_8));
+        List<SearchPlace> result = new ArrayList<>();
+        for (var item : data.path("items").path("item")) {
+            String id = item.path("contentid").asText(""), type = item.path("contenttypeid").asText("");
+            String title = item.path("title").asText(""), image = item.path("firstimage").asText("");
+            if (!id.matches("[1-9][0-9]{0,19}") || !Set.of("12", "14", "28").contains(type) || title.isBlank() || title.length() > 100
+                    || image.isBlank() || image.length() > 500) continue;
+            double x = item.path("mapx").asDouble(Double.NaN), y = item.path("mapy").asDouble(Double.NaN);
+            result.add(new SearchPlace(id, type, title, item.path("addr1").asText(""), x, y, image, item.path("cpyrhtDivCd").asText("")));
         }
         return List.copyOf(result);
     }

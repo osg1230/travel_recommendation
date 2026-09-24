@@ -70,11 +70,11 @@ public class PlaceOperatingService {
         }
         return true;
     }
-    private static String road(String address) {
+    static String road(String address) {
         if (address == null) return "";
         var match = ROAD.matcher(KakaoMapClient.normalize(address));
         return match.matches() ? match.group(1) : "";
     }
-    private static String compact(String text) { return text.replaceAll("[\\s·ㆍ・]", ""); }
+    static String compact(String text) { return text.replaceAll("[\\s·ㆍ・]", ""); }
     private static RecommendationException changed() { return new RecommendationException("PLACES_CHANGED", "장소 정보가 변경됐어요. 목록을 다시 열어 주세요."); }
 }

@@ -20,6 +20,7 @@ public class RecommendationJobWorker {
     private final DestinationRecommendationService recommendations;
     private final ItineraryJobService itineraries;
     private final PurposePlaceService purposes;
+    private final PlacePhotoService photos;
     private volatile boolean ready;
 
     @EventListener(ApplicationReadyEvent.class)
@@ -45,7 +46,15 @@ public class RecommendationJobWorker {
         for(UUID id:itineraries.queued()) {
             var work=itineraries.claim(id);
             if(work==null) continue;
-            try { itineraries.complete(work,itineraries.generate(work)); }
+            var started=java.time.Instant.now();
+            try {
+                var result=itineraries.generate(work);
+                // 일정에 들어간 관광지의 사진을 찾아 둔다. 작업 제한(2분) 안에서 최대 15초만 쓰고, 실패해도 일정은 그대로 완료한다.
+                var until=java.time.Instant.now().plusSeconds(15);
+                if(until.isAfter(started.plusSeconds(100))) until=started.plusSeconds(100);
+                try { photos.findForItinerary(work.input(),result,until); } catch(RuntimeException e) { log.warn("장소 사진 찾기를 건너뜀 job={} ({})",id,e.toString()); }
+                itineraries.complete(work,result);
+            }
             catch(RecommendationException e) { itineraries.fail(work,e.getCode(),e.getMessage()); }
             catch(RuntimeException e) { itineraries.fail(work,"SCHEDULE_FAILED","일정을 만들지 못했어요. 잠시 후 다시 요청해 주세요."); }
         }

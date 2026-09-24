@@ -28,6 +28,7 @@ public class ItineraryController {
     private final ObjectProvider<BusGuideService> busGuides;
     private final ObjectProvider<PlaceCandidateService> candidates;
     private final ObjectProvider<PlaceDiscoveryService> discoveries;
+    private final ObjectProvider<PlacePhotoService> photos;
     private final tools.jackson.databind.ObjectMapper mapper;
     private record Submission(UUID parent,long destination,String login,String token,UUID job) {}
     private static final String SESSION_KEY="itinerarySubmission";
@@ -168,6 +169,9 @@ public class ItineraryController {
             model.addAttribute("placedAttractions",placed);
             // 일정 항목마다 '다른 곳으로 바꾸기'를 보여 줄지 정하는 데 쓴다.
             model.addAttribute("placedAttractionIds",placed.stream().map(p->p.placeId()).collect(java.util.stream.Collectors.toSet()));
+            // 초안을 만들 때 찾아 둔 관광지 사진(관광공사). 없으면 사진 없이 보여 준다.
+            model.addAttribute("photoByPlace",photosOf(job.result().days().stream().flatMap(d->d.items().stream())
+                .filter(i->"VISIT".equals(i.type()) && i.placeId()!=null).map(ItineraryPlan.Item::placeId).toList()));
             // 버튼으로 찾은 숙소·음식점 참고 가격. 일정 항목 옆에 보여 주도록 장소 ID로 묶는다.
             var priceByPlace=new java.util.HashMap<Long,ItineraryPlan.PriceQuote>();
             if(job.result().prices()!=null) job.result().prices().quotes().forEach(q->priceByPlace.put(q.placeId(),q));
@@ -334,6 +338,11 @@ public class ItineraryController {
     private String login(Principal principal) { return principal==null?null:principal.getName(); }
     private static ResponseEntity<?> seeOther(String location) {
         return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create(location)).cacheControl(CacheControl.noStore()).build();
+    }
+    private Map<Long,PlacePhotoDetails.Photo> photosOf(List<Long> placeIds) {
+        var service=photos.getIfAvailable();
+        if(service==null || placeIds.isEmpty()) return Map.of();
+        try { return service.photos(placeIds); } catch(RuntimeException error) { return Map.of(); }
     }
     private record DefaultPlaces(List<Long> purposeIds,List<Long> centerIds) {}
     // 여행 목적 시설 중 첫 곳만 필수 방문 장소로 미리 골라 둔다. 여러 곳을 모두 필수로 두면 먼 시설까지 억지로 넣게 된다.
