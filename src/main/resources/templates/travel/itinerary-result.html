@@ -73,6 +73,21 @@
 <div class="place-links"><a th:href="${item.mapUrl}" target="_blank" rel="noopener noreferrer">위치 보기 (새 창)</a>
 <a th:if="${route.links.get(day.number + '-' + st.index) != null}" th:href="${route.links.get(day.number + '-' + st.index)}" target="_blank" rel="noopener noreferrer">이 구간 길찾기 · 카카오맵 (새 창)</a>
 <a th:if="${item.type != 'TRANSIT'}" th:href="${item.sourceUrl}" target="_blank" rel="noopener noreferrer">장소 출처 확인 (새 창)</a></div>
+<!--/* 일정에 들어간 관광지는 그 자리에서 바로 바꿀 수 있다. 아래 '장소 바꿔서 수정안 만들기'와 같은 요청으로, 이유를 고르면 그곳만 다른 후보로 바꾼 수정안을 만든다. */-->
+<details class="item-replace" th:if="${item.type == 'VISIT' and placedAttractionIds.contains(item.placeId)}">
+<summary>다른 곳으로 바꾸기</summary>
+<form method="post" th:action="@{/travel/recommendations/itineraries/{id}/revisions(id=${job.id})}">
+<input type="hidden" name="replace" th:value="${item.placeId}">
+<input type="hidden" name="start" th:value="${job.input.start}"><input type="hidden" name="end" th:value="${job.input.end}">
+<input type="hidden" name="visitMinutes" th:value="${job.input.visitMinutes}">
+<p class="help">바꾸는 이유를 고르면 이곳만 확인된 다른 관광지로 바꾼 수정안을 만들어요. 이 초안은 그대로 남아요.</p>
+<div class="item-replace-reasons">
+<button type="submit" class="button-quiet button-small" name="reason" value="TASTE">취향과 맞지 않아요</button>
+<button type="submit" class="button-quiet button-small" name="reason" value="INDOOR">실내 장소로</button>
+<button type="submit" class="button-quiet button-small" name="reason" value="VISITED">이미 가 본 곳이에요</button>
+</div>
+</form>
+</details>
 </div>
 </article></section>
 <p class="notice" th:if="${!job.result.skipped.isEmpty()}" th:text="${'하루 시간이 부족하거나 가는 길이 2시간을 넘어(섬 등) ' + #strings.listJoin(job.result.skipped.![name], ', ') + '은(는) 일정에 넣지 않았어요. 넣고 싶다면 하루 시간을 늘리거나 체류시간을 줄여 새로 만들어 주세요.'}"></p>

@@ -164,7 +164,10 @@ public class ItineraryController {
             // 지역 대표 음식 안내(SFR-17-01). 공식 출처로 확인한 지역만 보여 준다.
             model.addAttribute("foods",RegionalFoods.of(job.result().destination()).orElse(null));
             // 수정안에서 바꿀 수 있는 관광지는 실제로 배치된 곳뿐이다(시간이 부족해 뺀 곳 제외).
-            model.addAttribute("placedAttractions",ItineraryJobService.placed(job.input(),job.result()));
+            var placed=ItineraryJobService.placed(job.input(),job.result());
+            model.addAttribute("placedAttractions",placed);
+            // 일정 항목마다 '다른 곳으로 바꾸기'를 보여 줄지 정하는 데 쓴다.
+            model.addAttribute("placedAttractionIds",placed.stream().map(p->p.placeId()).collect(java.util.stream.Collectors.toSet()));
             // 버튼으로 찾은 숙소·음식점 참고 가격. 일정 항목 옆에 보여 주도록 장소 ID로 묶는다.
             var priceByPlace=new java.util.HashMap<Long,ItineraryPlan.PriceQuote>();
             if(job.result().prices()!=null) job.result().prices().quotes().forEach(q->priceByPlace.put(q.placeId(),q));

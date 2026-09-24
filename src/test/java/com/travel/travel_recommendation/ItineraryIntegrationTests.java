@@ -243,6 +243,8 @@ class ItineraryIntegrationTests {
             .andExpect(content().string(containsString("일정 초안"))).andExpect(content().string(containsString("2일차")))
             .andExpect(content().string(containsString("확인이 필요해요")))
             .andExpect(content().string(containsString("여행 조건 확인 결과")))
+            // 일정에 들어간 관광지마다 그 자리에서 바꾸는 버튼과, 여러 날이면 일차 버튼이 있다.
+            .andExpect(content().string(containsString("다른 곳으로 바꾸기"))).andExpect(content().string(containsString("data-day-tabs")))
             .andDo(response->{ if(Boolean.getBoolean("travel.ui.capture")) {
                 var folder=java.nio.file.Path.of("target","ui-check"); java.nio.file.Files.createDirectories(folder);
                 java.nio.file.Files.writeString(folder.resolve("itinerary.html"),response.getResponse().getContentAsString(StandardCharsets.UTF_8));
