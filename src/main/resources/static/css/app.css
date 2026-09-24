@@ -430,6 +430,9 @@ summary:has(.details-title):hover .details-title { color: var(--brand-strong); }
 @media (max-width: 600px) {
     h1 { font-size: 25px; }
     .page, .account, .travel { margin-top: 20px; }
+    /* 휴대폰에서 비로그인 메뉴(여행 계획·로그인·회원가입)가 서비스 이름 옆 한 줄에 들어가도록 여백을 줄인다. */
+    .site-header { gap: 10px; padding-left: 16px; padding-right: 16px; }
+    .site-nav a, .site-nav button { padding: 8px 10px; }
     .card, .condition-section, .account > form { padding: 20px; }
     .field-grid, .mode-switch { grid-template-columns: 1fr; flex-direction: column; }
     .condition-summary { grid-template-columns: 1fr; }
