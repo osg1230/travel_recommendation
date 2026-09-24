@@ -100,7 +100,7 @@ public class PlaceCandidateController {
         // 같은 추천·지역에서는 세션당 한 번만 자동으로 조회하고, 실패해도 기존 후보로 화면을 보여 준다.
         var discovery = discoveries.getIfAvailable();
         String autoKey = "autoPlaceLookup:" + id + ":" + destinationId;
-        if (discovery != null && tooFewPlaces(places) && session.getAttribute(autoKey) == null) {
+        if (discovery != null && places.tooFewForSchedule() && session.getAttribute(autoKey) == null) {
             session.setAttribute(autoKey, Boolean.TRUE);
             try {
                 int count = discovery.refresh(id, destinationId, login, guest);
@@ -135,10 +135,6 @@ public class PlaceCandidateController {
     }
 
     /** 여러 끼 식사와 숙소를 고를 만큼 후보가 있는지. 부족하면 같은 식당·숙소가 반복된다. */
-    private boolean tooFewPlaces(PlaceCandidateView places) {
-        return places.attractions().size() < 5 || places.restaurants().size() < 3
-            || (places.accommodationNeeded() && places.accommodations().size() < 2);
-    }
 
     @ExceptionHandler(ResponseStatusException.class)
     String unavailable(ResponseStatusException error, HttpServletResponse response, Model model) {

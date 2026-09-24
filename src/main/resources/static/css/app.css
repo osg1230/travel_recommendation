@@ -331,11 +331,16 @@ summary:has(.details-title):hover .details-title { color: var(--brand-strong); }
 button.map-badge { cursor: pointer; }
 button.map-badge:hover { background: var(--badge, var(--brand)); transform: scale(1.12); }
 .map-badge-active { transform: scale(1.25); box-shadow: 0 0 0 4px color-mix(in srgb, var(--badge, var(--brand)) 35%, transparent), 0 1px 4px rgba(17, 45, 41, .35); z-index: 2; position: relative; }
-/* 지도 위 일차 선택 버튼 */
-.map-day-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-.map-day-tab { padding: 6px 14px; font-size: 14px; background: var(--surface); color: var(--text-muted); border-color: var(--line-strong); border-radius: 999px; }
-.map-day-tab:hover { background: var(--brand-soft); color: var(--brand-strong); }
-.map-day-tab[aria-pressed="true"] { background: var(--brand); color: #fff; border-color: var(--brand); }
+/* 일차 선택 버튼: 내려 읽는 중에도 다른 날로 바꿀 수 있게 상단 메뉴 아래에 붙여 둔다. */
+.day-tabs {
+    position: sticky; top: 68px; z-index: 5; display: flex; gap: 6px; overflow-x: auto;
+    margin: 0 0 16px; padding: 10px 0; background: var(--bg);
+}
+.day-tab { flex-shrink: 0; padding: 7px 15px; font-size: 14px; background: var(--surface); color: var(--text-muted); border-color: var(--line-strong); border-radius: 999px; }
+.day-tab:hover { background: var(--brand-soft); color: var(--brand-strong); }
+.day-tab[aria-pressed="true"] { background: var(--brand); color: #fff; border-color: var(--brand); }
+/* 휴대폰에서는 날짜를 빼고 'N일차'만 보여 버튼이 한 줄에 들어가게 한다. */
+@media (max-width: 520px) { .day-tab-date { display: none; } }
 /* 일정 항목의 '위 지도에서 보기'는 옆 링크와 같은 크기의 글자 버튼으로 둔다. */
 .map-jump { padding: 0; border: 0; background: none; color: var(--brand); font-size: inherit; font-weight: 600; }
 .map-jump:hover { background: none; color: var(--brand-strong); text-decoration: underline; }

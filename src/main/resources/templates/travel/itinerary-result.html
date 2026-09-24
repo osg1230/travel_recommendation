@@ -3,6 +3,7 @@
 <head th:replace="~{fragments/layout :: head('일정 초안 | 다녀올게')}"></head>
 <body>
 <script defer th:src="@{/js/recommendation-job.js}"></script>
+<script defer th:src="@{/js/day-tabs.js}"></script>
 <script defer th:src="@{/js/trip-map.js}"></script>
 <script defer th:src="@{/js/bus-guide.js}"></script>
 <script defer th:src="@{/js/request-examples.js}"></script>
@@ -44,12 +45,15 @@
 <input type="hidden" name="jobId" th:value="${job.id}"><button type="submit">이 일정 저장하기</button></form>
 <a class="button" th:if="${!loggedIn and job.input.conditions.startDate != null and report.complete}" th:href="@{/login(next=${'/travel/recommendations/itineraries/' + job.id})}">로그인하고 저장하기</a>
 <a class="button button-quiet" href="#report">조건 확인 결과 자세히 보기</a>
+<!--/* 추천 결과에서 바로 만든 초안은 기본 시간·중심 장소를 썼으므로, 직접 정해서 다시 만드는 길을 위에 둔다. */-->
+<a class="button button-quiet" th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">시간·장소 정해서 다시 만들기</a>
 </div>
 </section>
 
+<div th:replace="~{fragments/map :: dayTabs(${job.result.days})}"></div>
 <section th:replace="~{fragments/map :: tripMap('지도로 보는 방문 순서', ${route.missing > 0 ? '좌표를 확인하지 못한 장소 ' + route.missing + '곳은 지도에서 빠져 있어요. 아래 일정 목록을 함께 봐 주세요.' : '일차별 색으로 방문 순서를 표시해요. 구간별 길찾기는 아래 이동 항목에서 열 수 있어요.'})}"></section>
 
-<section class="condition-section timeline" th:each="day : ${job.result.days}">
+<section class="condition-section timeline" th:each="day : ${job.result.days}" th:attr="data-day-section=${day.number}">
 <h2 th:text="${day.number + '일차 · ' + @timeText.day(day.date)}"></h2>
 <!--/* th:each가 th:if보다 먼저 실행되므로, AI 안내가 없을 때를 바깥 블록에서 먼저 거른다. */-->
 <th:block th:if="${job.result.assist != null}"><th:block th:each="advice : ${job.result.assist.days}">

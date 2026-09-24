@@ -82,7 +82,7 @@
     function drawDays(map, place, fitAll) {
         const maps = window.kakao.maps;
         const days = [];   // 일차별 { number, marks: [{ at, overlay }], line }
-        const stops = {};  // "일차-항목순번" → { day, at, element }
+        const stops = {};  // "일차-항목순번" → { at, element }
         data.days.forEach((day, index) => {
             const color = COLORS[index % COLORS.length];
             const marks = day.stops.map((stop) => {
@@ -92,7 +92,7 @@
                 const element = badge(day.number + '-' + stop.order, color, item ? title + ' (눌러서 일정에서 보기)' : title, false, !!item);
                 const mark = place(stop.lat, stop.lng, element);
                 if (item) {
-                    stops[key] = { day: day.number, at: mark.at, element };
+                    stops[key] = { at: mark.at, element };
                     element.addEventListener('click', () => showItem(item));
                     addMapButton(item, key);
                 }
@@ -104,7 +104,7 @@
             days.push({ number: day.number, marks, line });
         });
         fitAll();
-        const tabs = dayTabs(days, map, fitAll);
+        followDayTabs(days, map, fitAll);
 
         function addMapButton(item, key) {
             const links = item.querySelector('.place-links');
@@ -117,10 +117,9 @@
             links.prepend(button);
         }
 
-        // 그날만 보이게 바꾼 뒤 그 장소로 지도를 옮기고 번호를 강조한다.
+        // 그 장소로 지도를 옮기고 번호를 강조한다. 버튼은 지금 보이는 날의 항목에만 있어 그 번호도 지도에 보인다.
         function focusStop(key) {
             const stop = stops[key];
-            if (tabs) tabs.select(stop.day, false);
             map.setLevel(Math.min(map.getLevel(), 5));
             map.panTo(stop.at);
             document.querySelectorAll('.map-badge-active').forEach((el) => el.classList.remove('map-badge-active'));
@@ -129,23 +128,15 @@
         }
     }
 
-    // 여러 날 일정이면 지도 위에 '전체 · 1일차 · 2일차' 버튼을 두어 그날 장소만 볼 수 있게 한다.
-    function dayTabs(days, map, fitAll) {
-        if (days.length < 2) return null;
+    // 화면 위 일차 버튼(day-tabs.js)을 따라 그날 번호와 선만 보이고 그날 범위로 지도를 맞춘다.
+    function followDayTabs(days, map, fitAll) {
         const maps = window.kakao.maps;
-        const bar = document.createElement('div');
-        bar.className = 'map-day-tabs';
-        bar.setAttribute('role', 'group');
-        bar.setAttribute('aria-label', '지도에 표시할 일차');
-        const buttons = [];
-        const select = (number, refit) => {
+        const show = (number) => {
             days.forEach((day) => {
                 const shown = number === 0 || day.number === number;
                 day.marks.forEach((mark) => mark.overlay.setMap(shown ? map : null));
                 if (day.line) day.line.setMap(shown ? map : null);
             });
-            buttons.forEach((button) => button.setAttribute('aria-pressed', String(Number(button.dataset.day) === number)));
-            if (!refit) return;
             if (number === 0) { fitAll(); return; }
             const day = days.find((d) => d.number === number);
             if (!day || !day.marks.length) return;
@@ -153,19 +144,10 @@
             day.marks.forEach((mark) => bounds.extend(mark.at));
             if (day.marks.length > 1) map.setBounds(bounds); else map.setCenter(day.marks[0].at);
         };
-        [0].concat(days.map((day) => day.number)).forEach((number) => {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'map-day-tab';
-            button.dataset.day = String(number);
-            button.textContent = number === 0 ? '전체' : number + '일차';
-            button.addEventListener('click', () => select(number, true));
-            buttons.push(button);
-            bar.appendChild(button);
-        });
-        canvas.before(bar);
-        select(0, false);
-        return { select };
+        document.addEventListener('tripday', (event) => show(event.detail));
+        // 지도가 버튼보다 늦게 준비되므로 이미 고른 날이 있으면 그날로 맞춘다.
+        const selected = document.querySelector('[data-day-tabs]')?.dataset.selected;
+        if (selected) show(Number(selected));
     }
 
     // 목록의 해당 일정 항목으로 이동해 잠깐 눈에 띄게 표시한다(다시 눌러도 표시되게 클래스를 다시 붙인다).

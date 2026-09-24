@@ -65,9 +65,14 @@
                 <a th:href="${item.destination.sourceUrl}" target="_blank" rel="noopener noreferrer">공식 관광 정보 보기</a>
                 <p class="help" th:text="${'지역 정보 확인일: ' + #temporals.format(item.destination.verifiedAt,'yyyy-MM-dd') + ' · 실시간 조회 아님'}"></p>
             </div>
-            <div class="form-actions"><a class="button" th:href="@{/travel/recommendations/{id}/destinations/{destinationId}/places(id=${job.jobId},destinationId=${item.destination.placeId})}" th:text="${item.destination.name + ' 선택하고 장소 보기'}"></a></div>
+            <!--/* 장소 목록을 거치지 않고 바로 일정 초안을 만든다. 장소는 초안에서 보고 마음에 들지 않으면 수정을 요청한다. */-->
+            <div class="form-actions">
+                <form method="post" th:action="@{/travel/recommendations/{id}/destinations/{destinationId}/quick-schedule(id=${job.jobId},destinationId=${item.destination.placeId})}">
+                    <button type="submit" th:text="${item.destination.name + ' 일정 만들기'}"></button></form>
+                <a class="button button-quiet" th:href="@{/travel/recommendations/{id}/destinations/{destinationId}/places(id=${job.jobId},destinationId=${item.destination.placeId})}">장소 목록 먼저 보기</a>
+            </div>
         </section>
-        <p class="help">여행지를 선택해 장소를 살펴본 뒤, 하루 시간을 정하고 일정 초안을 만들 수 있어요.</p>
+        <p class="help">'일정 만들기'를 누르면 09:00~18:00 기본 시간으로 바로 일정 초안을 만들어요. 여행 기간·숙박·출발일·이동수단이 정해지지 않았다면 그것만 먼저 물어봐요. 초안을 보고 바꾸고 싶은 점은 초안 화면에서 요청할 수 있어요.</p>
     </div>
     <section class="condition-section" th:if="${spending != null and (!job.candidates.isEmpty() or job.status == 'COMPLETED')}" aria-labelledby="budget-title">
         <h2 id="budget-title">예산을 정하지 않았어요</h2>

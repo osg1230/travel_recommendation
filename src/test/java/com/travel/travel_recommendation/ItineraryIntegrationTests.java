@@ -100,6 +100,32 @@ class ItineraryIntegrationTests {
         assertThat(revisedInput.conditions().accommodationNeeded()).isTrue();
         assertThat(revisedInput.places().accommodations()).isNotEmpty();
     }
+    @Test void quickScheduleUsesDefaultsOrAsksOnlyForMissingInfo() throws Exception {
+        String quickUrl="/travel/recommendations/"+parent+"/destinations/"+destination+"/quick-schedule";
+        // 기본 추천은 출발일·이동수단이 정해지지 않아 추측하지 않고 하루 시간 정하기로 보낸다.
+        mvc.perform(post(quickUrl).session(session).with(csrf()))
+            .andExpect(status().isSeeOther()).andExpect(header().string("Location",formUrl()+"?quick=missing"));
+        mvc.perform(get(formUrl()+"?quick=missing").session(session))
+            .andExpect(status().isOk()).andExpect(content().string(containsString("바로 일정을 만들려면")));
+
+        var car=new TravelKeyword(null,"TRANSPORTATION","자동차","{\"value\":\"CAR\"}");
+        LocalDate start=LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(20);
+        var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",start,start.plusDays(1),2,null,2,true,false,List.of(car),"");
+        parent=recommendations.create(conditions,null,hash); recommendations.prepare(parent);
+        var candidate=recommendations.view(parent,null,hash).candidates().getFirst(); destination=candidate.placeId();
+        jobs.findById(parent).orElseThrow().completeRecommendation(mapper.writeValueAsString(List.of(new RankedDestination(1,candidate,"추천"))));
+        em.flush();
+        quickUrl="/travel/recommendations/"+parent+"/destinations/"+destination+"/quick-schedule";
+        mvc.perform(post(quickUrl).session(session)).andExpect(status().isForbidden());
+        String location=mvc.perform(post(quickUrl).session(session).with(csrf()))
+            .andExpect(status().isSeeOther()).andReturn().getResponse().getHeader("Location");
+        assertThat(location).startsWith("/travel/recommendations/itineraries/");
+        var input=schedules.view(UUID.fromString(location.replace("/travel/recommendations/itineraries/","")),null,hash).input();
+        assertThat(input.conditions().startDate()).isEqualTo(start);
+        assertThat(input.conditions().durationDays()).isEqualTo(2);
+        // 다시 눌러도 새로 만들지 않고 같은 초안으로 보낸다.
+        mvc.perform(post(quickUrl).session(session).with(csrf())).andExpect(header().string("Location",location));
+    }
     private String formUrl() { return "/travel/recommendations/"+parent+"/destinations/"+destination+"/schedule"; }
     private String resultUrl(UUID id) { return "/travel/recommendations/itineraries/"+id; }
 
@@ -227,6 +253,8 @@ class ItineraryIntegrationTests {
     @Test void formCsrfAndDuplicateSubmission() throws Exception {
         var form=mvc.perform(get(formUrl()).session(session)).andExpect(status().isOk()).andReturn();
         String token=(String)form.getModelAndView().getModel().get("submissionToken");
+        // 입력 화면은 후보가 적으면 카카오에서 더 찾는다. 아래는 제출이 지도를 부르지 않는지만 본다.
+        clearInvocations(maps);
         if(Boolean.getBoolean("travel.ui.capture")) {
             var folder=java.nio.file.Path.of("target","ui-check"); java.nio.file.Files.createDirectories(folder);
             java.nio.file.Files.writeString(folder.resolve("itinerary-form.html"),form.getResponse().getContentAsString(StandardCharsets.UTF_8));

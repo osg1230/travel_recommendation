@@ -1,6 +1,7 @@
 package com.travel.travel_recommendation.controller;
 
 import com.travel.travel_recommendation.dto.ItineraryPlan;
+import com.travel.travel_recommendation.dto.PlaceCandidate;
 import com.travel.travel_recommendation.service.*;
 import jakarta.servlet.http.*;
 import java.net.URI;
@@ -25,10 +26,13 @@ public class ItineraryController {
     private final ObjectProvider<ItineraryJobService> services;
     private final ObjectProvider<SavedItineraryService> savedItineraries;
     private final ObjectProvider<BusGuideService> busGuides;
+    private final ObjectProvider<PlaceCandidateService> candidates;
+    private final ObjectProvider<PlaceDiscoveryService> discoveries;
     private final tools.jackson.databind.ObjectMapper mapper;
     private record Submission(UUID parent,long destination,String login,String token,UUID job) {}
     private static final String SESSION_KEY="itinerarySubmission";
     private static final String CONFLICT_KEY="itineraryConstraintConflict";
+    private static final String QUICK_KEY="quickItinerary:";
     /** 일정 입력 화면의 값. 필수 조건 충돌로 돌아갈 때 입력을 잃지 않도록 세션에 잠시 둔다. */
     public record ConstraintInput(UUID parent,LocalTime start,LocalTime end,KakaoMapClient.Transport transport,int visitMinutes,
                                   List<Long> required,Integer dailyVisits,boolean dailyRequired,String budgetBasis,
@@ -36,22 +40,21 @@ public class ItineraryController {
                                   Integer durationDays,Boolean accommodationNeeded,LocalDate startDate,List<Long> centers) {}
 
     @GetMapping("/{id}/destinations/{destinationId}/schedule")
-    String form(@PathVariable UUID id,@PathVariable long destinationId,Principal principal,HttpSession session,
-                HttpServletResponse response,Model model) {
+    String form(@PathVariable UUID id,@PathVariable long destinationId,@RequestParam(required=false) String quick,
+                Principal principal,HttpSession session,HttpServletResponse response,Model model) {
         response.setHeader("Cache-Control","no-store");
+        findMorePlacesIfFew(id,destinationId,principal,session);
         var options=service().options(id,destinationId,login(principal),hash(session));
         model.addAttribute("options",options);
         var pool=service().attractionPool(id,destinationId,login(principal),hash(session));
         model.addAttribute("pool",pool);
-        // 여행 목적 시설 중 첫 곳만 필수 방문 장소로 미리 골라 둔다. 여러 곳을 모두 필수로 두면 먼 시설까지 억지로 넣게 된다.
-        // 중심 장소와 같은 종류(예: 서원)인 목적 시설은 중심 장소가 목적을 채우므로 고르지 않는다. 사용자가 체크를 풀거나 더 고를 수 있다.
-        var centerIds=service().defaultCenterPlaceIds(id,destinationId,login(principal),hash(session));
-        var poolIds=pool.stream().map(p->p.placeId()).toList();
-        var purposeIds=CenterPlaces.notCoveredByCenters(pool,
-            service().purposePlaceIds(id,destinationId,login(principal),hash(session)).stream().filter(poolIds::contains).toList(),centerIds)
-            .stream().limit(1).toList();
+        var defaults=defaultPlaces(id,destinationId,principal,session,pool);
+        var purposeIds=defaults.purposeIds();
+        var centerIds=defaults.centerIds();
         model.addAttribute("purposePlaceIds",purposeIds);
         model.addAttribute("centerPlaceIds",centerIds);
+        // 추천 결과의 '일정 만들기'에서 정해지지 않은 값이 있어 넘어온 경우 무엇을 하면 되는지 알린다.
+        model.addAttribute("quickMissing",quick!=null);
         model.addAttribute("budgetItems",TripConstraints.BUDGET_ITEMS);
         model.addAttribute("maxDailyVisits",TripConstraints.MAX_DAILY);
         // 필수 조건이 모순돼 돌아온 경우 이유·선택지와 입력했던 값을 다시 보여 준다(한 번만).
@@ -109,6 +112,41 @@ public class ItineraryController {
         String location="/travel/recommendations/itineraries/"+job;
         return accept.contains("application/json")?ResponseEntity.accepted().cacheControl(CacheControl.noStore()).body(Map.of("jobId",job,"location",location)):
             ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create(location)).cacheControl(CacheControl.noStore()).build();
+    }
+    /**
+     * 추천 결과에서 장소 목록과 하루 시간 입력을 거치지 않고 바로 일정 초안을 만든다.
+     * 하루 시간·체류시간·중심 장소·목적 시설은 입력 화면과 같은 기본값을 쓰고, 마음에 들지 않으면 초안에서 수정을 요청한다.
+     * 여행 일수·숙박·출발일·이동수단 중 정해지지 않은 값이 있으면 추측하지 않고 하루 시간 정하기 화면으로 보낸다.
+     */
+    @PostMapping("/{id}/destinations/{destinationId}/quick-schedule")
+    ResponseEntity<?> quick(@PathVariable UUID id,@PathVariable long destinationId,Principal principal,HttpSession session) {
+        String formUrl="/travel/recommendations/"+id+"/destinations/"+destinationId+"/schedule";
+        UUID job;
+        synchronized(session) {
+            // 두 번 누르거나 뒤로 가서 다시 눌러도 같은 초안으로 보낸다. 다른 시간으로 만들려면 초안의 '시간을 조정해서 다시 만들기'를 쓴다.
+            String key=QUICK_KEY+id+":"+destinationId+":"+login(principal);
+            if(session.getAttribute(key) instanceof UUID made) return seeOther("/travel/recommendations/itineraries/"+made);
+            findMorePlacesIfFew(id,destinationId,principal,session);
+            var options=service().options(id,destinationId,login(principal),hash(session));
+            var c=options.conditions();
+            boolean ready=c.durationDays()!=null && (c.durationDays()==1 || c.accommodationNeeded()!=null)
+                && c.startDate()!=null && !c.keywordNames("TRANSPORTATION").isEmpty();
+            if(!ready) return seeOther(formUrl+"?quick=missing");
+            var pool=service().attractionPool(id,destinationId,login(principal),hash(session));
+            var defaults=defaultPlaces(id,destinationId,principal,session,pool);
+            var constraints=new ItineraryPlan.Constraints(defaults.purposeIds(),null,false,null,List.of(),null,defaults.centerIds());
+            try {
+                job=service().create(id,destinationId,login(principal),hash(session),options.start(),options.end(),options.transport(),
+                    options.visitMinutes(),constraints,null,null,null);
+            } catch(TripConstraints.ConflictException conflict) {
+                // 기본값으로도 조건이 맞지 않으면 입력 화면에서 이유와 선택지를 보여 준다.
+                session.setAttribute(CONFLICT_KEY,new ConstraintInput(id,options.start(),options.end(),options.transport(),options.visitMinutes(),
+                    constraints.requiredPlaceIds(),null,false,null,List.of(),null,conflict.conflicts(),null,null,null,constraints.centerPlaceIds()));
+                return seeOther(formUrl);
+            }
+            session.setAttribute(key,job);
+        }
+        return seeOther("/travel/recommendations/itineraries/"+job);
     }
     @GetMapping("/itineraries/{id}")
     String result(@PathVariable UUID id,Principal principal,HttpSession session,HttpServletResponse response,Model model) {
@@ -291,5 +329,33 @@ public class ItineraryController {
         return service;
     }
     private String login(Principal principal) { return principal==null?null:principal.getName(); }
+    private static ResponseEntity<?> seeOther(String location) {
+        return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create(location)).cacheControl(CacheControl.noStore()).build();
+    }
+    private record DefaultPlaces(List<Long> purposeIds,List<Long> centerIds) {}
+    // 여행 목적 시설 중 첫 곳만 필수 방문 장소로 미리 골라 둔다. 여러 곳을 모두 필수로 두면 먼 시설까지 억지로 넣게 된다.
+    // 중심 장소와 같은 종류(예: 서원)인 목적 시설은 중심 장소가 목적을 채우므로 고르지 않는다. 입력 화면에서는 사용자가 바꿀 수 있다.
+    private DefaultPlaces defaultPlaces(UUID id,long destinationId,Principal principal,HttpSession session,List<PlaceCandidate> pool) {
+        var centerIds=service().defaultCenterPlaceIds(id,destinationId,login(principal),hash(session));
+        var poolIds=pool.stream().map(p->p.placeId()).toList();
+        var purposeIds=CenterPlaces.notCoveredByCenters(pool,
+            service().purposePlaceIds(id,destinationId,login(principal),hash(session)).stream().filter(poolIds::contains).toList(),centerIds)
+            .stream().limit(1).toList();
+        return new DefaultPlaces(purposeIds,centerIds);
+    }
+    // 장소 목록을 거치지 않고 일정을 만들 때도 후보가 부족하면 장소 목록 화면처럼 카카오에서 한 번 더 찾는다(같은 세션 키라 한 번만).
+    private void findMorePlacesIfFew(UUID id,long destinationId,Principal principal,HttpSession session) {
+        var list=candidates.getIfAvailable(); var discovery=discoveries.getIfAvailable();
+        if(list==null || discovery==null) return;
+        String autoKey="autoPlaceLookup:"+id+":"+destinationId;
+        if(session.getAttribute(autoKey)!=null) return;
+        try {
+            if(!list.find(id,destinationId,login(principal),hash(session)).tooFewForSchedule()) return;
+            session.setAttribute(autoKey,Boolean.TRUE);
+            discovery.refresh(id,destinationId,login(principal),hash(session));
+        } catch(RuntimeException lookupFailed) {
+            // 더 찾지 못해도 지금 있는 후보로 일정을 만든다.
+        }
+    }
     private byte[] hash(HttpSession session) { return RecommendationJobController.guestHash(session,false); }
 }
