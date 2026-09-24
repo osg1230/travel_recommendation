@@ -170,7 +170,7 @@
 <p th:if="${busGuide.message != null}" th:text="${busGuide.message}"></p>
 <article class="place-row" th:each="bus : ${busGuide.routes}">
 <h4 th:text="${bus.kind + ' · ' + bus.fromTerminal + ' → ' + bus.toTerminal}"></h4>
-<p th:text="${'직행 ' + bus.trips + '회 · 첫차 ' + bus.firstDeparture + ' · 막차 ' + bus.lastDeparture + ' · 가장 빠른 배차 약 ' + bus.fastestMinutes + '분'
+<p th:text="${'직행 ' + bus.trips + '회 · 첫차 ' + bus.firstDeparture + ' · 막차 ' + bus.lastDeparture + ' · 가장 빠른 소요 약 ' + bus.fastestMinutes + '분'
     + (bus.minCharge == null ? '' : ' · 요금 ' + #numbers.formatInteger(bus.minCharge, 1, 'COMMA') + '원부터')}"></p>
 </article>
 </div>
