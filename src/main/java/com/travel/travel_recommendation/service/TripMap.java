@@ -12,7 +12,8 @@ import java.util.*;
 public final class TripMap {
     private TripMap() {}
 
-    public record Point(int order, String name, String type, double lat, double lng) {}
+    /** item은 그날 일정 목록에서의 순번이다. 화면에서 지도 번호와 일정 항목을 서로 찾아가는 데 쓴다. */
+    public record Point(int order, int item, String name, String type, double lat, double lng) {}
     public record DayRoute(int number, List<Point> stops) {}
     /** 일정 지도: 일차별 방문 순서와 이동 구간별 길찾기 링크(키: "일차-항목순번"). */
     public record Route(String mode, List<DayRoute> days, Map<String, String> links, int missing) {}
@@ -51,7 +52,7 @@ public final class TripMap {
                 // 자유시간 뒤 같은 식당에서 식사하는 경우처럼 같은 위치가 연속되면 한 번만 표시한다.
                 if (!stops.isEmpty() && stops.getLast().lat() == at.lat() && stops.getLast().lng() == at.lng()
                         && stops.getLast().name().equals(item.name())) continue;
-                stops.add(new Point(stops.size() + 1, item.name(), item.type(), at.lat(), at.lng()));
+                stops.add(new Point(stops.size() + 1, i, item.name(), item.type(), at.lat(), at.lng()));
             }
             result.add(new DayRoute(day.number(), List.copyOf(stops)));
         }

@@ -5,6 +5,7 @@
 <script defer th:src="@{/js/recommendation-job.js}"></script>
 <script defer th:src="@{/js/trip-map.js}"></script>
 <script defer th:src="@{/js/bus-guide.js}"></script>
+<script defer th:src="@{/js/request-examples.js}"></script>
 <header th:replace="~{fragments/layout :: header}"></header>
 <main class="travel">
 <nav th:replace="~{fragments/layout :: flowSteps(5)}"></nav>
@@ -54,7 +55,8 @@
 <th:block th:if="${job.result.assist != null}"><th:block th:each="advice : ${job.result.assist.days}">
 <p class="notice" th:if="${advice.number == day.number}" style="white-space: pre-line" th:text="${'AI 준비 안내 · ' + advice.advice}"></p>
 </th:block></th:block>
-<article class="place-row schedule-item" th:each="item, st : ${day.items}" th:classappend="${'item-' + #strings.toLowerCase(item.type)}">
+<article class="place-row schedule-item" th:each="item, st : ${day.items}" th:classappend="${'item-' + #strings.toLowerCase(item.type)}"
+         th:id="${'stop-' + day.number + '-' + st.index}" th:attr="data-map-stop=${day.number + '-' + st.index}">
 <p class="schedule-time" th:text="${#temporals.format(item.start, 'HH:mm') + '–' + #temporals.format(item.end, 'HH:mm')}"></p>
 <div class="schedule-body">
 <!--/* 종류 이름은 저장 일정 화면(SavedItineraryService.typeName)과 같은 말을 쓴다. */-->
@@ -219,6 +221,15 @@
 <p role="alert" th:if="${aiError != null}" th:text="${aiError}"></p>
 <form method="post" th:action="@{/travel/recommendations/itineraries/{id}/ai-revisions(id=${job.id})}">
 <label for="ai-request">수정 요청 (1~300자)</label>
+<!--/* 예시는 바꿀 수 있는 것(관광지 교체·하루 시간·체류시간)만 든다. 누르면 칸에 채우기만 하고 보내지는 않는다. 스크립트가 없으면 숨긴다. */-->
+<div class="request-examples" data-request-examples hidden>
+<span class="help">예시를 누르면 입력 칸에 넣어 드려요.</span>
+<button type="button" class="button-quiet button-small" data-example="아침은 10시부터 시작하고 싶어요.">10시에 시작</button>
+<button type="button" class="button-quiet button-small" data-example="저녁 6시 전에 일정을 마치고 싶어요.">6시 전에 마치기</button>
+<button type="button" class="button-quiet button-small" data-example="비가 올 수 있으니 실내 장소 위주로 바꿔 주세요.">실내 장소로</button>
+<button type="button" class="button-quiet button-small" data-example="사람 많은 곳 대신 조용한 곳으로 바꿔 주세요.">조용한 곳으로</button>
+<button type="button" class="button-quiet button-small" data-example="관광지마다 2시간씩 머물고 싶어요.">2시간씩 머물기</button>
+</div>
 <textarea id="ai-request" name="request" maxlength="300" required rows="3"
           placeholder="예) 첫째 날 박물관은 빼고 바다가 보이는 곳으로 바꿔 줘. 아침은 10시부터 시작하고 싶어요."
           th:text="${aiRequest}"></textarea>

@@ -22,7 +22,8 @@
 
     <section class="condition-section timeline" th:each="day : ${itinerary.days}">
         <h2 th:text="${day.number + '일차 · ' + @timeText.day(day.date)}"></h2>
-        <article class="place-row schedule-item" th:each="item, st : ${day.items}" th:classappend="${'item-' + #strings.toLowerCase(item.type)}">
+        <article class="place-row schedule-item" th:each="item, st : ${day.items}" th:classappend="${'item-' + #strings.toLowerCase(item.type)}"
+         th:id="${'stop-' + day.number + '-' + st.index}" th:attr="data-map-stop=${day.number + '-' + st.index}">
             <p class="schedule-time" th:text="${#temporals.format(item.start, 'HH:mm') + '–' + #temporals.format(item.end, 'HH:mm')}"></p>
             <div class="schedule-body">
             <p class="schedule-type" th:text="${item.typeName}"></p>

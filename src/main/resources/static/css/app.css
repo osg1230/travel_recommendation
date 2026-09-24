@@ -327,6 +327,24 @@ summary:has(.details-title):hover .details-title { color: var(--brand-strong); }
     border: 2px solid #fff; box-shadow: 0 1px 4px rgba(17, 45, 41, .35); cursor: default; white-space: nowrap;
 }
 .map-badge-approx { background: #fff; color: var(--badge, var(--brand)); border: 2px dashed var(--badge, var(--brand)); }
+/* 일정과 이어진 지도 번호는 버튼이다. 기본 버튼 모양 대신 번호 모양을 그대로 쓴다. */
+button.map-badge { cursor: pointer; }
+button.map-badge:hover { background: var(--badge, var(--brand)); transform: scale(1.12); }
+.map-badge-active { transform: scale(1.25); box-shadow: 0 0 0 4px color-mix(in srgb, var(--badge, var(--brand)) 35%, transparent), 0 1px 4px rgba(17, 45, 41, .35); z-index: 2; position: relative; }
+/* 지도 위 일차 선택 버튼 */
+.map-day-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.map-day-tab { padding: 6px 14px; font-size: 14px; background: var(--surface); color: var(--text-muted); border-color: var(--line-strong); border-radius: 999px; }
+.map-day-tab:hover { background: var(--brand-soft); color: var(--brand-strong); }
+.map-day-tab[aria-pressed="true"] { background: var(--brand); color: #fff; border-color: var(--brand); }
+/* 일정 항목의 '위 지도에서 보기'는 옆 링크와 같은 크기의 글자 버튼으로 둔다. */
+.map-jump { padding: 0; border: 0; background: none; color: var(--brand); font-size: inherit; font-weight: 600; }
+.map-jump:hover { background: none; color: var(--brand-strong); text-decoration: underline; }
+/* 지도 번호를 눌러 찾아간 일정 항목을 잠깐 강조한다. */
+@keyframes stop-focus { from { background-color: var(--brand-soft); } to { background-color: transparent; } }
+.schedule-item-focus { animation: stop-focus 2.4s ease-out; }
+/* 수정 요청 예시: 누르면 입력 칸에 문장이 채워진다. */
+.request-examples { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 10px; }
+.request-examples .help { margin: 0; }
 
 /* 화면에는 보이지 않고 화면 낭독기에만 읽히는 이름표 */
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

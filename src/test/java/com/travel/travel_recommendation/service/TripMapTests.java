@@ -26,8 +26,8 @@ class TripMapTests {
         var route = TripMap.route(List.of(day1, day2), false);
 
         assertThat(route.mode()).isEqualTo("traffic");
-        assertThat(route.days().getFirst().stops()).extracting(Point::order, Point::name)
-            .containsExactly(tuple(1, "경포대"), tuple(2, "식당, 강릉"), tuple(3, "호텔"));
+        assertThat(route.days().getFirst().stops()).extracting(Point::order, Point::item, Point::name)
+            .containsExactly(tuple(1, 0, "경포대"), tuple(2, 3, "식당, 강릉"), tuple(3, 5, "호텔"));
         assertThat(route.days().get(1).stops()).extracting(Point::name).containsExactly("오죽헌");
         assertThat(route.links()).containsOnlyKeys("1-1", "1-4", "2-0");
         // 쉼표가 들어간 이름도 인코딩해 좌표와 섞이지 않는다.
