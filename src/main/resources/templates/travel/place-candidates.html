@@ -31,7 +31,12 @@
     </form>
     <p th:unless="${loggedIn}" class="help"><a th:href="@{/login}">로그인</a>하면 여행지·관광지·숙소를 즐겨찾기에 등록할 수 있어요.</p>
     <!--/* 다음 단계(일정 만들기)를 주 버튼으로, 후보 더 찾기는 보조 버튼으로 둔다. */-->
-    <div class="form-actions"><a class="button" th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${places.jobId},dest=${places.destination.placeId})}">하루 시간을 정하고 일정 초안 만들기 →</a></div>
+    <!--/* 하루 시간은 기본값으로 바로 만들고, 필요한 사람만 자세한 입력 화면에서 정한다. */-->
+    <div class="form-actions">
+        <form method="post" th:action="@{/travel/recommendations/{id}/destinations/{dest}/quick-schedule(id=${places.jobId},dest=${places.destination.placeId})}">
+            <button type="submit">이 여행지로 일정 만들기</button></form>
+        <a class="button button-quiet" th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${places.jobId},dest=${places.destination.placeId})}">시간·조건 자세히 정하고 만들기</a>
+    </div>
     <form data-place-discovery method="post" th:action="@{/travel/recommendations/{id}/destinations/{dest}/places/refresh(id=${places.jobId},dest=${places.destination.placeId})}">
         <button type="submit" class="button-quiet">카카오에서 장소 더 찾아보기</button>
         <p data-lookup-status class="help" role="status">세 종류를 조회하며 최대 약 30초가 걸릴 수 있어요. 실패해도 기존 후보는 유지해요.</p>

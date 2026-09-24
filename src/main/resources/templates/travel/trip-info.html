@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('여행 정보 | 다녀올게')}"></head>
+<body><header th:replace="~{fragments/layout :: header}"></header><main class="travel">
+<nav th:replace="~{fragments/layout :: flowSteps(5)}"></nav>
+<a class="back-link" th:href="@{/travel/recommendations/{id}(id=${options.recommendationId})}">← 추천 결과</a>
+<p class="eyebrow">여행 준비 · 여행 정보</p>
+<h1 th:text="${options.places.destination.name + ' 일정을 만들기 전에 알려 주세요'}"></h1>
+<!--/* 추천 조건에 없는 값만 묻는다. 하루 시간·체류시간·장소는 기본값으로 만들고 초안에서 바꾼다. */-->
+<p class="intro">일정을 짜려면 아래 정보가 필요해요. 하루 시간은 09:00~18:00, 관광지마다 90분으로 먼저 만들고, 초안을 본 뒤 바꿀 수 있어요.</p>
+<p role="alert" th:if="${values.error != null}" th:text="${values.error}"></p>
+<form method="post" th:action="@{/travel/recommendations/{id}/destinations/{dest}/quick-schedule(id=${options.recommendationId},dest=${options.places.destination.placeId})}">
+<section class="condition-section">
+<p th:if="${options.conditions.durationDays == null}"><label for="durationDays">여행 일수 (필수)</label>
+<select id="durationDays" name="durationDays" required><option value="">선택해 주세요</option>
+<option th:each="n : ${#numbers.sequence(1,7)}" th:value="${n}" th:text="${n == 1 ? '당일' : (n - 1) + '박 ' + n + '일'}" th:selected="${values.durationDays == n}"></option></select></p>
+<p th:if="${options.conditions.accommodationNeeded == null and (options.conditions.durationDays == null or options.conditions.durationDays > 1)}">
+<label for="accommodationNeeded" th:text="${options.conditions.durationDays == null ? '숙소가 필요한가요? (당일이면 비워 두세요)' : '숙소가 필요한가요? (필수)'}"></label>
+<select id="accommodationNeeded" name="accommodationNeeded" th:required="${options.conditions.durationDays != null}">
+<option value="" th:text="${options.conditions.durationDays == null ? '당일 여행이면 고르지 않아도 돼요' : '선택해 주세요'}"></option>
+<option value="true" th:selected="${values.accommodationNeeded == true}">숙소 포함</option>
+<option value="false" th:selected="${values.accommodationNeeded == false}">숙소는 따로 정할게요</option></select></p>
+<p th:if="${options.conditions.startDate == null}"><label for="startDate">출발일 (필수)</label>
+<input id="startDate" name="startDate" type="date" required th:min="${#temporals.format(#temporals.createToday(), 'yyyy-MM-dd')}" th:value="${values.startDate}"></p>
+<p class="help" th:if="${options.conditions.startDate == null}">날짜가 있어야 장소별 휴무일을 확인하고 내 일정으로 저장할 수 있어요.</p>
+<p th:if="${askTransport}"><label for="transport">이동수단 (필수)</label>
+<select id="transport" name="transport" required><option value="">선택해 주세요</option>
+<option value="CAR" th:selected="${values.transport != null and values.transport.name() == 'CAR'}">자동차</option>
+<option value="PUBLIC_TRANSIT" th:selected="${values.transport != null and values.transport.name() == 'PUBLIC_TRANSIT'}">대중교통</option></select></p>
+<p class="help" th:if="${askTransport}">자동차와 대중교통은 이동시간과 동선이 달라서 직접 골라 주세요.</p>
+</section>
+<div class="form-actions"><button type="submit">일정 만들기</button>
+<a class="button button-quiet" th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${options.recommendationId},dest=${options.places.destination.placeId})}">시간·조건 자세히 정하고 만들기</a></div>
+</form>
+</main></body></html>

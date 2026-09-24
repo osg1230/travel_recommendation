@@ -46,7 +46,7 @@
 <a class="button" th:if="${!loggedIn and job.input.conditions.startDate != null and report.complete}" th:href="@{/login(next=${'/travel/recommendations/itineraries/' + job.id})}">로그인하고 저장하기</a>
 <a class="button button-quiet" href="#report">조건 확인 결과 자세히 보기</a>
 <!--/* 추천 결과에서 바로 만든 초안은 기본 시간·중심 장소를 썼으므로, 직접 정해서 다시 만드는 길을 위에 둔다. */-->
-<a class="button button-quiet" th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">시간·장소 정해서 다시 만들기</a>
+<a class="button button-quiet" th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">시간·조건 자세히 정해서 다시 만들기</a>
 </div>
 </section>
 

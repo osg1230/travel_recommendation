@@ -103,11 +103,26 @@ class ItineraryIntegrationTests {
     }
     @Test void quickScheduleUsesDefaultsOrAsksOnlyForMissingInfo() throws Exception {
         String quickUrl="/travel/recommendations/"+parent+"/destinations/"+destination+"/quick-schedule";
-        // 기본 추천은 출발일·이동수단이 정해지지 않아 추측하지 않고 하루 시간 정하기로 보낸다.
+        String infoUrl="/travel/recommendations/"+parent+"/destinations/"+destination+"/trip-info";
+        // 기본 추천은 출발일·이동수단이 정해지지 않아 추측하지 않고, 빠진 값만 묻는 여행 정보 화면으로 보낸다.
         mvc.perform(post(quickUrl).session(session).with(csrf()))
-            .andExpect(status().isSeeOther()).andExpect(header().string("Location",formUrl()+"?quick=missing"));
-        mvc.perform(get(formUrl()+"?quick=missing").session(session))
-            .andExpect(status().isOk()).andExpect(content().string(containsString("바로 일정을 만들려면")));
+            .andExpect(status().isSeeOther()).andExpect(header().string("Location",infoUrl));
+        mvc.perform(get(infoUrl).session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("출발일 (필수)"))).andExpect(content().string(containsString("이동수단 (필수)")))
+            .andExpect(content().string(org.hamcrest.Matchers.not(containsString("여행 일수 (필수)"))))
+            .andExpect(content().string(org.hamcrest.Matchers.not(containsString("반드시 지킬 조건"))));
+        // 지난 날짜는 되돌려 보내고 이유를 알린다.
+        mvc.perform(post(quickUrl).session(session).with(csrf()).param("startDate",LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1).toString()).param("transport","CAR"))
+            .andExpect(header().string("Location",infoUrl));
+        mvc.perform(get(infoUrl).session(session)).andExpect(content().string(containsString("출발일은 오늘이나 그 이후")));
+        // 여행 정보 화면에서 받은 출발일·이동수단으로 기본 시간 초안을 만든다.
+        LocalDate chosen=LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(15);
+        String made=mvc.perform(post(quickUrl).session(session).with(csrf()).param("startDate",chosen.toString()).param("transport","PUBLIC_TRANSIT"))
+            .andExpect(status().isSeeOther()).andReturn().getResponse().getHeader("Location");
+        var madeInput=schedules.view(UUID.fromString(made.replace("/travel/recommendations/itineraries/","")),null,hash).input();
+        assertThat(madeInput.conditions().startDate()).isEqualTo(chosen);
+        assertThat(madeInput.transport()).isEqualTo(KakaoMapClient.Transport.PUBLIC_TRANSIT);
+        assertThat(madeInput.start()).isEqualTo(LocalTime.of(9,0));
 
         var car=new TravelKeyword(null,"TRANSPORTATION","자동차","{\"value\":\"CAR\"}");
         LocalDate start=LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(20);
