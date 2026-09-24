@@ -97,7 +97,7 @@ class ItineraryGeneratorTests {
         assertThat(first.getLast()).isEqualTo(dinner);
         assertThat(first.indexOf(dinner)).isGreaterThan(stayAt);
         assertThat(dinner.start()).isEqualTo(LocalTime.of(18,0));
-        assertThat(dinner.note()).startsWith("저녁 식사").contains("장소5에서 직선");
+        assertThat(dinner.note()).startsWith("저녁 식사").contains("장소5에서 가까운 곳이라 골랐어요(직선");
         assertThat(dinner.placeId()).isNotEqualTo(meals.getFirst().placeId());
         // 숙소 휴식은 저녁 출발 전까지 이어진다. 관광은 하루 종료 시간(18시) 안이다.
         assertThat(first.get(stayAt).end()).isBefore(LocalTime.of(18,0));
@@ -144,6 +144,20 @@ class ItineraryGeneratorTests {
         assertThat(day2.getFirst().placeId()).isEqualTo(1L);
         assertThat(day2).extracting(Item::placeId).containsExactlyInAnyOrder(1L,2L,3L);
         assertThat(day1.get(1).note()).doesNotContain("중심으로 고른");
+        generator.validate(input,result);
+    }
+    // 중심 장소 둘이 서로 가까우면(1·2는 약 90m) 날을 나누지 않고 1일차에 함께 넣는다. 다음 날 같은 곳으로 되돌아가지 않게 하기 위해서다.
+    @Test void nearbyCenterPlacesShareTheFirstDay() {
+        var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,null,2,true,false,List.of(),"");
+        var pool=new PlaceCandidateView(UUID.randomUUID(),new DestinationCandidate(99L,"강릉","강원","소개","https://www.gn.go.kr/",LocalDateTime.of(2026,9,1,0,0)),2,true,
+            List.of(place(2),place(29),place(3),place(31),place(1),place(30)),List.of(place(16)),List.of(place(4),place(28)));
+        var input=new Input(pool.jobId(),pool,conditions,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,60,
+            null,new Constraints(List.of(),null,false,null,List.of(),null,List.of(1L,2L)),List.of());
+        var result=generator.generate(input);
+        var day1=result.days().get(0).items().stream().filter(i->i.type().equals("VISIT")).toList();
+        assertThat(day1.getFirst().placeId()).isEqualTo(1L);
+        assertThat(day1).extracting(Item::placeId).contains(1L,2L);
+        assertThat(day1.stream().filter(i->i.placeId()==2L).findFirst().orElseThrow().note()).contains("가까운 중심 장소와 같은 날로 묶었어요");
         generator.validate(input,result);
     }
     @Test void hotelWithoutLocationIsSkippedWhenAnotherCanBeUsed() {

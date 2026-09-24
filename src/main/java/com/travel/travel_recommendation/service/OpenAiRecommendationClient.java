@@ -65,6 +65,9 @@ public class OpenAiRecommendationClient {
                 음식점·숙소·지역 이름 자체는 넣지 않고, 이름을 확실히 모르면 비워 둔다. 이 이름은 서버가 실제 장소 후보와 맞춰 본다.
                 reason은 사용자에게 그대로 보인다. purposePlaces·travelPurpose·THEME 같은 입력 필드 이름을 쓰지 말고
                 "목적 시설 검색 결과", "여행 목적", "여행 취향"처럼 풀어서 쓴다.
+                reason에서 '소개', '입력', '자료', '정보에 명시' 같은 말로 주어진 데이터를 가리키지 않는다.
+                근거가 없어 확인하지 못한 점은 '~는 방문 전 확인이 필요합니다'처럼 여행지에 대한 문장으로 쓴다.
+                순위가 낮은 후보도 조건과 맞는 점을 먼저 쓰고, 맞지 않거나 확인하지 못한 점은 뒤에 짧게 덧붙인다.
                 """,
                 "input",mapper.writeValueAsString(Map.of("conditions",promptConditions(conditions),
                     "candidates",candidates.stream().map(c->Map.of("placeId",c.placeId(),"name",c.name(),

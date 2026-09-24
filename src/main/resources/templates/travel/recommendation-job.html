@@ -16,12 +16,13 @@
         </th:block>
         <details th:if="${!#strings.isEmpty(conditions.interpretationSummary)}"><summary>처음 입력한 내용의 해석 보기</summary><p th:text="${conditions.interpretationSummary}"></p></details>
         <!-- 확정한 조건을 한 줄로 보여 준다. 정하지 않은 조건은 빼서 입력한 것만 확인할 수 있게 한다. -->
-        <p th:with="season=${conditions.keywordNames('SEASON')},companion=${conditions.keywordNames('COMPANION')},transport=${conditions.keywordNames('TRANSPORTATION')}"
+        <p th:with="season=${conditions.keywordNames('SEASON')},companion=${conditions.keywordNames('COMPANION')},theme=${conditions.keywordNames('THEME')},transport=${conditions.keywordNames('TRANSPORTATION')}"
            th:text="${(conditions.region.isEmpty() ? '지역 제한 없음' : conditions.region)
               + ' · ' + (conditions.startDate != null ? conditions.startDate + ' ~ ' + conditions.endDate + ' (' + conditions.durationDays + '일)'
                         : (conditions.durationDays == null ? '기간은 일정 만들 때 선택' : conditions.durationDays + '일'))
               + (season.isEmpty() ? '' : ' · ' + season)
               + (companion.isEmpty() ? '' : ' · 동행 ' + companion)
+              + (theme.isEmpty() ? '' : ' · 취향 ' + theme)
               + (conditions.partySize == null ? '' : ' · ' + conditions.partySize + '명')
               + (transport.isEmpty() ? '' : ' · 이동 ' + transport)
               + (conditions.budget == null ? '' : ' · 예산 ' + #numbers.formatInteger(conditions.budget, 1, 'COMMA') + '원')
@@ -43,7 +44,8 @@
     <!--/* 추천 순위 카드: 1순위 카드는 테두리 색으로 한 번 더 구분한다. */-->
     <div class="recommendation-list" th:if="${job.status == 'COMPLETED'}">
         <p class="help">추천 이유는 확정한 조건과 지역 소개를 바탕으로 AI가 썼어요. 목적에 맞는 곳은 이름·주소만 확인했으니 운영·체험 내용과 비용은 방문 전 공식 정보에서 확인해 주세요.</p>
-        <p class="notice" th:if="${themes != null and !themes.isEmpty()}"
+        <!--/* 고른 취향은 위 '이런 여행을 찾고 있어요' 요약 줄에 있다. 요약이 없을 때만 따로 알린다. */-->
+        <p class="notice" th:if="${conditions == null and themes != null and !themes.isEmpty()}"
            th:text="${'반영한 여행 취향: ' + #strings.listJoin(themes, ', ')}"></p>
         <section class="destination-candidate" th:each="item : ${job.recommendations}">
             <h2 th:text="${item.rank + '순위 · ' + item.destination.name}"></h2>
