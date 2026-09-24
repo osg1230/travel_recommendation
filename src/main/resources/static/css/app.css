@@ -126,11 +126,14 @@ h3 { font-size: 17px; margin: 0 0 6px; }
 }
 .card, .condition-section { padding: 28px; margin-bottom: var(--gap); }
 .condition-section { scroll-margin-top: 76px; }
+/* 조회 뒤 절 제목(예: #bus-title)으로 이동할 때 제목이 위쪽 고정 메뉴에 가리지 않게 한다. */
+h2[id] { scroll-margin-top: 84px; }
 .card > :first-child, .condition-section > :first-child { margin-top: 0; }
 
 /* 목록 항목: 장소·일정·즐겨찾기에 공통으로 쓴다 */
 .place-row { padding: 18px 20px; margin-bottom: 12px; overflow-wrap: anywhere; }
 .place-row h2, .place-row h3 { margin-bottom: 4px; }
+.place-row h4 { margin: 0 0 4px; font-size: 16px; }
 .place-row p { margin: 4px 0; }
 .place-links { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 10px; font-size: 14px; }
 /* 주변 지역 추천: 지역 카드 안의 관광지 목록 */
