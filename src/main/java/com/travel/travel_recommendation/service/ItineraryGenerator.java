@@ -221,7 +221,10 @@ public class ItineraryGenerator {
         boolean firstMeal=builder.usedRestaurants.size()==1 && fresh;
         String mealNote=(dinner?"저녁 식사":"식사")+"\n"
             +(restaurant.subtypeLabel().isEmpty()?"":"음식 분류: "+restaurant.subtypeLabel()+" · ")
-            +after.name()+"에서 직선 약 "+kilometersText(builder.locations.get(after.placeId()),builder.locations.get(restaurant.placeId()))+"라 골랐어요."
+            // 거리 자체가 이유가 아니라 후보 중 가깝다는 점이 이유다(이미 들른 곳·휴무일은 뒤로 미뤄 가장 가깝지 않을 수 있다).
+            // 후보가 적으면 멀 수 있어 거리도 함께 적는다.
+            +"확인된 음식점 후보 중 "+after.name()+"에서 가까운 곳이라 골랐어요(직선 약 "
+            +kilometersText(builder.locations.get(after.placeId()),builder.locations.get(restaurant.placeId()))+")."
             +(firstMeal?builder.foods.map(g->"\n이 지역 대표 "+(g.snack()?"간식":"음식")+": "+g.joined()+" (음식점마다 메뉴는 달라요)").orElse(""):"")
             // 확인된 음식점이 모자라 이미 들른 곳을 다시 넣었다면 숨기지 않고 알린다.
             +(!fresh?"\n확인된 음식점 후보가 적어 앞에서 들른 곳을 다시 넣었어요. 장소 목록에서 후보를 더 찾은 뒤 다시 만들 수 있어요.":"");
