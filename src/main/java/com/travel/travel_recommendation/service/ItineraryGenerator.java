@@ -27,6 +27,11 @@ public class ItineraryGenerator {
     private static final int SPARE_KEPT=2;
     /** 하루에 시간이 모자라 넣지 못한 관광지가 이만큼 나오면 그날은 마친다(이동시간 조회를 무한히 늘리지 않게). */
     private static final int MAX_MISSES=3;
+    /**
+     * 중심 장소끼리 이 직선거리(km) 안이면 같은 날 함께 들를 곳으로 보고 날을 나누지 않는다.
+     * 예) 불국사·석굴암 약 1.8km, 경기전·전주한옥마을 약 0.4km는 묶고, 2km보다 떨어진 곳은 날마다 따로 둔다.
+     */
+    private static final double SAME_DAY_CENTER_KM=2.0;
     /** 관광지를 더 넣어 볼 때 이 오류가 나면 실패가 아니라 '오늘은 더 들어가지 않음'으로 본다. */
     private static final Set<String> DAY_FULL_CODES=Set.of("TIME_OVERLAP","OPERATING_CONFLICT");
     /** 이 오류가 나면 그 관광지만 뺀다. 한 구간 2시간 초과(섬 등)와 경로 없음이다. */
@@ -76,7 +81,9 @@ public class ItineraryGenerator {
         // 직전에 간 관광지 종류(예: 해변). 날이 바뀌어도 이어서 본다.
         String lastKind="";
         // 일정의 중심 장소: 1일차부터 하루에 한 곳씩 그날 첫 관광지로 넣는다. 나머지 관광지는 가장 가까운 중심 장소의 날에 먼저 넣는다.
-        var centers=centerPlaces(input,dayCount);
+        // 서로 가까운 중심 장소(예: 불국사·석굴암)는 날을 나누면 다음 날 같은 곳으로 되돌아가게 되므로 앞의 곳 하루에 묶는다.
+        var chosenCenters=centerPlaces(input,dayCount);
+        var centers=separateCenters(chosenCenters,locations);
         // 하루 방문 수를 정했으면 정한 수만 넣고, 남는 시간을 예비 관광지로 채우지 않는다.
         boolean fillSpareTime=constraints==null || constraints.dailyVisits()==null;
         Map<Long,Integer> dayOf=new HashMap<>();
@@ -130,7 +137,8 @@ public class ItineraryGenerator {
                     if(!builder.lunch && lunchFirst(builder,next)) eat(builder,builder.previous,false);
                     builder.visit(next,"VISIT",input.visitMinutes(),"관광·관람"
                         +(spare?"\n하루 시간이 남아 더 넣은 곳이에요.":"")
-                        +(centers.contains(next)?"\n이 날 일정의 중심으로 고른 곳이에요.":"")
+                        +(centers.contains(next)?"\n이 날 일정의 중심으로 고른 곳이에요."
+                            :chosenCenters.contains(next)?"\n일정의 중심으로 고른 곳이에요. 가까운 중심 장소와 같은 날로 묶었어요.":"")
                         +(next.religiousSite()?"\n종교 시설이라 미사·예불 등 행사 중에는 관람이 제한될 수 있어요. 방문 전 관람 가능 시간을 확인해 주세요.":""));
                     if(!builder.lunch && !builder.time.isBefore(LocalTime.NOON)) eat(builder,next,false);
                     // 이 관광지를 넣어도 남은 점심·숙소 도착까지 하루 종료 시간 안에 끝나는지 미리 확인한다.
@@ -510,6 +518,18 @@ public class ItineraryGenerator {
         return input.constraints().centerPlaceIds().stream()
             .map(id->input.places().attractions().stream().filter(p->p.placeId().equals(id)).findFirst().orElse(null))
             .filter(Objects::nonNull).limit(dayCount).toList();
+    }
+
+    /**
+     * 중심 장소 중 앞에서 이미 날을 받은 곳과 SAME_DAY_CENTER_KM 안에 있는 곳은 따로 날을 주지 않는다.
+     * 그런 곳은 일반 관광지로 남아 가장 가까운 중심 장소의 날에 먼저 들어간다.
+     */
+    private static List<PlaceCandidate> separateCenters(List<PlaceCandidate> centers,Map<Long,KakaoMapClient.Location> locations) {
+        var kept=new ArrayList<PlaceCandidate>();
+        for(var center:centers)
+            if(kept.stream().noneMatch(k->kilometers(locations.get(k.placeId()),locations.get(center.placeId()))<SAME_DAY_CENTER_KM))
+                kept.add(center);
+        return kept;
     }
 
     /** 하루 항목 중 마지막 숙소 도착의 위치. 없으면 -1이다. */
