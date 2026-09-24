@@ -267,6 +267,10 @@ tbody tr:last-child td { border-bottom: 0; }
         background: var(--bg); border-top: 1px solid var(--line); box-shadow: 0 -8px 20px rgba(17, 45, 41, .05);
     }
 }
+/* 일정 만들기의 '꼭 가야 하는 관광지'는 접어 두고 제목 줄을 눌러 펼친다. */
+.required-places { margin-top: 20px; }
+.required-places > summary { cursor: pointer; font-weight: 700; color: var(--brand-strong); }
+.required-places[open] > summary { margin-bottom: 8px; }
 .theme-choices { border: 0; padding: 0; margin: 20px 0 0; display: flex; gap: 10px 20px; flex-wrap: wrap; }
 .theme-choices legend { font-weight: 700; margin-bottom: 12px; }
 .theme-choices label { display: flex; align-items: center; gap: 8px; font-weight: 400; }
