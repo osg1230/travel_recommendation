@@ -30,26 +30,27 @@
                     ? '이 여행지 즐겨찾기 삭제' : '이 여행지 즐겨찾기에 추가'}"></button>
     </form>
     <p th:unless="${loggedIn}" class="help"><a th:href="@{/login}">로그인</a>하면 여행지·관광지·숙소를 즐겨찾기에 등록할 수 있어요.</p>
+    <!--/* 다음 단계(일정 만들기)를 주 버튼으로, 후보 더 찾기는 보조 버튼으로 둔다. */-->
+    <div class="form-actions"><a class="button" th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${places.jobId},dest=${places.destination.placeId})}">하루 시간을 정하고 일정 초안 만들기 →</a></div>
     <form data-place-discovery method="post" th:action="@{/travel/recommendations/{id}/destinations/{dest}/places/refresh(id=${places.jobId},dest=${places.destination.placeId})}">
-        <button type="submit">카카오에서 장소 더 찾아보기</button>
+        <button type="submit" class="button-quiet">카카오에서 장소 더 찾아보기</button>
         <p data-lookup-status class="help" role="status">세 종류를 조회하며 최대 약 30초가 걸릴 수 있어요. 실패해도 기존 후보는 유지해요.</p>
     </form>
-    <p><a th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${places.jobId},dest=${places.destination.placeId})}">하루 시간을 정하고 일정 초안 만들기 →</a></p>
     <section th:replace="~{fragments/map :: tripMap('관광지·숙소 위치', '카카오 검색으로 확인한 장소는 좌표로, 기존 후보는 주소로 찾아 표시해요. 음식점은 일정에서 식사 위치로 보여 줘요.')}"></section>
     <nav class="category-nav" aria-label="장소 종류">
         <a href="#attractions">관광지</a><a href="#restaurants">음식점</a><a href="#accommodations">숙소</a>
     </nav>
-    <section id="attractions" class="condition-section">
+    <section id="attractions" class="condition-section place-grid">
         <h2 th:text="${'관광지 · ' + places.attractions.size() + '곳'}"></h2>
         <p th:if="${places.attractions.isEmpty()}" role="status">이 지역에서 확인된 관광지 후보가 아직 없어요. 위의 '카카오에서 장소 더 찾아보기'를 눌러 관광지·음식점·숙소를 찾아 주세요.</p>
         <th:block th:each="place : ${places.attractions}"><article th:replace="~{::placeRow(${place},true)}"></article></th:block>
     </section>
-    <section id="restaurants" class="condition-section">
+    <section id="restaurants" class="condition-section place-grid">
         <h2 th:text="${'음식점 · ' + places.restaurants.size() + '곳'}"></h2>
         <p th:if="${places.restaurants.isEmpty()}" role="status">확인된 음식점 후보가 아직 없어요. 음식점 정보는 추가 확인이 필요해요.</p>
         <th:block th:each="place : ${places.restaurants}"><article th:replace="~{::placeRow(${place},false)}"></article></th:block>
     </section>
-    <section id="accommodations" class="condition-section">
+    <section id="accommodations" class="condition-section place-grid">
         <h2>숙소</h2>
         <p th:if="${places.durationDays == null}">여행 기간이 미정이라 숙소 필요 여부를 아직 확정할 수 없어요. 일정 생성 전에 기간을 확인해 주세요.</p>
         <p th:if="${places.durationDays != null and !places.accommodationNeeded}">당일 여행이거나 숙박이 필요 없다는 조건에 따라 숙소 후보를 제외했어요.</p>
@@ -89,10 +90,10 @@
             <input type="hidden" name="placeId" th:value="${place.placeId}">
             <input type="hidden" name="returnTo"
                    th:value="@{/travel/recommendations/{id}/destinations/{dest}/places(id=${places.jobId},dest=${places.destination.placeId})}">
-            <button type="submit" th:text="${favoritePlaceIds.contains(place.placeId) ? '즐겨찾기 삭제' : '즐겨찾기 추가'}"></button>
+            <button type="submit" class="button-quiet button-small" th:text="${favoritePlaceIds.contains(place.placeId) ? '즐겨찾기 삭제' : '즐겨찾기 추가'}"></button>
         </form>
         <form data-operating-lookup method="post" th:action="@{/travel/recommendations/{id}/destinations/{dest}/places/{placeId}/operating-info(id=${places.jobId},dest=${places.destination.placeId},placeId=${place.placeId})}">
-            <button type="submit">관광공사 운영정보 확인</button>
+            <button type="submit" class="button-quiet button-small">관광공사 운영정보 확인</button>
             <p data-operating-status class="help" role="status"></p>
         </form>
         <div class="place-links">

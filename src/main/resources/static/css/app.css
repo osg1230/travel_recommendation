@@ -137,7 +137,21 @@ h3 { font-size: 17px; margin: 0 0 6px; }
 .nearby-attractions { margin: 12px 0; padding: 0; list-style: none; }
 .nearby-attractions li { padding: 10px 0; border-top: 1px solid var(--line); }
 .nearby-attractions li p { margin: 2px 0; }
-.destination-candidate { padding: 18px 20px; margin-bottom: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+/* 여행지 추천 카드: 화면의 주인공이라 바깥 카드와 같게 띄우고, 1순위는 청록 테두리로 한 번 더 구분한다. */
+.destination-candidate { padding: 24px 28px; margin-bottom: var(--gap); background: var(--surface); border: 1px solid transparent; border-radius: var(--radius-lg); box-shadow: var(--shadow); }
+.destination-candidate h2 { margin-bottom: 2px; }
+.recommendation-list > .destination-candidate:first-of-type { border-color: var(--brand); }
+.card-region { margin: 0 0 10px; color: var(--text-muted); font-size: 14px; }
+/* 목적에 맞는 곳(예: 아쿠아리움)은 추천 근거라 옅은 청록 칸으로 묶어 보여 준다. */
+.purpose-matches { margin: 12px 0; padding: 10px 14px; list-style: none; border-radius: var(--radius-sm); background: var(--brand-soft); font-size: 14px; }
+.purpose-matches li + li { margin-top: 4px; }
+/* 출처 링크와 확인일은 한 줄에 작게 둔다. */
+.card-source { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; margin-top: 10px; font-size: 14px; }
+.card-source .help { margin: 0; }
+/* 장소 목록: PC에서는 장소 카드를 두 줄로 놓아 화면 길이를 줄인다. 제목·안내 문장은 한 줄 전체를 쓴다. */
+.place-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.place-grid > :not(.place-row) { grid-column: 1 / -1; }
+.place-grid > .place-row { margin-bottom: 0; }
 
 /* 입력 요소 */
 .field { margin-bottom: 20px; }
@@ -167,6 +181,8 @@ button:hover, .button:hover { background: var(--brand-strong); color: #fff; }
 }
 .button-quiet:hover, form.button-quiet button:hover { background: var(--brand-soft); color: var(--brand-strong); }
 .form-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+/* 목록 항목 안의 보조 동작(운영정보 확인, 즐겨찾기)은 작은 버튼으로 둔다. */
+.button-small { padding: 7px 14px; font-size: 14px; }
 
 /* 누르거나 올려 둘 수 있는 요소는 색이 부드럽게 바뀌고, 버튼은 누르는 순간 살짝 내려가 눌렸음을 알린다. */
 a, button, .button, input, textarea, select, .shortcut,
@@ -440,6 +456,8 @@ summary:has(.details-title):hover .details-title { color: var(--brand-strong); }
     .schedule-item { grid-template-columns: 1fr; }
     .trip-map-canvas { height: 300px; }
     .discover-options { grid-template-columns: 1fr; }
+    .place-grid { grid-template-columns: 1fr; }
+    .destination-candidate { padding: 20px; }
     .hero-inner { padding: 36px 0 100px; }
     .hero h1 { font-size: 25px; }
     .hero-search { flex-direction: column; }
