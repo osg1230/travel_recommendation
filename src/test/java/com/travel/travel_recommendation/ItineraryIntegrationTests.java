@@ -46,6 +46,7 @@ class ItineraryIntegrationTests {
     @MockitoBean OpenAiPriceClient prices;
     @Autowired PlaceOperatingService operating;
     @Autowired PlacePhotoService photos;
+    @Autowired NearbyRestaurantService nearbyRestaurants;
     @Autowired PlaceRepository placeRepository;
     @Autowired com.travel.travel_recommendation.repository.UserRepository users;
     @Autowired com.travel.travel_recommendation.service.SavedItineraryService saved;
@@ -143,6 +144,29 @@ class ItineraryIntegrationTests {
         mvc.perform(post(quickUrl).session(session).with(csrf())).andExpect(header().string("Location",location));
     }
     private String formUrl() { return "/travel/recommendations/"+parent+"/destinations/"+destination+"/schedule"; }
+
+    // 일정 작업 전에 고른 관광지 주변의 음식점을 찾아 저장하고 요청에 더한다. 그 요청으로 만든 일정은 그대로 검증을 통과한다.
+    @Test void nearbyRestaurantsAreAddedBeforeTheScheduleIsMade() {
+        var region=placeRepository.findById(destination).orElseThrow().getRegion();
+        // 시스템 관광지에는 좌표가 없어 주변을 찾을 지점이 없으므로, 이 테스트에서만 좌표를 넣는다.
+        jdbc.update("UPDATE dbo.places SET latitude=37.7, longitude=128.9 WHERE place_type='ATTRACTION' AND region=?",region);
+        em.flush(); em.clear();
+        var checked=LocalDateTime.now(ZoneOffset.UTC).withNano(0);
+        var nearby=new KakaoPlace("990000001","RESTAURANT","주변테스트식당",region,region+" 테스트로 1","음식점 > 한식 > 국수",
+            128.901,37.701,"https://place.map.kakao.com/990000001",checked);
+        when(maps.searchRestaurantsNear(anyDouble(),anyDouble(),eq(region),anyInt(),anyInt())).thenReturn(List.of(nearby));
+        UUID id=create();
+        int before=schedules.view(id,null,hash).input().places().restaurants().size();
+        nearbyRestaurants.enrich(id);
+        var input=schedules.view(id,null,hash).input();
+        assertThat(input.places().restaurants()).hasSize(before+1);
+        assertThat(input.places().restaurants().getLast().name()).isEqualTo("주변테스트식당");
+        // 다시 실행해도 같은 음식점을 또 더하지 않는다.
+        nearbyRestaurants.enrich(id);
+        assertThat(schedules.view(id,null,hash).input()).isEqualTo(input);
+        var work=schedules.claim(id); schedules.complete(work,schedules.generate(work));
+        assertThat(schedules.view(id,null,hash).status()).isEqualTo("COMPLETED");
+    }
     private String resultUrl(UUID id) { return "/travel/recommendations/itineraries/"+id; }
 
     @Test void operatingInfoPersistsReachesScheduleAndDetectsLaterChanges() throws Exception {

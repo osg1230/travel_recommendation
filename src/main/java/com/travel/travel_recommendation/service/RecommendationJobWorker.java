@@ -21,6 +21,7 @@ public class RecommendationJobWorker {
     private final ItineraryJobService itineraries;
     private final PurposePlaceService purposes;
     private final PlacePhotoService photos;
+    private final NearbyRestaurantService restaurants;
     private volatile boolean ready;
 
     @EventListener(ApplicationReadyEvent.class)
@@ -44,6 +45,8 @@ public class RecommendationJobWorker {
             catch(RuntimeException e) { recommendations.fail(work,"RECOMMENDATION_FAILED","추천 결과를 저장하지 못했어요. 잠시 후 다시 시도해 주세요."); }
         }
         for(UUID id:itineraries.queued()) {
+            // 고른 관광지·숙소 주변의 음식점을 먼저 찾아 요청에 더한다. 실패해도 기존 음식점 후보로 일정을 만든다.
+            try { restaurants.enrich(id); } catch(RuntimeException e) { log.warn("주변 음식점 찾기를 건너뜀 job={} ({})",id,e.toString()); }
             var work=itineraries.claim(id);
             if(work==null) continue;
             var started=java.time.Instant.now();

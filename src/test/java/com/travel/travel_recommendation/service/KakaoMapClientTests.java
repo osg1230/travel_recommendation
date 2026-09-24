@@ -165,6 +165,17 @@ class KakaoMapClientTests {
         assertThat(client("key").searchPlaces("강원특별자치도 강릉시","RESTAURANT")).extracting(com.travel.travel_recommendation.dto.KakaoPlace::sourceId)
             .containsExactly("701");
     }
+    // 좌표 주변 음식점은 반경·정확도 순으로 찾고, 끼니가 아닌 곳과 여행지 지역 밖의 곳은 받지 않는다.
+    @Test void nearbyRestaurantSearchUsesCoordinatesAndSkipsSnackAndOtherRegions() {
+        var meal=searchItem("711","강원 강릉시 교동 1"); meal.put("category_group_code","FD6"); meal.put("category_name","음식점 > 한식");
+        var cafe=searchItem("712","강원 강릉시 교동 2"); cafe.put("category_group_code","FD6"); cafe.put("category_name","음식점 > 카페");
+        var outside=searchItem("713","강원 동해시 천곡동 3"); outside.put("category_group_code","FD6"); outside.put("category_name","음식점 > 한식");
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(cafe,outside,meal))));
+        assertThat(client("key").searchRestaurantsNear(128.9,37.77,"강원특별자치도 강릉시",3000,3))
+            .extracting(com.travel.travel_recommendation.dto.KakaoPlace::sourceId).containsExactly("711");
+        assertThat(path.get()).startsWith("/v2/local/search/category.json?category_group_code=FD6&x=128.9&y=37.77&radius=3000&sort=accuracy");
+        assertThatThrownBy(()->client("key").searchRestaurantsNear(200,37.77,"강원특별자치도 강릉시",3000,3)).isInstanceOf(RecommendationException.class);
+    }
     // 사찰·성당은 "○○ 명소" 검색에 나오지 않아 따로 찾는다. 사찰은 앞 2곳만, 성당은 부속 시설과 다른 분류를 뺀다.
     @Test void religiousSearchKeepsTemplesAndCathedralsOnly() {
         String[][] temples={{"501","불국사"},{"502","석굴암"},{"503","골굴사"}};

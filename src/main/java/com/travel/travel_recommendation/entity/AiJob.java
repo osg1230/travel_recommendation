@@ -76,6 +76,11 @@ public class AiJob {
         if(!"RECOMMENDATION".equals(jobType) || !"QUEUED".equals(status)) throw new IllegalStateException("Only queued recommendations");
         requestJson=json;
     }
+    /** 처리 전의 일정 요청에 동선 주변에서 찾은 음식점 후보를 더한다. 사용자가 고른 관광지·시간 등 다른 값은 바꾸지 않는다. */
+    public void attachItineraryRequest(String json) {
+        if(!"ITINERARY".equals(jobType) || !"QUEUED".equals(status)) throw new IllegalStateException("Only queued itineraries");
+        requestJson=json;
+    }
     /** 완성된 일정 초안에 나중에 찾은 참고 정보(숙소·음식점 가격)를 붙인다. 일정 자체는 서버가 만든 그대로 둔다. */
     public void attachToResult(String json) {
         if(!"ITINERARY".equals(jobType) || !"COMPLETED".equals(status)) throw new IllegalStateException("Only completed itineraries");
