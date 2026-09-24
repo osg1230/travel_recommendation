@@ -13,7 +13,7 @@
     <p class="eyebrow">내 여행 · 즐겨찾기</p>
     <h1>즐겨찾기</h1>
     <p class="intro">여행지·관광지·숙소를 저장해 두고 다음 여행 계획에 참고할 수 있어요. 음식점은 등록할 수 없어요.</p>
-    <p role="status" th:if="${favoriteMessage != null}" th:text="${favoriteMessage}"></p>
+    <p role="status" class="status-ok" th:if="${favoriteMessage != null}" th:text="${favoriteMessage}"></p>
     <p role="status" th:if="${favorites.isEmpty()}">아직 등록한 즐겨찾기가 없어요. 장소 목록의 <strong>즐겨찾기 추가</strong> 버튼으로 등록할 수 있어요.</p>
     <p th:if="${favorites.isEmpty()}"><a th:href="@{/travel/conditions}">여행 조건 입력하고 장소 살펴보기 →</a></p>
     <article class="place-row" th:each="favorite : ${favorites}">

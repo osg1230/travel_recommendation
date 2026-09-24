@@ -17,7 +17,6 @@
     --surface-muted: #f7faf9;
     /* 상태 색: 글자색, 옅은 바탕, 테두리를 한 벌로 쓴다. */
     --info-text: #24423d;
-    --info-line: #c8ebe4;
     --danger: #b42318;
     --danger-strong: #912018;
     --danger-soft: #fef3f2;
@@ -182,12 +181,12 @@ button:not(:disabled):active, .button:active { transform: translateY(1px); }
     button:not(:disabled):active, .button:active, .shortcut:hover, .shortcut:active { transform: none; }
 }
 
-/* 상태 안내: 성공·오류·확인 필요 */
+/* 상태 안내: 안내·성공·오류를 색으로 구분한다.
+   안내는 옅은 회색 상자에 왼쪽 청록 선, 성공은 초록 상자(status-ok), 오류는 붉은 상자다. */
 [role=status], [role=alert] { border-radius: var(--radius-sm); }
-/* 안내는 파란 상자, 오류는 붉은 상자로 구분한다. */
 .notice {
     padding: 12px 14px; margin-bottom: 20px;
-    border: 1px solid var(--info-line); border-left-width: 4px; background: var(--brand-soft); color: var(--info-text); font-size: 14px;
+    border: 1px solid var(--line); border-left: 4px solid var(--brand); background: var(--surface-muted); color: var(--info-text); font-size: 14px;
 }
 .notice[role=alert], p[role=alert] {
     border-color: var(--danger-line); background: var(--danger-soft); color: var(--danger);
@@ -195,14 +194,23 @@ button:not(:disabled):active, .button:active { transform: translateY(1px); }
 p[role=alert] { padding: 12px 14px; margin-bottom: 20px; border: 1px solid var(--danger-line); border-left-width: 4px; font-size: 14px; }
 .notice p, .notice ul { margin: 0; color: inherit; }
 .notice ul { padding-left: 20px; }
-main > p[role=status], .card > p[role=status], .condition-section > p[role=status] {
+/* 화면에 바로 놓인 상태 문장(빈 목록 안내, 처리 결과 등)은 안내 상자로 보여 준다.
+   작은 도움말(.help)·소개 문장(.intro)으로 바뀌는 상태 문장은 상자 없이 글자로 둔다.
+   스크립트가 나중에 채우는 빈 상태 문장은 빈 상자로 보이지 않게 뺀다.
+   :where()로 우선순위를 낮춰 아래 성공 메시지 규칙이 항상 이기게 한다. */
+:where(main, .card, .condition-section) > p[role=status]:where(:not(.notice, .help, .intro, :empty)) {
+    padding: 12px 14px; margin-bottom: 16px;
+    border: 1px solid var(--line); border-left: 4px solid var(--brand); background: var(--surface-muted); color: var(--info-text); font-size: 14px;
+}
+/* 저장·변경이 끝났다는 성공 메시지만 초록으로 보여 준다. */
+p[role=status].status-ok {
     padding: 12px 14px; margin-bottom: 16px;
     border: 1px solid var(--ok-line); border-left-width: 4px; background: var(--ok-soft); color: var(--ok); font-size: 14px;
 }
 /* 화면 아래쪽 참고 안내. 확인이 필요한 정보를 계속 알리되 본문보다 조용하게 보여 준다. */
 .guide-note {
-    margin-top: 20px; padding: 16px 18px; border: 1px solid var(--info-line); border-radius: var(--radius);
-    background: var(--brand-soft); color: var(--info-text); font-size: 13.5px;
+    margin-top: 20px; padding: 16px 18px; border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--surface-muted); color: var(--info-text); font-size: 13.5px;
 }
 .guide-note p { margin: 0 0 6px; }
 .guide-note p:last-child { margin-bottom: 0; }

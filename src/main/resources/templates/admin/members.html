@@ -11,7 +11,7 @@
     <a class="back-link" th:href="@{/admin}">← 관리자 시작 화면</a>
     <h1>회원 관리</h1>
     <p class="intro">회원을 검색하고 상태를 정상 또는 이용 제한으로 바꿀 수 있습니다. 회원 탈퇴·삭제와 장소 데이터 관리는 이 화면의 기능이 아닙니다.</p>
-    <p role="status" th:if="${adminMessage != null}" th:text="${adminMessage}"></p>
+    <p role="status" class="status-ok" th:if="${adminMessage != null}" th:text="${adminMessage}"></p>
 
     <form th:action="@{/admin/members}" method="get">
         <div class="field">

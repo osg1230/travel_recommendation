@@ -13,7 +13,7 @@
     <a class="back-link" th:href="@{/}">← 처음으로</a>
     <h1>내 정보</h1>
     <p class="intro">닉네임과 비밀번호를 변경할 수 있습니다.</p>
-    <p role="status" th:if="${profileUpdated}">회원 정보를 저장했습니다.</p>
+    <p role="status" class="status-ok" th:if="${profileUpdated}">회원 정보를 저장했습니다.</p>
     <p>아이디 <strong th:text="${loginId}"></strong></p>
     <form th:action="@{/account}" th:object="${profileForm}" method="post">
         <div class="notice" role="alert" th:if="${#fields.hasAnyErrors()}">

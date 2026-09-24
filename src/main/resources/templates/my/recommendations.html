@@ -13,7 +13,7 @@
     <p class="eyebrow">내 여행 · 추천 이력</p>
     <h1>추천 이력</h1>
     <p class="intro">회원으로 요청한 여행지 추천의 조건과 결과를 최신순으로 보여 줘요. 최근 100건까지 표시해요.</p>
-    <p role="status" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
+    <p role="status" class="status-ok" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
     <p role="status" th:if="${histories.isEmpty()}">아직 추천 이력이 없어요. 로그인한 상태로 여행지 추천을 받으면 자동으로 저장돼요.</p>
     <p th:if="${histories.isEmpty()}"><a th:href="@{/travel/conditions}">여행 조건 입력하고 추천받기 →</a></p>
     <article class="place-row" th:each="h : ${histories}">

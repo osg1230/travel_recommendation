@@ -12,7 +12,7 @@
     <a class="back-link" th:href="@{/my/reservations}">← 가상 예약 목록</a>
     <p class="eyebrow" th:text="${'내 여행 · 가상 예약번호 ' + s.id}"></p>
     <h1 th:text="${s.placeName}"></h1>
-    <p role="status" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
+    <p role="status" class="status-ok" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
     <p class="notice">가상 예약이에요. 실제 시설에 전달되지 않고 실제 돈이 오가지 않아요.</p>
 
     <section class="condition-section">

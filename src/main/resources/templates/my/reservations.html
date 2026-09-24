@@ -12,7 +12,7 @@
     <p class="eyebrow">내 여행 · 가상 예약</p>
     <h1>가상 예약</h1>
     <p class="intro">예약·결제 과정을 체험하는 기능이에요. 실제 시설에 예약이 전달되지 않고 실제 돈이 오가지 않아요.</p>
-    <p role="status" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
+    <p role="status" class="status-ok" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
     <p role="status" th:if="${reservations.isEmpty()}">아직 가상 예약이 없어요. 저장한 일정 상세에서 숙소·관광시설을 가상 예약할 수 있어요.</p>
     <p th:if="${reservations.isEmpty()}"><a th:href="@{/my/itineraries}">저장한 일정 보러 가기 →</a></p>
     <article class="place-row" th:each="r : ${reservations}">
