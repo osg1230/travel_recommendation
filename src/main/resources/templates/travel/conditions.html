@@ -34,12 +34,13 @@
             <label><input type="radio" th:field="*{inputMode}" value="KEYWORD" aria-controls="keyword-input"> 조건 고르기</label>
             <label><input type="radio" th:field="*{inputMode}" value="TEXT" aria-controls="text-input"> 문장으로 적기</label>
         </fieldset>
-        <section id="text-input" data-mode="TEXT">
+        <section id="text-input" class="condition-section" data-mode="TEXT">
             <h2>떠나고 싶은 여행을 알려주세요</h2>
-            <label for="originalText">여행 이야기 <span class="optional">필수</span></label>
+            <label for="originalText">여행 이야기 <span class="required-mark">필수</span></label>
             <textarea th:field="*{originalText}" rows="6" maxlength="2000" aria-describedby="text-help text-error" th:attr="aria-invalid=${#fields.hasErrors('originalText')}" placeholder="친구와 여름에 강릉으로 2박 3일 여행을 가고 싶어요. 바다를 보고 맛집에도 들르고 싶어요."></textarea>
             <p class="help" id="text-help">지역, 기간, 함께 가는 사람 등 생각해 둔 내용을 자유롭게 적어 주세요. 최대 2,000자까지 입력할 수 있어요.</p>
             <p class="field-error" id="text-error" th:errors="*{originalText}"></p>
+            <p class="help">문장으로 적은 내용은 OpenAI에 보내 분석해요. 이름·연락처 등 개인정보는 빼고 적어 주세요.</p>
         </section>
         <section id="keyword-input" data-mode="KEYWORD">
             <h2>원하는 조건을 골라주세요</h2>
@@ -49,12 +50,12 @@
                 <a href="#destination">지역</a><a href="#period">기간</a><a href="#preferences">계절·동행자·취향</a><a href="#transport-budget">예산·이동수단</a>
             </nav>
             <section id="destination" class="condition-section">
-                <label for="region">어느 지역으로 갈까요?</label>
+                <label for="region" class="card-question">어느 지역으로 갈까요?</label>
                 <select th:field="*{region}" aria-describedby="region-error" th:attr="aria-invalid=${#fields.hasErrors('region')}"><option value="">상관없음</option><option th:each="item : ${choices.region}" th:value="${item.selectionValue}" th:text="${item.name}"></option></select>
                 <p class="field-error" id="region-error" th:errors="*{region}"></p>
             </section>
             <section id="period" class="condition-section">
-                <h3>얼마나 다녀올까요?</h3>
+                <h3 class="card-question">얼마나 다녀올까요?</h3>
                 <p class="help">날짜를 정했다면 출발일과 마지막 날을, 아직이라면 여행 일수만 입력해 주세요.</p>
                 <div class="field-grid">
                     <div><label for="startDate">출발일</label><input type="date" th:field="*{startDate}" min="0001-01-01" max="9999-12-31" aria-describedby="start-error" th:attr="aria-invalid=${#fields.hasErrors('startDate')}"><p class="field-error" id="start-error" th:errors="*{startDate}"></p></div>
@@ -81,8 +82,7 @@
             </section>
         </section>
         <noscript><p class="help">선택한 입력 방법에 해당하는 부분만 작성해 주세요.</p></noscript>
-        <p class="help">문장으로 적은 내용은 OpenAI에 보내 분석해요. 이름·연락처 등 개인정보는 빼고 적어 주세요.</p>
-        <div class="form-actions"><button type="submit">여행지 추천받기</button><p class="help">날짜나 예산은 아직 몰라도 괜찮아요. 추천을 먼저 보고 조건을 바꿀 수 있어요.</p></div>
+        <div class="form-actions condition-submit"><button type="submit">여행지 추천받기</button><p class="help">날짜나 예산은 아직 몰라도 괜찮아요. 추천을 먼저 보고 조건을 바꿀 수 있어요.</p></div>
         <p data-analysis-status role="status" aria-live="polite" hidden>여행 이야기를 읽고 추천을 준비하고 있어요. 최대 30초 정도 걸릴 수 있어요.</p>
     </form>
 </main>
