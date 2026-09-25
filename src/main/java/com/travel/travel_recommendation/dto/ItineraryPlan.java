@@ -15,17 +15,25 @@ public final class ItineraryPlan {
      * evening은 숙박하는 날 저녁 식사 뒤에 들를 저녁 관광 후보(야경·산책·야시장 등)이고, home은 첫날 집 출발·마지막 날 귀가 설정이다.
      * 둘 다 이전 작업 JSON에는 없으므로 없으면 저녁 관광·집 이동 없이 만든다.
      */
+    /** choices는 수정 요청으로 정한 식당·숙소 선택이다(처음 만든 초안과 이전 작업 JSON에는 없다). */
     public record Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
                         LocalTime start, LocalTime end, Transport transport, int visitMinutes, Revision revision,
-                        Constraints constraints, List<PlaceCandidate> reserve, List<PlaceCandidate> evening, HomeTrip home) {
+                        Constraints constraints, List<PlaceCandidate> reserve, List<PlaceCandidate> evening, HomeTrip home,
+                        Choices choices) {
         public Input {
             reserve = reserve == null ? List.of() : List.copyOf(reserve);
             evening = evening == null ? List.of() : List.copyOf(evening);
+            choices = choices == null ? Choices.NONE : choices;
+        }
+        public Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
+                     LocalTime start, LocalTime end, Transport transport, int visitMinutes, Revision revision,
+                     Constraints constraints, List<PlaceCandidate> reserve, List<PlaceCandidate> evening, HomeTrip home) {
+            this(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, null);
         }
         public Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
                      LocalTime start, LocalTime end, Transport transport, int visitMinutes, Revision revision,
                      Constraints constraints, List<PlaceCandidate> reserve) {
-            this(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, null, null);
+            this(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, null, null, null);
         }
         // 처음 만드는 초안과 이전 작업 JSON은 수정 정보·조건 구분·예비 관광지 없이 그대로 사용한다.
         public Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
@@ -48,13 +56,16 @@ public final class ItineraryPlan {
             return List.copyOf(all);
         }
         public Input withPlaces(PlaceCandidateView places) {
-            return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home);
+            return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, choices);
         }
         public Input withEvening(List<PlaceCandidate> evening) {
-            return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home);
+            return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, choices);
         }
         public Input withHome(HomeTrip home) {
-            return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home);
+            return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, choices);
+        }
+        public Input withChoices(Choices choices) {
+            return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, choices);
         }
         private int dayCount() { return conditions == null || conditions.durationDays() == null ? 1 : conditions.durationDays(); }
         /** n일차 관광을 시작하는 시각. 집 출발을 정했으면 첫날은 집에서 출발해 여행지에 도착한 시각이다. */
@@ -111,6 +122,17 @@ public final class ItineraryPlan {
         public Constraints(List<Long> requiredPlaceIds, Integer dailyVisits, boolean dailyVisitsRequired,
                            String budgetBasis, List<String> budgetIncludes) {
             this(requiredPlaceIds, dailyVisits, dailyVisitsRequired, budgetBasis, budgetIncludes, null);
+        }
+    }
+    /**
+     * 수정 요청으로 정한 식당·숙소 선택. avoidRestaurants는 쓰지 않을 식당, preferRestaurants는 가까우면 먼저 쓸 식당,
+     * stayPlaceId는 고정할 숙소다. 모두 확인된 후보(places) 안의 장소만 쓴다.
+     */
+    public record Choices(List<Long> avoidRestaurants, List<Long> preferRestaurants, Long stayPlaceId) {
+        public static final Choices NONE = new Choices(List.of(), List.of(), null);
+        public Choices {
+            avoidRestaurants = avoidRestaurants == null ? List.of() : List.copyOf(avoidRestaurants);
+            preferRestaurants = preferRestaurants == null ? List.of() : List.copyOf(preferRestaurants);
         }
     }
     public record PlaceRef(Long placeId, String name) {}

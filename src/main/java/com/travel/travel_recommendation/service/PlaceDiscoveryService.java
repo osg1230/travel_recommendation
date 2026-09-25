@@ -1,6 +1,7 @@
 package com.travel.travel_recommendation.service;
 
 import com.travel.travel_recommendation.dto.KakaoPlace;
+import com.travel.travel_recommendation.dto.PlaceCandidate;
 import com.travel.travel_recommendation.entity.Place;
 import com.travel.travel_recommendation.repository.PlaceRepository;
 import java.util.*;
@@ -48,6 +49,36 @@ public class PlaceDiscoveryService {
             }
             places.flush(); return count;
         });
+    }
+
+    /**
+     * 수정 요청에서 콕 집었지만 후보에 없는 관광지를 이 지역의 카카오 관광지로 찾아 저장한다(예: "하조대 넣어 줘").
+     * 관광명소·문화시설 분류이고 주소가 이 지역인 곳 중 이름이 서로 포함되는 첫 결과만 쓴다. 못 찾으면 비어 있다.
+     */
+    public Optional<PlaceCandidate> findAttraction(long destinationId,String region,String name) {
+        String wanted=KakaoMapClient.compactName(name==null?"":name);
+        if(wanted.length()<2 || name.length()>40) return Optional.empty();
+        List<KakaoPlace> found;
+        try { found=maps.searchNationwide(name.strip(),List.of(region)); }
+        catch(RecommendationException error) { log.warn("수정 요청 장소 찾기 실패 name={} ({})",name,error.getCode()); return Optional.empty(); }
+        var match=found.stream().filter(p->{ String n=KakaoMapClient.compactName(p.name()); return n.length()>=2 && (n.contains(wanted) || wanted.contains(n)); })
+            .findFirst();
+        if(match.isEmpty()) return Optional.empty();
+        var transaction=new TransactionTemplate(transactions); transaction.setTimeout(10);
+        return Optional.ofNullable(transaction.execute(status->{
+            // 장소 목록 수집과 같은 순서로 잠가 같은 장소를 동시에 두 번 저장하지 않는다.
+            places.lockDestination(destinationId).orElseThrow(()->new RecommendationException("PLACES_CHANGED","지역 정보가 변경됐어요. 다시 추천해 주세요."));
+            var data=match.get();
+            var existing=places.findBySourceProviderAndSourcePlaceId("KAKAO",data.sourceId());
+            Place place;
+            if(existing.isPresent()) {
+                place=existing.get();
+                if(!place.isActive() || !region.equals(place.getRegion()) || !"ATTRACTION".equals(place.getPlaceType())) return null;
+                place.refreshKakao(data);
+            } else place=places.save(Place.fromKakao(data));
+            places.flush();
+            return candidates.candidate(place);
+        }));
     }
 
     /**

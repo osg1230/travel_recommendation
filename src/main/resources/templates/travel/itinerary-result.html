@@ -15,8 +15,10 @@
 <h1 th:text="${job.input.places.destination.name + (job.input.revision == null ? ' 일정 초안' : ' 일정 수정안')}"></h1>
 <div class="notice" role="status" th:if="${editNotice != null}"><p th:text="${editNotice}"></p></div>
 <div class="notice" th:if="${job.input.revision != null}" th:with="rev=${job.input.revision}">
-<p th:if="${!rev.replaced.isEmpty()}" th:text="${'바꾼 관광지: ' + #strings.listJoin(rev.replaced.![name], ', ') + ' → ' + #strings.listJoin(rev.added.![name], ', ')}"></p>
-<p th:if="${rev.replaced.isEmpty()}">관광지는 그대로 두고 하루 시간과 체류시간만 바꾼 수정안이에요.</p>
+<!--/* 바꾼 수만큼이 교체이고, 그보다 많이 넣은 곳은 더한 관광지다(문장 요청의 '○○도 넣어 줘'). */-->
+<p th:if="${!rev.replaced.isEmpty()}" th:text="${'바꾼 관광지: ' + #strings.listJoin(rev.replaced.![name], ', ') + ' → ' + #strings.listJoin(rev.added.subList(0, rev.replaced.size()).![name], ', ')}"></p>
+<p th:if="${rev.added.size() > rev.replaced.size()}" th:text="${'더한 관광지: ' + #strings.listJoin(rev.added.subList(rev.replaced.size(), rev.added.size()).![name], ', ')}"></p>
+<p th:if="${rev.added.isEmpty()}">관광지는 그대로 두고 시간·이동수단·식당·숙소 같은 조건만 바꾼 수정안이에요.</p>
 <p th:text="${'유지한 관광지: ' + #strings.listJoin(rev.kept.![name], ', ') + ' (장소만 유지하고 방문 시각은 다시 계산해요)'}"></p>
 <p th:if="${rev.reason != null and rev.request == null}" th:text="${'교체 이유: ' + T(com.travel.travel_recommendation.service.ItineraryJobService.ReplaceReason).valueOf(rev.reason).label}"></p>
 <p th:if="${rev.request != null}" th:text="${'요청한 내용: ' + rev.request}"></p>
@@ -219,7 +221,7 @@
 <section class="condition-section" th:if="${job.result != null}" aria-labelledby="revise-title">
 <h2 id="revise-title">일정 수정하기</h2>
 <div th:replace="~{fragments/revision-scope :: scope}"></div>
-<p class="help">바꾸고 싶은 점을 문장으로 적으면 AI가 확인된 후보 안에서 바꿀 관광지와 시간을 골라 새 수정안을 만들어요. 관광지 하나만 바꾸려면 일정의 '다른 곳으로 바꾸기'를 누르세요. 이 초안은 바뀌지 않아요.</p>
+<p class="help">바꾸고 싶은 점을 문장으로 적으면 AI가 확인된 후보 안에서 관광지·식당·숙소·이동수단·시간을 골라 새 수정안을 만들어요. 관광지 하나만 바꾸려면 일정의 '다른 곳으로 바꾸기'를 누르세요. 이 초안은 바뀌지 않아요.</p>
 <p class="notice" role="status" th:if="${aiQuestion != null}" th:text="${'확인이 필요해요 · ' + aiQuestion}"></p>
 <p class="notice" role="status" th:if="${aiNotice != null}" th:text="${'바꿀 수 없는 요청이에요 · ' + aiNotice}"></p>
 <p role="alert" th:if="${aiError != null}" th:text="${aiError}"></p>
@@ -233,6 +235,9 @@
 <button type="button" class="button-quiet button-small" data-example="비가 올 수 있으니 실내 장소 위주로 바꿔 주세요.">실내 장소로</button>
 <button type="button" class="button-quiet button-small" data-example="사람 많은 곳 대신 조용한 곳으로 바꿔 주세요.">조용한 곳으로</button>
 <button type="button" class="button-quiet button-small" data-example="관광지마다 2시간씩 머물고 싶어요.">2시간씩 머물기</button>
+<button type="button" class="button-quiet button-small" data-example="자동차 대신 대중교통으로 다닐게요.">대중교통으로</button>
+<button type="button" class="button-quiet button-small" data-example="첫날 저녁 식당은 다른 곳으로 바꿔 주세요.">식당 바꾸기</button>
+<button type="button" class="button-quiet button-small" data-example="숙소를 바다와 가까운 곳으로 바꿔 주세요.">숙소 바꾸기</button>
 </div>
 <textarea id="ai-request" name="request" maxlength="300" required rows="3"
           placeholder="예) 첫째 날 박물관은 빼고 바다가 보이는 곳으로 바꿔 줘. 아침은 10시부터 시작하고 싶어요."

@@ -31,6 +31,9 @@ public class ItineraryJobService {
     // 트랜잭션이 걸린 공개 메서드를 같은 객체 안에서 부를 때 프록시를 거치게 한다.
     private final org.springframework.beans.factory.ObjectProvider<ItineraryJobService> selfProvider;
     private final ObjectMapper mapper;
+    // 둘 다 버스 안내·장소 수집 서비스와 서로를 참조하지 않도록 필요할 때 꺼내 쓴다.
+    private final org.springframework.beans.factory.ObjectProvider<HomeTripService> homeTrips;
+    private final org.springframework.beans.factory.ObjectProvider<PlaceDiscoveryService> discoveries;
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(ItineraryJobService.class);
     public record Work(UUID id,Input input) {}
 
@@ -210,12 +213,23 @@ public class ItineraryJobService {
     public UUID revise(UUID sourceId,String login,byte[] hash,List<Long> replace,ReplaceReason reason,
                        LocalTime start,LocalTime end,int visitMinutes) {
         if(reason==ReplaceReason.AI_REQUEST) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"교체 이유를 다시 골라 주세요.");
-        return revise(sourceId,login,hash,replace,null,reason,start,end,visitMinutes,null,null,List.of(),null);
+        return revise(sourceId,login,hash,replace,null,reason,start,end,visitMinutes,null,null,List.of(),Changes.NONE);
     }
 
-    /** add가 있으면 그 후보로 순서대로 바꾸고, 없으면 기존 규칙(후보 순서·실내 우선)으로 고른다. home이 null이면 원본의 집 출발·귀가를 쓴다. */
+    /**
+     * 수정 요청으로 관광지·시간 말고 함께 바꾸는 것. null이면 원본 초안의 값을 그대로 쓴다.
+     * transport는 이동수단, choices는 식당·숙소 선택, home은 집 출발·귀가(이동수단이 바뀌면 편도 시간도 다시 찾은 값)다.
+     */
+    public record Changes(KakaoMapClient.Transport transport,Choices choices,HomeTrip home) {
+        static final Changes NONE=new Changes(null,null,null);
+    }
+
+    /**
+     * add가 있으면 그 후보로 순서대로 바꾸고(replace보다 많으면 남는 곳은 더한다), 없으면 기존 규칙(후보 순서·실내 우선)으로 고른다.
+     * add에는 확인된 후보 목록 밖이라도 이번 요청으로 카카오에서 찾아 저장한 이 지역 관광지가 올 수 있다.
+     */
     private UUID revise(UUID sourceId,String login,byte[] hash,List<Long> replace,List<Long> add,ReplaceReason reason,
-                        LocalTime start,LocalTime end,int visitMinutes,String request,String explanation,List<String> unavailable,HomeTrip home) {
+                        LocalTime start,LocalTime end,int visitMinutes,String request,String explanation,List<String> unavailable,Changes changes) {
         var source=access.owned(sourceId,login,hash,"ITINERARY");
         if(!"COMPLETED".equals(source.getStatus()) || source.getResultJson()==null)
             throw new ResponseStatusException(HttpStatus.CONFLICT,"완성된 일정 초안에서만 수정안을 만들 수 있어요.");
@@ -253,15 +267,18 @@ public class ItineraryJobService {
         if(reason==ReplaceReason.INDOOR)
             spare=spare.stream().sorted(Comparator.comparingInt(p->indoor(p)?0:1)).toList();
         if(add!=null) {
-            // AI가 고른 후보는 현재 확인된 후보 중 원본에 없던 곳이어야 한다.
+            // AI가 고른 후보는 현재 확인된 후보 중 원본에 없던 곳이어야 한다. 후보 목록(개수 제한) 밖이면 이 지역의 확인된 관광지인지 다시 본다.
             var byId=new LinkedHashMap<Long,PlaceCandidate>(); spare.forEach(p->byId.put(p.placeId(),p));
-            if(add.size()!=chosen.size() || !byId.keySet().containsAll(add) || new HashSet<>(add).size()!=add.size())
+            for(Long id:add) if(!byId.containsKey(id) && !tried.contains(id)) extraCandidate(id,pool).ifPresent(p->byId.put(p.placeId(),p));
+            if(add.size()<chosen.size() || !byId.keySet().containsAll(add) || new HashSet<>(add).size()!=add.size())
                 throw new ResponseStatusException(HttpStatus.CONFLICT,"수정안의 후보가 바뀌었어요. 다시 요청해 주세요.");
-            spare=add.stream().map(byId::get).toList();
+            var picked=add.stream().map(byId::get).toList();
+            spare=new ArrayList<>(picked); byId.values().stream().filter(p->!picked.contains(p)).forEach(spare::add);
         }
         if(spare.size()<chosen.size())
             throw new ResponseStatusException(HttpStatus.CONFLICT,"바꿀 수 있는 다른 관광지 후보가 부족해요. 장소 목록에서 후보를 더 찾아본 뒤 다시 시도해 주세요.");
-        var added=spare.subList(0,chosen.size());
+        // 바꾸는 수만큼, 더하는 요청이면 그만큼 더 넣는다.
+        var added=spare.subList(0,add==null?chosen.size():add.size());
         // 원본이 남는 시간에 더 넣은 관광지는 '유지해야 하는 곳'으로 묶지 않고 예비 관광지 맨 앞에 둔다.
         // 하루 시간이 남으면 다시 들어가고, 시간을 줄인 수정안에서는 빠진다.
         var firm=firmPlaceIds(original);
@@ -270,18 +287,25 @@ public class ItineraryJobService {
         final var keptIds=keptFirm.stream().map(PlaceCandidate::placeId).toList();
         var extras=kept.stream().filter(p->!keptIds.contains(p.placeId())).toList();
         var attractions=new ArrayList<>(keptFirm); attractions.addAll(added);
+        // 식당·숙소는 지금 확인된 후보를 쓰되, 이번 요청에서 고른 식당·숙소가 원본 초안에만 있으면(주변 식당 등) 함께 넣는다.
+        var choices=changes.choices()==null?original.choices():changes.choices();
+        var restaurants=new ArrayList<>(pool.restaurants());
+        original.places().restaurants().stream().filter(p->choices.preferRestaurants().contains(p.placeId()) && !restaurants.contains(p)).forEach(restaurants::add);
+        var stays=new ArrayList<>(pool.accommodations());
+        original.places().accommodations().stream().filter(p->p.placeId().equals(choices.stayPlaceId()) && !stays.contains(p)).forEach(stays::add);
         var places=new PlaceCandidateView(pool.jobId(),pool.destination(),pool.durationDays(),
-            pool.accommodationNeeded(),List.copyOf(attractions),pool.accommodations(),pool.restaurants());
+            pool.accommodationNeeded(),List.copyOf(attractions),List.copyOf(stays),List.copyOf(restaurants));
         var revision=new Revision(sourceId,refs(keptFirm),refs(placed.stream().filter(p->chosen.contains(p.placeId())).toList()),
             refs(added),chosen.isEmpty() && reason!=ReplaceReason.AI_REQUEST?null:reason.name(),Instant.now(),request,explanation,
             List.copyOf(unavailable));
         // 새로 넣지 않고 남은 후보는 이 수정안의 예비 관광지로 둔다.
         var spareLeft=new ArrayList<>(extras);
-        spare.subList(chosen.size(),spare.size()).stream().limit(MAX_RESERVE).forEach(spareLeft::add);
+        spare.subList(added.size(),spare.size()).stream().limit(MAX_RESERVE).forEach(spareLeft::add);
         // 저녁 관광 후보와 집 출발·귀가 설정은 원본 초안에서 이어받는다. 이번에 관광지로 넣은 곳은 저녁 관광 후보에서 뺀다.
         var evening=original.evening().stream().filter(p->!attractions.contains(p) && !spareLeft.contains(p)).toList();
-        var input=new Input(original.recommendationId(),places,original.conditions(),start,end,original.transport(),visitMinutes,revision,
-            original.constraints(),List.copyOf(spareLeft),evening,home==null?original.home():home);
+        var input=new Input(original.recommendationId(),places,original.conditions(),start,end,
+            changes.transport()==null?original.transport():changes.transport(),visitMinutes,revision,
+            original.constraints(),List.copyOf(spareLeft),evening,changes.home()==null?original.home():changes.home(),choices);
         generator.checkInput(input);
         var parent=access.owned(original.recommendationId(),login,hash,"RECOMMENDATION");
         return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();
@@ -310,22 +334,24 @@ public class ItineraryJobService {
         String text=request==null?"":request.strip();
         if(text.isEmpty() || text.length()>300) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"수정 요청을 1~300자로 적어 주세요.");
         var context=self().aiContext(sourceId,login,hash);
-        OpenAiRevisionClient.Proposal proposal=null; String failure=null;
-        for(int attempt=0;attempt<3 && proposal==null;attempt++) {
-            try {
-                proposal=revisions.propose(context.input().conditions(),context.input(),context.result(),context.current(),
-                    context.spare(),context.fixed(),text,failure);
-            } catch(RecommendationException e) {
-                if(!"AI_INVALID_RESPONSE".equals(e.getCode())) throw e;
-                // 세 번 모두 형식이 틀리면 내부 사유(필드 이름) 대신 사용자가 고칠 수 있는 안내를 보여 준다.
-                if(attempt==2) throw new RecommendationException("AI_INVALID_RESPONSE",
-                    "AI가 이 요청을 수정안으로 바꾸지 못했어요. 바꿀 관광지나 시각을 한 가지씩 짧게 적어 주세요.");
-                failure=e.getMessage();
+        var proposal=propose(context,text);
+        if(proposal.unsupported()) return new AiRevision(null,null,proposal.question());
+        // 사용자가 콕 집은 관광지가 후보에 없으면 카카오에서 이 지역 관광지로 찾아 보고, 찾으면 후보에 넣어 한 번 더 요청한다.
+        var discovery=discoveries.getIfAvailable();
+        if(proposal.exactPlace() && !proposal.unavailable().isEmpty() && discovery!=null) {
+            var found=new ArrayList<OpenAiRevisionClient.Candidate>();
+            var destination=context.input().places().destination();
+            for(String name:proposal.unavailable())
+                discovery.findAttraction(destination.placeId(),destination.region(),name).map(OpenAiRevisionClient::candidate).ifPresent(found::add);
+            if(!found.isEmpty()) {
+                found.addAll(context.spare());
+                context=new AiContext(context.input(),context.result(),context.current(),List.copyOf(found),context.fixed());
+                proposal=propose(context,text);
+                if(proposal.unsupported()) return new AiRevision(null,null,proposal.question());
             }
         }
-        if(proposal.unsupported()) return new AiRevision(null,null,proposal.question());
         if(proposal.clarify()) return new AiRevision(null,proposal.question());
-        // 사용자가 콕 집은 장소가 후보에 없으면 처음에는 임의로 바꾸지 않고 되묻는다. 같은 장소를 다시 요청하면 비슷한 곳으로 바꾼다.
+        // 그래도 후보에 없으면 처음에는 임의로 바꾸지 않고 되묻는다. 같은 장소를 다시 요청하면 비슷한 곳으로 바꾼다.
         var missing=proposal.unavailable();
         if(proposal.exactPlace() && !missing.isEmpty() && !askedBefore.containsAll(missing))
             return new AiRevision(null,unavailableQuestion(missing),null,missing);
@@ -333,7 +359,8 @@ public class ItineraryJobService {
         LocalTime start=proposal.start()==null?original.start():proposal.start();
         LocalTime end=proposal.end()==null?original.end():proposal.end();
         int visit=proposal.visitMinutes()==null?original.visitMinutes():proposal.visitMinutes();
-        // 첫날 집 출발·마지막 날 귀가 시각은 집 출발·귀가를 정한 일정에서만 바꾼다. 출발지·편도 시간은 그대로다.
+        var transport=proposal.transport()==null?original.transport():proposal.transport();
+        // 첫날 집 출발·마지막 날 귀가 시각은 집 출발·귀가를 정한 일정에서만 바꾼다.
         var home=original.home();
         // "첫날 11시에 도착"처럼 도착 시각을 말했으면 편도 시간과 여유 10분을 빼서 집 출발 시각을 서버가 계산한다(10분 단위로 내림).
         LocalTime departAt=proposal.departAt();
@@ -346,21 +373,74 @@ public class ItineraryJobService {
             home=new HomeTrip(home.origin(),departAt==null?home.departAt():departAt,
                 proposal.arriveBy()==null?home.arriveBy():proposal.arriveBy(),home.minutes(),home.basis(),home.checkedAt(),
                 home.returnPlace(),home.returnMinutes(),home.returnBasis());
-        if(proposal.replace().isEmpty() && start.equals(original.start()) && end.equals(original.end()) && visit==original.visitMinutes()
-                && Objects.equals(home,original.home()))
+        // 요청 문장에 편도 시간을 적었으면(예: 여행지까지 편도 4시간) 그 값을 쓰고, 이동수단만 바뀌면 새 이동수단으로 다시 찾는다.
+        // GPT가 지금 값을 그대로 다시 적은 경우는 바꾸지 않은 것으로 본다.
+        Integer typedOut=home!=null && proposal.homeMinutes()!=null && proposal.homeMinutes()!=home.minutes()?proposal.homeMinutes():null;
+        Integer typedBack=home!=null && proposal.returnMinutes()!=null && !proposal.returnMinutes().equals(home.returnMinutes())?proposal.returnMinutes():null;
+        if(home!=null && (transport!=original.transport() || typedOut!=null || typedBack!=null)) {
+            try { home=homeFor(home,original.places(),transport,typedOut,typedBack); }
+            catch(RecommendationException error) {
+                if(!error.getCode().startsWith("HOME_") && !error.getCode().startsWith("MAP_")) throw error;
+                return new AiRevision(null,"이동수단을 바꾸면 집 ↔ 여행지 이동시간도 다시 찾아야 하는데 찾지 못했어요. "
+                    +"편도 시간을 함께 적어 다시 요청해 주세요. 예) 대중교통으로 다닐게요. 여행지까지 편도 4시간 걸려요.");
+            }
+        }
+        // 식당·숙소 선택은 원본 초안의 선택에 이번 요청을 더한다. 빼 달라고 한 식당과 가고 싶다는 식당이 겹치면 이번 요청을 따른다.
+        var before=original.choices();
+        var avoid=new LinkedHashSet<>(before.avoidRestaurants()); avoid.addAll(proposal.avoidRestaurants()); proposal.preferRestaurants().forEach(avoid::remove);
+        var prefer=new LinkedHashSet<>(before.preferRestaurants()); prefer.addAll(proposal.preferRestaurants()); proposal.avoidRestaurants().forEach(prefer::remove);
+        var choices=new Choices(List.copyOf(avoid),List.copyOf(prefer),proposal.stayPlaceId()==null?before.stayPlaceId():proposal.stayPlaceId());
+        if(proposal.replace().isEmpty() && proposal.add().isEmpty() && start.equals(original.start()) && end.equals(original.end())
+                && visit==original.visitMinutes() && transport==original.transport() && Objects.equals(home,original.home()) && choices.equals(before))
             return new AiRevision(null,"바꿀 내용을 찾지 못했어요. 어떤 관광지나 시간을 바꾸고 싶은지 조금 더 구체적으로 적어 주세요.");
         return new AiRevision(self().reviseAi(sourceId,login,hash,proposal.replace(),proposal.add(),start,end,visit,text,
-            proposal.explanation(),missing,home),null);
+            proposal.explanation(),missing,new Changes(transport,choices,home)),null);
     }
+
+    /** GPT에 수정안을 요청한다. 형식이 틀리면 사유를 알려 최대 2회 다시 요청한다. */
+    private OpenAiRevisionClient.Proposal propose(AiContext context,String text) {
+        String failure=null;
+        for(int attempt=0;;attempt++) {
+            try {
+                return revisions.propose(context.input().conditions(),context.input(),context.result(),context.current(),
+                    context.spare(),context.fixed(),text,failure);
+            } catch(RecommendationException e) {
+                if(!"AI_INVALID_RESPONSE".equals(e.getCode())) throw e;
+                // 세 번 모두 형식이 틀리면 내부 사유(필드 이름) 대신 사용자가 고칠 수 있는 안내를 보여 준다.
+                if(attempt==2) throw new RecommendationException("AI_INVALID_RESPONSE",
+                    "AI가 이 요청을 수정안으로 바꾸지 못했어요. 바꿀 관광지나 시각을 한 가지씩 짧게 적어 주세요.");
+                failure=e.getMessage();
+            }
+        }
+    }
+
+    /**
+     * 집 ↔ 여행지 편도 시간을 새 이동수단·요청한 시간으로 다시 정한다. 요청 문장에 적은 시간 → 전에 직접 적은 시간 → 새로 찾기 순서다.
+     * 출발지·돌아갈 곳은 저장해 둔 시·구 이름으로 다시 위치를 찾는다. 가는 길만 적으면 돌아올 곳이 같을 때 오는 길도 같게 본다.
+     */
+    private HomeTrip homeFor(HomeTrip home,PlaceCandidateView places,KakaoMapClient.Transport transport,Integer typedOut,Integer typedBack) {
+        String manual="직접 입력한 편도 시간";
+        boolean sameReturn=home.returnPlace().equals(home.origin());
+        Integer out=typedOut!=null?typedOut:manual.equals(home.basis())?Integer.valueOf(home.minutes()):null;
+        Integer back=typedBack!=null?typedBack:sameReturn && typedOut!=null?typedOut:manual.equals(home.returnBasis())?home.returnMinutes():null;
+        // 두 방향 모두 시간을 알면 위치를 다시 찾지 않는다.
+        if(out!=null && back!=null)
+            return new HomeTrip(home.origin(),home.departAt(),home.arriveBy(),out,manual,null,home.returnPlace(),back,manual);
+        var service=homeTrips.getIfAvailable();
+        if(service==null) return home;
+        return service.resolve(new HomeTripService.Request(home.origin(),null,null,home.departAt(),home.arriveBy(),out,
+            sameReturn?null:home.returnPlace(),back),places,transport);
+    }
+
     /** 콕 집은 장소가 후보에 없을 때 되묻는 서버 고정 문구. GPT 문장 대신 써서 할 수 있는 일을 정확히 알린다. */
     static String unavailableQuestion(List<String> names) {
-        return "'"+String.join("', '",names)+"'은(는) 지금 확인된 교체 후보에 없어요. 장소 목록에서 '카카오에서 장소 더 찾아보기'를 누른 뒤 "
-            +"다시 요청하거나, 같은 요청을 한 번 더 보내면 비슷한 곳으로 바꾼 수정안을 만들어 드려요.";
+        return "'"+String.join("', '",names)+"'은(는) 이 지역에서 확인된 관광지로 찾지 못했어요. 장소 이름을 다시 확인해 적거나, "
+            +"같은 요청을 한 번 더 보내면 비슷한 곳으로 바꾼 수정안을 만들어 드려요.";
     }
     @Transactional(timeout=10)
     public UUID reviseAi(UUID sourceId,String login,byte[] hash,List<Long> replace,List<Long> add,
-                         LocalTime start,LocalTime end,int visitMinutes,String request,String explanation,List<String> unavailable,HomeTrip home) {
-        return revise(sourceId,login,hash,replace,add,ReplaceReason.AI_REQUEST,start,end,visitMinutes,request,explanation,unavailable,home);
+                         LocalTime start,LocalTime end,int visitMinutes,String request,String explanation,List<String> unavailable,Changes changes) {
+        return revise(sourceId,login,hash,replace,add,ReplaceReason.AI_REQUEST,start,end,visitMinutes,request,explanation,unavailable,changes);
     }
     public record AiContext(Input input,Result result,List<OpenAiRevisionClient.Candidate> current,
                             List<OpenAiRevisionClient.Candidate> spare,Set<Long> fixed) {}
@@ -482,6 +562,13 @@ public class ItineraryJobService {
         jobs.flush();
     }
 
+    /** 후보 목록(개수 제한) 밖의 관광지: 이 지역의 사용 중인 관광지이고 24시간 안에 확인한 카카오 장소만 쓴다. */
+    private java.util.Optional<PlaceCandidate> extraCandidate(Long id,PlaceCandidateView pool) {
+        return places.findById(id).filter(Place::isActive).filter(p->"ATTRACTION".equals(p.getPlaceType()))
+            .filter(p->pool.destination().region().equals(p.getRegion()))
+            .filter(p->p.getVerifiedAt()!=null && p.getVerifiedAt().isAfter(java.time.LocalDateTime.now(ZoneOffset.UTC).minusHours(24)))
+            .map(candidates::candidate);
+    }
     /**
      * 원본 초안에서 빠지면 안 되던 관광지. 새 초안이면 일정에 쓰기로 고른 관광지 전체, 수정안이면 유지·새로 넣은 곳이다.
      * 남는 시간에 더한 예비 관광지는 여기에 들지 않는다.

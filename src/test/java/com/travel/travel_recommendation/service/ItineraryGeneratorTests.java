@@ -198,6 +198,21 @@ class ItineraryGeneratorTests {
         var morning=generator.generate(input(2,LocalTime.of(18,0)));
         assertThat(morning.days().getFirst().items().getFirst().type()).isEqualTo("VISIT");
     }
+    // 수정 요청으로 뺀 식당은 쓰지 않고, 가고 싶다고 한 식당은 가까우면 먼저 쓰며, 고른 숙소를 쓴다.
+    @Test void revisionChoicesSteerRestaurantsAndStay() {
+        var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,null,2,true,false,List.of(),"");
+        var pool=new PlaceCandidateView(UUID.randomUUID(),new DestinationCandidate(99L,"강릉","강원","소개","https://www.gn.go.kr/",LocalDateTime.of(2026,9,1,0,0)),2,true,
+            List.of(place(1),place(2)),List.of(place(5),place(40)),List.of(place(3),place(6),place(7),place(8)));
+        var base=new Input(pool.jobId(),pool,conditions,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90);
+        var input=base.withChoices(new Choices(List.of(3L),List.of(8L),40L));
+        var result=generator.generate(input);
+        var meals=result.days().stream().flatMap(d->d.items().stream()).filter(i->i.type().equals("MEAL")).toList();
+        assertThat(meals).extracting(Item::placeId).doesNotContain(3L).contains(8L);
+        assertThat(meals.stream().filter(m->m.placeId()==8L).findFirst().orElseThrow().note()).contains("수정 요청에서 가고 싶다고 한 식당");
+        assertThat(result.lodging().chosenPlaceId()).isEqualTo(40L);
+        assertThat(result.lodging().reason()).contains("수정 요청");
+        generator.validate(input,result);
+    }
     // 돌아갈 곳이 출발지와 다르면 마지막 날 그곳까지의 시간(200분)으로 관광을 마치는 시각을 정하고, 마지막 이동도 그곳으로 간다.
     @Test void returnToAnotherPlaceUsesItsOwnTravelTime() {
         var home=new HomeTrip("서울 송파구",LocalTime.of(7,0),LocalTime.of(20,0),120,"직접 입력한 편도 시간",null,"대전 서구",200,"직접 입력한 편도 시간");
@@ -425,10 +440,17 @@ class ItineraryGeneratorTests {
     // 필수 방문 장소는 시간이 부족해도 빼지 않고, 어느 장소 때문인지 알린다.
     @Test void requiredPlaceThatDoesNotFitFailsWithItsName() {
         var base=input(1,LocalTime.of(13,0));
-        var input=new Input(base.recommendationId(),base.places(),base.conditions(),base.start(),base.end(),base.transport(),90,null,
+        // 하루에 한 곳만 들어가면 필수 장소를 먼저 넣고, 필수가 아닌 곳을 뺀다.
+        var one=new Input(base.recommendationId(),base.places(),base.conditions(),base.start(),base.end(),base.transport(),90,null,
             new Constraints(List.of(2L),null,false,null,List.of()));
-        assertThatThrownBy(()->generator.generate(input)).isInstanceOfSatisfying(RecommendationException.class,e->{
-            assertThat(e.getCode()).isEqualTo("TIME_OVERLAP"); assertThat(e.getMessage()).contains("장소2"); });
+        var result=generator.generate(one);
+        assertThat(result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).map(Item::placeId)).containsExactly(2L);
+        assertThat(result.skipped()).extracting(PlaceRef::placeId).containsExactly(1L);
+        // 필수 장소끼리도 다 들어가지 않으면 빠진 필수 장소 이름과 함께 알린다.
+        var both=new Input(base.recommendationId(),base.places(),base.conditions(),base.start(),base.end(),base.transport(),90,null,
+            new Constraints(List.of(1L,2L),null,false,null,List.of()));
+        assertThatThrownBy(()->generator.generate(both)).isInstanceOfSatisfying(RecommendationException.class,e->{
+            assertThat(e.getCode()).isEqualTo("TIME_OVERLAP"); assertThat(e.getMessage()).containsAnyOf("장소1","장소2"); });
     }
     // 하루가 길고 체류시간이 짧으면 하루에 여러 곳을 넣고, 17시가 지나면 다른 음식점에서 저녁도 넣는다.
     @Test void longDayFitsMoreAttractionsAndAddsDinner() {
