@@ -80,7 +80,7 @@ public class PlaceCandidateService {
         // 여행 목적 시설(예: 아쿠아리움)은 후보 수 제한에 밀리지 않도록 맨 앞에 둔다.
         var purposeIds = conditions.purposeSearch() == null ? List.<Long>of()
             : conditions.purposeSearch().placesIn(destinationId).stream().map(p -> p.placeId()).toList();
-        // 고른 여행 취향(예: 문화·역사)에 맞는 관광지는 목적 시설 다음으로 둔다. 관광지는 최대 16곳까지만 후보가 되기 때문이다.
+        // 고른 여행 취향(예: 문화·역사)에 맞는 관광지는 목적 시설 다음으로 둔다. 관광지 후보 수는 여행 일수로 정해져(TripConstraints.candidateLimit) 뒤쪽은 잘리기 때문이다.
         var themes = conditions.themeNames();
         var candidates = places.findLocalPlaces(current.getRegion()).stream()
             .filter(place -> usable(place, current.getRegion()))
@@ -96,8 +96,8 @@ public class PlaceCandidateService {
             if(seen.add(key)) distinct.add(place);
         }
         return new PlaceCandidateView(jobId, destination, conditions.durationDays(), needsAccommodation,
-            ofType(distinct, "ATTRACTION"), needsAccommodation ? ofType(distinct, "ACCOMMODATION") : List.of(),
-            ofType(distinct, "RESTAURANT"));
+            ofType(distinct, "ATTRACTION", TripConstraints.candidateLimit(conditions.durationDays())),
+            needsAccommodation ? ofType(distinct, "ACCOMMODATION", 5) : List.of(), ofType(distinct, "RESTAURANT", 8));
     }
 
     private boolean usable(Place place, String region) {
@@ -127,8 +127,7 @@ public class PlaceCandidateService {
         }
     }
 
-    private List<PlaceCandidate> ofType(List<Place> candidates, String type) {
-        int limit="ATTRACTION".equals(type)?16:"RESTAURANT".equals(type)?8:5;
+    private List<PlaceCandidate> ofType(List<Place> candidates, String type, int limit) {
         return candidates.stream().filter(place -> type.equals(place.getPlaceType())).limit(limit).map(this::candidate).toList();
     }
 

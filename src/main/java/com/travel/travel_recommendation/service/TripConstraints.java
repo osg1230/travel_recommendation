@@ -13,8 +13,15 @@ import java.util.*;
 public final class TripConstraints {
     private TripConstraints() {}
 
-    /** 한 일정에 넣을 수 있는 관광지 수. 장소 목록에 보여 주는 관광지 후보 수(16곳)와 같다. */
-    public static final int MAX_TOTAL = 16;
+    /**
+     * 하루 방문 수를 정하지 않았을 때 하루에 넣는 관광지 상한. 한국관광공사 당일 추천 코스(700개)의 하루 방문지 중앙값 4곳과
+     * 여행 계획 자료(하루 활동 중앙값 4개, 그중 1/3은 식사)를 참고해, 하루 시간이 길어도 4곳을 넘기지 않는다(2026-09-25 조사).
+     */
+    public static final int MAX_AUTO_DAILY = 4;
+    /** 한 일정에 넣을 수 있는 관광지 수. 7일 여행에 하루 3곳씩이다. */
+    public static final int MAX_TOTAL = 21;
+    /** 장소 목록에 보여 주는 관광지 후보 수의 최소값. 1~3일 여행은 이만큼만 보여 준다. */
+    public static final int MIN_CANDIDATES = 16;
     /** 하루 방문 수로 고를 수 있는 값의 범위. 실제로 들어가는 수는 하루 시간으로 따로 추정한다. */
     public static final int MAX_DAILY = 10;
     public static final Set<String> BUDGET_BASES = Set.of("TOTAL", "PER_PERSON");
@@ -113,27 +120,62 @@ public final class TripConstraints {
     public static final LocalTime STAY_DINNER_AT = LocalTime.of(18, 0);
 
     /**
-     * 숙박하는 날에는 하루 종료 시간을 "관광을 마치는 시간"으로 보고, 숙소 도착과 숙소 근처 저녁은 이 시각까지 둘 수 있다.
-     * 사용자가 더 늦게 끝나도록 정했으면 그 시간을 쓴다.
+     * 숙박하는 날에는 하루 종료 시간을 "관광을 마치는 시간"으로 보고, 숙소 도착·저녁 식사·저녁 관광과 숙소 복귀는 이 시각까지 둘 수 있다.
+     * 여행 코스 안내에서 저녁 산책·야경 뒤 보통 21~22시에 숙소로 돌아오므로 22시로 둔다(2026-09-25 조사).
      */
     public static LocalTime eveningLimit(LocalTime end) {
-        LocalTime evening = LocalTime.of(21, 0);
+        LocalTime evening = LocalTime.of(22, 0);
         return end.isAfter(evening) ? end : evening;
     }
 
+    /** 저녁 관광으로 어울리는 관광지 분류(카카오 분류의 마지막 단계). 밖에서 걷거나 야경을 보는 곳이다. */
+    private static final List<String> EVENING_KINDS = List.of("해변", "전망대", "테마거리", "카페거리", "먹자골목", "광장", "케이블카",
+        "호수", "저수지", "연못", "하천", "유원지", "공원", "거리");
+    /** 이름에 들어 있으면 저녁 관광으로 보는 말. 분류가 '관광,명소'로만 된 곳(예: 여수낭만포차거리)을 찾기 위해 쓴다. */
+    private static final List<String> EVENING_WORDS = List.of("야경", "야시장", "포차", "거리", "공원", "해변", "해수욕장", "전망대",
+        "스카이워크", "케이블카", "다리", "대교", "광장", "호수", "타워");
+    /** 저녁 관광 후보 수. 숙박하는 날마다 한 곳씩 쓰고, 운영시간·거리로 빠질 곳을 대신할 만큼 둔다. */
+    static final int MAX_EVENING = 8;
+
     /**
-     * 하루 시간에서 식사(식당까지 이동 포함)를 빼고 남은 시간에 관광지가 몇 곳 들어가는지 추정한다(최소 1곳).
+     * 한국관광공사 야간관광 실태조사(2022)에서 많이 한 활동(야간 산책·식도락·도시야경·야시장)에 맞는 관광지인지 본다.
+     * 숲·사찰·박물관처럼 저녁에 닫거나 어두운 곳은 고르지 않는다. 실제 야간 개방·조명 여부는 확인한 것이 아니다.
+     */
+    public static boolean eveningSpot(PlaceCandidate place) {
+        String kind = kind(place);
+        if (EVENING_KINDS.stream().anyMatch(kind::contains)) return true;
+        String subtype = place.subtype() == null ? "" : place.subtype();
+        if (!subtype.isBlank() && !subtype.contains("관광,명소") && !subtype.contains("거리") && !subtype.contains("공원")) return false;
+        return EVENING_WORDS.stream().anyMatch(place.name()::contains);
+    }
+
+    /** 일정에 쓰려고 고른 관광지를 뺀 후보 중 저녁 관광으로 어울리는 곳. 후보 순서(가운데와 가까운 순)를 따른다. */
+    public static List<PlaceCandidate> eveningPlaces(List<PlaceCandidate> ordered, List<PlaceCandidate> selected) {
+        return ordered.stream().filter(p -> !selected.contains(p) && eveningSpot(p)).limit(MAX_EVENING).toList();
+    }
+
+    /**
+     * 하루 시간에서 식사(식당까지 이동 포함)를 빼고 남은 시간에 관광지가 몇 곳 들어가는지 추정한다(최소 1곳, 최대 MAX_AUTO_DAILY곳).
      * 관광지 한 곳에는 체류시간과 이동 약 30분이 든다고 본다. 예) 09:00~18:00, 체류 90분이면 3곳.
      */
     public static int estimatedDailyCapacity(LocalTime start, LocalTime end, int visitMinutes) {
         int meals = includesDinner(end) ? 2 : 1;
         long minutes = Duration.between(start, end).toMinutes() - meals * (MEAL_MINUTES + MOVE_MINUTES);
-        return (int) Math.max(1, minutes / (visitMinutes + MOVE_MINUTES));
+        return (int) Math.min(MAX_AUTO_DAILY, Math.max(1, minutes / (visitMinutes + MOVE_MINUTES)));
+    }
+
+    /**
+     * 여행 일수에 맞춘 관광지 후보 수. 하루 최대 4곳씩 채울 만큼(전체 최대 21곳)에 섬처럼 갈 수 없는 곳을 대신할 예비 6곳을 더한다.
+     * 예) 1~2일 16곳, 4일 22곳, 5일 이상 26~27곳. 16곳으로 고정하면 4박 5일부터 넣을 관광지가 모자랐다.
+     */
+    public static int candidateLimit(Integer days) {
+        int d = days == null ? 1 : days;
+        return Math.max(MIN_CANDIDATES, Math.min(MAX_TOTAL, d * MAX_AUTO_DAILY) + ItineraryJobService.MAX_RESERVE);
     }
 
     /**
      * 일정에 넣을 관광지를 고른다. 필수 장소를 먼저 넣고 후보 순서대로 채운다.
-     * 하루 방문 수를 정하지 않으면 하루 시간으로 추정한 수(여행 일수 × 하루 수용량, 최대 16곳)만큼 고른다.
+     * 하루 방문 수를 정하지 않으면 하루 시간으로 추정한 수(여행 일수 × 하루 수용량, 최대 21곳)만큼 고른다.
      * @throws IllegalArgumentException 화면에 없는 장소·범위를 벗어난 값
      * @throws ConflictException 필수 조건끼리 또는 시간·후보 수와 모순될 때
      */

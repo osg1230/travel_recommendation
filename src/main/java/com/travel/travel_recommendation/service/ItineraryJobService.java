@@ -65,7 +65,7 @@ public class ItineraryJobService {
             ranked==null?List.of():ranked.centerPlaces(),days);
     }
 
-    /** 필수 방문 장소로 고를 수 있는 전체 관광지 후보(최대 16곳). */
+    /** 필수 방문 장소로 고를 수 있는 전체 관광지 후보(여행 일수에 따라 16~27곳). */
     @Transactional(readOnly=true,timeout=10)
     public List<PlaceCandidate> attractionPool(UUID parentId,long destinationId,String login,byte[] hash) {
         return candidates.find(parentId,destinationId,login,hash).attractions();
@@ -144,7 +144,12 @@ public class ItineraryJobService {
         }
         places=new PlaceCandidateView(places.jobId(),places.destination(),places.durationDays(),places.accommodationNeeded(),
             selected,places.accommodations(),places.restaurants());
-        var input=new Input(parentId,places,current.conditions(),start,end,transport,visitMinutes,null,constraints,reserve(ordered,selected));
+        // 저녁 관광 후보는 일정에 쓰려고 고른 관광지를 뺀 후보 중 야경·산책·야시장에 어울리는 곳이다(숙박하는 날에만 쓴다).
+        // 예비 관광지와 겹치지 않게 해, 저녁에 들른 곳이 낮 관광지로 다시 쓰이지 않게 한다.
+        var reserve=reserve(ordered,selected);
+        var daytime=new ArrayList<>(selected); daytime.addAll(reserve);
+        var evening=places.accommodationNeeded()?TripConstraints.eveningPlaces(ordered,daytime):List.<PlaceCandidate>of();
+        var input=new Input(parentId,places,current.conditions(),start,end,transport,visitMinutes,null,constraints,reserve,evening,null);
         generator.checkInput(input);
         var parent=access.owned(parentId,login,hash,"RECOMMENDATION");
         return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();
@@ -249,7 +254,10 @@ public class ItineraryJobService {
         // 새로 넣지 않고 남은 후보는 이 수정안의 예비 관광지로 둔다.
         var spareLeft=new ArrayList<>(extras);
         spare.subList(chosen.size(),spare.size()).stream().limit(MAX_RESERVE).forEach(spareLeft::add);
-        var input=new Input(original.recommendationId(),places,original.conditions(),start,end,original.transport(),visitMinutes,revision,original.constraints(),List.copyOf(spareLeft));
+        // 저녁 관광 후보와 집 출발·귀가 설정은 원본 초안에서 이어받는다. 이번에 관광지로 넣은 곳은 저녁 관광 후보에서 뺀다.
+        var evening=original.evening().stream().filter(p->!attractions.contains(p) && !spareLeft.contains(p)).toList();
+        var input=new Input(original.recommendationId(),places,original.conditions(),start,end,original.transport(),visitMinutes,revision,
+            original.constraints(),List.copyOf(spareLeft),evening,original.home());
         generator.checkInput(input);
         var parent=access.owned(original.recommendationId(),login,hash,"RECOMMENDATION");
         return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();
@@ -450,8 +458,10 @@ public class ItineraryJobService {
     /** 초안에 실제로 배치된 관광지. 시간이 부족하거나 너무 멀어 빠진 관광지(skipped)는 유지·교체 대상에서 뺀다. */
     public static List<PlaceCandidate> placed(Input input,Result result) {
         // 예비 관광지로 대신 넣은 곳도 포함해, 일정에 실제로 방문으로 들어간 관광지만 돌려준다.
+        // 저녁 관광은 숙소 근처에서 따로 고르는 곳이라 유지·교체 대상이 아니다(수정안을 만들면 다시 고른다).
         var visited=result.days().stream().flatMap(d->d.items().stream()).filter(i->"VISIT".equals(i.type())).map(Item::placeId).toList();
-        return input.attractionsWithReserve().stream().filter(p->visited.contains(p.placeId())).toList();
+        var daytime=new ArrayList<>(input.places().attractions()); daytime.addAll(input.reserve());
+        return daytime.stream().filter(p->visited.contains(p.placeId())).toList();
     }
     /** 원본 초안이 쓰려던 관광지(고른 곳·실제 방문한 예비 관광지·뺀 곳). 수정안의 새 후보에서 뺀다. */
     private static List<Long> tried(Input input,Result result) {

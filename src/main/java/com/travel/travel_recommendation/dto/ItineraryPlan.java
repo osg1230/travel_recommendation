@@ -11,10 +11,22 @@ public final class ItineraryPlan {
      * reserve는 일정에 쓰려고 고른 관광지(places.attractions)가 섬처럼 갈 수 없어 빠질 때 대신 넣거나,
      * 고른 관광지를 다 넣고도 하루 시간이 남을 때 더 넣는 예비 관광지다. 쓰지 않은 예비 관광지는 결과에 적지 않는다.
      */
+    /**
+     * evening은 숙박하는 날 저녁 식사 뒤에 들를 저녁 관광 후보(야경·산책·야시장 등)이고, home은 첫날 집 출발·마지막 날 귀가 설정이다.
+     * 둘 다 이전 작업 JSON에는 없으므로 없으면 저녁 관광·집 이동 없이 만든다.
+     */
     public record Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
                         LocalTime start, LocalTime end, Transport transport, int visitMinutes, Revision revision,
-                        Constraints constraints, List<PlaceCandidate> reserve) {
-        public Input { reserve = reserve == null ? List.of() : List.copyOf(reserve); }
+                        Constraints constraints, List<PlaceCandidate> reserve, List<PlaceCandidate> evening, HomeTrip home) {
+        public Input {
+            reserve = reserve == null ? List.of() : List.copyOf(reserve);
+            evening = evening == null ? List.of() : List.copyOf(evening);
+        }
+        public Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
+                     LocalTime start, LocalTime end, Transport transport, int visitMinutes, Revision revision,
+                     Constraints constraints, List<PlaceCandidate> reserve) {
+            this(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, null, null);
+        }
         // 처음 만드는 초안과 이전 작업 JSON은 수정 정보·조건 구분·예비 관광지 없이 그대로 사용한다.
         public Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
                      LocalTime start, LocalTime end, Transport transport, int visitMinutes) {
@@ -29,10 +41,44 @@ public final class ItineraryPlan {
                      Constraints constraints) {
             this(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, null);
         }
-        /** 고른 관광지와 예비 관광지 전체. 일정에 들어간 관광지가 어느 쪽이든 찾을 수 있다. */
+        /** 고른 관광지·예비 관광지·저녁 관광 후보 전체. 일정에 들어간 관광지가 어느 쪽이든 찾을 수 있다. */
         public List<PlaceCandidate> attractionsWithReserve() {
             var all = new ArrayList<>(places.attractions()); all.addAll(reserve);
+            evening.stream().filter(p -> !all.contains(p)).forEach(all::add);
             return List.copyOf(all);
+        }
+        public Input withPlaces(PlaceCandidateView places) {
+            return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home);
+        }
+        public Input withEvening(List<PlaceCandidate> evening) {
+            return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home);
+        }
+        public Input withHome(HomeTrip home) {
+            return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home);
+        }
+        private int dayCount() { return conditions == null || conditions.durationDays() == null ? 1 : conditions.durationDays(); }
+        /** n일차 관광을 시작하는 시각. 집 출발을 정했으면 첫날은 집에서 출발해 여행지에 도착한 시각이다. */
+        public LocalTime dayStart(int day) { return home != null && day == 1 ? home.arrivalAtDestination() : start; }
+        /** n일차 관광을 마치는 시각. 귀가 시각을 정했으면 마지막 날은 집에 도착하도록 여행지를 떠나는 시각이다. */
+        public LocalTime dayEnd(int day) { return home != null && day == dayCount() ? home.leaveDestination() : end; }
+    }
+    /**
+     * 집 출발·귀가(SFR 일정 초안 보완, 2026-09-24 결정). 첫날은 departAt에 집에서 출발하고 마지막 날은 arriveBy까지 집에 도착한다.
+     * minutes는 작업을 만들 때 조회하거나 사용자가 입력한 편도 이동시간(분)이며 오가는 시간이 같다고 본다.
+     * 출발지 좌표는 저장하지 않고 화면에 보여 줄 이름(시·구 단위)만 둔다. basis는 이동시간을 얻은 방법이다.
+     */
+    public record HomeTrip(String origin, LocalTime departAt, LocalTime arriveBy, int minutes, String basis, Instant checkedAt) {
+        /** 편도 이동에 더하는 여유(분). 장소 사이 이동과 같다. */
+        public static final int SPARE_MINUTES = 10;
+        /** 여행지에 도착하는 시각. 10분 단위로 올린다. */
+        public LocalTime arrivalAtDestination() {
+            int at = departAt.toSecondOfDay() / 60 + minutes + SPARE_MINUTES;
+            return LocalTime.ofSecondOfDay(Math.min(23 * 60 + 50, (at + 9) / 10 * 10) * 60L);
+        }
+        /** 제시간에 집에 도착하려면 여행지를 떠나야 하는 시각. 10분 단위로 내린다. */
+        public LocalTime leaveDestination() {
+            int at = arriveBy.toSecondOfDay() / 60 - minutes - SPARE_MINUTES;
+            return LocalTime.ofSecondOfDay(Math.max(0, at / 10 * 10) * 60L);
         }
     }
     /**

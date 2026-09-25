@@ -10,7 +10,7 @@
 <p th:text="${options.places.destination.name + ' · ' + (options.conditions.durationDays == null ? '기간 미정' : options.conditions.durationDays + '일')}"></p>
 <p class="intro">가까운 관광지를 묶고, 식사와 이동시간을 포함한 일정 초안을 만들어요.</p>
 <p>기본 시간은 09:00~18:00, 관광지 체류는 90분이에요. 원하는 시간으로 바꿔 주세요. 모든 날짜에 같은 시간을 적용해요.</p>
-<p class="help">하루 방문 수를 정하지 않으면 시간에 맞게 관광지를 골라요(전체 최대 16곳). 실제 이동시간을 넣어 보고 시간이 모자라면 그날은 줄여요. 이미 정한 조건을 바꾸려면 <a th:href="@{/travel/conditions/edit(recommendationId=${options.recommendationId})}">조건 수정하기</a>를 이용해 주세요.</p>
+<p class="help">하루 방문 수를 정하지 않으면 시간에 맞게 관광지를 골라요(하루 최대 4곳, 전체 최대 21곳). 실제 이동시간을 넣어 보고 시간이 모자라면 그날은 줄여요. 이미 정한 조건을 바꾸려면 <a th:href="@{/travel/conditions/edit(recommendationId=${options.recommendationId})}">조건 수정하기</a>를 이용해 주세요.</p>
 <div class="notice" role="alert" th:if="${!values.conflicts.isEmpty()}">
 <p><strong>아래 내용 때문에 일정을 만들지 않았어요.</strong> 조건을 임의로 바꾸지 않았으니 안내에 따라 고친 뒤 다시 만들어 주세요.</p>
 <ul><li th:each="c : ${values.conflicts}"><span th:text="${c.reason}"></span>
@@ -100,7 +100,7 @@
 </fieldset>
 <p class="help">숙소 유형 기준이라 실제 요금이 아니에요. 고른 유형의 숙소가 후보에 없으면 전체 후보에서 골라요.</p>
 </div>
-<p class="help">식사는 60분이고, 하루 종료가 19:00 이후면 17시가 지난 뒤 저녁 식사도 넣어요. 숙박하는 날은 하루 종료 시간을 관광을 마치는 시간으로 보고, 숙소에 도착해 쉬었다가 18시 무렵 숙소 근처에서 저녁을 먹도록 넣어요(21시까지). 각 이동 구간은 카카오 예상시간에 여유 10분을 더해요. 같은 주소 안 이동은 계획상 5분을 두며 내부 동선 확인이 필요해요. 출발지에서 여행 지역까지의 왕복 이동은 포함하지 않아요.</p>
+<p class="help">식사는 60분이고, 하루 종료가 19:00 이후면 17시가 지난 뒤 저녁 식사도 넣어요. 숙박하는 날은 하루 종료 시간을 관광을 마치는 시간으로 보고, 숙소에 도착해 쉬었다가 18시 무렵 숙소 근처에서 저녁을 먹고, 가까운 곳에서 저녁 관광(야경·산책·야시장 등 60분)을 한 뒤 22시 전에 숙소로 돌아오도록 넣어요. 각 이동 구간은 카카오 예상시간에 여유 10분을 더해요. 같은 주소 안 이동은 계획상 5분을 두며 내부 동선 확인이 필요해요. 출발지에서 여행 지역까지의 왕복 이동은 포함하지 않아요.</p>
 <p class="help">장소 목록에서 조회한 운영정보가 있으면 해석 가능한 운영시간·정기휴무를 일정에 반영해요. 정보가 없거나 복잡한 예외, 가격·예약 가능 여부는 방문 전 공식 출처에서 확인해 주세요.</p>
 <button type="submit">이 시간으로 일정 초안 만들기</button>
 </form></main></body></html>
