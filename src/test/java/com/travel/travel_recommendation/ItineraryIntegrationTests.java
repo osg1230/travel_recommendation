@@ -110,7 +110,7 @@ class ItineraryIntegrationTests {
             .andExpect(status().isSeeOther()).andExpect(header().string("Location",infoUrl));
         mvc.perform(get(infoUrl).session(session)).andExpect(status().isOk())
             .andExpect(content().string(containsString("출발일 (필수)"))).andExpect(content().string(containsString("이동수단 (필수)")))
-            .andExpect(content().string(containsString("첫날 집에서 출발하는 시각 (필수)"))).andExpect(content().string(containsString("마지막 날 집에 도착할 시각 (필수)")))
+            .andExpect(content().string(containsString("첫날 집에서 출발하는 시각 (필수)"))).andExpect(content().string(containsString("마지막 날 돌아갈 곳에 도착할 시각 (필수)")))
             .andExpect(content().string(org.hamcrest.Matchers.not(containsString("여행 일수 (필수)"))))
             .andExpect(content().string(org.hamcrest.Matchers.not(containsString("반드시 지킬 조건"))));
         // 지난 날짜는 되돌려 보내고 이유를 알린다.

@@ -44,8 +44,8 @@ public class ItineraryController {
      * 집 출발·귀가 입력값. 다시 보여 줄 때 쓰며 '내 위치로 찾기' 좌표는 담지 않는다(위치를 세션에 두지 않는다).
      * 처음 화면에는 08:00 출발·20:00 귀가를 채워 두고 사용자가 고치게 한다.
      */
-    public record HomeValues(String origin,LocalTime departAt,LocalTime arriveBy,Integer minutes) {
-        static final HomeValues DEFAULT=new HomeValues(null,LocalTime.of(8,0),LocalTime.of(20,0),null);
+    public record HomeValues(String origin,LocalTime departAt,LocalTime arriveBy,Integer minutes,String returnPlace,Integer returnMinutes) {
+        static final HomeValues DEFAULT=new HomeValues(null,LocalTime.of(8,0),LocalTime.of(20,0),null,null,null);
     }
 
     @GetMapping("/{id}/destinations/{destinationId}/schedule")
@@ -91,10 +91,11 @@ public class ItineraryController {
             @RequestParam(required=false) String origin,@RequestParam(required=false) Double originLongitude,
             @RequestParam(required=false) Double originLatitude,@RequestParam(required=false) LocalTime departAt,
             @RequestParam(required=false) LocalTime arriveBy,@RequestParam(required=false) Integer homeMinutes,
+            @RequestParam(required=false) String returnPlace,@RequestParam(required=false) Integer returnMinutes,
             Principal principal,HttpSession session,
             @RequestHeader(value="Accept",defaultValue="") String accept) {
-        var homeRequest=new HomeTripService.Request(origin,originLongitude,originLatitude,departAt,arriveBy,homeMinutes);
-        var homeValues=new HomeValues(origin,departAt,arriveBy,homeMinutes);
+        var homeRequest=new HomeTripService.Request(origin,originLongitude,originLatitude,departAt,arriveBy,homeMinutes,returnPlace,returnMinutes);
+        var homeValues=new HomeValues(origin,departAt,arriveBy,homeMinutes,returnPlace,returnMinutes);
         if(!Set.of("REQUIRED","PREFERRED").contains(dailyMode)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"하루 방문 수의 구분을 다시 골라 주세요.");
         String basis=budgetBasis==null || budgetBasis.isBlank()?null:budgetBasis;
         String tier=stayTier==null || stayTier.isBlank()?null:stayTier;
@@ -159,9 +160,11 @@ public class ItineraryController {
             @RequestParam(required=false) String origin,@RequestParam(required=false) Double originLongitude,
             @RequestParam(required=false) Double originLatitude,@RequestParam(required=false) LocalTime departAt,
             @RequestParam(required=false) LocalTime arriveBy,@RequestParam(required=false) Integer homeMinutes,
+            @RequestParam(required=false) String returnPlace,@RequestParam(required=false) Integer returnMinutes,
             Principal principal,HttpSession session) {
-        var homeRequest=new HomeTripService.Request(origin,originLongitude,originLatitude,departAt,arriveBy,homeMinutes);
-        var homeValues=departAt==null && arriveBy==null && origin==null && homeMinutes==null?HomeValues.DEFAULT:new HomeValues(origin,departAt,arriveBy,homeMinutes);
+        var homeRequest=new HomeTripService.Request(origin,originLongitude,originLatitude,departAt,arriveBy,homeMinutes,returnPlace,returnMinutes);
+        var homeValues=departAt==null && arriveBy==null && origin==null && homeMinutes==null && returnPlace==null && returnMinutes==null
+            ?HomeValues.DEFAULT:new HomeValues(origin,departAt,arriveBy,homeMinutes,returnPlace,returnMinutes);
         String base="/travel/recommendations/"+id+"/destinations/"+destinationId;
         UUID job;
         synchronized(session) {
@@ -420,14 +423,15 @@ public class ItineraryController {
                                         KakaoMapClient.Transport transport) {
         var service=homeTrips.getIfAvailable();
         // 화면에서는 필수지만, 집 출발·귀가 값을 하나도 보내지 않은 요청(이전 화면·직접 호출)은 여행지 안 일정만 만든다.
-        boolean empty=request.departAt()==null && request.arriveBy()==null && !request.located() && !request.typed() && request.minutes()==null;
+        boolean empty=request.departAt()==null && request.arriveBy()==null && !request.located() && !request.typed() && request.minutes()==null
+            && !request.separateReturn() && request.returnMinutes()==null;
         if(service==null || empty) return null;
         try {
             return service.resolve(request,service().options(id,destinationId,login(principal),hash(session)).places(),transport);
         } catch(RecommendationException error) {
             if(!error.getCode().startsWith("HOME_") && !error.getCode().startsWith("MAP_ORIGIN") && !"MAP_LOCATION".equals(error.getCode())) throw error;
             throw new TripConstraints.ConflictException(List.of(new TripConstraints.Conflict(error.getMessage(),
-                List.of("여행지까지 편도 이동시간을 직접 적기","출발지를 시·구·동이나 역 이름으로 다시 적기"))));
+                List.of("여행지까지(또는 돌아갈 곳까지) 편도 이동시간을 직접 적기","출발지·돌아갈 곳을 시·구·동이나 역 이름으로 다시 적기"))));
         }
     }
     private record DefaultPlaces(List<Long> purposeIds,List<Long> centerIds) {}

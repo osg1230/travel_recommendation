@@ -558,8 +558,8 @@ public class ItineraryGenerator {
     private static void checkHome(Input input) {
         var home=input.home();
         if(home==null) return;
-        if(home.departAt()==null || home.arriveBy()==null || home.minutes()<1 || home.minutes()>600
-                || home.origin()==null || home.origin().isBlank() || home.origin().length()>40 || home.basis()==null)
+        if(home.departAt()==null || home.arriveBy()==null || home.minutes()<1 || home.minutes()>600 || home.returnMinutes()<1 || home.returnMinutes()>600
+                || home.origin()==null || home.origin().isBlank() || home.origin().length()>40 || home.returnPlace().length()>40 || home.basis()==null)
             throw failure("HOME_REQUIRED","집 출발 시각·귀가 시각과 여행지까지의 이동시간을 다시 확인해 주세요.");
         int days=input.conditions().durationDays();
         long first=Duration.between(input.dayStart(1),input.dayEnd(1)).toMinutes();
@@ -567,7 +567,7 @@ public class ItineraryGenerator {
         if(!input.dayStart(1).isBefore(input.dayEnd(1)) || !input.dayStart(days).isBefore(input.dayEnd(days)))
             first=last=0;
         if(days==1 && first<240)
-            throw failure("HOME_HOURS","집에서 오가는 시간(편도 약 "+home.minutes()+"분)을 빼면 여행지에서 보낼 시간이 4시간보다 짧아요("
+            throw failure("HOME_HOURS","집에서 오가는 시간(가는 길 약 "+home.minutes()+"분, 오는 길 약 "+home.returnMinutes()+"분)을 빼면 여행지에서 보낼 시간이 4시간보다 짧아요("
                 +input.dayStart(1)+"~"+input.dayEnd(1)+"). 집 출발을 앞당기거나 귀가 시각을 늦춰 주세요.");
         if(days>1 && first<120)
             throw failure("HOME_HOURS","첫날 여행지 도착("+input.dayStart(1)+") 뒤 관광을 마칠 시간("+input.dayEnd(1)+")까지 2시간이 안 돼요. 집 출발을 앞당기거나 하루 종료 시간을 늦춰 주세요.");
@@ -625,7 +625,7 @@ public class ItineraryGenerator {
             if(input.home()!=null && lastDay) {
                 var leg=items.isEmpty()?null:items.removeLast();
                 if(leg==null || !homeLeg(leg) || leg.start().isAfter(dayEnd) || leg.end().isAfter(input.home().arriveBy())
-                    || Duration.between(leg.start(),leg.end()).toMinutes()!=input.home().minutes()+HomeTrip.SPARE_MINUTES) throw invalid();
+                    || Duration.between(leg.start(),leg.end()).toMinutes()!=input.home().returnMinutes()+HomeTrip.SPARE_MINUTES) throw invalid();
             }
             if(items.isEmpty()) throw invalid();
             // 숙박하는 날은 숙소로 가는 이동부터 저녁 한도(22시)를 쓴다. 관광은 그날 관광을 마치는 시각 안이어야 한다.
@@ -767,14 +767,14 @@ public class ItineraryGenerator {
                 "편도 약 "+home.minutes()+"분 + 이동 여유 "+HomeTrip.SPARE_MINUTES+"분 ("+home.basis()+")"
                     +"\n도착한 뒤 첫 관광지로 바로 가요. 여행지 안 첫 장소까지의 이동은 차이가 있을 수 있어요.");
         }
-        /** 마지막 날 맨 뒤: 마지막 장소 → 집 이동. 편도 이동시간과 여유 10분이다. */
+        /** 마지막 날 맨 뒤: 마지막 장소 → 돌아갈 곳 이동. 편도 이동시간과 여유 10분이다. */
         void homeReturn() {
             var home=input.home();
             limit=home.arriveBy();
-            addHome((previous==null?input.places().destination().name():previous.name())+" → "+home.origin(),
-                time.plusMinutes(home.minutes()+HomeTrip.SPARE_MINUTES),
-                "편도 약 "+home.minutes()+"분 + 이동 여유 "+HomeTrip.SPARE_MINUTES+"분 ("+home.basis()+")"
-                    +"\n"+home.arriveBy()+"까지 집에 도착하도록 관광을 마쳤어요.");
+            addHome((previous==null?input.places().destination().name():previous.name())+" → "+home.returnPlace(),
+                time.plusMinutes(home.returnMinutes()+HomeTrip.SPARE_MINUTES),
+                "편도 약 "+home.returnMinutes()+"분 + 이동 여유 "+HomeTrip.SPARE_MINUTES+"분 ("+home.returnBasis()+")"
+                    +"\n"+home.arriveBy()+"까지 "+home.returnPlace()+"에 도착하도록 관광을 마쳤어요.");
         }
         // 집은 장소 후보가 아니라 place_id 없이 이동 항목으로만 둔다. 출발지 좌표는 저장하지 않아 지도 링크도 없다.
         private void addHome(String name,LocalTime until,String note) {

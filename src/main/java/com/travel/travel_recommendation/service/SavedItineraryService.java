@@ -261,7 +261,10 @@ public class SavedItineraryService {
     private static HomeTrip savedHome(tools.jackson.databind.JsonNode home) {
         if(!home.path("departAt").isTextual() || !home.path("arriveBy").isTextual() || !home.path("minutes").canConvertToInt()) return null;
         return new HomeTrip(home.path("origin").asText("집"),LocalTime.parse(home.path("departAt").asText()),
-            LocalTime.parse(home.path("arriveBy").asText()),home.path("minutes").asInt(),home.path("basis").asText("저장한 일정의 이동시간"),null);
+            LocalTime.parse(home.path("arriveBy").asText()),home.path("minutes").asInt(),home.path("basis").asText("저장한 일정의 이동시간"),null,
+            home.path("returnPlace").isTextual()?home.path("returnPlace").asText():null,
+            home.path("returnMinutes").canConvertToInt()?home.path("returnMinutes").asInt():null,
+            home.path("returnBasis").isTextual()?home.path("returnBasis").asText():null);
     }
     private ConfirmedTravelConditions savedConditions(tools.jackson.databind.JsonNode snapshot) {
         if(!snapshot.path("conditions").isObject())
@@ -336,8 +339,10 @@ public class SavedItineraryService {
         snapshot.put("schedule",Map.of("dayStart",input.start().toString(),"dayEnd",input.end().toString(),
             "transport",input.transport().name(),"visitMinutes",input.visitMinutes(),"dayCount",result.days().size()));
         // 집 출발·귀가 설정은 수정할 때 같은 기준으로 다시 짜도록 남긴다. 출발지는 시·구 이름만 있다.
-        if(input.home()!=null) snapshot.put("home",Map.of("origin",input.home().origin(),"departAt",input.home().departAt().toString(),
-            "arriveBy",input.home().arriveBy().toString(),"minutes",input.home().minutes(),"basis",input.home().basis()));
+        var home=input.home();
+        if(home!=null) snapshot.put("home",Map.of("origin",home.origin(),"departAt",home.departAt().toString(),
+            "arriveBy",home.arriveBy().toString(),"minutes",home.minutes(),"basis",home.basis(),
+            "returnPlace",home.returnPlace(),"returnMinutes",home.returnMinutes(),"returnBasis",home.returnBasis()));
         snapshot.put("conditions",input.conditions());
         snapshot.put("conditionChecks",report.checks().stream()
             .map(c->Map.of("name",c.name(),"status",c.status().name(),"detail",c.detail()==null?"":c.detail())).toList());

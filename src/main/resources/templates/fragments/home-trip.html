@@ -4,7 +4,7 @@
 <!--/* 집 출발·귀가 입력(여행 정보 화면과 하루 시간 화면에서 같이 쓴다). home은 ItineraryController.HomeValues다. */-->
 <section th:fragment="fields(home)" class="condition-section" data-home-trip>
 <h2>집에서 출발하고 돌아오는 시간</h2>
-<p class="help">첫날은 집에서 출발하는 시각부터, 마지막 날은 집에 도착할 시각에 맞춰 일정을 짜요. 당일치기면 같은 날 출발하고 돌아와요.</p>
+<p class="help">첫날은 출발지에서 떠나는 시각부터, 마지막 날은 돌아갈 곳에 도착할 시각에 맞춰 일정을 짜요. 당일치기면 같은 날 출발하고 돌아와요.</p>
 <p><label for="origin">출발지 (필수, 적거나 '내 위치로 찾기')</label>
 <input id="origin" name="origin" maxlength="60" placeholder="예) 서울 송파구, 대전역, 수원시 영통동" th:value="${home.origin}"></p>
 <input type="hidden" name="originLongitude" disabled><input type="hidden" name="originLatitude" disabled>
@@ -13,11 +13,17 @@
 <div class="field-grid">
 <div><label for="departAt">첫날 집에서 출발하는 시각 (필수)</label>
 <input id="departAt" name="departAt" type="time" required th:value="${home.departAt}"></div>
-<div><label for="arriveBy">마지막 날 집에 도착할 시각 (필수)</label>
+<div><label for="arriveBy">마지막 날 돌아갈 곳에 도착할 시각 (필수)</label>
 <input id="arriveBy" name="arriveBy" type="time" required th:value="${home.arriveBy}"></div>
 </div>
-<p><label for="homeMinutes">여행지까지 편도 이동시간 (분, 선택)</label>
-<input id="homeMinutes" name="homeMinutes" type="number" min="10" max="600" placeholder="비워 두면 자동으로 찾아요" th:value="${home.minutes}"></p>
+<p><label for="returnPlace">마지막 날 돌아갈 곳 (선택)</label>
+<input id="returnPlace" name="returnPlace" maxlength="60" placeholder="비워 두면 출발지로 돌아와요. 예) 대전 서구" th:value="${home.returnPlace}"></p>
+<div class="field-grid">
+<div><label for="homeMinutes">출발지 → 여행지 편도 시간 (분, 선택)</label>
+<input id="homeMinutes" name="homeMinutes" type="number" min="10" max="600" placeholder="비워 두면 자동으로 찾아요" th:value="${home.minutes}"></div>
+<div><label for="returnMinutes">여행지 → 돌아갈 곳 편도 시간 (분, 선택)</label>
+<input id="returnMinutes" name="returnMinutes" type="number" min="10" max="600" placeholder="비워 두면 자동으로 찾아요" th:value="${home.returnMinutes}"></div>
+</div>
 <p class="help">비워 두면 자동차는 카카오 길찾기, 대중교통은 카카오 대중교통 길찾기나 직행 시외·고속버스로 찾아요. 기차·비행기로 가거나 자동으로 찾지 못하면 직접 적어 주세요. 적은 시간을 먼저 써요.</p>
 </section>
 </body>

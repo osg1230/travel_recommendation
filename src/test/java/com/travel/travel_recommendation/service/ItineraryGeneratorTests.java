@@ -181,7 +181,20 @@ class ItineraryGeneratorTests {
         assertThat(report.complete()).isTrue();
         // 집 이동은 같은 주소 안 이동으로 세지 않고, 편도 시간과 근거를 따로 적는다.
         assertThat(report.checks()).anySatisfy(c->{ assertThat(c.name()).isEqualTo("이동시간");
-            assertThat(c.detail()).contains("모두 카카오 예상 이동시간").contains("집 ↔ 여행지는 편도 약 120분"); });
+            assertThat(c.detail()).contains("모두 카카오 예상 이동시간").contains("집 → 여행지는 편도 약 120분"); });
+    }
+    // 돌아갈 곳이 출발지와 다르면 마지막 날 그곳까지의 시간(200분)으로 관광을 마치는 시각을 정하고, 마지막 이동도 그곳으로 간다.
+    @Test void returnToAnotherPlaceUsesItsOwnTravelTime() {
+        var home=new HomeTrip("서울 송파구",LocalTime.of(7,0),LocalTime.of(20,0),120,"직접 입력한 편도 시간",null,"대전 서구",200,"직접 입력한 편도 시간");
+        var input=input(2,LocalTime.of(18,0)).withHome(home);
+        assertThat(input.dayEnd(2)).isEqualTo(LocalTime.of(16,30));
+        var result=generator.generate(input);
+        var last=result.days().get(1).items().getLast();
+        assertThat(last.name()).endsWith("→ 대전 서구");
+        assertThat(Duration.between(last.start(),last.end()).toMinutes()).isEqualTo(210);
+        assertThat(last.note()).contains("20:00까지 대전 서구에 도착");
+        generator.validate(input,result);
+        assertThat(ItineraryConditionReport.evaluate(input,result).checks()).anySatisfy(c->assertThat(c.detail()).contains("여행지 → 대전 서구는 약 200분"));
     }
     // 당일치기에서 집 오가는 시간을 빼면 4시간이 안 되면 만들지 않고 이유를 알린다.
     @Test void dayTripTooShortAfterHomeTravelIsRejected() {

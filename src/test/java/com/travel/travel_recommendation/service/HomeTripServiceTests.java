@@ -64,6 +64,27 @@ class HomeTripServiceTests {
             });
     }
 
+    // 돌아갈 곳을 따로 적으면 여행지 → 그곳 방향으로 따로 찾고, 비우면 출발지로 같은 시간만큼 돌아온다.
+    @Test void returnPlaceIsLookedUpSeparately() {
+        var daejeon = new KakaoMapClient.Origin("대전광역시 서구", "대전", new KakaoMapClient.Location("대전광역시 서구", 127.38, 36.35, Instant.now()));
+        when(maps.findOrigin("송파구")).thenReturn(songpa);
+        when(maps.findOrigin("대전 서구")).thenReturn(daejeon);
+        when(maps.travelTime(eq(songpa.location()), any(), eq(KakaoMapClient.Transport.CAR)))
+            .thenReturn(new KakaoMapClient.TravelTime(KakaoMapClient.Transport.CAR, 150 * 60, 230000, Instant.now()));
+        when(maps.travelTime(any(), eq(daejeon.location()), eq(KakaoMapClient.Transport.CAR)))
+            .thenReturn(new KakaoMapClient.TravelTime(KakaoMapClient.Transport.CAR, 190 * 60, 280000, Instant.now()));
+        var request = new HomeTripService.Request("송파구", null, null, LocalTime.of(7, 0), LocalTime.of(20, 0), null, "대전 서구", null);
+        var home = service.resolve(request, places(), KakaoMapClient.Transport.CAR);
+        assertThat(home.origin()).isEqualTo("서울특별시 송파구");
+        assertThat(home.minutes()).isEqualTo(150);
+        assertThat(home.returnPlace()).isEqualTo("대전광역시 서구");
+        assertThat(home.returnMinutes()).isEqualTo(190);
+
+        var same = service.resolve(request("송파구", null), places(), KakaoMapClient.Transport.CAR);
+        assertThat(same.returnPlace()).isEqualTo(same.origin());
+        assertThat(same.returnMinutes()).isEqualTo(150);
+    }
+
     @Test void missingTimesOrOriginAreAskedFor() {
         assertThatThrownBy(() -> service.resolve(new HomeTripService.Request("잠실", null, null, null, LocalTime.of(20, 0), null),
             places(), KakaoMapClient.Transport.CAR)).hasMessageContaining("집에서 출발할 시각");

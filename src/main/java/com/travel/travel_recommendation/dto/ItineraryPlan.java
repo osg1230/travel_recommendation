@@ -63,11 +63,21 @@ public final class ItineraryPlan {
         public LocalTime dayEnd(int day) { return home != null && day == dayCount() ? home.leaveDestination() : end; }
     }
     /**
-     * 집 출발·귀가(SFR 일정 초안 보완, 2026-09-24 결정). 첫날은 departAt에 집에서 출발하고 마지막 날은 arriveBy까지 집에 도착한다.
-     * minutes는 작업을 만들 때 조회하거나 사용자가 입력한 편도 이동시간(분)이며 오가는 시간이 같다고 본다.
-     * 출발지 좌표는 저장하지 않고 화면에 보여 줄 이름(시·구 단위)만 둔다. basis는 이동시간을 얻은 방법이다.
+     * 집 출발·귀가(SFR 일정 초안 보완, 2026-09-24 결정). 첫날은 departAt에 origin에서 출발하고 마지막 날은 arriveBy까지 returnPlace에 도착한다.
+     * minutes·returnMinutes는 작업을 만들 때 조회하거나 사용자가 입력한 편도 이동시간(분)이고, basis·returnBasis는 그 시간을 얻은 방법이다.
+     * 좌표는 저장하지 않고 화면에 보여 줄 이름(시·구 단위)만 둔다. 돌아갈 곳을 따로 정하지 않았으면(이전 작업 JSON 포함) 출발지와 같다.
      */
-    public record HomeTrip(String origin, LocalTime departAt, LocalTime arriveBy, int minutes, String basis, Instant checkedAt) {
+    public record HomeTrip(String origin, LocalTime departAt, LocalTime arriveBy, int minutes, String basis, Instant checkedAt,
+                           String returnPlace, Integer returnMinutes, String returnBasis) {
+        public HomeTrip {
+            if (returnPlace == null || returnPlace.isBlank()) returnPlace = origin;
+            if (returnMinutes == null) returnMinutes = minutes;
+            if (returnBasis == null) returnBasis = basis;
+        }
+        /** 출발지로 돌아오는 경우. */
+        public HomeTrip(String origin, LocalTime departAt, LocalTime arriveBy, int minutes, String basis, Instant checkedAt) {
+            this(origin, departAt, arriveBy, minutes, basis, checkedAt, null, null, null);
+        }
         /** 편도 이동에 더하는 여유(분). 장소 사이 이동과 같다. */
         public static final int SPARE_MINUTES = 10;
         /** 여행지에 도착하는 시각. 10분 단위로 올린다. */
@@ -77,7 +87,7 @@ public final class ItineraryPlan {
         }
         /** 제시간에 집에 도착하려면 여행지를 떠나야 하는 시각. 10분 단위로 내린다. */
         public LocalTime leaveDestination() {
-            int at = arriveBy.toSecondOfDay() / 60 - minutes - SPARE_MINUTES;
+            int at = arriveBy.toSecondOfDay() / 60 - returnMinutes - SPARE_MINUTES;
             return LocalTime.ofSecondOfDay(Math.max(0, at / 10 * 10) * 60L);
         }
     }
