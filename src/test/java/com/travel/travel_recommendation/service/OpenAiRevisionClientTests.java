@@ -51,11 +51,31 @@ class OpenAiRevisionClientTests {
         // 후보에 없는 장소 칸이 생기기 전의 응답 예시는 빈 값으로 채워 새 형식에 맞춘다.
         if(json.startsWith("{\"action\"") && !json.contains("unavailablePlaces"))
             json=json.substring(0,json.length()-1)+",\"unavailablePlaces\":[],\"exactPlace\":false}";
+        // 집 출발·귀가 시각 칸이 생기기 전의 응답 예시도 null로 채운다.
+        if(json.startsWith("{\"action\"") && !json.contains("departAt"))
+            json=json.substring(0,json.length()-1)+",\"departAt\":null,\"arriveBy\":null}";
+        if(json.startsWith("{\"action\"") && !json.contains("firstArrival"))
+            json=json.substring(0,json.length()-1)+",\"firstArrival\":null}";
         response.set(mapper.writeValueAsString(Map.of("status","completed","output",List.of(Map.of("type","message","content",
             List.of(Map.of("type","output_text","text",json)))))));
     }
     private OpenAiRevisionClient.Proposal call(Set<Long> fixed) {
         return client("test-key").propose(conditions(),input(),plan(),current,spare,fixed,"박물관 빼고 바다로 바꿔 줘",null);
+    }
+
+    // 첫날 도착을 늦추는 요청은 하루 시작(dayStart)이 아니라 집 출발 시각(departAt)으로 받는다. 이 칸은 08~21시 제한을 받지 않는다.
+    @Test void parsesHomeDepartureAndArrivalTimes() {
+        output("{\"action\":\"REVISE\",\"question\":\"\",\"replace\":[],\"add\":[],\"start\":null,\"end\":null,\"visitMinutes\":null,"
+            +"\"explanation\":\"첫날 집 출발을 7시로 앞당겼어요.\",\"unavailablePlaces\":[],\"exactPlace\":false,\"departAt\":\"07:00\",\"arriveBy\":\"22:30\",\"firstArrival\":\"11:00\"}");
+        var proposal=call(Set.of());
+        assertThat(proposal.departAt()).isEqualTo(LocalTime.of(7,0));
+        assertThat(proposal.arriveBy()).isEqualTo(LocalTime.of(22,30));
+        assertThat(proposal.firstArrival()).isEqualTo(LocalTime.of(11,0));
+        assertThat(request.get()).contains("departAt").contains("점심부터");
+        output("{\"action\":\"REVISE\",\"question\":\"\",\"replace\":[],\"add\":[],\"start\":null,\"end\":null,\"visitMinutes\":null,"
+            +"\"explanation\":\"설명\",\"unavailablePlaces\":[],\"exactPlace\":false,\"departAt\":\"7시\",\"arriveBy\":null}");
+        assertThatThrownBy(()->call(Set.of())).isInstanceOfSatisfying(RecommendationException.class,
+            e->assertThat(e.getCode()).isEqualTo("AI_INVALID_RESPONSE"));
     }
 
     @Test void parsesRevisionWithinGivenCandidatesAndSendsOnlyNeededData() {
