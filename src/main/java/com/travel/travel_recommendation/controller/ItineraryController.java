@@ -29,6 +29,7 @@ public class ItineraryController {
     private final ObjectProvider<PlaceCandidateService> candidates;
     private final ObjectProvider<PlaceDiscoveryService> discoveries;
     private final ObjectProvider<PlacePhotoService> photos;
+    private final ObjectProvider<HomeTripService> homeTrips;
     private final tools.jackson.databind.ObjectMapper mapper;
     private record Submission(UUID parent,long destination,String login,String token,UUID job) {}
     private static final String SESSION_KEY="itinerarySubmission";
@@ -38,7 +39,14 @@ public class ItineraryController {
     public record ConstraintInput(UUID parent,LocalTime start,LocalTime end,KakaoMapClient.Transport transport,int visitMinutes,
                                   List<Long> required,Integer dailyVisits,boolean dailyRequired,String budgetBasis,
                                   List<String> budgetIncludes,String stayTier,List<TripConstraints.Conflict> conflicts,
-                                  Integer durationDays,Boolean accommodationNeeded,LocalDate startDate,List<Long> centers) {}
+                                  Integer durationDays,Boolean accommodationNeeded,LocalDate startDate,List<Long> centers,HomeValues home) {}
+    /**
+     * 집 출발·귀가 입력값. 다시 보여 줄 때 쓰며 '내 위치로 찾기' 좌표는 담지 않는다(위치를 세션에 두지 않는다).
+     * 처음 화면에는 08:00 출발·20:00 귀가를 채워 두고 사용자가 고치게 한다.
+     */
+    public record HomeValues(String origin,LocalTime departAt,LocalTime arriveBy,Integer minutes,String returnPlace,Integer returnMinutes) {
+        static final HomeValues DEFAULT=new HomeValues(null,LocalTime.of(8,0),LocalTime.of(20,0),null,null,null);
+    }
 
     @GetMapping("/{id}/destinations/{destinationId}/schedule")
     String form(@PathVariable UUID id,@PathVariable long destinationId,Principal principal,HttpSession session,
@@ -62,7 +70,7 @@ public class ItineraryController {
         // 여행 조건에서 이동수단을 정하지 않았다면 자동차로 미리 고르지 않고 사용자가 직접 고르게 한다.
         var transport=options.conditions().keywordNames("TRANSPORTATION").isEmpty()?null:options.transport();
         model.addAttribute("values",conflict!=null?conflict:new ConstraintInput(id,options.start(),options.end(),transport,
-            options.visitMinutes(),purposeIds,null,false,null,List.of(),null,List.of(),null,null,null,centerIds));
+            options.visitMinutes(),purposeIds,null,false,null,List.of(),null,List.of(),null,null,null,centerIds,HomeValues.DEFAULT));
         model.addAttribute("stayTiers",BudgetGuide.StayTier.values());
         synchronized(session) {
             var submission=new Submission(id,destinationId,login(principal),UUID.randomUUID().toString(),null);
@@ -80,8 +88,14 @@ public class ItineraryController {
             @RequestParam(required=false) Integer durationDays,@RequestParam(required=false) Boolean accommodationNeeded,
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(name="center",required=false) List<Long> centers,
+            @RequestParam(required=false) String origin,@RequestParam(required=false) Double originLongitude,
+            @RequestParam(required=false) Double originLatitude,@RequestParam(required=false) LocalTime departAt,
+            @RequestParam(required=false) LocalTime arriveBy,@RequestParam(required=false) Integer homeMinutes,
+            @RequestParam(required=false) String returnPlace,@RequestParam(required=false) Integer returnMinutes,
             Principal principal,HttpSession session,
             @RequestHeader(value="Accept",defaultValue="") String accept) {
+        var homeRequest=new HomeTripService.Request(origin,originLongitude,originLatitude,departAt,arriveBy,homeMinutes,returnPlace,returnMinutes);
+        var homeValues=new HomeValues(origin,departAt,arriveBy,homeMinutes,returnPlace,returnMinutes);
         if(!Set.of("REQUIRED","PREFERRED").contains(dailyMode)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"하루 방문 수의 구분을 다시 골라 주세요.");
         String basis=budgetBasis==null || budgetBasis.isBlank()?null:budgetBasis;
         String tier=stayTier==null || stayTier.isBlank()?null:stayTier;
@@ -96,11 +110,12 @@ public class ItineraryController {
                 job=submission.job(); service().view(job,login(principal),hash(session));
             } else {
                 try {
-                    job=service().create(id,destinationId,login(principal),hash(session),start,end,transport,visitMinutes,constraints,durationDays,accommodationNeeded,startDate);
+                    var home=home(homeRequest,id,destinationId,principal,session,transport);
+                    job=service().create(id,destinationId,login(principal),hash(session),start,end,transport,visitMinutes,constraints,durationDays,accommodationNeeded,startDate,home);
                 } catch(TripConstraints.ConflictException conflict) {
                     // 모순된 필수 조건은 임의로 완화하지 않고 입력 화면으로 돌아가 이유와 선택지를 보여 준다.
                     session.setAttribute(CONFLICT_KEY,new ConstraintInput(id,start,end,transport,visitMinutes,constraints.requiredPlaceIds(),
-                        dailyVisits,constraints.dailyVisitsRequired(),basis,constraints.budgetIncludes(),tier,conflict.conflicts(),durationDays,accommodationNeeded,startDate,constraints.centerPlaceIds()));
+                        dailyVisits,constraints.dailyVisitsRequired(),basis,constraints.budgetIncludes(),tier,conflict.conflicts(),durationDays,accommodationNeeded,startDate,constraints.centerPlaceIds(),homeValues));
                     session.removeAttribute(SESSION_KEY);
                     return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create("/travel/recommendations/"+id+"/destinations/"+destinationId+"/schedule"))
                         .cacheControl(CacheControl.noStore()).build();
@@ -114,10 +129,10 @@ public class ItineraryController {
     }
     /** 여행 정보 화면에서 입력한 값과 안내 문장. 빠진 값이 있어 돌아갈 때 입력을 잃지 않도록 세션에 한 번 둔다. */
     public record TripInfoInput(UUID parent,Integer durationDays,Boolean accommodationNeeded,LocalDate startDate,
-                                KakaoMapClient.Transport transport,String error) {}
+                                KakaoMapClient.Transport transport,String error,HomeValues home) {}
     private static final String TRIP_INFO_KEY="itineraryTripInfo";
 
-    /** 바로 일정을 만들 때 추천 조건에 비어 있는 여행 정보(일수·숙박·출발일·이동수단)만 묻는다. 하루 시간은 기본값을 쓴다. */
+    /** 바로 일정을 만들 때 추천 조건에 비어 있는 여행 정보(일수·숙박·출발일·이동수단)와 집 출발·귀가만 묻는다. 하루 시간은 기본값을 쓴다. */
     @GetMapping("/{id}/destinations/{destinationId}/trip-info")
     String tripInfo(@PathVariable UUID id,@PathVariable long destinationId,Principal principal,HttpSession session,
                     HttpServletResponse response,Model model) {
@@ -126,7 +141,7 @@ public class ItineraryController {
         model.addAttribute("options",options);
         var previous=session.getAttribute(TRIP_INFO_KEY) instanceof TripInfoInput input && input.parent().equals(id) ? input : null;
         session.removeAttribute(TRIP_INFO_KEY);
-        model.addAttribute("values",previous!=null?previous:new TripInfoInput(id,null,null,null,null,null));
+        model.addAttribute("values",previous!=null?previous:new TripInfoInput(id,null,null,null,null,null,HomeValues.DEFAULT));
         model.addAttribute("askTransport",options.conditions().keywordNames("TRANSPORTATION").isEmpty());
         return "travel/trip-info";
     }
@@ -135,12 +150,21 @@ public class ItineraryController {
      * 추천 결과·장소 목록에서 하루 시간 입력 없이 바로 일정 초안을 만든다.
      * 하루 시간·체류시간·중심 장소·목적 시설은 입력 화면과 같은 기본값을 쓰고, 마음에 들지 않으면 초안에서 고친다.
      * 여행 일수·숙박·출발일·이동수단은 추측하지 않는다. 추천 조건에 없고 이번 요청에도 없으면 여행 정보 화면에서 묻는다.
+     * 집 출발·귀가 시각과 출발지는 추천 조건에 없으므로 여행 정보 화면에서 항상 묻는다.
      */
     @PostMapping("/{id}/destinations/{destinationId}/quick-schedule")
     ResponseEntity<?> quick(@PathVariable UUID id,@PathVariable long destinationId,
             @RequestParam(required=false) Integer durationDays,@RequestParam(required=false) Boolean accommodationNeeded,
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam(required=false) KakaoMapClient.Transport transport,Principal principal,HttpSession session) {
+            @RequestParam(required=false) KakaoMapClient.Transport transport,
+            @RequestParam(required=false) String origin,@RequestParam(required=false) Double originLongitude,
+            @RequestParam(required=false) Double originLatitude,@RequestParam(required=false) LocalTime departAt,
+            @RequestParam(required=false) LocalTime arriveBy,@RequestParam(required=false) Integer homeMinutes,
+            @RequestParam(required=false) String returnPlace,@RequestParam(required=false) Integer returnMinutes,
+            Principal principal,HttpSession session) {
+        var homeRequest=new HomeTripService.Request(origin,originLongitude,originLatitude,departAt,arriveBy,homeMinutes,returnPlace,returnMinutes);
+        var homeValues=departAt==null && arriveBy==null && origin==null && homeMinutes==null && returnPlace==null && returnMinutes==null
+            ?HomeValues.DEFAULT:new HomeValues(origin,departAt,arriveBy,homeMinutes,returnPlace,returnMinutes);
         String base="/travel/recommendations/"+id+"/destinations/"+destinationId;
         UUID job;
         synchronized(session) {
@@ -159,11 +183,22 @@ public class ItineraryController {
                 : days>1 && stay==null ? "여러 날 여행이라 숙소가 필요한지 골라 주세요."
                 : date==null ? "출발일을 골라 주세요."
                 : c.startDate()==null && date.isBefore(LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))) ? "출발일은 오늘이나 그 이후 날짜로 골라 주세요."
-                : mode==null ? "이동수단을 골라 주세요." : null;
+                : mode==null ? "이동수단을 골라 주세요."
+                : departAt==null || arriveBy==null ? "첫날 집에서 출발할 시각과 마지막 날 집에 도착할 시각을 적어 주세요."
+                : !homeRequest.located() && !homeRequest.typed() && homeMinutes==null ? "출발지(집)를 적거나 '내 위치로 찾기'를 눌러 주세요." : null;
+            // 처음 눌렀을 때(아무것도 보내지 않음)는 안내 문장 없이 여행 정보 화면만 보여 준다.
+            boolean submitted=durationDays!=null || accommodationNeeded!=null || startDate!=null || transport!=null || departAt!=null;
             if(missing!=null) {
-                // 처음 눌렀을 때(아무것도 보내지 않음)는 안내 문장 없이 여행 정보 화면만 보여 준다.
-                boolean submitted=durationDays!=null || accommodationNeeded!=null || startDate!=null || transport!=null;
-                session.setAttribute(TRIP_INFO_KEY,new TripInfoInput(id,durationDays,accommodationNeeded,startDate,transport,submitted?missing:null));
+                session.setAttribute(TRIP_INFO_KEY,new TripInfoInput(id,durationDays,accommodationNeeded,startDate,transport,submitted?missing:null,homeValues));
+                return seeOther(base+"/trip-info");
+            }
+            ItineraryPlan.HomeTrip home;
+            try {
+                home=home(homeRequest,id,destinationId,principal,session,mode);
+            } catch(TripConstraints.ConflictException error) {
+                // 이동시간을 찾지 못하면 여행 정보 화면으로 돌아가 직접 적게 한다.
+                session.setAttribute(TRIP_INFO_KEY,new TripInfoInput(id,durationDays,accommodationNeeded,startDate,transport,
+                    error.conflicts().getFirst().reason(),homeValues));
                 return seeOther(base+"/trip-info");
             }
             var pool=service().attractionPool(id,destinationId,login(principal),hash(session));
@@ -174,11 +209,11 @@ public class ItineraryController {
             LocalDate newDate=c.startDate()==null?date:null;
             try {
                 job=service().create(id,destinationId,login(principal),hash(session),options.start(),options.end(),mode,
-                    options.visitMinutes(),constraints,newDays,newStay,newDate);
+                    options.visitMinutes(),constraints,newDays,newStay,newDate,home);
             } catch(TripConstraints.ConflictException conflict) {
                 // 기본값으로도 조건이 맞지 않으면 자세한 입력 화면에서 이유와 선택지를 보여 준다.
                 session.setAttribute(CONFLICT_KEY,new ConstraintInput(id,options.start(),options.end(),mode,options.visitMinutes(),
-                    constraints.requiredPlaceIds(),null,false,null,List.of(),null,conflict.conflicts(),newDays,newStay,newDate,constraints.centerPlaceIds()));
+                    constraints.requiredPlaceIds(),null,false,null,List.of(),null,conflict.conflicts(),newDays,newStay,newDate,constraints.centerPlaceIds(),homeValues));
                 return seeOther(base+"/schedule");
             }
             session.setAttribute(key,job);
@@ -379,6 +414,25 @@ public class ItineraryController {
         var service=photos.getIfAvailable();
         if(service==null || placeIds.isEmpty()) return Map.of();
         try { return service.photos(placeIds); } catch(RuntimeException error) { return Map.of(); }
+    }
+    /**
+     * 집 출발·귀가 설정을 만든다. 이동시간을 찾지 못하는 등 입력으로 고칠 수 있는 문제는 입력 화면에 보여 줄 수 있게
+     * ConflictException으로 바꾼다. 이 기능을 쓸 수 없는 환경(DB 없는 실행)에서는 집 이동 없이 만든다.
+     */
+    private ItineraryPlan.HomeTrip home(HomeTripService.Request request,UUID id,long destinationId,Principal principal,HttpSession session,
+                                        KakaoMapClient.Transport transport) {
+        var service=homeTrips.getIfAvailable();
+        // 화면에서는 필수지만, 집 출발·귀가 값을 하나도 보내지 않은 요청(이전 화면·직접 호출)은 여행지 안 일정만 만든다.
+        boolean empty=request.departAt()==null && request.arriveBy()==null && !request.located() && !request.typed() && request.minutes()==null
+            && !request.separateReturn() && request.returnMinutes()==null;
+        if(service==null || empty) return null;
+        try {
+            return service.resolve(request,service().options(id,destinationId,login(principal),hash(session)).places(),transport);
+        } catch(RecommendationException error) {
+            if(!error.getCode().startsWith("HOME_") && !error.getCode().startsWith("MAP_ORIGIN") && !"MAP_LOCATION".equals(error.getCode())) throw error;
+            throw new TripConstraints.ConflictException(List.of(new TripConstraints.Conflict(error.getMessage(),
+                List.of("여행지까지(또는 돌아갈 곳까지) 편도 이동시간을 직접 적기","출발지·돌아갈 곳을 시·구·동이나 역 이름으로 다시 적기"))));
+        }
     }
     private record DefaultPlaces(List<Long> purposeIds,List<Long> centerIds) {}
     // 여행 목적 시설 중 첫 곳만 필수 방문 장소로 미리 골라 둔다. 여러 곳을 모두 필수로 두면 먼 시설까지 억지로 넣게 된다.

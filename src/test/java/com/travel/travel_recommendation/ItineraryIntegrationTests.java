@@ -110,20 +110,31 @@ class ItineraryIntegrationTests {
             .andExpect(status().isSeeOther()).andExpect(header().string("Location",infoUrl));
         mvc.perform(get(infoUrl).session(session)).andExpect(status().isOk())
             .andExpect(content().string(containsString("출발일 (필수)"))).andExpect(content().string(containsString("이동수단 (필수)")))
+            .andExpect(content().string(containsString("첫날 집에서 출발하는 시각 (필수)"))).andExpect(content().string(containsString("마지막 날 돌아갈 곳에 도착할 시각 (필수)")))
             .andExpect(content().string(org.hamcrest.Matchers.not(containsString("여행 일수 (필수)"))))
             .andExpect(content().string(org.hamcrest.Matchers.not(containsString("반드시 지킬 조건"))));
         // 지난 날짜는 되돌려 보내고 이유를 알린다.
         mvc.perform(post(quickUrl).session(session).with(csrf()).param("startDate",LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1).toString()).param("transport","CAR"))
             .andExpect(header().string("Location",infoUrl));
         mvc.perform(get(infoUrl).session(session)).andExpect(content().string(containsString("출발일은 오늘이나 그 이후")));
-        // 여행 정보 화면에서 받은 출발일·이동수단으로 기본 시간 초안을 만든다.
+        // 집 출발지·이동시간이 없으면 추측하지 않고 다시 묻는다.
         LocalDate chosen=LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(15);
-        String made=mvc.perform(post(quickUrl).session(session).with(csrf()).param("startDate",chosen.toString()).param("transport","PUBLIC_TRANSIT"))
+        mvc.perform(post(quickUrl).session(session).with(csrf()).param("startDate",chosen.toString()).param("transport","PUBLIC_TRANSIT")
+                .param("departAt","07:00").param("arriveBy","21:00"))
+            .andExpect(header().string("Location",infoUrl));
+        mvc.perform(get(infoUrl).session(session)).andExpect(content().string(containsString("출발지(집)를 적거나")));
+        // 여행 정보 화면에서 받은 출발일·이동수단과 집 출발·귀가(편도 직접 입력 120분)로 기본 시간 초안을 만든다.
+        String made=mvc.perform(post(quickUrl).session(session).with(csrf()).param("startDate",chosen.toString()).param("transport","PUBLIC_TRANSIT")
+                .param("departAt","07:00").param("arriveBy","21:00").param("homeMinutes","120"))
             .andExpect(status().isSeeOther()).andReturn().getResponse().getHeader("Location");
         var madeInput=schedules.view(UUID.fromString(made.replace("/travel/recommendations/itineraries/","")),null,hash).input();
         assertThat(madeInput.conditions().startDate()).isEqualTo(chosen);
         assertThat(madeInput.transport()).isEqualTo(KakaoMapClient.Transport.PUBLIC_TRANSIT);
         assertThat(madeInput.start()).isEqualTo(LocalTime.of(9,0));
+        assertThat(madeInput.home().minutes()).isEqualTo(120);
+        assertThat(madeInput.home().origin()).isEqualTo("집");
+        assertThat(madeInput.dayStart(1)).isEqualTo(LocalTime.of(9,10));
+        assertThat(madeInput.dayEnd(2)).isEqualTo(LocalTime.of(18,50));
 
         var car=new TravelKeyword(null,"TRANSPORTATION","자동차","{\"value\":\"CAR\"}");
         LocalDate start=LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(20);
@@ -134,14 +145,18 @@ class ItineraryIntegrationTests {
         em.flush();
         quickUrl="/travel/recommendations/"+parent+"/destinations/"+destination+"/quick-schedule";
         mvc.perform(post(quickUrl).session(session)).andExpect(status().isForbidden());
-        String location=mvc.perform(post(quickUrl).session(session).with(csrf()))
+        // 여행 조건이 모두 있어도 집 출발·귀가는 추천 조건에 없어 한 번 묻는다.
+        mvc.perform(post(quickUrl).session(session).with(csrf())).andExpect(header().string("Location",
+            "/travel/recommendations/"+parent+"/destinations/"+destination+"/trip-info"));
+        String location=mvc.perform(post(quickUrl).session(session).with(csrf()).param("departAt","08:00").param("arriveBy","20:00").param("homeMinutes","150"))
             .andExpect(status().isSeeOther()).andReturn().getResponse().getHeader("Location");
         assertThat(location).startsWith("/travel/recommendations/itineraries/");
         var input=schedules.view(UUID.fromString(location.replace("/travel/recommendations/itineraries/","")),null,hash).input();
         assertThat(input.conditions().startDate()).isEqualTo(start);
         assertThat(input.conditions().durationDays()).isEqualTo(2);
         // 다시 눌러도 새로 만들지 않고 같은 초안으로 보낸다.
-        mvc.perform(post(quickUrl).session(session).with(csrf())).andExpect(header().string("Location",location));
+        mvc.perform(post(quickUrl).session(session).with(csrf()).param("departAt","08:00").param("arriveBy","20:00").param("homeMinutes","150"))
+            .andExpect(header().string("Location",location));
     }
     private String formUrl() { return "/travel/recommendations/"+parent+"/destinations/"+destination+"/schedule"; }
 

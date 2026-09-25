@@ -24,10 +24,11 @@ class TripConstraintsTests {
         assertThat(TripConstraints.estimatedDailyCapacity(NINE, SIX, 90)).isEqualTo(3);
         assertThat(ids(TripConstraints.select(pool(16), 2, NINE, SIX, 90, null))).containsExactly(1L, 2L, 3L, 4L, 5L, 6L);
         assertThat(ids(TripConstraints.select(pool(16), 2, NINE, SIX, 90, c(List.of(), null, false)))).containsExactly(1L, 2L, 3L, 4L, 5L, 6L);
-        // 체류시간이 짧거나 하루가 길면 더 많이 고르고, 저녁까지 이어지는 날은 저녁 식사 시간도 뺀다.
-        assertThat(TripConstraints.estimatedDailyCapacity(NINE, SIX, 60)).isEqualTo(5);
+        // 체류시간이 짧거나 하루가 길면 더 많이 고르지만 하루 4곳을 넘기지 않고, 저녁까지 이어지는 날은 저녁 식사 시간도 뺀다.
+        assertThat(TripConstraints.estimatedDailyCapacity(NINE, SIX, 60)).isEqualTo(4);
+        assertThat(TripConstraints.estimatedDailyCapacity(LocalTime.of(8, 0), LocalTime.of(21, 0), 30)).isEqualTo(4);
         assertThat(TripConstraints.estimatedDailyCapacity(NINE, LocalTime.of(21, 0), 90)).isEqualTo(4);
-        // 전체는 후보 화면의 최대 수(16곳)를 넘지 않는다.
+        // 후보가 16곳뿐이면 7일이라도 16곳까지만 고른다(전체 최대는 21곳).
         assertThat(ids(TripConstraints.select(pool(16), 7, NINE, SIX, 90, null))).hasSize(16);
     }
 
@@ -59,12 +60,42 @@ class TripConstraintsTests {
         assertThatThrownBy(() -> TripConstraints.select(pool(3), 2, NINE, SIX, 60, c(List.of(), 2, true)))
             .isInstanceOfSatisfying(TripConstraints.ConflictException.class, e ->
                 assertThat(e.conflicts()).anySatisfy(conflict -> assertThat(conflict.reason()).contains("후보가 3곳")));
-        assertThatThrownBy(() -> TripConstraints.select(pool(16), 7, NINE, SIX, 60, c(List.of(), 3, true)))
+        assertThatThrownBy(() -> TripConstraints.select(pool(27), 7, NINE, SIX, 60, c(List.of(), 4, true)))
             .isInstanceOfSatisfying(TripConstraints.ConflictException.class, e ->
-                assertThat(e.conflicts()).anySatisfy(conflict -> assertThat(conflict.reason()).contains("전체 최대 16곳")));
-        assertThatThrownBy(() -> TripConstraints.select(pool(17), 7, NINE, SIX, 60, c(LongStream.rangeClosed(1, 17).boxed().toList(), null, false)))
+                assertThat(e.conflicts()).anySatisfy(conflict -> assertThat(conflict.reason()).contains("전체 최대 21곳")));
+        assertThatThrownBy(() -> TripConstraints.select(pool(22), 7, NINE, SIX, 60, c(LongStream.rangeClosed(1, 22).boxed().toList(), null, false)))
             .isInstanceOfSatisfying(TripConstraints.ConflictException.class, e ->
-                assertThat(e.conflicts()).anySatisfy(conflict -> assertThat(conflict.reason()).contains("최대 16곳")));
+                assertThat(e.conflicts()).anySatisfy(conflict -> assertThat(conflict.reason()).contains("최대 21곳")));
+    }
+
+    // 관광지 후보는 1~3일이면 16곳, 길어지면 하루 4곳씩(최대 21곳)에 예비 6곳을 더한다.
+    @Test void candidateCountGrowsWithTripLength() {
+        assertThat(TripConstraints.candidateLimit(null)).isEqualTo(16);
+        assertThat(TripConstraints.candidateLimit(2)).isEqualTo(16);
+        assertThat(TripConstraints.candidateLimit(4)).isEqualTo(22);
+        assertThat(TripConstraints.candidateLimit(5)).isEqualTo(26);
+        assertThat(TripConstraints.candidateLimit(7)).isEqualTo(27);
+    }
+
+    // 저녁 관광 후보: 전망대·해변·테마거리처럼 밤에 걷거나 야경을 보는 곳만 고르고, 휴양림·사찰은 고르지 않는다.
+    @Test void eveningSpotsAreOutdoorWalkingOrNightViewPlaces() {
+        assertThat(TripConstraints.eveningSpot(kind(1, "오동도", "여행 > 관광,명소 > 전망대"))).isTrue();
+        assertThat(TripConstraints.eveningSpot(kind(2, "만성리검은모래해변", "여행 > 관광,명소 > 해수욕장,해변"))).isTrue();
+        assertThat(TripConstraints.eveningSpot(kind(3, "여수낭만포차거리", "여행 > 관광,명소"))).isTrue();
+        assertThat(TripConstraints.eveningSpot(kind(4, "봉황산자연휴양림", "여행 > 관광,명소 > 자연휴양림"))).isFalse();
+        assertThat(TripConstraints.eveningSpot(kind(5, "향일암", "문화,예술 > 종교 > 불교 > 절,사찰"))).isFalse();
+        var tower = kind(6, "스카이타워", "여행 > 관광,명소 > 전망대");
+        var forest = kind(7, "휴양림", "여행 > 관광,명소 > 자연휴양림");
+        var chosen = kind(8, "해변", "여행 > 관광,명소 > 해수욕장,해변");
+        assertThat(TripConstraints.eveningPlaces(List.of(chosen, forest, tower), List.of(chosen.placeId()), 3)).containsExactly(tower);
+        // 16곳 후보로 2박 3일(하루 3곳 → 낮 9곳)이면 숙박 2박 + 여유 2곳 = 4곳을 저녁 몫으로 떼어 두고, 후보가 모자라면 떼어 두지 않는다.
+        assertThat(TripConstraints.eveningShare(16, 3, 3)).isEqualTo(4);
+        assertThat(TripConstraints.eveningShare(26, 5, 3)).isEqualTo(6);
+        assertThat(TripConstraints.eveningShare(8, 3, 3)).isZero();
+    }
+    private static PlaceCandidate kind(long id, String name, String subtype) {
+        return new PlaceCandidate(id, name, "전남 여수시 도로 " + id, subtype, "", "https://place.map.kakao.com/" + id, "",
+            LocalDateTime.of(2026, 9, 1, 0, 0));
     }
 
     // 여수 실제 좌표(카카오 2026-09-22). 이름순이면 거문도·금오도가 먼저지만, 모여 있는 곳부터 고르고 먼 섬은 뒤로 보낸다.

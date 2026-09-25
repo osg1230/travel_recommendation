@@ -109,8 +109,7 @@ public class NearbyRestaurantService {
         var view=input.places();
         var withNearby=new PlaceCandidateView(view.jobId(),view.destination(),view.durationDays(),view.accommodationNeeded(),
             view.attractions(),view.accommodations(),restaurants);
-        var enriched=new Input(input.recommendationId(),withNearby,input.conditions(),input.start(),input.end(),input.transport(),
-            input.visitMinutes(),input.revision(),input.constraints(),input.reserve());
+        var enriched=input.withPlaces(withNearby);
         job.attachItineraryRequest(mapper.writeValueAsString(enriched));
         jobs.flush();
     }

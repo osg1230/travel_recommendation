@@ -45,13 +45,37 @@ public class BusGuideService {
         LocalDate today=LocalDate.now(ZoneId.of("Asia/Seoul"));
         LocalDate tripDate=view.input().conditions().startDate();
         String label=fromCurrentRegion?destination+"(지금 여행지)":keyword;
-        var current=NearbyRegionService.TERMINALS.get(destination);
+        var found=search(keyword,to,fromCurrentRegion?destination:null,today);
+        var routes=found.routes(); var unavailable=found.unavailable();
+        boolean originFound=found.originFound(), trimmed=found.trimmed();
+        var authError=found.authError();
+        if(unavailable.size()==IntercityBusClient.Service.values().length) throw authError;
+        String skipped=unavailable.isEmpty()?"":" "+String.join("·",unavailable)+" 정보는 인증키 활용신청이 확인되지 않아 제외했어요.";
+        if(!originFound)
+            return new BusGuide(label,to,today,tripDate,List.of(),"'"+keyword+"' 이름의 시외·고속버스 터미널을 찾지 못했어요. 도시 이름이나 터미널 이름을 다시 적어 주세요."+skipped);
+        String more=(trimmed?" 터미널이 많아 이름 기준 "+MAX_ORIGINS+"곳만 조회했어요. 터미널 이름을 적으면 더 정확해요.":"")+skipped;
+        routes.sort(Comparator.comparingInt(BusGuide.Route::fastestMinutes));
+        String message=routes.isEmpty()
+            ?"오늘 운행 정보가 등록된 직행 시외·고속버스를 찾지 못했어요. 버스 정보에 없는 노선일 수 있으니 터미널이나 예매처에서 확인해 주세요."+more
+            :more.isEmpty()?null:more.strip();
+        return new BusGuide(label,to,today,tripDate,routes,message);
+    }
+
+    /** 버스 조회 결과. unavailable은 인증키 활용신청이 확인되지 않아 조회하지 못한 서비스(시외·고속)다. */
+    private record Search(List<BusGuide.Route> routes,boolean originFound,boolean trimmed,List<String> unavailable,RecommendationException authError) {}
+
+    /**
+     * keyword 이름의 터미널(currentRegion이 있으면 그 여행지 터미널)에서 to의 터미널까지 date에 운행하는 직행 시외·고속버스를 찾는다.
+     * 두 서비스는 터미널 ID 체계가 달라 각각 찾고, 한쪽만 인증이 안 되면 나머지로 안내한다.
+     */
+    private Search search(String keyword,String to,String currentRegion,LocalDate date) {
+        var target=NearbyRegionService.TERMINALS.get(to);
+        var current=currentRegion==null?null:NearbyRegionService.TERMINALS.get(currentRegion);
+        boolean fromCurrentRegion=current!=null;
         List<BusGuide.Route> routes=new ArrayList<>();
         boolean originFound=false, trimmed=false;
-        // 활용신청이 안 된(인증 오류) 서비스. 한쪽만 안 되면 나머지 서비스로 안내한다.
         List<String> unavailable=new ArrayList<>();
         RecommendationException authError=null;
-        // 시외버스와 고속버스를 차례로 조회한다. 두 서비스는 터미널 ID 체계가 달라 각각 찾는다.
         for(var service:IntercityBusClient.Service.values()) try {
             String arrivalName=service==IntercityBusClient.Service.INTERCITY?target.busName():target.expressName();
             var arrivalIds=buses.terminalIds(service,arrivalName);
@@ -71,11 +95,11 @@ public class BusGuideService {
                 // 같은 출발지 이름의 여러 ID·도착 ID에서 나온 배차를 합치고, 같은 배차는 한 번만 센다.
                 Map<String,IntercityBusClient.Trip> trips=new TreeMap<>();
                 for(String departureId:origin.getValue()) for(String arrivalId:arrivalIds)
-                    for(var trip:buses.trips(service,departureId,arrivalId,today)) trips.putIfAbsent(trip.departure()+"|"+trip.arrival()+"|"+trip.grade(),trip);
+                    for(var trip:buses.trips(service,departureId,arrivalId,date)) trips.putIfAbsent(trip.departure()+"|"+trip.arrival()+"|"+trip.grade(),trip);
                 if(trips.isEmpty()) continue;
                 var list=trips.values().stream().sorted(Comparator.comparing(IntercityBusClient.Trip::departure)).toList();
                 routes.add(new BusGuide.Route(service.label(),origin.getKey(),arrivalName,list.size(),
-                    BusGuide.clock(list.getFirst().departure(),today),BusGuide.clock(list.getLast().departure(),today),
+                    BusGuide.clock(list.getFirst().departure(),date),BusGuide.clock(list.getLast().departure(),date),
                     list.stream().mapToInt(IntercityBusClient.Trip::minutes).min().orElseThrow(),
                     list.stream().map(IntercityBusClient.Trip::charge).filter(Objects::nonNull).min(Integer::compare).orElse(null)));
             }
@@ -83,16 +107,20 @@ public class BusGuideService {
             if(!"BUS_AUTH".equals(error.getCode())) throw error;
             unavailable.add(service.label()); authError=error;
         }
-        if(unavailable.size()==IntercityBusClient.Service.values().length) throw authError;
-        String skipped=unavailable.isEmpty()?"":" "+String.join("·",unavailable)+" 정보는 인증키 활용신청이 확인되지 않아 제외했어요.";
-        if(!originFound)
-            return new BusGuide(label,to,today,tripDate,List.of(),"'"+keyword+"' 이름의 시외·고속버스 터미널을 찾지 못했어요. 도시 이름이나 터미널 이름을 다시 적어 주세요."+skipped);
-        String more=(trimmed?" 터미널이 많아 이름 기준 "+MAX_ORIGINS+"곳만 조회했어요. 터미널 이름을 적으면 더 정확해요.":"")+skipped;
-        routes.sort(Comparator.comparingInt(BusGuide.Route::fastestMinutes));
-        String message=routes.isEmpty()
-            ?"오늘 운행 정보가 등록된 직행 시외·고속버스를 찾지 못했어요. 버스 정보에 없는 노선일 수 있으니 터미널이나 예매처에서 확인해 주세요."+more
-            :more.isEmpty()?null:more.strip();
-        return new BusGuide(label,to,today,tripDate,routes,message);
+        return new Search(routes,originFound,trimmed,unavailable,authError);
+    }
+
+    /**
+     * 집에서 여행지까지 대중교통 편도 시간(집 출발·귀가 설정용). 출발 도시 터미널에서 여행지 터미널까지 오늘 운행하는
+     * 직행 시외·고속버스의 가장 짧은 소요시간이며, 집 ↔ 터미널 이동은 들어 있지 않다. 찾지 못하면 비어 있다.
+     */
+    public OptionalInt fastestMinutes(String cityKeyword,String destination) {
+        if(!buses.configured() || NearbyRegionService.TERMINALS.get(destination)==null) return OptionalInt.empty();
+        String keyword=checkedKeyword(cityKeyword);
+        try {
+            return search(keyword,destination,null,LocalDate.now(ZoneId.of("Asia/Seoul"))).routes().stream()
+                .mapToInt(BusGuide.Route::fastestMinutes).min();
+        } catch(RecommendationException error) { return OptionalInt.empty(); }
     }
 
     // 입력한 출발지는 한글·영문·숫자·괄호·공백만 받는다. 외부 API 검색어로 그대로 넘기기 때문이다.

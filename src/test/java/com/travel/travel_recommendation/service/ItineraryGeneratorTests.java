@@ -106,7 +106,7 @@ class ItineraryGeneratorTests {
         generator.validate(input,result);
         var report=ItineraryConditionReport.evaluate(input,result);
         assertThat(report.complete()).isTrue();
-        assertThat(report.checks()).anySatisfy(c->{ assertThat(c.name()).isEqualTo("시간 충돌"); assertThat(c.detail()).contains("숙소 근처 저녁은 21:00까지"); });
+        assertThat(report.checks()).anySatisfy(c->{ assertThat(c.name()).isEqualTo("시간 충돌"); assertThat(c.detail()).contains("저녁 관광은 22:00까지"); });
         assertThat(report.checks()).anySatisfy(c->{ assertThat(c.name()).isEqualTo("숙박"); assertThat(c.detail()).contains("숙소 근처에서 저녁"); });
         // 저녁 뒤에 관광을 더 넣은 결과는 받지 않는다.
         var days=new ArrayList<>(result.days());
@@ -116,6 +116,92 @@ class ItineraryGeneratorTests {
         days.set(0,new Day(1,days.getFirst().date(),items));
         var changed=new Result(result.destination(),days,result.transport(),result.createdAt()).withLodging(result.lodging());
         assertThatThrownBy(()->generator.validate(input,changed)).isInstanceOf(RecommendationException.class);
+    }
+    // 1박 2일: 숙소 근처 저녁 뒤 가까운 저녁 관광 한 곳(60분)을 넣고 숙소로 돌아온다. 마지막 날에는 저녁 관광이 없다.
+    @Test void stayDayAddsEveningSpotAfterDinnerAndReturnsToHotel() {
+        var base=input(2,LocalTime.of(18,0));
+        var tower=new PlaceCandidate(8L,"전망대8","강원 강릉시 경포로 8","여행 > 관광,명소 > 전망대","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var input=base.withEvening(List.of(tower));
+        var result=generator.generate(input);
+        var first=result.days().getFirst().items();
+        int stayAt=ItineraryGenerator.stayIndex(first);
+        var after=first.subList(stayAt+1,first.size()).stream().map(Item::type).filter(t->!t.equals("TRANSIT")).toList();
+        assertThat(after).containsExactly("MEAL","VISIT","STAY");
+        var evening=first.stream().filter(i->i.type().equals("VISIT") && i.placeId()==8L).findFirst().orElseThrow();
+        assertThat(Duration.between(evening.start(),evening.end()).toMinutes()).isEqualTo(ItineraryGenerator.EVENING_MINUTES);
+        assertThat(evening.start()).isAfter(LocalTime.of(19,0));
+        assertThat(evening.note()).startsWith("저녁 관광").contains("밤에도 둘러볼 수 있는지");
+        assertThat(first.getLast().type()).isEqualTo("STAY");
+        assertThat(first.getLast().placeId()).isEqualTo(first.get(stayAt).placeId());
+        assertThat(first.getLast().end()).isBeforeOrEqualTo(LocalTime.of(22,0));
+        assertThat(result.days().get(1).items()).noneMatch(i->Long.valueOf(8L).equals(i.placeId()));
+        generator.validate(input,result);
+        var report=ItineraryConditionReport.evaluate(input,result);
+        assertThat(report.complete()).isTrue();
+        assertThat(report.checks()).anySatisfy(c->{ assertThat(c.name()).isEqualTo("숙박"); assertThat(c.detail()).contains("저녁 관광"); });
+        // 저녁 관광 후보가 아닌 곳을 저녁에 넣은 결과는 받지 않는다.
+        var items=new ArrayList<>(first);
+        int at=items.indexOf(evening);
+        items.set(at,new Item("VISIT",2L,"장소2",evening.start(),evening.end(),"",evening.mapUrl(),evening.sourceUrl(),null,null));
+        var days=new ArrayList<>(result.days()); days.set(0,new Day(1,days.getFirst().date(),items));
+        var forged=new Result(result.destination(),days,result.transport(),result.createdAt()).withLodging(result.lodging());
+        assertThatThrownBy(()->generator.validate(input,forged)).isInstanceOf(RecommendationException.class);
+    }
+    // 하루 시간이 길고 체류가 짧아도 예비 관광지로 채우는 것은 하루 4곳까지다.
+    @Test void spareFillStopsAtFourVisitsADay() {
+        var base=input(1,LocalTime.of(21,0));
+        var reserve=java.util.stream.LongStream.rangeClosed(10,17).mapToObj(this::place).toList();
+        var input=new Input(base.recommendationId(),base.places(),base.conditions(),LocalTime.of(8,0),LocalTime.of(21,0),base.transport(),30,null,null,reserve);
+        var result=generator.generate(input);
+        assertThat(result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT"))).hasSize(TripConstraints.MAX_AUTO_DAILY);
+        generator.validate(input,result);
+    }
+    // 첫날은 집에서 출발(07:00, 편도 120분 + 여유 10분 → 09:10 도착)해 도착 뒤 관광하고, 마지막 날은 20:00까지 집에 도착하도록 마친다.
+    @Test void homeDepartureAndReturnFrameTheTrip() {
+        var home=new HomeTrip("서울 송파구",LocalTime.of(7,0),LocalTime.of(20,0),120,"자동차 · 카카오 길찾기",Instant.now());
+        var input=input(2,LocalTime.of(18,0)).withHome(home);
+        assertThat(input.dayStart(1)).isEqualTo(LocalTime.of(9,10));
+        assertThat(input.dayEnd(2)).isEqualTo(LocalTime.of(17,50));
+        assertThat(input.dayStart(2)).isEqualTo(LocalTime.of(9,0));
+        var result=generator.generate(input);
+        var first=result.days().getFirst().items();
+        assertThat(first.getFirst().placeId()).isNull();
+        assertThat(first.getFirst().type()).isEqualTo("TRANSIT");
+        assertThat(first.getFirst().start()).isEqualTo(LocalTime.of(7,0));
+        assertThat(first.getFirst().end()).isEqualTo(LocalTime.of(9,10));
+        assertThat(first.getFirst().name()).isEqualTo("서울 송파구 → 강릉");
+        assertThat(first.get(1).start()).isEqualTo(LocalTime.of(9,10));
+        var last=result.days().get(1).items();
+        assertThat(last.getLast().placeId()).isNull();
+        assertThat(last.getLast().name()).endsWith("→ 서울 송파구");
+        assertThat(Duration.between(last.getLast().start(),last.getLast().end()).toMinutes()).isEqualTo(130);
+        assertThat(last.getLast().end()).isBeforeOrEqualTo(LocalTime.of(20,0));
+        generator.validate(input,result);
+        var report=ItineraryConditionReport.evaluate(input,result);
+        assertThat(report.complete()).isTrue();
+        // 집 이동은 같은 주소 안 이동으로 세지 않고, 편도 시간과 근거를 따로 적는다.
+        assertThat(report.checks()).anySatisfy(c->{ assertThat(c.name()).isEqualTo("이동시간");
+            assertThat(c.detail()).contains("모두 카카오 예상 이동시간").contains("집 → 여행지는 편도 약 120분"); });
+    }
+    // 돌아갈 곳이 출발지와 다르면 마지막 날 그곳까지의 시간(200분)으로 관광을 마치는 시각을 정하고, 마지막 이동도 그곳으로 간다.
+    @Test void returnToAnotherPlaceUsesItsOwnTravelTime() {
+        var home=new HomeTrip("서울 송파구",LocalTime.of(7,0),LocalTime.of(20,0),120,"직접 입력한 편도 시간",null,"대전 서구",200,"직접 입력한 편도 시간");
+        var input=input(2,LocalTime.of(18,0)).withHome(home);
+        assertThat(input.dayEnd(2)).isEqualTo(LocalTime.of(16,30));
+        var result=generator.generate(input);
+        var last=result.days().get(1).items().getLast();
+        assertThat(last.name()).endsWith("→ 대전 서구");
+        assertThat(Duration.between(last.start(),last.end()).toMinutes()).isEqualTo(210);
+        assertThat(last.note()).contains("20:00까지 대전 서구에 도착");
+        generator.validate(input,result);
+        assertThat(ItineraryConditionReport.evaluate(input,result).checks()).anySatisfy(c->assertThat(c.detail()).contains("여행지 → 대전 서구는 약 200분"));
+    }
+    // 당일치기에서 집 오가는 시간을 빼면 4시간이 안 되면 만들지 않고 이유를 알린다.
+    @Test void dayTripTooShortAfterHomeTravelIsRejected() {
+        var home=new HomeTrip("서울",LocalTime.of(9,0),LocalTime.of(18,0),180,"직접 입력",null);
+        var input=input(1,LocalTime.of(18,0)).withHome(home);
+        assertThatThrownBy(()->generator.checkInput(input)).isInstanceOfSatisfying(RecommendationException.class,
+            e->assertThat(e.getMessage()).contains("4시간보다 짧아요").contains("12:10~14:50"));
     }
     // 하루 종료를 늦게(20:50) 정해도 숙박하는 날 저녁은 한 번만 넣는다(점심 1 + 저녁 1). 마지막 날은 점심만 있다.
     @Test void stayDayDinnerIsAddedOnlyOnce() {
