@@ -87,7 +87,11 @@ class TripConstraintsTests {
         var tower = kind(6, "스카이타워", "여행 > 관광,명소 > 전망대");
         var forest = kind(7, "휴양림", "여행 > 관광,명소 > 자연휴양림");
         var chosen = kind(8, "해변", "여행 > 관광,명소 > 해수욕장,해변");
-        assertThat(TripConstraints.eveningPlaces(List.of(chosen, forest, tower), List.of(chosen))).containsExactly(tower);
+        assertThat(TripConstraints.eveningPlaces(List.of(chosen, forest, tower), List.of(chosen.placeId()), 3)).containsExactly(tower);
+        // 16곳 후보로 2박 3일(하루 3곳 → 낮 9곳)이면 숙박 2박 + 여유 2곳 = 4곳을 저녁 몫으로 떼어 두고, 후보가 모자라면 떼어 두지 않는다.
+        assertThat(TripConstraints.eveningShare(16, 3, 3)).isEqualTo(4);
+        assertThat(TripConstraints.eveningShare(26, 5, 3)).isEqualTo(6);
+        assertThat(TripConstraints.eveningShare(8, 3, 3)).isZero();
     }
     private static PlaceCandidate kind(long id, String name, String subtype) {
         return new PlaceCandidate(id, name, "전남 여수시 도로 " + id, subtype, "", "https://place.map.kakao.com/" + id, "",

@@ -227,8 +227,11 @@ public class SavedItineraryService {
         var savedItems=items.findByItineraryIdOrderByDayNoAscSequenceNoAsc(id);
         // 방문한 관광지는 지금 확인된 후보에서 찾는다. 후보에 없는 곳은 장소 정보로 넣되 수정안에서 바꾸도록 안내한다.
         var attractions=new ArrayList<PlaceCandidate>(); var missing=new ArrayList<String>();
+        // 숙소 도착 뒤의 방문은 저녁 관광이라 낮 관광지로 되돌리지 않는다(수정안을 만들면 저녁 관광 후보에서 다시 고른다).
+        Set<String> afterStay=new HashSet<>();
         for(var item:savedItems) {
-            if(!"VISIT".equals(item.getItemType()) || item.getPlaceId()==null
+            if("STAY".equals(item.getItemType())) afterStay.add(String.valueOf(item.getDayNo()));
+            if(!"VISIT".equals(item.getItemType()) || item.getPlaceId()==null || afterStay.contains(String.valueOf(item.getDayNo()))
                 || attractions.stream().anyMatch(p->p.placeId().equals(item.getPlaceId()))) continue;
             var current=pool.attractions().stream().filter(p->p.placeId().equals(item.getPlaceId())).findFirst();
             if(current.isPresent()) { attractions.add(current.get()); continue; }
@@ -240,7 +243,10 @@ public class SavedItineraryService {
             List.copyOf(attractions),pool.accommodations(),pool.restaurants());
         var input=new Input(parentId,candidates,conditions,LocalTime.parse(schedule.path("dayStart").asText()),
             LocalTime.parse(schedule.path("dayEnd").asText()),KakaoMapClient.Transport.valueOf(schedule.path("transport").asText()),
-            schedule.path("visitMinutes").asInt(90));
+            schedule.path("visitMinutes").asInt(90))
+            .withEvening(pool.accommodationNeeded()?TripConstraints.eveningPlaces(TripConstraints.nearCenterFirst(pool.attractions()),
+                attractions.stream().map(PlaceCandidate::placeId).toList(),conditions.durationDays()==null?0:conditions.durationDays()+1):List.of())
+            .withHome(savedHome(snapshot.path("home")));
         var result=restoredResult(pool.destination().name(),input.transport(),savedItems);
         var parent=access.owned(parentId,loginId,null,"RECOMMENDATION");
         var job=jobs.saveAndFlush(AiJob.restoredItinerary(parent,mapper.writeValueAsString(input),mapper.writeValueAsString(result)));
@@ -250,6 +256,12 @@ public class SavedItineraryService {
         itinerary.relinkDraft(mapper.writeValueAsString(relinked));
         itineraries.flush();
         return new EditDraft(job.getId(),List.copyOf(missing));
+    }
+    /** 저장할 때 남긴 집 출발·귀가 설정. 출발지는 시·구 이름만 있고 좌표는 없다. 예전에 저장한 일정에는 없다. */
+    private static HomeTrip savedHome(tools.jackson.databind.JsonNode home) {
+        if(!home.path("departAt").isTextual() || !home.path("arriveBy").isTextual() || !home.path("minutes").canConvertToInt()) return null;
+        return new HomeTrip(home.path("origin").asText("집"),LocalTime.parse(home.path("departAt").asText()),
+            LocalTime.parse(home.path("arriveBy").asText()),home.path("minutes").asInt(),home.path("basis").asText("저장한 일정의 이동시간"),null);
     }
     private ConfirmedTravelConditions savedConditions(tools.jackson.databind.JsonNode snapshot) {
         if(!snapshot.path("conditions").isObject())
@@ -308,7 +320,9 @@ public class SavedItineraryService {
     }
     private SavedItinerary.Item view(ItineraryItem item) {
         var snapshot=mapper.readTree(item.getPlaceSnapshotJson()==null?"{}":item.getPlaceSnapshotJson());
-        return new SavedItinerary.Item(item.getItemType(),typeName(item.getItemType()),
+        // 숙소 근처 저녁 관광은 일정 초안 화면처럼 '저녁 관광'으로 보여 준다.
+        String typeName="VISIT".equals(item.getItemType()) && snapshot.path("note").asText("").startsWith("저녁 관광")?"저녁 관광":typeName(item.getItemType());
+        return new SavedItinerary.Item(item.getItemType(),typeName,
             item.getStartAt().toLocalTime(),item.getEndAt().toLocalTime(),
             snapshot.path("name").asText(item.getActivity()),snapshot.path("note").asText(""),
             snapshot.path("mapUrl").asText(""),snapshot.path("sourceUrl").asText(""),item.getTravelMinutes(),item.getPlaceId());
@@ -321,6 +335,9 @@ public class SavedItineraryService {
         snapshot.put("destination",Map.of("placeId",destination.placeId(),"name",destination.name(),"region",destination.region()));
         snapshot.put("schedule",Map.of("dayStart",input.start().toString(),"dayEnd",input.end().toString(),
             "transport",input.transport().name(),"visitMinutes",input.visitMinutes(),"dayCount",result.days().size()));
+        // 집 출발·귀가 설정은 수정할 때 같은 기준으로 다시 짜도록 남긴다. 출발지는 시·구 이름만 있다.
+        if(input.home()!=null) snapshot.put("home",Map.of("origin",input.home().origin(),"departAt",input.home().departAt().toString(),
+            "arriveBy",input.home().arriveBy().toString(),"minutes",input.home().minutes(),"basis",input.home().basis()));
         snapshot.put("conditions",input.conditions());
         snapshot.put("conditionChecks",report.checks().stream()
             .map(c->Map.of("name",c.name(),"status",c.status().name(),"detail",c.detail()==null?"":c.detail())).toList());

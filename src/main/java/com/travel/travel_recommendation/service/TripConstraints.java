@@ -149,9 +149,18 @@ public final class TripConstraints {
         return EVENING_WORDS.stream().anyMatch(place.name()::contains);
     }
 
-    /** 일정에 쓰려고 고른 관광지를 뺀 후보 중 저녁 관광으로 어울리는 곳. 후보 순서(가운데와 가까운 순)를 따른다. */
-    public static List<PlaceCandidate> eveningPlaces(List<PlaceCandidate> ordered, List<PlaceCandidate> selected) {
-        return ordered.stream().filter(p -> !selected.contains(p) && eveningSpot(p)).limit(MAX_EVENING).toList();
+    /** 제외할 곳(낮 관광지·필수·중심 장소)을 뺀 후보 중 저녁 관광으로 어울리는 곳을 limit곳까지. 후보 순서(가운데와 가까운 순)를 따른다. */
+    public static List<PlaceCandidate> eveningPlaces(List<PlaceCandidate> ordered, Collection<Long> excluded, int limit) {
+        return ordered.stream().filter(p -> !excluded.contains(p.placeId()) && eveningSpot(p)).limit(Math.min(limit, MAX_EVENING)).toList();
+    }
+
+    /**
+     * 숙박 여행에서 저녁 관광 몫으로 먼저 떼어 둘 수. 숙박하는 날(일수 - 1)마다 한 곳에 거리·운영시간으로 빠질 곳을 대신할 2곳을 더하되,
+     * 낮 관광지로 쓸 수(일수 × 하루 수)를 채우고 남는 후보만큼이다. 야경·야시장 같은 곳이 낮 일정에 먼저 쓰이지 않게 한다.
+     */
+    public static int eveningShare(int candidates, int days, int daily) {
+        int daytime = Math.min(MAX_TOTAL, days * daily);
+        return Math.max(0, Math.min(days + 1, candidates - daytime));
     }
 
     /**

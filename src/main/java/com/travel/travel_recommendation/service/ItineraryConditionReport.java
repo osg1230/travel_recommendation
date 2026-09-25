@@ -25,7 +25,7 @@ public final class ItineraryConditionReport {
 
     public static Report evaluate(Input input, Result result) {
         var checks = new ArrayList<>(List.of(period(input, result), required(input, result), attractions(input, result), duplicates(result),
-            dailyVisits(input, result), themes(input, result), timeline(input, result), travelTimes(result), operating(input, result),
+            dailyVisits(input, result), themes(input, result), timeline(input, result), travelTimes(input, result), operating(input, result),
             accommodation(input, result), budget(input)));
         if (input.revision() != null) checks.add(2, kept(input, result));
         return new Report(List.copyOf(checks), checks.stream().noneMatch(c -> c.status() == Status.UNMET));
@@ -155,16 +155,18 @@ public final class ItineraryConditionReport {
         return new Check("시간 충돌", Status.MET, "모든 활동이 " + input.start() + "~" + input.end() + " 안에서 겹치지 않아요." + homeText);
     }
 
-    private static Check travelTimes(Result result) {
-        var moves = result.days().stream().flatMap(d -> d.items().stream()).filter(i -> "TRANSIT".equals(i.type())).toList();
-        if (moves.isEmpty()) return new Check("이동시간", Status.NOT_APPLICABLE, "장소 사이 이동이 없어요.");
+    private static Check travelTimes(Input input, Result result) {
+        // 집 ↔ 여행지 이동(장소 없는 이동 항목)은 카카오 구간 조회가 아니라 집 출발·귀가 설정의 편도 시간이라 따로 적는다.
+        String home = input.home() == null ? "" : " 집 ↔ 여행지는 편도 약 " + input.home().minutes() + "분(" + input.home().basis() + ")에 여유 10분을 더했어요.";
+        var moves = result.days().stream().flatMap(d -> d.items().stream()).filter(i -> "TRANSIT".equals(i.type()) && i.placeId() != null).toList();
+        if (moves.isEmpty()) return new Check("이동시간", Status.NOT_APPLICABLE, "장소 사이 이동이 없어요." + home);
         long unknown = moves.stream().filter(i -> i.travelSeconds() == null || i.checkedAt() == null).count();
         if (unknown > 0) return new Check("이동시간", Status.NEEDS_CHECK,
-            "이동 " + moves.size() + "구간 중 " + unknown + "구간은 같은 주소 안 이동이라 실제 내부 동선을 확인해야 해요.");
+            "이동 " + moves.size() + "구간 중 " + unknown + "구간은 같은 주소 안 이동이라 실제 내부 동선을 확인해야 해요." + home);
         long walking = moves.stream().filter(i -> i.note() != null && i.note().startsWith(ItineraryGenerator.WALK_NOTE_PREFIX)).count();
         if (walking > 0) return new Check("이동시간", Status.NEEDS_CHECK,
-            "이동 " + moves.size() + "구간 중 " + walking + "구간은 가까워서 대중교통 경로가 없어 도보 시간을 직선거리로 추정했어요. 실제 보행 경로를 확인해 주세요.");
-        return new Check("이동시간", Status.MET, "이동 " + moves.size() + "구간 모두 카카오 예상 이동시간과 여유 10분을 반영했어요. 실시간 교통은 보장하지 않아요.");
+            "이동 " + moves.size() + "구간 중 " + walking + "구간은 가까워서 대중교통 경로가 없어 도보 시간을 직선거리로 추정했어요. 실제 보행 경로를 확인해 주세요." + home);
+        return new Check("이동시간", Status.MET, "이동 " + moves.size() + "구간 모두 카카오 예상 이동시간과 여유 10분을 반영했어요. 실시간 교통은 보장하지 않아요." + home);
     }
 
     private static Check operating(Input input, Result result) {

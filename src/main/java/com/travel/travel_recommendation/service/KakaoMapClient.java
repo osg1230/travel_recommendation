@@ -278,6 +278,45 @@ public class KakaoMapClient {
         return local.matches() && local.group(1).length()>=1 ? local.group(1) : null;
     }
 
+    /** 집(출발지) 위치와 화면에 보여 줄 동네 이름(예: "서울특별시 송파구"). 좌표는 이동시간 조회에만 쓰고 저장하지 않는다. */
+    public record Origin(String label, String city, Location location) {}
+
+    /**
+     * 사용자가 적은 출발지(주소·동네·역 이름 등)의 위치를 찾는다. 주소 검색이 먼저이고, 없으면 장소 이름으로 찾는다.
+     * 표시 이름은 정확한 주소가 아니라 시·구 단위로 줄여 개인 위치가 드러나지 않게 한다.
+     */
+    public Origin findOrigin(String text) {
+        String query=text==null?"":text.strip().replaceAll("\\s+"," ");
+        if(query.isEmpty() || query.length()>60) throw failure("MAP_ORIGIN","출발지는 60자 이내의 주소나 동네·역 이름으로 적어 주세요.");
+        String encoded=URLEncoder.encode(query,StandardCharsets.UTF_8);
+        var documents=get(localEndpoint.resolve("/v2/local/search/address.json?size=1&query="+encoded)).path("documents");
+        if(!documents.isArray() || documents.isEmpty())
+            documents=get(localEndpoint.resolve("/v2/local/search/keyword.json?size=1&page=1&rect=124,33,132,39&query="+encoded)).path("documents");
+        if(!documents.isArray() || documents.isEmpty())
+            throw failure("MAP_ORIGIN","'"+query+"' 위치를 찾지 못했어요. 시·구·동 이름이나 역 이름으로 다시 적어 주세요.");
+        try {
+            var first=documents.get(0);
+            double longitude=Double.parseDouble(requiredText(first,"x",40)), latitude=Double.parseDouble(requiredText(first,"y",40));
+            return originAt(longitude,latitude);
+        } catch(IllegalArgumentException error) { throw failure("MAP_ORIGIN","'"+query+"' 위치를 확인하지 못했어요. 다른 이름으로 적어 주세요."); }
+    }
+
+    /** '내 위치로 찾기'로 받은 좌표의 출발지. 국내 좌표만 받는다. */
+    public Origin originAt(double longitude, double latitude) {
+        if (!Double.isFinite(longitude) || !Double.isFinite(latitude) || longitude < 124 || longitude > 132 || latitude < 33 || latitude > 39)
+            throw failure("MAP_LOCATION", "국내 위치만 찾을 수 있어요. 출발지를 직접 적어 주세요.");
+        var root=get(localEndpoint.resolve("/v2/local/geo/coord2regioncode.json?x="+longitude+"&y="+latitude));
+        for (var document:root.path("documents")) {
+            if (!"H".equals(document.path("region_type").asText())) continue;
+            String first=document.path("region_1depth_name").asText("").strip(), second=document.path("region_2depth_name").asText("").strip();
+            String label=(first+" "+second).strip();
+            if (label.isEmpty() || label.length()>40) break;
+            // city는 버스 터미널 검색어(예: "서울", "강릉")다. 버스로 이동시간을 찾을 때 쓴다.
+            return new Origin(label,cityKeyword(first,second),new Location(label,longitude,latitude,Instant.now()));
+        }
+        throw failure("MAP_LOCATION", "출발 위치의 지역을 확인하지 못했어요. 출발지를 직접 적어 주세요.");
+    }
+
     public TravelTime travelTime(Location from, Location to, Transport transport) {
         if (from==null || to==null || transport==null) throw invalid();
         if (from.longitude()==to.longitude() && from.latitude()==to.latitude())

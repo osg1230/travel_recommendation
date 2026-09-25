@@ -177,7 +177,11 @@ class ItineraryGeneratorTests {
         assertThat(Duration.between(last.getLast().start(),last.getLast().end()).toMinutes()).isEqualTo(130);
         assertThat(last.getLast().end()).isBeforeOrEqualTo(LocalTime.of(20,0));
         generator.validate(input,result);
-        assertThat(ItineraryConditionReport.evaluate(input,result).complete()).isTrue();
+        var report=ItineraryConditionReport.evaluate(input,result);
+        assertThat(report.complete()).isTrue();
+        // 집 이동은 같은 주소 안 이동으로 세지 않고, 편도 시간과 근거를 따로 적는다.
+        assertThat(report.checks()).anySatisfy(c->{ assertThat(c.name()).isEqualTo("이동시간");
+            assertThat(c.detail()).contains("모두 카카오 예상 이동시간").contains("집 ↔ 여행지는 편도 약 120분"); });
     }
     // 당일치기에서 집 오가는 시간을 빼면 4시간이 안 되면 만들지 않고 이유를 알린다.
     @Test void dayTripTooShortAfterHomeTravelIsRejected() {

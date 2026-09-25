@@ -36,8 +36,8 @@ public class ItineraryGenerator {
     private static final Set<String> DAY_FULL_CODES=Set.of("TIME_OVERLAP","OPERATING_CONFLICT");
     /** 저녁 관광 한 곳의 체류시간(분). 야경·산책·야시장을 둘러보는 시간이다. */
     static final int EVENING_MINUTES=60;
-    /** 저녁 관광지까지 이 시간(분, 여유 포함)보다 오래 걸리면 고르지 않는다. 밤에 멀리 오가지 않게 한다. */
-    private static final int EVENING_MAX_MOVE=40;
+    /** 저녁 관광지까지 이 시간(분, 여유 10분 포함)보다 오래 걸리면 고르지 않는다. 밤에 멀리 오가지 않게 한다(자동차 약 30분 거리). */
+    private static final int EVENING_MAX_MOVE=45;
     /** 저녁 관광을 마치고 숙소로 돌아와 쉬는 항목의 길이(분). */
     static final int RETURN_REST_MINUTES=30;
     /** 이 오류가 나면 그 관광지만 뺀다. 한 구간 2시간 초과(섬 등)와 경로 없음이다. */

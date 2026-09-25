@@ -72,7 +72,7 @@
                 <a class="button button-quiet" th:href="@{/travel/recommendations/{id}/destinations/{destinationId}/places(id=${job.jobId},destinationId=${item.destination.placeId})}">장소 목록 먼저 보기</a>
             </div>
         </section>
-        <p class="help">'일정 만들기'를 누르면 09:00~18:00 기본 시간으로 바로 일정 초안을 만들어요. 여행 일수·숙박·출발일·이동수단이 정해지지 않았다면 그것만 먼저 물어봐요. 시간이나 장소는 초안을 본 뒤 바꿀 수 있어요.</p>
+        <p class="help">'일정 만들기'를 누르면 09:00~18:00 기본 시간으로 바로 일정 초안을 만들어요. 집에서 출발·도착할 시각과 출발지를 먼저 묻고, 여행 일수·숙박·출발일·이동수단이 정해지지 않았다면 그것도 함께 물어봐요. 시간이나 장소는 초안을 본 뒤 바꿀 수 있어요.</p>
     </div>
     <section class="condition-section" th:if="${spending != null and (!job.candidates.isEmpty() or job.status == 'COMPLETED')}" aria-labelledby="budget-title">
         <h2 id="budget-title">예산을 정하지 않았어요</h2>

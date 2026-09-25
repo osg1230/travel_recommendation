@@ -97,6 +97,14 @@ public class ItineraryJobService {
     public UUID create(UUID parentId,long destinationId,String login,byte[] hash,LocalTime start,LocalTime end,
                        KakaoMapClient.Transport transport,int visitMinutes,Constraints constraints,Integer durationDays,Boolean accommodationNeeded,
                        LocalDate startDate) {
+        return create(parentId,destinationId,login,hash,start,end,transport,visitMinutes,constraints,durationDays,accommodationNeeded,startDate,null);
+    }
+
+    /** home은 첫날 집 출발·마지막 날 귀가 설정이다(HomeTripService가 이동시간을 찾아 만든다). 없으면 여행지 안 일정만 만든다. */
+    @Transactional(timeout=10)
+    public UUID create(UUID parentId,long destinationId,String login,byte[] hash,LocalTime start,LocalTime end,
+                       KakaoMapClient.Transport transport,int visitMinutes,Constraints constraints,Integer durationDays,Boolean accommodationNeeded,
+                       LocalDate startDate,HomeTrip home) {
         var current=options(parentId,destinationId,login,hash);
         // 추천 때 미정이던 값만 일정 생성 시 받는다. 명시된 날짜·기간을 조용히 덮어쓰지 않는다.
         var c=current.conditions();
@@ -137,20 +145,36 @@ public class ItineraryJobService {
         // 같은 종류(해수욕장 등)는 돌아가며 고르고, 고른 여행 취향에 맞는 곳은 그중에서도 먼저 고른다.
         var ordered=TripConstraints.aroundCenters(places.attractions(),
             constraints==null?List.of():constraints.centerPlaceIds(),current.conditions().themeNames());
+        // 숙박 여행이면 저녁 관광에 어울리는 곳(야경·산책·야시장 등)을 먼저 저녁 몫으로 떼어 두고 나머지로 낮 관광지를 고른다.
+        // 필수·중심 장소는 낮 일정에 넣어야 하므로 떼어 두지 않는다.
+        List<PlaceCandidate> evening=List.of();
+        if(places.accommodationNeeded() && start!=null && end!=null && end.isAfter(start)) {
+            Set<Long> keepForDay=new HashSet<>();
+            if(constraints!=null) { keepForDay.addAll(constraints.requiredPlaceIds()); keepForDay.addAll(constraints.centerPlaceIds()); }
+            int daily=constraints!=null && constraints.dailyVisits()!=null?constraints.dailyVisits()
+                :TripConstraints.estimatedDailyCapacity(start,end,visitMinutes);
+            evening=TripConstraints.eveningPlaces(ordered,keepForDay,TripConstraints.eveningShare(ordered.size(),days,daily));
+        }
+        final var eveningPool=evening;
+        var daytimeOrder=ordered.stream().filter(p->!eveningPool.contains(p)).toList();
         try {
-            selected=TripConstraints.select(ordered,days,start,end,visitMinutes,constraints);
+            selected=TripConstraints.select(daytimeOrder,days,start,end,visitMinutes,constraints);
         } catch(IllegalArgumentException invalid) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"화면에 있는 장소와 값으로 조건을 다시 골라 주세요.");
         }
         places=new PlaceCandidateView(places.jobId(),places.destination(),places.durationDays(),places.accommodationNeeded(),
             selected,places.accommodations(),places.restaurants());
-        // 저녁 관광 후보는 일정에 쓰려고 고른 관광지를 뺀 후보 중 야경·산책·야시장에 어울리는 곳이다(숙박하는 날에만 쓴다).
-        // 예비 관광지와 겹치지 않게 해, 저녁에 들른 곳이 낮 관광지로 다시 쓰이지 않게 한다.
-        var reserve=reserve(ordered,selected);
-        var daytime=new ArrayList<>(selected); daytime.addAll(reserve);
-        var evening=places.accommodationNeeded()?TripConstraints.eveningPlaces(ordered,daytime):List.<PlaceCandidate>of();
-        var input=new Input(parentId,places,current.conditions(),start,end,transport,visitMinutes,null,constraints,reserve,evening,null);
-        generator.checkInput(input);
+        // 예비 관광지는 저녁 몫을 뺀 후보에서 고른다. 저녁에 들른 곳이 낮 관광지로 다시 쓰이지 않게 한다.
+        var reserve=reserve(daytimeOrder,selected);
+        var input=new Input(parentId,places,current.conditions(),start,end,transport,visitMinutes,null,constraints,reserve,evening,home);
+        try {
+            generator.checkInput(input);
+        } catch(RecommendationException error) {
+            // 집에서 오가는 시간 때문에 첫날·마지막 날 시간이 모자라면 입력 화면에서 이유와 고칠 방법을 보여 준다.
+            if(!error.getCode().startsWith("HOME_")) throw error;
+            throw new TripConstraints.ConflictException(List.of(new TripConstraints.Conflict(error.getMessage(),
+                List.of("집 출발 시각 앞당기기","귀가 시각 늦추기","하루 시간 늘리기"))));
+        }
         var parent=access.owned(parentId,login,hash,"RECOMMENDATION");
         return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();
     }
