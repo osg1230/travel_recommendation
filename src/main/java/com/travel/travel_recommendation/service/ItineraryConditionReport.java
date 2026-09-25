@@ -47,6 +47,9 @@ public final class ItineraryConditionReport {
     private static Check kept(Input input, Result result) {
         var visited = visits(result).stream().map(Item::placeId).toList();
         var missing = input.revision().kept().stream().filter(p -> !visited.contains(p.placeId())).map(PlaceRef::name).toList();
+        // 관광지를 더하기만 한 수정안은 더한 곳이 먼저라, 시간이 모자라면 기존 관광지가 빠질 수 있다. 저장은 막지 않고 알린다.
+        if (!missing.isEmpty() && ItineraryGenerator.addOnly(input.revision()))
+            return new Check("유지한 관광지", Status.NEEDS_CHECK, "관광지를 더하느라 하루 시간이 모자라 빠진 기존 관광지: " + String.join(", ", missing));
         if (!missing.isEmpty()) return new Check("유지한 관광지", Status.UNMET, "빠진 관광지: " + String.join(", ", missing));
         return new Check("유지한 관광지", Status.MET, "유지하기로 한 " + input.revision().kept().size()
             + "곳을 모두 포함했어요. 방문 시각은 동선에 맞춰 다시 계산했어요.");

@@ -64,6 +64,15 @@ public class ItineraryGenerator {
                 catch(RecommendationException error) { if("SCHEDULE_TIMEOUT".equals(error.getCode())) throw error; lastError=error; }
             }
             lodging=rankLodging(places,locations,input.constraints()==null?null:input.constraints().stayTier());
+            // 수정 요청으로 숙소를 정했으면(확인된 숙소 후보 중) 그곳을 쓴다. 다른 후보 안내는 거리 순서 그대로 둔다.
+            Long chosenStay=input.choices().stayPlaceId();
+            if(lodging!=null && chosenStay!=null && locations.containsKey(chosenStay)) {
+                var options=new ArrayList<StayOption>(lodging.options());
+                options.removeIf(o->o.placeId().equals(chosenStay));
+                var all=rankLodging(places,locations,null);
+                all.options().stream().filter(o->o.placeId().equals(chosenStay)).findFirst().ifPresent(o->options.addFirst(o));
+                lodging=new Lodging(chosenStay,"수정 요청에서 고른 숙소예요.",options.subList(0,Math.min(3,options.size())));
+            }
             if(lodging==null) throw lastError!=null?lastError:failure("INSUFFICIENT_PLACES","숙소 후보의 위치를 확인하지 못했어요. 다른 지역을 선택해 주세요.");
             Long chosen=lodging.chosenPlaceId();
             hotel=places.accommodations().stream().filter(p->p.placeId().equals(chosen)).findFirst().orElseThrow();
@@ -137,9 +146,11 @@ public class ItineraryGenerator {
                 // 직전 관광지와 종류가 같으면(예: 해수욕장 다음 해수욕장) 거리를 두 배로 쳐서, 조금 멀어도 다른 종류를 먼저 고른다.
                 boolean forceCenter=!spare && !centerTried && dayCenter!=null && remaining.contains(dayCenter);
                 centerTried=true;
-                var next=forceCenter?dayCenter:pool.stream().min(order(builder.date,p->anchor==null?remaining.indexOf(p)
+                // 빠지면 안 되는 곳(필수·수정 요청으로 더한 곳)을 그날 먼저 넣고, 그 안에서는 가까운 곳부터 고른다.
+                var next=forceCenter?dayCenter:pool.stream().min(Comparator.<PlaceCandidate>comparingInt(p->mustVisit.contains(p.placeId())?0:1)
+                    .thenComparing(order(builder.date,p->anchor==null?remaining.indexOf(p)
                     :distance(locations.get(anchor.placeId()),locations.get(p.placeId()))
-                        *(!previousKind.isEmpty() && previousKind.equals(TripConstraints.kind(p))?SAME_KIND_PENALTY:1))).orElseThrow();
+                        *(!previousKind.isEmpty() && previousKind.equals(TripConstraints.kind(p))?SAME_KIND_PENALTY:1)))).orElseThrow();
                 // 거리만 봤다면 직전과 같은 종류를 골랐을 때만 "다른 종류로 골랐다"고 이유에 적는다.
                 boolean variedKind=!forceCenter && anchor!=null && !previousKind.isEmpty() && pool.stream()
                     .min(order(builder.date,p->distance(locations.get(anchor.placeId()),locations.get(p.placeId()))))
@@ -256,11 +267,19 @@ public class ItineraryGenerator {
      * 이미 간 곳은 후보가 모자랄 때만 다시 고른다. 간식·술집·카페는 끼니로 어울리지 않아, 다른 음식점이 하나도 없을 때만 고른다.
      */
     private PlaceCandidate pickRestaurant(DayBuilder builder,PlaceCandidate after) {
-        var all=builder.input.places().restaurants();
+        var choices=builder.input.choices();
+        // 수정 요청에서 빼 달라고 한 식당은 쓰지 않는다. 모두 빼면 식사를 넣을 수 없으므로 그때만 다시 쓴다.
+        var allowed=builder.input.places().restaurants().stream().filter(p->!choices.avoidRestaurants().contains(p.placeId())).toList();
+        var all=allowed.isEmpty()?builder.input.places().restaurants():allowed;
         var meals=all.stream().filter(p->!PlaceCandidate.notForMeals(p.subtype())).toList();
         var restaurants=meals.isEmpty()?all:meals;
         var fresh=restaurants.stream().filter(p->!builder.usedRestaurants.contains(p.placeId())).toList();
         var from=builder.locations.get(after.placeId());
+        // 수정 요청에서 가고 싶다고 한 식당은 아직 가지 않았고 PREFERRED_MEAL_KM 안이면 먼저 쓴다.
+        var preferred=all.stream().filter(p->choices.preferRestaurants().contains(p.placeId()) && !builder.usedRestaurants.contains(p.placeId())
+                && kilometers(from,builder.locations.get(p.placeId()))<=PREFERRED_MEAL_KM)
+            .min(Comparator.comparingDouble(p->distance(from,builder.locations.get(p.placeId()))));
+        if(preferred.isPresent()) return preferred.get();
         var sorted=(fresh.isEmpty()?restaurants:fresh).stream()
             .sorted(order(builder.date,p->distance(from,builder.locations.get(p.placeId())))).toList();
         var nearest=sorted.getFirst();
@@ -275,6 +294,8 @@ public class ItineraryGenerator {
                 .thenComparingInt(p->regionalFood(builder,p).isPresent()?0:1)).orElse(nearest);
     }
 
+    /** 수정 요청에서 가고 싶다고 한 식당은 식사 직전 장소에서 이 거리(km) 안이면 먼저 고른다. 더 멀면 동선이 크게 꼬이므로 쓰지 않는다. */
+    static final double PREFERRED_MEAL_KM=10.0;
     /** 가장 가까운 음식점보다 이 거리(km)까지 더 멀어도, 아직 먹지 않은 음식이나 지역 대표 음식이면 먼저 고른다. */
     static final double MEAL_CHOICE_KM=2.0;
     /** 이보다 먼 음식점은 가까운 후보가 없어 넣었다고 안내한다. */
@@ -306,6 +327,7 @@ public class ItineraryGenerator {
         boolean firstMeal=builder.usedRestaurants.size()==1 && fresh;
         String kind=restaurant.subtypeLabel();
         var reasons=new ArrayList<String>();
+        if(builder.input.choices().preferRestaurants().contains(restaurant.placeId())) reasons.add("수정 요청에서 가고 싶다고 한 식당이에요.");
         regionalFood(builder,restaurant).ifPresent(food->reasons.add("상호나 분류에 이 지역 대표 음식("+food+")이 들어간 곳이에요."));
         if(fresh && !kind.isEmpty() && !eaten.isEmpty() && !eaten.contains(kind))
             reasons.add("앞서 먹은 음식("+String.join("·",eaten)+")과 다른 분류예요.");
@@ -464,10 +486,15 @@ public class ItineraryGenerator {
         Set<Long> ids=new HashSet<>();
         if(input.constraints()!=null) ids.addAll(input.constraints().requiredPlaceIds());
         if(input.revision()!=null) {
-            input.revision().kept().forEach(p->ids.add(p.placeId()));
+            // "○○도 넣어 줘"처럼 더하기만 한 수정안은 더한 곳이 먼저이고, 시간이 모자라면 기존 관광지 일부를 뺄 수 있다.
+            if(!addOnly(input.revision())) input.revision().kept().forEach(p->ids.add(p.placeId()));
             input.revision().added().forEach(p->ids.add(p.placeId()));
         }
         return ids;
+    }
+    /** 기존 관광지를 바꾸지 않고 더하기만 한 수정안인지. */
+    static boolean addOnly(Revision revision) {
+        return revision.replaced().isEmpty() && !revision.added().isEmpty();
     }
 
     // 카카오 후보는 조회해 둔 좌표를, 그 밖에는 도로명 주소로 좌표를 찾는다. 같은 건물 주소는 한 번만 조회한다.
@@ -610,6 +637,10 @@ public class ItineraryGenerator {
             if(stayAt<0) throw invalid();
             hotelId=firstDay.get(stayAt).placeId();
             if(result.lodging()!=null && !hotelId.equals(result.lodging().chosenPlaceId())) throw invalid();
+            // 수정 요청으로 숙소를 정했으면 그 숙소여야 한다(위치를 확인하지 못한 경우만 다른 숙소가 될 수 있다).
+            var chosenStay=input.choices().stayPlaceId();
+            if(chosenStay!=null && !chosenStay.equals(hotelId) && result.lodging()!=null && result.lodging().options().stream().anyMatch(o->o.placeId().equals(chosenStay)))
+                throw invalid();
         }
         int dayNumber=0;
         for(var day:result.days()) {
@@ -661,7 +692,13 @@ public class ItineraryGenerator {
                             if(afterStay) { if(!eveningIds.contains(item.placeId()) || !seen.add(item.placeId()) || minutes!=EVENING_MINUTES) throw invalid(); }
                             else { if(!(expected.contains(item.placeId()) || reserveIds.contains(item.placeId())) || !seen.add(item.placeId()) || minutes!=input.visitMinutes()) throw invalid(); visits++; }
                         }
-                        case "MEAL" -> { if(input.places().restaurants().stream().noneMatch(p->p.placeId().equals(item.placeId()))) throw invalid(); meals++; }
+                        case "MEAL" -> {
+                            if(input.places().restaurants().stream().noneMatch(p->p.placeId().equals(item.placeId()))) throw invalid();
+                            // 빼 달라고 한 식당은 다른 식당 후보가 하나라도 있으면 쓰지 않는다.
+                            if(input.choices().avoidRestaurants().contains(item.placeId())
+                                && input.places().restaurants().stream().anyMatch(p->!input.choices().avoidRestaurants().contains(p.placeId()))) throw invalid();
+                            meals++;
+                        }
                         case "STAY" -> { if(input.places().accommodations().stream().noneMatch(p->p.placeId().equals(item.placeId()))
                             || (hotelId!=null && !hotelId.equals(item.placeId()))) throw invalid(); }
                         case "FREE" -> { }

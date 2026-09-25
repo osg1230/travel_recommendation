@@ -169,6 +169,44 @@ class ItineraryRevisionIntegrationTests {
         finish(result.job());
     }
 
+    // 문장 요청 하나로 관광지 더하기(빼지 않고)·이동수단·식당 빼기·숙소 고르기를 함께 반영한 수정안을 만든다.
+    @Test void naturalLanguageRequestCanAddPlaceChangeTransportRestaurantAndStay() {
+        // 강릉 기본 숙소는 한 곳뿐이라 바꿔 고를 숙소를 하나 더 넣는다(롤백됨).
+        jdbc.update("""
+            INSERT INTO dbo.places(place_type,source_provider,source_place_id,place_name,region,address,subtype,description,source_url,verified_at)
+            VALUES('ACCOMMODATION','SYSTEM','TEST_REVISION_STAY',N'테스트 바다 호텔',N'강원특별자치도 강릉시',N'강원특별자치도 강릉시 경포로 1100',
+                   N'호텔',N'테스트 숙소',N'https://www.gn.go.kr/',DATEADD(day,-1,SYSUTCDATETIME()))""");
+        // 식당도 한 곳뿐이면 빼 달라고 해도 다른 곳이 없어 그대로 쓰므로 식당을 하나 더 넣는다.
+        jdbc.update("""
+            INSERT INTO dbo.places(place_type,source_provider,source_place_id,place_name,region,address,subtype,description,source_url,verified_at)
+            VALUES('RESTAURANT','SYSTEM','TEST_REVISION_MEAL',N'테스트 순두부집',N'강원특별자치도 강릉시',N'강원특별자치도 강릉시 경포로 1200',
+                   N'한식',N'테스트 식당',N'https://www.gn.go.kr/',DATEADD(day,-1,SYSUTCDATETIME()))""");
+        var original=completedDraft();
+        var view=schedules.view(original,null,hash);
+        long herb=spareId("허브 테스트 실내 체험관");
+        long lunch=view.result().days().getFirst().items().stream().filter(i->i.type().equals("MEAL")).findFirst().orElseThrow().placeId();
+        long otherStay=view.input().places().accommodations().stream().map(PlaceCandidate::placeId)
+            .filter(id->!id.equals(view.result().lodging().chosenPlaceId())).findFirst().orElseThrow();
+        String text="체험관도 넣고 대중교통으로 갈게요. 그 식당은 빼고 숙소는 다른 곳으로";
+        when(ai.configured()).thenReturn(true);
+        when(ai.propose(any(),any(),any(),any(),any(),any(),eq(text),any())).thenReturn(new OpenAiRevisionClient.Proposal(false,null,
+            List.of(),List.of(herb),null,null,null,"체험관을 더하고 대중교통으로 바꿨어요.",false,List.of(),false,null,null,null,
+            KakaoMapClient.Transport.PUBLIC_TRANSIT,List.of(lunch),List.of(),otherStay));
+        var result=schedules.aiRevise(original,null,hash,text);
+        assertThat(result.question()).isNull();
+        var input=schedules.view(result.job(),null,hash).input();
+        assertThat(input.transport()).isEqualTo(KakaoMapClient.Transport.PUBLIC_TRANSIT);
+        assertThat(input.choices().avoidRestaurants()).containsExactly(lunch);
+        assertThat(input.choices().stayPlaceId()).isEqualTo(otherStay);
+        assertThat(input.revision().replaced()).isEmpty();
+        assertThat(input.revision().added()).extracting(PlaceRef::placeId).containsExactly(herb);
+        finish(result.job());
+        var done=schedules.view(result.job(),null,hash).result();
+        assertThat(done.lodging().chosenPlaceId()).isEqualTo(otherStay);
+        assertThat(done.days().stream().flatMap(d->d.items().stream()).filter(i->i.type().equals("MEAL")).map(ItineraryPlan.Item::placeId)).doesNotContain(lunch);
+        assertThat(attractionIds(result.job())).contains(herb).containsAll(attractionIds(original));
+    }
+
     // 콕 집은 장소가 후보에 없으면 처음에는 되묻고, 같은 장소를 다시 요청하면 비슷한 곳으로 바꾼 수정안에 참고 설명을 남긴다.
     // 비슷한 곳을 원한 요청은 되묻지 않고 바로 바꾼다.
     @Test void unavailableExactPlaceIsAskedFirstThenRevisedWithNote() throws Exception {
@@ -182,7 +220,7 @@ class ItineraryRevisionIntegrationTests {
         when(ai.propose(any(),any(),any(),any(),any(),any(),eq("첫 번째 곳을 전동성당으로 바꿔 줘"),any())).thenReturn(exact);
         var asked=schedules.aiRevise(original,null,hash,"첫 번째 곳을 전동성당으로 바꿔 줘",Set.of());
         assertThat(asked.job()).isNull();
-        assertThat(asked.question()).contains("'전동성당'은(는) 지금 확인된 교체 후보에 없어요").contains("한 번 더 보내면");
+        assertThat(asked.question()).contains("'전동성당'은(는) 이 지역에서 확인된 관광지로 찾지 못했어요").contains("한 번 더 보내면");
         assertThat(asked.askedPlaces()).containsExactly("전동성당");
         assertThat(jobs.count()).isEqualTo(before);
 

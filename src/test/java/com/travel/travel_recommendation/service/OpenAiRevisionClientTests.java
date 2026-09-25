@@ -56,6 +56,11 @@ class OpenAiRevisionClientTests {
             json=json.substring(0,json.length()-1)+",\"departAt\":null,\"arriveBy\":null}";
         if(json.startsWith("{\"action\"") && !json.contains("firstArrival"))
             json=json.substring(0,json.length()-1)+",\"firstArrival\":null}";
+        // 이동수단·식당·숙소 칸이 생기기 전의 응답 예시도 "바꾸지 않음"으로 채운다.
+        if(json.startsWith("{\"action\"") && !json.contains("stayPlaceId"))
+            json=json.substring(0,json.length()-1)+",\"transport\":null,\"avoidRestaurants\":[],\"preferRestaurants\":[],\"stayPlaceId\":null}";
+        if(json.startsWith("{\"action\"") && !json.contains("homeMinutes"))
+            json=json.substring(0,json.length()-1)+",\"homeMinutes\":null,\"returnMinutes\":null}";
         response.set(mapper.writeValueAsString(Map.of("status","completed","output",List.of(Map.of("type","message","content",
             List.of(Map.of("type","output_text","text",json)))))));
     }
@@ -126,7 +131,9 @@ class OpenAiRevisionClientTests {
         String[] invalid={
             "{\"action\":\"REVISE\",\"question\":\"\",\"replace\":[9],\"add\":[3],\"start\":null,\"end\":null,\"visitMinutes\":null,\"explanation\":\"설명\"}",
             "{\"action\":\"REVISE\",\"question\":\"\",\"replace\":[1],\"add\":[1],\"start\":null,\"end\":null,\"visitMinutes\":null,\"explanation\":\"설명\"}",
-            "{\"action\":\"REVISE\",\"question\":\"\",\"replace\":[1],\"add\":[3,4],\"start\":null,\"end\":null,\"visitMinutes\":null,\"explanation\":\"설명\"}",
+            "{\"action\":\"REVISE\",\"question\":\"\",\"replace\":[1],\"add\":[],\"start\":null,\"end\":null,\"visitMinutes\":null,\"explanation\":\"설명\"}",
+            "{\"action\":\"REVISE\",\"question\":\"\",\"replace\":[],\"add\":[],\"start\":null,\"end\":null,\"visitMinutes\":null,\"explanation\":\"설명\",\"unavailablePlaces\":[],\"exactPlace\":false,\"departAt\":null,\"arriveBy\":null,\"firstArrival\":null,\"transport\":\"BIKE\",\"avoidRestaurants\":[],\"preferRestaurants\":[],\"stayPlaceId\":null}",
+            "{\"action\":\"REVISE\",\"question\":\"\",\"replace\":[],\"add\":[],\"start\":null,\"end\":null,\"visitMinutes\":null,\"explanation\":\"설명\",\"unavailablePlaces\":[],\"exactPlace\":false,\"departAt\":null,\"arriveBy\":null,\"firstArrival\":null,\"transport\":null,\"avoidRestaurants\":[99],\"preferRestaurants\":[],\"stayPlaceId\":null}",
             "{\"action\":\"REVISE\",\"question\":\"\",\"replace\":[1,2],\"add\":[3,4],\"start\":null,\"end\":null,\"visitMinutes\":null,\"explanation\":\"설명\"}",
             "{\"action\":\"REVISE\",\"question\":\"\",\"replace\":[],\"add\":[],\"start\":\"07:00\",\"end\":null,\"visitMinutes\":null,\"explanation\":\"설명\"}",
             "{\"action\":\"REVISE\",\"question\":\"\",\"replace\":[],\"add\":[],\"start\":null,\"end\":null,\"visitMinutes\":300,\"explanation\":\"설명\"}",
@@ -141,6 +148,18 @@ class OpenAiRevisionClientTests {
         output("{\"action\":\"REVISE\",\"question\":\"\",\"replace\":[2],\"add\":[3],\"start\":null,\"end\":null,\"visitMinutes\":null,\"explanation\":\"설명\"}");
         assertThatThrownBy(()->call(Set.of(2L))).isInstanceOfSatisfying(RecommendationException.class,
             e->assertThat(e.getMessage()).contains("fixedPlaceIds"));
+    }
+
+    // "○○도 넣어 줘"처럼 더하기만 하면 replace 없이 add만 받는다. 이동수단 변경도 함께 받는다.
+    @Test void acceptsAddOnlyAndTransportChange() {
+        output("{\"action\":\"REVISE\",\"question\":\"\",\"replace\":[],\"add\":[3],\"start\":null,\"end\":null,\"visitMinutes\":null,"
+            +"\"explanation\":\"안목해변을 더했어요.\",\"unavailablePlaces\":[],\"exactPlace\":false,\"departAt\":null,\"arriveBy\":null,\"firstArrival\":null,"
+            +"\"transport\":\"PUBLIC_TRANSIT\",\"avoidRestaurants\":[],\"preferRestaurants\":[],\"stayPlaceId\":null}");
+        var proposal=call(Set.of());
+        assertThat(proposal.replace()).isEmpty();
+        assertThat(proposal.add()).containsExactly(3L);
+        assertThat(proposal.transport()).isEqualTo(KakaoMapClient.Transport.PUBLIC_TRANSIT);
+        assertThat(request.get()).contains("restaurants").contains("accommodations").contains("avoidRestaurants");
     }
 
     // GPT가 "후보에 없다"고 한 장소는 요청 문장에 있고 후보 이름과 겹치지 않는 것만 남긴다. 콕 집었는지도 함께 받는다.
