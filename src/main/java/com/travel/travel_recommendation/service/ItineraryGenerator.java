@@ -148,7 +148,8 @@ public class ItineraryGenerator {
                 boolean hadLunch=builder.lunch;
                 try {
                     // 점심때가 됐는데 이 관광지를 마치면 너무 늦어지면(예: 12:06~13:36) 점심을 먼저 먹는다.
-                    if(!builder.lunch && lunchFirst(builder,next)) eat(builder,builder.previous,false);
+                    // 하루의 첫 관광지 전(예: 집에서 출발해 12:40 도착)이면 그 관광지 근처에서 먹는다.
+                    if(!builder.lunch && lunchFirst(builder,next)) eat(builder,builder.previous==null?next:builder.previous,false);
                     builder.visit(next,"VISIT",input.visitMinutes(),visitNote(input,next,spare,centers.contains(next),
                         chosenCenters.contains(next),variedKind?previousKind:null));
                     if(!builder.lunch && !builder.time.isBefore(LocalTime.NOON)) eat(builder,next,false);
@@ -413,9 +414,13 @@ public class ItineraryGenerator {
             +(place.religiousSite()?"\n종교 시설이라 행사 중에는 관람이 제한될 수 있어요.":"");
     }
 
-    /** 11시가 지났고, 다음 관광지까지 가서 체류를 마치면 13시 30분을 넘기면 true다. 하루의 첫 관광지 전에는 보지 않는다. */
+    /**
+     * 11시가 지났고, 다음 관광지까지 가서 체류를 마치면 13시 30분을 넘기면 true다.
+     * 하루를 11시 넘어 시작해 첫 관광지를 마치면 13시 30분이 넘는 경우(첫날 늦게 도착)도 점심을 먼저 먹는다.
+     */
     private boolean lunchFirst(DayBuilder builder,PlaceCandidate next) {
-        if(builder.previous==null || builder.time.isBefore(LUNCH_FROM)) return false;
+        if(builder.time.isBefore(LUNCH_FROM)) return false;
+        if(builder.previous==null) return builder.time.plusMinutes(builder.input.visitMinutes()).isAfter(LUNCH_UNTIL);
         var end=builder.time.plusMinutes(builder.travelMinutes(builder.previous,next)+builder.input.visitMinutes());
         return end.isBefore(builder.time) || end.isAfter(LUNCH_UNTIL);
     }

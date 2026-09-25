@@ -183,6 +183,21 @@ class ItineraryGeneratorTests {
         assertThat(report.checks()).anySatisfy(c->{ assertThat(c.name()).isEqualTo("이동시간");
             assertThat(c.detail()).contains("모두 카카오 예상 이동시간").contains("집 → 여행지는 편도 약 120분"); });
     }
+    // 집에서 출발해 12:40에 도착하면 첫 관광지(13:30 넘어 끝남) 전에 그 근처에서 점심부터 먹는다.
+    @Test void lateArrivalEatsLunchBeforeTheFirstVisit() {
+        var home=new HomeTrip("청주",LocalTime.of(9,0),LocalTime.of(19,0),210,"직접 입력한 편도 시간",null);
+        var input=input(2,LocalTime.of(18,0)).withHome(home);
+        assertThat(input.dayStart(1)).isEqualTo(LocalTime.of(12,40));
+        var result=generator.generate(input);
+        var first=result.days().getFirst().items().stream().filter(i->i.placeId()!=null && !i.type().equals("TRANSIT")).toList();
+        assertThat(first.getFirst().type()).isEqualTo("MEAL");
+        assertThat(first.getFirst().start()).isEqualTo(LocalTime.of(12,40));
+        assertThat(first.get(1).type()).isEqualTo("VISIT");
+        generator.validate(input,result);
+        // 11시 전에 시작하는 날은 지금처럼 관광부터 한다.
+        var morning=generator.generate(input(2,LocalTime.of(18,0)));
+        assertThat(morning.days().getFirst().items().getFirst().type()).isEqualTo("VISIT");
+    }
     // 돌아갈 곳이 출발지와 다르면 마지막 날 그곳까지의 시간(200분)으로 관광을 마치는 시각을 정하고, 마지막 이동도 그곳으로 간다.
     @Test void returnToAnotherPlaceUsesItsOwnTravelTime() {
         var home=new HomeTrip("서울 송파구",LocalTime.of(7,0),LocalTime.of(20,0),120,"직접 입력한 편도 시간",null,"대전 서구",200,"직접 입력한 편도 시간");
