@@ -38,16 +38,6 @@ public class NavigationAdvice {
             java.time.Duration.ofMinutes(30)).toMinutes();
     }
 
-    /** 로그인하며 로그인 전에 받은 추천을 추천 이력으로 옮겼으면 다음 화면에서 한 번만 알린다. */
-    @ModelAttribute("loginNotice")
-    String loginNotice(jakarta.servlet.http.HttpServletRequest request) {
-        var session = request.getSession(false);
-        if (session == null || !(session.getAttribute(com.travel.travel_recommendation.config.SecurityConfig.ADOPTED_NOTICE) instanceof Integer count))
-            return null;
-        session.removeAttribute(com.travel.travel_recommendation.config.SecurityConfig.ADOPTED_NOTICE);
-        return "로그인 전에 받은 추천 " + count + "건을 추천 이력에 옮겼어요.";
-    }
-
     @ModelAttribute("signupEnabled")
     boolean signupEnabled() {
         return environment.acceptsProfiles(Profiles.of("sqlserver", "sqlserver-windows"));

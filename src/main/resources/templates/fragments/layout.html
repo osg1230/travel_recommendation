@@ -36,9 +36,6 @@
             <a class="nav-primary" th:if="${signupEnabled}" th:href="@{/signup}">회원가입</a>
         </th:block>
     </nav>
-    <p class="header-notice" role="status" th:if="${loginNotice != null}">
-        <span th:text="${loginNotice}"></span> <a th:href="@{/my/recommendations}">추천 이력 보기</a>
-    </p>
     <script defer th:src="@{/js/site-nav.js}"></script>
 </header>
 <!-- 여행 준비 단계 표시(설계서의 단계 표시). current는 1~5이며 지난 단계와 현재 단계를 구분한다. -->

@@ -25,7 +25,6 @@ public class RecommendationJobService {
     private final UserRepository users;
     private final DestinationCandidateService candidates;
     private final ObjectMapper mapper;
-    private final RecommendationCandidateRepository results;
     @Value("${travel.jobs.retention-hours:24}") private int retentionHours;
 
     @Transactional(timeout=10)
@@ -90,43 +89,6 @@ public class RecommendationJobService {
         boolean owner=job.getUserId()!=null ? job.getUserId().equals(userId)
             : guestHash!=null && MessageDigest.isEqual(job.getGuestTokenHash(),guestHash);
         return owner && job.getExpiresAt().isAfter(now()) && type.equals(job.getJobType());
-    }
-
-    /**
-     * 로그인 직후, 이 세션에서 로그인 전에 만든 비회원 추천·일정 초안을 회원 것으로 옮겨 추천 이력에 남긴다.
-     * 추천은 원래 요청 시각으로 추천 요청을 만들고, 끝난 추천이면 결과도 회원 추천과 같은 방식으로 저장한다.
-     * 일정 초안은 옮긴 추천 요청에 연결한다. 비회원 초안은 로그인해야 저장할 수 있으므로, 저장할 때는 이미 옮겨져
-     * 저장한 일정도 같은 추천 요청과 연결된다.
-     * 추천이 처리 중일 수 있어 작업 행을 잠근 뒤 옮긴다. 옮긴 추천 수를 돌려준다.
-     */
-    @Transactional(timeout=10)
-    public int adoptGuestJobs(String loginId, byte[] guestHash) {
-        Long userId=activeUser(loginId);
-        if(userId==null || guestHash==null || guestHash.length!=32) return 0;
-        Map<UUID,Long> requestByJob=new HashMap<>();
-        int adopted=0;
-        for(var found:jobs.findGuestJobs(guestHash,now())) {
-            var job=jobs.lockById(found.getId()).orElse(null);
-            // 잠그는 사이 다른 요청이 먼저 옮겼거나 지워졌으면 건너뛴다.
-            if(job==null || job.getUserId()!=null || !MessageDigest.isEqual(job.getGuestTokenHash(),guestHash)) continue;
-            if("RECOMMENDATION".equals(job.getJobType())) {
-                var conditions=mapper.readValue(job.getRequestJson(),ConfirmedTravelConditions.class);
-                var request=requests.saveAndFlush(new RecommendationRequest(userId,conditions,conditionJson(conditions),job.getCreatedAt()));
-                if("COMPLETED".equals(job.getStatus()) && job.getResultJson()!=null)
-                    for(var r:mapper.readValue(job.getResultJson(),RankedDestination[].class))
-                        results.save(new RecommendationCandidate(request.getId(),r.destination().placeId(),r.rank(),r.reason(),
-                            mapper.writeValueAsString(r.destination())));
-                job.adopt(userId,request.getId());
-                requestByJob.put(job.getId(),request.getId());
-                adopted++;
-            } else {
-                // 일정 초안은 부모 추천을 먼저 옮겼으면 그 요청에 연결한다. 부모가 만료돼 없으면 연결 없이 옮긴다.
-                var input=mapper.readValue(job.getRequestJson(),com.travel.travel_recommendation.dto.ItineraryPlan.Input.class);
-                job.adopt(userId,requestByJob.get(input.recommendationId()));
-            }
-        }
-        results.flush(); jobs.flush();
-        return adopted;
     }
 
     @Transactional(readOnly=true)

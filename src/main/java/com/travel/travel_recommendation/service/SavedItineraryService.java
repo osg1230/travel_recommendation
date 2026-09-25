@@ -239,8 +239,12 @@ public class SavedItineraryService {
                 new ResponseStatusException(HttpStatus.CONFLICT,"저장한 관광지를 찾을 수 없어 수정할 수 없어요."));
             attractions.add(placeCandidates.candidate(place)); missing.add(place.getName());
         }
+        // 식당·숙소도 지금 후보에 없으면(예: 동선 주변에서 따로 찾은 음식점) 저장한 장소를 후보에 더한다.
+        // 더하지 않으면 다시 만든 초안이 그 장소를 '후보에 없는 장소'로 보고 미충족으로 표시한다.
+        var restaurants=withSavedPlaces(pool.restaurants(),savedItems,"MEAL");
+        var accommodations=withSavedPlaces(pool.accommodations(),savedItems,"STAY");
         var candidates=new PlaceCandidateView(parentId,pool.destination(),pool.durationDays(),pool.accommodationNeeded(),
-            List.copyOf(attractions),pool.accommodations(),pool.restaurants());
+            List.copyOf(attractions),accommodations,restaurants);
         var input=new Input(parentId,candidates,conditions,LocalTime.parse(schedule.path("dayStart").asText()),
             LocalTime.parse(schedule.path("dayEnd").asText()),KakaoMapClient.Transport.valueOf(schedule.path("transport").asText()),
             schedule.path("visitMinutes").asInt(90))
@@ -256,6 +260,16 @@ public class SavedItineraryService {
         itinerary.relinkDraft(mapper.writeValueAsString(relinked));
         itineraries.flush();
         return new EditDraft(job.getId(),List.copyOf(missing));
+    }
+    /** 저장한 일정의 해당 종류(식사·숙박) 장소 중 지금 후보에 없는 곳을 장소 정보로 더한 목록. */
+    private List<PlaceCandidate> withSavedPlaces(List<PlaceCandidate> current, List<ItineraryItem> savedItems, String itemType) {
+        var result=new ArrayList<>(current);
+        for(var item:savedItems) {
+            if(!itemType.equals(item.getItemType()) || item.getPlaceId()==null
+                || result.stream().anyMatch(p->p.placeId().equals(item.getPlaceId()))) continue;
+            places.findById(item.getPlaceId()).ifPresent(place->result.add(placeCandidates.candidate(place)));
+        }
+        return List.copyOf(result);
     }
     /** 저장할 때 남긴 집 출발·귀가 설정. 출발지는 시·구 이름만 있고 좌표는 없다. 예전에 저장한 일정에는 없다. */
     private static HomeTrip savedHome(tools.jackson.databind.JsonNode home) {
