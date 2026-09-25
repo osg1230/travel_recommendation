@@ -23,13 +23,15 @@
     script.onload = () => window.kakao.maps.load(() => { clearTimeout(failed); canvas.hidden = false; draw(); });
     document.head.appendChild(script);
 
-    function badge(text, color, title, dashed) {
-        const el = document.createElement('span');
+    // 일정 항목과 이어진 번호는 눌러서 목록으로 갈 수 있게 버튼으로 만든다.
+    function badge(text, color, title, dashed, clickable) {
+        const el = document.createElement(clickable ? 'button' : 'span');
         el.className = 'map-badge' + (dashed ? ' map-badge-approx' : '');
         el.style.setProperty('--badge', color);
         el.textContent = text;
         el.title = title;
-        el.setAttribute('role', 'img');
+        if (clickable) el.type = 'button';
+        else el.setAttribute('role', 'img');
         el.setAttribute('aria-label', title);
         return el;
     }
@@ -42,22 +44,15 @@
         let count = 0;
         const place = (lat, lng, element) => {
             const at = new maps.LatLng(lat, lng);
-            new maps.CustomOverlay({ map, position: at, content: element, yAnchor: 0.5 });
+            const overlay = new maps.CustomOverlay({ map, position: at, content: element, yAnchor: 0.5 });
             bounds.extend(at); count++;
-            return at;
+            return { at, overlay };
         };
         const fit = () => { if (count > 1) map.setBounds(bounds); else if (count === 1) map.setCenter(bounds.getSouthWest()); };
 
         if (Array.isArray(data.days)) {
-            // 일정: 일차별 색으로 번호를 붙이고 방문 순서대로 직선을 잇는다. 선은 순서 표시이며 실제 이동 경로가 아니다.
-            data.days.forEach((day, index) => {
-                const color = COLORS[index % COLORS.length];
-                const path = day.stops.map((stop) => place(stop.lat, stop.lng,
-                    badge(day.number + '-' + stop.order, color, day.number + '일차 ' + stop.order + '번째 · ' + (TYPE_NAMES[stop.type] || '') + ' · ' + stop.name)));
-                if (path.length > 1) new maps.Polyline({ map, path, strokeWeight: 4, strokeColor: color, strokeOpacity: 0.75, strokeStyle: 'solid' });
-            });
-            fit();
-            tell(count ? '번호는 일차-방문 순서예요. 선은 방문 순서를 이은 것이며 실제 이동 경로가 아니에요.' : '지도에 표시할 좌표가 있는 장소가 없어요.');
+            drawDays(map, place, fit);
+            tell(count ? '번호는 일차-방문 순서예요. 번호를 누르면 일정 항목으로 가요. 선은 방문 순서를 이은 것이며 실제 이동 경로가 아니에요.' : '지도에 표시할 좌표가 있는 장소가 없어요.');
             return;
         }
 
@@ -80,5 +75,86 @@
                 tell('실선 표시는 확인된 좌표, 점선 표시는 주소로 찾은 대략적인 위치예요.' + (missing ? ' 위치를 찾지 못한 장소 ' + missing + '곳은 목록에서 확인해 주세요.' : ''));
             }
         }));
+    }
+
+    // 일정 지도: 일차별 색으로 번호를 붙이고 방문 순서대로 직선을 잇는다. 선은 순서 표시이며 실제 이동 경로가 아니다.
+    // 지도 번호를 누르면 아래 일정 항목으로 가고, 일정 항목의 '위 지도에서 보기'를 누르면 지도가 그 장소로 간다.
+    function drawDays(map, place, fitAll) {
+        const maps = window.kakao.maps;
+        const days = [];   // 일차별 { number, marks: [{ at, overlay }], line }
+        const stops = {};  // "일차-항목순번" → { at, element }
+        data.days.forEach((day, index) => {
+            const color = COLORS[index % COLORS.length];
+            const marks = day.stops.map((stop) => {
+                const key = day.number + '-' + stop.item;
+                const item = document.querySelector('[data-map-stop="' + key + '"]');
+                const title = day.number + '일차 ' + stop.order + '번째 · ' + (TYPE_NAMES[stop.type] || '') + ' · ' + stop.name;
+                const element = badge(day.number + '-' + stop.order, color, item ? title + ' (눌러서 일정에서 보기)' : title, false, !!item);
+                const mark = place(stop.lat, stop.lng, element);
+                if (item) {
+                    stops[key] = { at: mark.at, element };
+                    element.addEventListener('click', () => showItem(item));
+                    addMapButton(item, key);
+                }
+                return mark;
+            });
+            const line = marks.length > 1
+                ? new maps.Polyline({ map, path: marks.map((mark) => mark.at), strokeWeight: 4, strokeColor: color, strokeOpacity: 0.75, strokeStyle: 'solid' })
+                : null;
+            days.push({ number: day.number, marks, line });
+        });
+        fitAll();
+        followDayTabs(days, map, fitAll);
+
+        function addMapButton(item, key) {
+            const links = item.querySelector('.place-links');
+            if (!links) return;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'map-jump';
+            button.textContent = '위 지도에서 보기';
+            button.addEventListener('click', () => focusStop(key));
+            links.prepend(button);
+        }
+
+        // 그 장소로 지도를 옮기고 번호를 강조한다. 버튼은 지금 보이는 날의 항목에만 있어 그 번호도 지도에 보인다.
+        function focusStop(key) {
+            const stop = stops[key];
+            map.setLevel(Math.min(map.getLevel(), 5));
+            map.panTo(stop.at);
+            document.querySelectorAll('.map-badge-active').forEach((el) => el.classList.remove('map-badge-active'));
+            stop.element.classList.add('map-badge-active');
+            box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }
+
+    // 화면 위 일차 버튼(day-tabs.js)을 따라 그날 번호와 선만 보이고 그날 범위로 지도를 맞춘다.
+    function followDayTabs(days, map, fitAll) {
+        const maps = window.kakao.maps;
+        const show = (number) => {
+            days.forEach((day) => {
+                const shown = number === 0 || day.number === number;
+                day.marks.forEach((mark) => mark.overlay.setMap(shown ? map : null));
+                if (day.line) day.line.setMap(shown ? map : null);
+            });
+            if (number === 0) { fitAll(); return; }
+            const day = days.find((d) => d.number === number);
+            if (!day || !day.marks.length) return;
+            const bounds = new maps.LatLngBounds();
+            day.marks.forEach((mark) => bounds.extend(mark.at));
+            if (day.marks.length > 1) map.setBounds(bounds); else map.setCenter(day.marks[0].at);
+        };
+        document.addEventListener('tripday', (event) => show(event.detail));
+        // 지도가 버튼보다 늦게 준비되므로 이미 고른 날이 있으면 그날로 맞춘다.
+        const selected = document.querySelector('[data-day-tabs]')?.dataset.selected;
+        if (selected) show(Number(selected));
+    }
+
+    // 목록의 해당 일정 항목으로 이동해 잠깐 눈에 띄게 표시한다(다시 눌러도 표시되게 클래스를 다시 붙인다).
+    function showItem(item) {
+        item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        item.classList.remove('schedule-item-focus');
+        void item.offsetWidth;
+        item.classList.add('schedule-item-focus');
     }
 })();

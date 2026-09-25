@@ -3,8 +3,10 @@
 <head th:replace="~{fragments/layout :: head('일정 초안 | 다녀올게')}"></head>
 <body>
 <script defer th:src="@{/js/recommendation-job.js}"></script>
+<script defer th:src="@{/js/day-tabs.js}"></script>
 <script defer th:src="@{/js/trip-map.js}"></script>
 <script defer th:src="@{/js/bus-guide.js}"></script>
+<script defer th:src="@{/js/request-examples.js}"></script>
 <header th:replace="~{fragments/layout :: header}"></header>
 <main class="travel">
 <nav th:replace="~{fragments/layout :: flowSteps(5)}"></nav>
@@ -32,34 +34,50 @@
 <!--/* 이동시간 조회 시각은 구간마다 적지 않고 여기서 한 번만 알린다. */-->
 <p class="help" th:if="${job.result.routesCheckedAtText() != null}" th:text="${'이동시간은 ' + job.result.routesCheckedAtText() + '(한국 시간)에 조회한 카카오 예상값에 구간마다 여유 10분을 더했어요.'}"></p>
 
-<!--/* 일정을 보기 전에 저장 가능 여부와 조건 확인 결과를 한눈에 보여 준다. 자세한 표는 일정 뒤에 있다. */-->
+<!--/* 일정을 보기 전에 저장 가능 여부와 조건 확인 결과(SFR-04-06)를 보여 준다. 충족·해당 없음은 개수만, 확인 필요·미충족 항목만 이유와 함께 적는다. */-->
 <section class="condition-section draft-summary" th:if="${report != null}">
 <p th:text="${'조건 확인: 충족 ' + report.count(T(com.travel.travel_recommendation.service.ItineraryConditionReport.Status).MET)
     + ' · 확인 필요 ' + report.count(T(com.travel.travel_recommendation.service.ItineraryConditionReport.Status).NEEDS_CHECK)
     + ' · 미충족 ' + report.count(T(com.travel.travel_recommendation.service.ItineraryConditionReport.Status).UNMET)}"></p>
-<p role="alert" th:unless="${report.complete}">조건을 충족하지 못한 항목이 있어 완료 일정으로 저장할 수 없어요. 아래 '여행 조건 확인 결과'를 보고 조건이나 시간을 조정해 다시 만들어 주세요.</p>
+<p role="alert" th:unless="${report.complete}">조건을 충족하지 못한 항목이 있어 완료 일정으로 저장할 수 없어요. 아래 이유를 보고 시간이나 조건을 바꿔 다시 만들어 주세요.</p>
+<ul class="report-issues">
+<li th:each="check : ${report.checks}" th:if="${check.status.name() == 'UNMET' or check.status.name() == 'NEEDS_CHECK'}">
+<span class="status-badge" th:classappend="${'status-' + #strings.toLowerCase(check.status.name())}" th:text="${check.status.label}"></span>
+<strong th:text="${check.name}"></strong> <span th:text="${check.detail}"></span></li>
+</ul>
 <div class="form-actions">
 <form th:if="${loggedIn and job.input.conditions.startDate != null and report.complete}" th:action="@{/my/itineraries}" method="post">
 <input type="hidden" name="jobId" th:value="${job.id}"><button type="submit">이 일정 저장하기</button></form>
 <a class="button" th:if="${!loggedIn and job.input.conditions.startDate != null and report.complete}" th:href="@{/login(next=${'/travel/recommendations/itineraries/' + job.id})}">로그인하고 저장하기</a>
-<a class="button button-quiet" href="#report">조건 확인 결과 자세히 보기</a>
+<!--/* 추천 결과에서 바로 만든 초안은 기본 시간·중심 장소를 썼으므로, 직접 정해서 다시 만드는 길을 위에 둔다. */-->
+<a class="button button-quiet" th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">시간·조건 자세히 정해서 다시 만들기</a>
 </div>
 </section>
 
+<div th:replace="~{fragments/map :: dayTabs(${job.result.days})}"></div>
 <section th:replace="~{fragments/map :: tripMap('지도로 보는 방문 순서', ${route.missing > 0 ? '좌표를 확인하지 못한 장소 ' + route.missing + '곳은 지도에서 빠져 있어요. 아래 일정 목록을 함께 봐 주세요.' : '일차별 색으로 방문 순서를 표시해요. 구간별 길찾기는 아래 이동 항목에서 열 수 있어요.'})}"></section>
 
-<section class="condition-section timeline" th:each="day : ${job.result.days}">
+<section class="condition-section timeline" th:each="day : ${job.result.days}" th:attr="data-day-section=${day.number}">
 <h2 th:text="${day.number + '일차 · ' + @timeText.day(day.date)}"></h2>
 <!--/* th:each가 th:if보다 먼저 실행되므로, AI 안내가 없을 때를 바깥 블록에서 먼저 거른다. */-->
 <th:block th:if="${job.result.assist != null}"><th:block th:each="advice : ${job.result.assist.days}">
 <p class="notice" th:if="${advice.number == day.number}" style="white-space: pre-line" th:text="${'AI 준비 안내 · ' + advice.advice}"></p>
 </th:block></th:block>
-<article class="place-row schedule-item" th:each="item, st : ${day.items}" th:classappend="${'item-' + #strings.toLowerCase(item.type)}">
+<article class="place-row schedule-item" th:each="item, st : ${day.items}" th:classappend="${'item-' + #strings.toLowerCase(item.type)}"
+         th:id="${'stop-' + day.number + '-' + st.index}" th:attr="data-map-stop=${day.number + '-' + st.index}">
 <p class="schedule-time" th:text="${#temporals.format(item.start, 'HH:mm') + '–' + #temporals.format(item.end, 'HH:mm')}"></p>
 <div class="schedule-body">
 <!--/* 종류 이름은 저장 일정 화면(SavedItineraryService.typeName)과 같은 말을 쓴다. */-->
 <p class="schedule-type" th:text="${item.type == 'VISIT' ? '관광' : (item.type == 'MEAL' ? '식사' : (item.type == 'STAY' ? '숙소' : (item.type == 'TRANSIT' ? '이동' : '자유 시간')))}"></p>
+<th:block th:if="${item.type == 'VISIT' and item.placeId != null and photoByPlace.get(item.placeId) != null}">
+<!--/* 관광공사 대표 사진. 출처 표시 조건(공공누리)에 따라 사진 아래에 출처를 적는다. */-->
+<figure class="place-photo"><img th:src="${photoByPlace.get(item.placeId).url}" th:alt="${item.name + ' 사진'}" loading="lazy" referrerpolicy="no-referrer">
+<figcaption>사진: 한국관광공사</figcaption></figure>
+</th:block>
 <h3 th:text="${item.name}"></h3><p style="white-space: pre-line" th:text="${item.note}"></p>
+<!--/* 숙소 후보는 따로 절을 두지 않고 첫 숙박 항목에 한 줄로 붙인다(관광지 평균 직선거리 순, SFR-05). */-->
+<p class="help" th:if="${item.type == 'STAY' and day.number == 1 and job.result.lodging != null and job.result.lodging.options.size() > 1}"
+   th:text="${'다른 숙소 후보: ' + #strings.listJoin(job.result.lodging.options.subList(1, job.result.lodging.options.size()).![name + '(관광지와 평균 약 ' + averageKilometers + 'km)'], ', ') + ' · 요금·예약·체크인 시간은 숙소 출처에서 확인해 주세요.'}"></p>
 <th:block th:if="${item.type == 'MEAL' or item.type == 'STAY'}" th:with="quote=${priceByPlace.get(item.placeId)}">
 <p class="help" th:if="${quote != null and quote.found()}"
    th:text="${'참고 가격: ' + quote.priceText + ' (' + quote.basis + ') · ' + (quote.status == 'VERIFIED' ? '출처 페이지에서 상호·가격 확인' : 'AI 검색 결과, 출처에서 직접 확인 필요')}"></p>
@@ -67,6 +85,21 @@
 <div class="place-links"><a th:href="${item.mapUrl}" target="_blank" rel="noopener noreferrer">위치 보기 (새 창)</a>
 <a th:if="${route.links.get(day.number + '-' + st.index) != null}" th:href="${route.links.get(day.number + '-' + st.index)}" target="_blank" rel="noopener noreferrer">이 구간 길찾기 · 카카오맵 (새 창)</a>
 <a th:if="${item.type != 'TRANSIT'}" th:href="${item.sourceUrl}" target="_blank" rel="noopener noreferrer">장소 출처 확인 (새 창)</a></div>
+<!--/* 일정에 들어간 관광지는 그 자리에서 바로 바꿀 수 있다. 기존 장소 교체 수정안 요청(/revisions)으로, 이유를 고르면 그곳만 다른 후보로 바꾼 수정안을 만든다. */-->
+<details class="item-replace" th:if="${item.type == 'VISIT' and placedAttractionIds.contains(item.placeId)}">
+<summary>다른 곳으로 바꾸기</summary>
+<form method="post" th:action="@{/travel/recommendations/itineraries/{id}/revisions(id=${job.id})}">
+<input type="hidden" name="replace" th:value="${item.placeId}">
+<input type="hidden" name="start" th:value="${job.input.start}"><input type="hidden" name="end" th:value="${job.input.end}">
+<input type="hidden" name="visitMinutes" th:value="${job.input.visitMinutes}">
+<p class="help">바꾸는 이유를 고르면 이곳만 확인된 다른 관광지로 바꾼 수정안을 만들어요. 이 초안은 그대로 남아요.</p>
+<div class="item-replace-reasons">
+<button type="submit" class="button-quiet button-small" name="reason" value="TASTE">취향과 맞지 않아요</button>
+<button type="submit" class="button-quiet button-small" name="reason" value="INDOOR">실내 장소로</button>
+<button type="submit" class="button-quiet button-small" name="reason" value="VISITED">이미 가 본 곳이에요</button>
+</div>
+</form>
+</details>
 </div>
 </article></section>
 <p class="notice" th:if="${!job.result.skipped.isEmpty()}" th:text="${'하루 시간이 부족하거나 가는 길이 2시간을 넘어(섬 등) ' + #strings.listJoin(job.result.skipped.![name], ', ') + '은(는) 일정에 넣지 않았어요. 넣고 싶다면 하루 시간을 늘리거나 체류시간을 줄여 새로 만들어 주세요.'}"></p>
@@ -78,23 +111,7 @@
 </section>
 
 
-<!--/* 일정 뒤의 참고 정보(숙소 후보·가격·주변 지역·버스)와 장소 교체 수정은 제목만 보이게 접어 둔다.
-     조회 결과나 오류가 있으면 펼쳐서 보여 준다. */-->
-<section class="condition-section" th:if="${job.result.lodging != null}" aria-labelledby="lodging-title">
-<details><summary><h2 id="lodging-title" class="details-title">숙소 추천</h2></summary>
-<p th:text="${job.result.lodging.reason}"></p>
-<article class="place-row" th:each="stay, st : ${job.result.lodging.options}">
-<h3 th:text="${(st.index == 0 ? '일정에 넣은 숙소 · ' : (st.index + 1) + '순위 · ') + stay.name}"></h3>
-<p class="help" th:text="${(stay.subtype == null ? '' : stay.subtype + ' · ') + stay.address}"></p>
-<p th:text="${'관광지와 평균 직선거리 약 ' + stay.averageKilometers + 'km'}"></p>
-<div class="place-links">
-<a th:href="${stay.mapUrl}" target="_blank" rel="noopener noreferrer">지도에서 보기 (새 창)</a>
-<a th:href="${stay.sourceUrl}" target="_blank" rel="noopener noreferrer">숙소 출처 확인 (새 창)</a>
-</div>
-</article>
-<p class="help">직선거리는 동선을 가늠하기 위한 근사값이에요. 객실 요금·예약 가능 여부·체크인 시간은 숙소 출처에서 확인해 주세요.</p>
-</details>
-</section>
+<!--/* 일정 뒤의 참고 정보(가격·주변 지역·버스)는 제목만 보이게 접어 둔다. 조회 결과나 오류가 있으면 펼쳐서 보여 준다. */-->
 
 <section class="condition-section" th:if="${job.result != null}" aria-labelledby="prices-title">
 <details th:open="${job.result.prices != null or priceError != null}"><summary><h2 id="prices-title" class="details-title">숙소·음식점 참고 가격</h2></summary>
@@ -195,58 +212,46 @@
 </details>
 </section>
 
-<!--/* 조건 확인 결과는 일정 뒤에 접어 둔다. 미충족 조건이 있으면 펼쳐서 보여 준다. */-->
-<section class="condition-section" id="report" th:if="${report != null}" aria-labelledby="report-title">
-<details th:open="${!report.complete}"><summary><h2 id="report-title" class="details-title">여행 조건 확인 결과</h2></summary>
-<table class="report-table">
-<thead><tr><th scope="col">항목</th><th scope="col">결과</th><th scope="col">내용</th></tr></thead>
-<tbody><tr th:each="check : ${report.checks}">
-<th scope="row" th:text="${check.name}"></th>
-<td><span class="status-badge" th:classappend="${'status-' + #strings.toLowerCase(check.status.name())}" th:text="${check.status.label}"></span></td>
-<td th:text="${check.detail}"></td>
-</tr></tbody></table>
-<p class="help">확정한 조건과 일정을 비교한 결과예요. 정보가 부족한 항목은 충족으로 표시하지 않고 '확인 필요'로 남겨요.</p>
-</details>
-</section>
 </th:block>
 
-<section class="condition-section" th:if="${job.result != null}" aria-labelledby="ai-revise-title">
-<h2 id="ai-revise-title">문장으로 수정 요청하기</h2>
+<!--/* 수정은 한 곳에서 한다. 문장 요청이 기본이고, 관광지 하나만 바꿀 때는 일정 항목의 '다른 곳으로 바꾸기', AI 없이 시간만 바꿀 때는 아래 접힌 칸을 쓴다. */-->
+<section class="condition-section" th:if="${job.result != null}" aria-labelledby="revise-title">
+<h2 id="revise-title">일정 수정하기</h2>
 <div th:replace="~{fragments/revision-scope :: scope}"></div>
-<p class="help">바꾸고 싶은 점을 문장으로 적으면 AI가 확인된 후보 안에서 바꿀 관광지와 시간을 골라 새 수정안을 만들어요. 배치와 조건은 다시 검사하며, 이 초안은 바뀌지 않아요.</p>
+<p class="help">바꾸고 싶은 점을 문장으로 적으면 AI가 확인된 후보 안에서 바꿀 관광지와 시간을 골라 새 수정안을 만들어요. 관광지 하나만 바꾸려면 일정의 '다른 곳으로 바꾸기'를 누르세요. 이 초안은 바뀌지 않아요.</p>
 <p class="notice" role="status" th:if="${aiQuestion != null}" th:text="${'확인이 필요해요 · ' + aiQuestion}"></p>
 <p class="notice" role="status" th:if="${aiNotice != null}" th:text="${'바꿀 수 없는 요청이에요 · ' + aiNotice}"></p>
 <p role="alert" th:if="${aiError != null}" th:text="${aiError}"></p>
 <form method="post" th:action="@{/travel/recommendations/itineraries/{id}/ai-revisions(id=${job.id})}">
 <label for="ai-request">수정 요청 (1~300자)</label>
+<!--/* 예시는 바꿀 수 있는 것(관광지 교체·하루 시간·체류시간)만 든다. 누르면 칸에 채우기만 하고 보내지는 않는다. 스크립트가 없으면 숨긴다. */-->
+<div class="request-examples" data-request-examples hidden>
+<span class="help">예시를 누르면 입력 칸에 넣어 드려요.</span>
+<button type="button" class="button-quiet button-small" data-example="아침은 10시부터 시작하고 싶어요.">10시에 시작</button>
+<button type="button" class="button-quiet button-small" data-example="저녁 6시 전에 일정을 마치고 싶어요.">6시 전에 마치기</button>
+<button type="button" class="button-quiet button-small" data-example="비가 올 수 있으니 실내 장소 위주로 바꿔 주세요.">실내 장소로</button>
+<button type="button" class="button-quiet button-small" data-example="사람 많은 곳 대신 조용한 곳으로 바꿔 주세요.">조용한 곳으로</button>
+<button type="button" class="button-quiet button-small" data-example="관광지마다 2시간씩 머물고 싶어요.">2시간씩 머물기</button>
+</div>
 <textarea id="ai-request" name="request" maxlength="300" required rows="3"
           placeholder="예) 첫째 날 박물관은 빼고 바다가 보이는 곳으로 바꿔 줘. 아침은 10시부터 시작하고 싶어요."
           th:text="${aiRequest}"></textarea>
 <p class="help">이름·연락처 같은 개인정보는 적지 마세요. 요청 문장은 수정안을 만들기 위해 OpenAI로 보내요.</p>
 <div class="form-actions"><button type="submit">AI에게 수정안 요청하기</button></div>
 </form>
-</section>
-
-<section class="condition-section" th:if="${job.result != null}" aria-labelledby="revise-title">
-<details><summary><h2 id="revise-title" class="details-title">장소 바꿔서 수정안 만들기</h2></summary>
-<p class="help">바꾸고 싶은 관광지만 고르세요. 고르지 않은 관광지는 그대로 유지하고, 바꿀 관광지는 확인된 다른 후보로 채워요. 식사·숙소 후보와 이동수단은 그대로예요. 수정안은 새 초안으로 만들어지고 이 초안은 바뀌지 않아요.</p>
+<details class="revise-time"><summary>AI 없이 시간만 바꾸기</summary>
 <form method="post" th:action="@{/travel/recommendations/itineraries/{id}/revisions(id=${job.id})}">
-<fieldset class="theme-choices"><legend>바꿀 관광지 (고르지 않은 곳은 유지)</legend>
-<label th:each="place : ${placedAttractions}"><input type="checkbox" name="replace" th:value="${place.placeId}"><span th:text="${place.name}"></span></label>
-</fieldset>
-<p><label for="reason">교체 이유 (관광지를 바꿀 때 필수)</label><select id="reason" name="reason">
-<option value="">선택해 주세요</option>
-<option th:each="r : ${T(com.travel.travel_recommendation.service.ItineraryJobService.ReplaceReason).values()}" th:value="${r.name()}" th:text="${r.label}"></option></select></p>
-<p class="help">'실내 장소로'를 고르면 박물관·전시·체험관처럼 실내로 보이는 후보를 먼저 골라요. 다른 이유는 기록만 하고 후보 목록 순서대로 골라요.</p>
 <div class="field-grid">
 <div><label for="rev-start">하루 시작 시간</label><input id="rev-start" name="start" type="time" min="08:00" max="17:00" th:value="${job.input.start}" required></div>
 <div><label for="rev-end">하루 종료 시간</label><input id="rev-end" name="end" type="time" min="12:00" max="21:00" th:value="${job.input.end}" required></div>
 <div><label for="rev-visit">관광지 체류시간 (분)</label><input id="rev-visit" name="visitMinutes" type="number" min="30" max="180" th:value="${job.input.visitMinutes}" required></div>
 </div>
-<div class="form-actions"><button type="submit">수정안 만들기</button></div>
+<p class="help">관광지는 그대로 두고 방문 시각만 다시 계산한 수정안을 만들어요.</p>
+<div class="form-actions"><button type="submit" class="button-quiet">이 시간으로 수정안 만들기</button></div>
 </form>
 </details>
 </section>
+
 
 <section class="condition-section" th:if="${job.result != null and !applyTargets.isEmpty()}" aria-labelledby="apply-title">
 <h2 id="apply-title">저장한 일정에 적용</h2>

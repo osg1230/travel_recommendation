@@ -45,6 +45,8 @@ class ItineraryIntegrationTests {
     @MockitoBean TourApiClient tour;
     @MockitoBean OpenAiPriceClient prices;
     @Autowired PlaceOperatingService operating;
+    @Autowired PlacePhotoService photos;
+    @Autowired NearbyRestaurantService nearbyRestaurants;
     @Autowired PlaceRepository placeRepository;
     @Autowired com.travel.travel_recommendation.repository.UserRepository users;
     @Autowired com.travel.travel_recommendation.service.SavedItineraryService saved;
@@ -100,7 +102,71 @@ class ItineraryIntegrationTests {
         assertThat(revisedInput.conditions().accommodationNeeded()).isTrue();
         assertThat(revisedInput.places().accommodations()).isNotEmpty();
     }
+    @Test void quickScheduleUsesDefaultsOrAsksOnlyForMissingInfo() throws Exception {
+        String quickUrl="/travel/recommendations/"+parent+"/destinations/"+destination+"/quick-schedule";
+        String infoUrl="/travel/recommendations/"+parent+"/destinations/"+destination+"/trip-info";
+        // 기본 추천은 출발일·이동수단이 정해지지 않아 추측하지 않고, 빠진 값만 묻는 여행 정보 화면으로 보낸다.
+        mvc.perform(post(quickUrl).session(session).with(csrf()))
+            .andExpect(status().isSeeOther()).andExpect(header().string("Location",infoUrl));
+        mvc.perform(get(infoUrl).session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("출발일 (필수)"))).andExpect(content().string(containsString("이동수단 (필수)")))
+            .andExpect(content().string(org.hamcrest.Matchers.not(containsString("여행 일수 (필수)"))))
+            .andExpect(content().string(org.hamcrest.Matchers.not(containsString("반드시 지킬 조건"))));
+        // 지난 날짜는 되돌려 보내고 이유를 알린다.
+        mvc.perform(post(quickUrl).session(session).with(csrf()).param("startDate",LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1).toString()).param("transport","CAR"))
+            .andExpect(header().string("Location",infoUrl));
+        mvc.perform(get(infoUrl).session(session)).andExpect(content().string(containsString("출발일은 오늘이나 그 이후")));
+        // 여행 정보 화면에서 받은 출발일·이동수단으로 기본 시간 초안을 만든다.
+        LocalDate chosen=LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(15);
+        String made=mvc.perform(post(quickUrl).session(session).with(csrf()).param("startDate",chosen.toString()).param("transport","PUBLIC_TRANSIT"))
+            .andExpect(status().isSeeOther()).andReturn().getResponse().getHeader("Location");
+        var madeInput=schedules.view(UUID.fromString(made.replace("/travel/recommendations/itineraries/","")),null,hash).input();
+        assertThat(madeInput.conditions().startDate()).isEqualTo(chosen);
+        assertThat(madeInput.transport()).isEqualTo(KakaoMapClient.Transport.PUBLIC_TRANSIT);
+        assertThat(madeInput.start()).isEqualTo(LocalTime.of(9,0));
+
+        var car=new TravelKeyword(null,"TRANSPORTATION","자동차","{\"value\":\"CAR\"}");
+        LocalDate start=LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(20);
+        var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",start,start.plusDays(1),2,null,2,true,false,List.of(car),"");
+        parent=recommendations.create(conditions,null,hash); recommendations.prepare(parent);
+        var candidate=recommendations.view(parent,null,hash).candidates().getFirst(); destination=candidate.placeId();
+        jobs.findById(parent).orElseThrow().completeRecommendation(mapper.writeValueAsString(List.of(new RankedDestination(1,candidate,"추천"))));
+        em.flush();
+        quickUrl="/travel/recommendations/"+parent+"/destinations/"+destination+"/quick-schedule";
+        mvc.perform(post(quickUrl).session(session)).andExpect(status().isForbidden());
+        String location=mvc.perform(post(quickUrl).session(session).with(csrf()))
+            .andExpect(status().isSeeOther()).andReturn().getResponse().getHeader("Location");
+        assertThat(location).startsWith("/travel/recommendations/itineraries/");
+        var input=schedules.view(UUID.fromString(location.replace("/travel/recommendations/itineraries/","")),null,hash).input();
+        assertThat(input.conditions().startDate()).isEqualTo(start);
+        assertThat(input.conditions().durationDays()).isEqualTo(2);
+        // 다시 눌러도 새로 만들지 않고 같은 초안으로 보낸다.
+        mvc.perform(post(quickUrl).session(session).with(csrf())).andExpect(header().string("Location",location));
+    }
     private String formUrl() { return "/travel/recommendations/"+parent+"/destinations/"+destination+"/schedule"; }
+
+    // 일정 작업 전에 고른 관광지 주변의 음식점을 찾아 저장하고 요청에 더한다. 그 요청으로 만든 일정은 그대로 검증을 통과한다.
+    @Test void nearbyRestaurantsAreAddedBeforeTheScheduleIsMade() {
+        var region=placeRepository.findById(destination).orElseThrow().getRegion();
+        // 시스템 관광지에는 좌표가 없어 주변을 찾을 지점이 없으므로, 이 테스트에서만 좌표를 넣는다.
+        jdbc.update("UPDATE dbo.places SET latitude=37.7, longitude=128.9 WHERE place_type='ATTRACTION' AND region=?",region);
+        em.flush(); em.clear();
+        var checked=LocalDateTime.now(ZoneOffset.UTC).withNano(0);
+        var nearby=new KakaoPlace("990000001","RESTAURANT","주변테스트식당",region,region+" 테스트로 1","음식점 > 한식 > 국수",
+            128.901,37.701,"https://place.map.kakao.com/990000001",checked);
+        when(maps.searchRestaurantsNear(anyDouble(),anyDouble(),eq(region),anyInt(),anyInt())).thenReturn(List.of(nearby));
+        UUID id=create();
+        int before=schedules.view(id,null,hash).input().places().restaurants().size();
+        nearbyRestaurants.enrich(id);
+        var input=schedules.view(id,null,hash).input();
+        assertThat(input.places().restaurants()).hasSize(before+1);
+        assertThat(input.places().restaurants().getLast().name()).isEqualTo("주변테스트식당");
+        // 다시 실행해도 같은 음식점을 또 더하지 않는다.
+        nearbyRestaurants.enrich(id);
+        assertThat(schedules.view(id,null,hash).input()).isEqualTo(input);
+        var work=schedules.claim(id); schedules.complete(work,schedules.generate(work));
+        assertThat(schedules.view(id,null,hash).status()).isEqualTo("COMPLETED");
+    }
     private String resultUrl(UUID id) { return "/travel/recommendations/itineraries/"+id; }
 
     @Test void operatingInfoPersistsReachesScheduleAndDetectsLaterChanges() throws Exception {
@@ -164,6 +230,26 @@ class ItineraryIntegrationTests {
         when(prices.lookup(any(),anyString())).thenAnswer(call->{ PlaceCandidate p=call.getArgument(0); String kind=call.getArgument(1);
             return new ItineraryPlan.PriceQuote(p.placeId(),p.name(),kind,"VERIFIED","참고 가격",20000,30000,"기준","https://price.example.kr/"+p.placeId()); });
     }
+    // 일정에 들어간 관광지의 관광공사 사진을 한 번 찾아 저장하고, 초안 화면에 출처와 함께 보여 준다. 다음에는 다시 검색하지 않는다.
+    @Test void draftAttractionPhotosAreFoundOnceAndShownWithCredit() throws Exception {
+        var id=create(); var work=schedules.claim(id); var result=schedules.generate(work);
+        var visit=result.days().stream().flatMap(d->d.items().stream()).filter(i->"VISIT".equals(i.type())).findFirst().orElseThrow();
+        var candidate=work.input().attractionsWithReserve().stream().filter(p->p.placeId().equals(visit.placeId())).findFirst().orElseThrow();
+        String image="https://tong.visitkorea.or.kr/cms/resource/test_photo.jpg";
+        when(tour.configured()).thenReturn(true);
+        when(tour.searchPhotos(anyString())).thenReturn(List.of());
+        when(tour.searchPhotos(candidate.name())).thenReturn(List.of(new TourApiClient.SearchPlace("1","12",candidate.name(),candidate.address(),
+            candidate.longitude()==null?128.9:candidate.longitude(),candidate.latitude()==null?37.7:candidate.latitude(),image,"Type1")));
+        photos.findForItinerary(work.input(),result,Instant.now().plusSeconds(15));
+        schedules.complete(work,result); em.flush();
+        assertThat(schedules.view(id,null,hash).status()).isEqualTo("COMPLETED");
+        assertThat(photos.photos(List.of(visit.placeId())).get(visit.placeId()).url()).isEqualTo(image);
+        mvc.perform(get(resultUrl(id)).session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString(image))).andExpect(content().string(containsString("사진: 한국관광공사")));
+        clearInvocations(tour);
+        photos.findForItinerary(work.input(),result,Instant.now().plusSeconds(15));
+        verify(tour,never()).searchPhotos(candidate.name());
+    }
     private UUID completedDraft() {
         var id=create(); var work=schedules.claim(id); schedules.complete(work,schedules.generate(work)); em.flush(); return id;
     }
@@ -216,7 +302,9 @@ class ItineraryIntegrationTests {
             .andExpect(header().string("Cache-Control","no-store"))
             .andExpect(content().string(containsString("일정 초안"))).andExpect(content().string(containsString("2일차")))
             .andExpect(content().string(containsString("확인이 필요해요")))
-            .andExpect(content().string(containsString("여행 조건 확인 결과")))
+            .andExpect(content().string(containsString("조건 확인: 충족")))
+            // 일정에 들어간 관광지마다 그 자리에서 바꾸는 버튼과, 여러 날이면 일차 버튼이 있다.
+            .andExpect(content().string(containsString("다른 곳으로 바꾸기"))).andExpect(content().string(containsString("data-day-tabs")))
             .andDo(response->{ if(Boolean.getBoolean("travel.ui.capture")) {
                 var folder=java.nio.file.Path.of("target","ui-check"); java.nio.file.Files.createDirectories(folder);
                 java.nio.file.Files.writeString(folder.resolve("itinerary.html"),response.getResponse().getContentAsString(StandardCharsets.UTF_8));
@@ -227,6 +315,8 @@ class ItineraryIntegrationTests {
     @Test void formCsrfAndDuplicateSubmission() throws Exception {
         var form=mvc.perform(get(formUrl()).session(session)).andExpect(status().isOk()).andReturn();
         String token=(String)form.getModelAndView().getModel().get("submissionToken");
+        // 입력 화면은 후보가 적으면 카카오에서 더 찾는다. 아래는 제출이 지도를 부르지 않는지만 본다.
+        clearInvocations(maps);
         if(Boolean.getBoolean("travel.ui.capture")) {
             var folder=java.nio.file.Path.of("target","ui-check"); java.nio.file.Files.createDirectories(folder);
             java.nio.file.Files.writeString(folder.resolve("itinerary-form.html"),form.getResponse().getContentAsString(StandardCharsets.UTF_8));

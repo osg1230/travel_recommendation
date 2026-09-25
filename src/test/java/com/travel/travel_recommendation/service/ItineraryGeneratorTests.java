@@ -62,13 +62,13 @@ class ItineraryGeneratorTests {
         var firstDay=result.days().getFirst().items();
         var stay=firstDay.get(ItineraryGenerator.stayIndex(firstDay));
         assertThat(stay.placeId()).isEqualTo(5L);
-        // 숙소를 고른 이유는 '숙소 추천' 절에 한 번만 보여 주므로 항목마다 적지 않는다.
+        // 숙소 후보와 확인 안내는 초안의 첫 숙박 항목에 한 번만 보여 주므로 항목마다 적지 않는다.
         assertThat(stay.note()).isEqualTo("숙소 도착·휴식");
         // 이틀 동안 식사 3번(1일차 점심·저녁, 2일차 점심)에 음식점 후보가 3곳이면 같은 곳을 반복하지 않는다.
         var meals=result.days().stream().flatMap(d->d.items().stream()).filter(i->i.type().equals("MEAL")).toList();
         assertThat(meals).extracting(Item::placeId).doesNotHaveDuplicates();
         // 식사 항목에 음식 분류·고른 이유를 적고, 지역 대표 음식은 첫 식사에만 적는다. 운영정보가 없으면 '확인 필요' 줄을 붙이지 않는다.
-        assertThat(meals.getFirst().note()).contains("음식 분류: 유형").contains("라 골랐어요").contains("초당두부").doesNotContain("확인 필요");
+        assertThat(meals.getFirst().note()).startsWith("식사 · 유형").contains("위치: 장소").contains("초당두부").doesNotContain("확인 필요");
         assertThat(meals.subList(1,meals.size())).allSatisfy(m->assertThat(m.note()).doesNotContain("초당두부"));
         generator.validate(input,result);
         // 날마다 다른 숙소로 바꾼 결과는 받지 않는다.
@@ -97,7 +97,7 @@ class ItineraryGeneratorTests {
         assertThat(first.getLast()).isEqualTo(dinner);
         assertThat(first.indexOf(dinner)).isGreaterThan(stayAt);
         assertThat(dinner.start()).isEqualTo(LocalTime.of(18,0));
-        assertThat(dinner.note()).startsWith("저녁 식사").contains("장소5에서 가까운 곳이라 골랐어요(직선");
+        assertThat(dinner.note()).startsWith("저녁 식사").contains("위치: 장소5에서 직선 약");
         assertThat(dinner.placeId()).isNotEqualTo(meals.getFirst().placeId());
         // 숙소 휴식은 저녁 출발 전까지 이어진다. 관광은 하루 종료 시간(18시) 안이다.
         assertThat(first.get(stayAt).end()).isBefore(LocalTime.of(18,0));
@@ -139,7 +139,7 @@ class ItineraryGeneratorTests {
         var day1=result.days().get(0).items().stream().filter(i->i.type().equals("VISIT")).toList();
         var day2=result.days().get(1).items().stream().filter(i->i.type().equals("VISIT")).toList();
         assertThat(day1.getFirst().placeId()).isEqualTo(30L);
-        assertThat(day1.getFirst().note()).contains("이 날 일정의 중심으로 고른 곳이에요");
+        assertThat(day1.getFirst().note()).contains("이 날 일정의 중심으로 고른 곳이라 첫 방문지로 넣었어요");
         assertThat(day1).extracting(Item::placeId).containsExactlyInAnyOrder(30L,29L,31L);
         assertThat(day2.getFirst().placeId()).isEqualTo(1L);
         assertThat(day2).extracting(Item::placeId).containsExactlyInAnyOrder(1L,2L,3L);
@@ -317,6 +317,8 @@ class ItineraryGeneratorTests {
         var result=generator.generate(input);
         // 해변B(해변A에서 2단위)가 전망대(3단위)보다 가깝지만, 같은 종류라 두 배(4단위)로 쳐서 전망대를 먼저 간다.
         assertThat(result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).map(Item::placeId)).containsExactly(1L,4L,3L);
+        assertThat(result.days().getFirst().items().stream().filter(i->i.placeId()!=null && i.placeId()==4L && i.type().equals("VISIT")).findFirst().orElseThrow().note())
+            .contains("바로 앞 방문지와 같은 종류(해변)가 이어지지 않게 골랐어요.");
         generator.validate(input,result);
     }
     // 필수 방문 장소는 시간이 부족해도 빼지 않고, 어느 장소 때문인지 알린다.
@@ -342,6 +344,46 @@ class ItineraryGeneratorTests {
         assertThat(meals.get(1).note()).startsWith("저녁 식사");
         assertThat(result.skipped()).isEmpty();
         generator.validate(input,result);
+    }
+    // 가장 가까운 음식점보다 2km 안쪽으로만 더 멀면, 이미 먹은 음식과 다른 분류를 먼저 고르고 그 점을 이유로 적는다.
+    @Test void mealPrefersFoodNotEatenYetAndSaysWhy() {
+        var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,1),1,null,2,false,false,List.of(),"");
+        var pool=new PlaceCandidateView(UUID.randomUUID(),new DestinationCandidate(99L,"강릉","강원","소개","https://www.gn.go.kr/",LocalDateTime.of(2026,9,1,0,0)),1,false,
+            List.of(place(1),place(2),place(3),place(4),place(5),place(6)),List.of(),
+            List.of(restaurant(20,"음식점 > 한식"),restaurant(21,"음식점 > 한식"),restaurant(30,"음식점 > 중식")));
+        var input=new Input(pool.jobId(),pool,conditions,LocalTime.of(9,0),LocalTime.of(20,0),KakaoMapClient.Transport.CAR,60);
+        var result=generator.generate(input);
+        var meals=result.days().getFirst().items().stream().filter(i->i.type().equals("MEAL")).toList();
+        // 저녁은 더 가까운 한식(21) 대신 약 0.8km 더 먼 중식(30)이다.
+        assertThat(meals).extracting(Item::placeId).containsExactly(20L,30L);
+        assertThat(meals.get(0).note()).startsWith("식사 · 한식").contains("위치: 장소").doesNotContain("고른 이유");
+        assertThat(meals.get(1).note()).startsWith("저녁 식사 · 중식").contains("고른 이유: 앞서 먹은 음식(한식)과 다른 분류예요.");
+        generator.validate(input,result);
+    }
+    // 지역 대표 음식이 상호에 들어간 곳을 먼저 고르고, 가까운 후보가 없어 먼 곳을 넣었으면 그렇다고 알린다.
+    @Test void mealNotesRegionalFoodAndFarDistance() {
+        var tofu=new PlaceCandidate(15L,"초당두부마을","강원 강릉시 경포로 15","음식점 > 한식","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var near=dayTrip(List.of(place(1),place(2)),List.of(restaurant(3,"음식점 > 한식"),tofu),90,List.of());
+        var meal=generator.generate(near).days().getFirst().items().stream().filter(i->i.type().equals("MEAL")).findFirst().orElseThrow();
+        assertThat(meal.placeId()).isEqualTo(15L);
+        assertThat(meal.note()).contains("고른 이유: 상호나 분류에 이 지역 대표 음식(초당두부)이 들어간 곳이에요.");
+        // 음식점 300은 관광지에서 약 26km 떨어져 있다.
+        var far=dayTrip(List.of(place(1),place(2)),List.of(restaurant(300,"음식점 > 한식")),90,List.of());
+        var farMeal=generator.generate(far).days().getFirst().items().stream().filter(i->i.type().equals("MEAL")).findFirst().orElseThrow();
+        assertThat(farMeal.note()).contains("떨어져 있어요. 더 가까운 곳에 확인된 음식점 후보가 없었어요.");
+    }
+    // 관광지에는 고른 여행 취향에 맞는 분류라는 이유를 적고, 취향에 맞지 않는 곳은 후보가 모자라 채운 곳이라고 알린다.
+    @Test void visitNoteShowsMatchedThemeInsteadOfDistance() {
+        var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,1),1,null,2,false,false,
+            List.of(new TravelKeyword(1L,"THEME","바다",null)),"");
+        var beach=new PlaceCandidate(1L,"해변A","강원 강릉시 경포로 1","여행 > 관광,명소 > 해수욕장,해변","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var shop=new PlaceCandidate(2L,"시장","강원 강릉시 경포로 2","쇼핑 > 전통시장","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var pool=new PlaceCandidateView(UUID.randomUUID(),new DestinationCandidate(99L,"강릉","강원","소개","https://www.gn.go.kr/",LocalDateTime.of(2026,9,1,0,0)),1,false,
+            List.of(beach,shop),List.of(),List.of(place(3)));
+        var input=new Input(pool.jobId(),pool,conditions,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90);
+        var visits=generator.generate(input).days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).toList();
+        assertThat(visits.get(0).note()).isEqualTo("관광·관람 · 해수욕장·해변\n고른 이유: 고른 여행 취향(바다)에 맞는 분류예요.");
+        assertThat(visits.get(1).note()).isEqualTo("관광·관람 · 전통시장\n고른 이유: 고른 취향에 맞는 관광지 후보가 모자라 이 지역의 다른 종류 관광지로 채운 곳이에요.");
     }
     @Test void rejectsMissingTransferAndDuplicatedVisitDuringFinalValidation() {
         var input=input(1,LocalTime.of(18,0)); var good=generator.generate(input); var day=good.days().getFirst();

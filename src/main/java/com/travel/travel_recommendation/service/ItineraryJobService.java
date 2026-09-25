@@ -322,7 +322,7 @@ public class ItineraryJobService {
         if(!"COMPLETED".equals(source.getStatus()) || source.getResultJson()==null)
             throw new ResponseStatusException(HttpStatus.CONFLICT,"완성된 일정 초안에서만 수정을 요청할 수 있어요.");
         if(!revisions.configured())
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"AI 수정 요청은 OpenAI 연결 설정 후 이용할 수 있어요. 위의 '장소 바꿔서 수정안 만들기'는 그대로 쓸 수 있어요.");
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"AI 수정 요청은 OpenAI 연결 설정 후 이용할 수 있어요. 일정의 '다른 곳으로 바꾸기'와 'AI 없이 시간만 바꾸기'는 그대로 쓸 수 있어요.");
         var input=mapper.readValue(source.getRequestJson(),Input.class);
         var result=mapper.readValue(source.getResultJson(),Result.class);
         var pool=candidates.findForSchedule(input.recommendationId(),input.places().destination().placeId(),login,hash,input.conditions());

@@ -233,7 +233,7 @@ class SavedItineraryRevisionIntegrationTests {
         var draft=saved.detail(itineraryId,owner.getLoginId()).editableJobId();
         assertThat(draft).isNotNull().isNotEqualTo(original);
         mvc.perform(get("/travel/recommendations/itineraries/"+draft).with(user(owner.getLoginId())))
-            .andExpect(status().isOk()).andExpect(content().string(containsString("장소 바꿔서 수정안 만들기")));
+            .andExpect(status().isOk()).andExpect(content().string(containsString("일정 수정하기")));
     }
 
     @Test void savedDetailKeepsChecksAndPricesUntilRevisionReplacesThem() throws Exception {

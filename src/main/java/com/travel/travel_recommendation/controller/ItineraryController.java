@@ -1,6 +1,7 @@
 package com.travel.travel_recommendation.controller;
 
 import com.travel.travel_recommendation.dto.ItineraryPlan;
+import com.travel.travel_recommendation.dto.PlaceCandidate;
 import com.travel.travel_recommendation.service.*;
 import jakarta.servlet.http.*;
 import java.net.URI;
@@ -25,10 +26,14 @@ public class ItineraryController {
     private final ObjectProvider<ItineraryJobService> services;
     private final ObjectProvider<SavedItineraryService> savedItineraries;
     private final ObjectProvider<BusGuideService> busGuides;
+    private final ObjectProvider<PlaceCandidateService> candidates;
+    private final ObjectProvider<PlaceDiscoveryService> discoveries;
+    private final ObjectProvider<PlacePhotoService> photos;
     private final tools.jackson.databind.ObjectMapper mapper;
     private record Submission(UUID parent,long destination,String login,String token,UUID job) {}
     private static final String SESSION_KEY="itinerarySubmission";
     private static final String CONFLICT_KEY="itineraryConstraintConflict";
+    private static final String QUICK_KEY="quickItinerary:";
     /** 일정 입력 화면의 값. 필수 조건 충돌로 돌아갈 때 입력을 잃지 않도록 세션에 잠시 둔다. */
     public record ConstraintInput(UUID parent,LocalTime start,LocalTime end,KakaoMapClient.Transport transport,int visitMinutes,
                                   List<Long> required,Integer dailyVisits,boolean dailyRequired,String budgetBasis,
@@ -39,17 +44,14 @@ public class ItineraryController {
     String form(@PathVariable UUID id,@PathVariable long destinationId,Principal principal,HttpSession session,
                 HttpServletResponse response,Model model) {
         response.setHeader("Cache-Control","no-store");
+        findMorePlacesIfFew(id,destinationId,principal,session);
         var options=service().options(id,destinationId,login(principal),hash(session));
         model.addAttribute("options",options);
         var pool=service().attractionPool(id,destinationId,login(principal),hash(session));
         model.addAttribute("pool",pool);
-        // 여행 목적 시설 중 첫 곳만 필수 방문 장소로 미리 골라 둔다. 여러 곳을 모두 필수로 두면 먼 시설까지 억지로 넣게 된다.
-        // 중심 장소와 같은 종류(예: 서원)인 목적 시설은 중심 장소가 목적을 채우므로 고르지 않는다. 사용자가 체크를 풀거나 더 고를 수 있다.
-        var centerIds=service().defaultCenterPlaceIds(id,destinationId,login(principal),hash(session));
-        var poolIds=pool.stream().map(p->p.placeId()).toList();
-        var purposeIds=CenterPlaces.notCoveredByCenters(pool,
-            service().purposePlaceIds(id,destinationId,login(principal),hash(session)).stream().filter(poolIds::contains).toList(),centerIds)
-            .stream().limit(1).toList();
+        var defaults=defaultPlaces(id,destinationId,principal,session,pool);
+        var purposeIds=defaults.purposeIds();
+        var centerIds=defaults.centerIds();
         model.addAttribute("purposePlaceIds",purposeIds);
         model.addAttribute("centerPlaceIds",centerIds);
         model.addAttribute("budgetItems",TripConstraints.BUDGET_ITEMS);
@@ -110,6 +112,79 @@ public class ItineraryController {
         return accept.contains("application/json")?ResponseEntity.accepted().cacheControl(CacheControl.noStore()).body(Map.of("jobId",job,"location",location)):
             ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create(location)).cacheControl(CacheControl.noStore()).build();
     }
+    /** 여행 정보 화면에서 입력한 값과 안내 문장. 빠진 값이 있어 돌아갈 때 입력을 잃지 않도록 세션에 한 번 둔다. */
+    public record TripInfoInput(UUID parent,Integer durationDays,Boolean accommodationNeeded,LocalDate startDate,
+                                KakaoMapClient.Transport transport,String error) {}
+    private static final String TRIP_INFO_KEY="itineraryTripInfo";
+
+    /** 바로 일정을 만들 때 추천 조건에 비어 있는 여행 정보(일수·숙박·출발일·이동수단)만 묻는다. 하루 시간은 기본값을 쓴다. */
+    @GetMapping("/{id}/destinations/{destinationId}/trip-info")
+    String tripInfo(@PathVariable UUID id,@PathVariable long destinationId,Principal principal,HttpSession session,
+                    HttpServletResponse response,Model model) {
+        response.setHeader("Cache-Control","no-store");
+        var options=service().options(id,destinationId,login(principal),hash(session));
+        model.addAttribute("options",options);
+        var previous=session.getAttribute(TRIP_INFO_KEY) instanceof TripInfoInput input && input.parent().equals(id) ? input : null;
+        session.removeAttribute(TRIP_INFO_KEY);
+        model.addAttribute("values",previous!=null?previous:new TripInfoInput(id,null,null,null,null,null));
+        model.addAttribute("askTransport",options.conditions().keywordNames("TRANSPORTATION").isEmpty());
+        return "travel/trip-info";
+    }
+
+    /**
+     * 추천 결과·장소 목록에서 하루 시간 입력 없이 바로 일정 초안을 만든다.
+     * 하루 시간·체류시간·중심 장소·목적 시설은 입력 화면과 같은 기본값을 쓰고, 마음에 들지 않으면 초안에서 고친다.
+     * 여행 일수·숙박·출발일·이동수단은 추측하지 않는다. 추천 조건에 없고 이번 요청에도 없으면 여행 정보 화면에서 묻는다.
+     */
+    @PostMapping("/{id}/destinations/{destinationId}/quick-schedule")
+    ResponseEntity<?> quick(@PathVariable UUID id,@PathVariable long destinationId,
+            @RequestParam(required=false) Integer durationDays,@RequestParam(required=false) Boolean accommodationNeeded,
+            @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required=false) KakaoMapClient.Transport transport,Principal principal,HttpSession session) {
+        String base="/travel/recommendations/"+id+"/destinations/"+destinationId;
+        UUID job;
+        synchronized(session) {
+            // 두 번 누르거나 뒤로 가서 다시 눌러도 같은 초안으로 보낸다. 다른 시간으로 만들려면 초안의 '자세히 정해서 다시 만들기'를 쓴다.
+            String key=QUICK_KEY+id+":"+destinationId+":"+login(principal);
+            if(session.getAttribute(key) instanceof UUID made) return seeOther("/travel/recommendations/itineraries/"+made);
+            findMorePlacesIfFew(id,destinationId,principal,session);
+            var options=service().options(id,destinationId,login(principal),hash(session));
+            var c=options.conditions();
+            // 추천 조건에 이미 있는 값이 먼저이고, 없는 값만 이번 요청에서 받는다.
+            Integer days=c.durationDays()!=null?c.durationDays():durationDays;
+            Boolean stay=c.accommodationNeeded()!=null?c.accommodationNeeded():accommodationNeeded;
+            LocalDate date=c.startDate()!=null?c.startDate():startDate;
+            var mode=c.keywordNames("TRANSPORTATION").isEmpty()?transport:options.transport();
+            String missing=days==null || days<1 || days>7 ? "여행 일수를 골라 주세요."
+                : days>1 && stay==null ? "여러 날 여행이라 숙소가 필요한지 골라 주세요."
+                : date==null ? "출발일을 골라 주세요."
+                : c.startDate()==null && date.isBefore(LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))) ? "출발일은 오늘이나 그 이후 날짜로 골라 주세요."
+                : mode==null ? "이동수단을 골라 주세요." : null;
+            if(missing!=null) {
+                // 처음 눌렀을 때(아무것도 보내지 않음)는 안내 문장 없이 여행 정보 화면만 보여 준다.
+                boolean submitted=durationDays!=null || accommodationNeeded!=null || startDate!=null || transport!=null;
+                session.setAttribute(TRIP_INFO_KEY,new TripInfoInput(id,durationDays,accommodationNeeded,startDate,transport,submitted?missing:null));
+                return seeOther(base+"/trip-info");
+            }
+            var pool=service().attractionPool(id,destinationId,login(principal),hash(session));
+            var defaults=defaultPlaces(id,destinationId,principal,session,pool);
+            var constraints=new ItineraryPlan.Constraints(defaults.purposeIds(),null,false,null,List.of(),null,defaults.centerIds());
+            Integer newDays=c.durationDays()==null?days:null;
+            Boolean newStay=c.accommodationNeeded()==null?stay:null;
+            LocalDate newDate=c.startDate()==null?date:null;
+            try {
+                job=service().create(id,destinationId,login(principal),hash(session),options.start(),options.end(),mode,
+                    options.visitMinutes(),constraints,newDays,newStay,newDate);
+            } catch(TripConstraints.ConflictException conflict) {
+                // 기본값으로도 조건이 맞지 않으면 자세한 입력 화면에서 이유와 선택지를 보여 준다.
+                session.setAttribute(CONFLICT_KEY,new ConstraintInput(id,options.start(),options.end(),mode,options.visitMinutes(),
+                    constraints.requiredPlaceIds(),null,false,null,List.of(),null,conflict.conflicts(),newDays,newStay,newDate,constraints.centerPlaceIds()));
+                return seeOther(base+"/schedule");
+            }
+            session.setAttribute(key,job);
+        }
+        return seeOther("/travel/recommendations/itineraries/"+job);
+    }
     @GetMapping("/itineraries/{id}")
     String result(@PathVariable UUID id,Principal principal,HttpSession session,HttpServletResponse response,Model model) {
         response.setHeader("Cache-Control","no-store");
@@ -126,7 +201,13 @@ public class ItineraryController {
             // 지역 대표 음식 안내(SFR-17-01). 공식 출처로 확인한 지역만 보여 준다.
             model.addAttribute("foods",RegionalFoods.of(job.result().destination()).orElse(null));
             // 수정안에서 바꿀 수 있는 관광지는 실제로 배치된 곳뿐이다(시간이 부족해 뺀 곳 제외).
-            model.addAttribute("placedAttractions",ItineraryJobService.placed(job.input(),job.result()));
+            var placed=ItineraryJobService.placed(job.input(),job.result());
+            model.addAttribute("placedAttractions",placed);
+            // 일정 항목마다 '다른 곳으로 바꾸기'를 보여 줄지 정하는 데 쓴다.
+            model.addAttribute("placedAttractionIds",placed.stream().map(p->p.placeId()).collect(java.util.stream.Collectors.toSet()));
+            // 초안을 만들 때 찾아 둔 관광지 사진(관광공사). 없으면 사진 없이 보여 준다.
+            model.addAttribute("photoByPlace",photosOf(job.result().days().stream().flatMap(d->d.items().stream())
+                .filter(i->"VISIT".equals(i.type()) && i.placeId()!=null).map(ItineraryPlan.Item::placeId).toList()));
             // 버튼으로 찾은 숙소·음식점 참고 가격. 일정 항목 옆에 보여 주도록 장소 ID로 묶는다.
             var priceByPlace=new java.util.HashMap<Long,ItineraryPlan.PriceQuote>();
             if(job.result().prices()!=null) job.result().prices().quotes().forEach(q->priceByPlace.put(q.placeId(),q));
@@ -195,7 +276,7 @@ public class ItineraryController {
     @PostMapping("/itineraries/{id}/ai-revisions")
     String aiRevise(@PathVariable UUID id,@RequestParam(defaultValue="") String request,Principal principal,HttpSession session,
                     org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
-        String back="redirect:/travel/recommendations/itineraries/"+id+"#ai-revise-title";
+        String back="redirect:/travel/recommendations/itineraries/"+id+"#revise-title";
         redirect.addFlashAttribute("aiRequest",request.length()>300?request.substring(0,300):request);
         // 유료 호출이므로 같은 세션에서 연달아 누르지 않도록 20초 간격을 둔다.
         synchronized(session) {
@@ -291,5 +372,38 @@ public class ItineraryController {
         return service;
     }
     private String login(Principal principal) { return principal==null?null:principal.getName(); }
+    private static ResponseEntity<?> seeOther(String location) {
+        return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create(location)).cacheControl(CacheControl.noStore()).build();
+    }
+    private Map<Long,PlacePhotoDetails.Photo> photosOf(List<Long> placeIds) {
+        var service=photos.getIfAvailable();
+        if(service==null || placeIds.isEmpty()) return Map.of();
+        try { return service.photos(placeIds); } catch(RuntimeException error) { return Map.of(); }
+    }
+    private record DefaultPlaces(List<Long> purposeIds,List<Long> centerIds) {}
+    // 여행 목적 시설 중 첫 곳만 필수 방문 장소로 미리 골라 둔다. 여러 곳을 모두 필수로 두면 먼 시설까지 억지로 넣게 된다.
+    // 중심 장소와 같은 종류(예: 서원)인 목적 시설은 중심 장소가 목적을 채우므로 고르지 않는다. 입력 화면에서는 사용자가 바꿀 수 있다.
+    private DefaultPlaces defaultPlaces(UUID id,long destinationId,Principal principal,HttpSession session,List<PlaceCandidate> pool) {
+        var centerIds=service().defaultCenterPlaceIds(id,destinationId,login(principal),hash(session));
+        var poolIds=pool.stream().map(p->p.placeId()).toList();
+        var purposeIds=CenterPlaces.notCoveredByCenters(pool,
+            service().purposePlaceIds(id,destinationId,login(principal),hash(session)).stream().filter(poolIds::contains).toList(),centerIds)
+            .stream().limit(1).toList();
+        return new DefaultPlaces(purposeIds,centerIds);
+    }
+    // 장소 목록을 거치지 않고 일정을 만들 때도 후보가 부족하면 장소 목록 화면처럼 카카오에서 한 번 더 찾는다(같은 세션 키라 한 번만).
+    private void findMorePlacesIfFew(UUID id,long destinationId,Principal principal,HttpSession session) {
+        var list=candidates.getIfAvailable(); var discovery=discoveries.getIfAvailable();
+        if(list==null || discovery==null) return;
+        String autoKey="autoPlaceLookup:"+id+":"+destinationId;
+        if(session.getAttribute(autoKey)!=null) return;
+        try {
+            if(!list.find(id,destinationId,login(principal),hash(session)).tooFewForSchedule()) return;
+            session.setAttribute(autoKey,Boolean.TRUE);
+            discovery.refresh(id,destinationId,login(principal),hash(session));
+        } catch(RuntimeException lookupFailed) {
+            // 더 찾지 못해도 지금 있는 후보로 일정을 만든다.
+        }
+    }
     private byte[] hash(HttpSession session) { return RecommendationJobController.guestHash(session,false); }
 }

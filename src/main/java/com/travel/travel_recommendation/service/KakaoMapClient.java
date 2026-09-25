@@ -97,6 +97,20 @@ public class KakaoMapClient {
     }
 
     /**
+     * 좌표 주변 radiusMeters 안의 음식점(FD6)을 정확도 순으로 최대 limit곳 찾는다. 일정에 넣을 관광지·숙소 근처에서 끼니를 고르기 위해 쓴다.
+     * 간식·술집·카페와 여행지 지역(region) 밖의 곳은 받지 않는다.
+     */
+    public List<KakaoPlace> searchRestaurantsNear(double longitude,double latitude,String region,int radiusMeters,int limit) {
+        if(region==null || radiusMeters<1 || radiusMeters>20000 || limit<1 || limit>15) throw invalid();
+        if(!Double.isFinite(longitude) || !Double.isFinite(latitude) || longitude<124 || longitude>132 || latitude<33 || latitude>39)
+            throw invalid();
+        var root=get(localEndpoint.resolve("/v2/local/search/category.json?category_group_code=FD6&x="+longitude+"&y="+latitude
+            +"&radius="+radiusMeters+"&sort=accuracy&size=15&page=1"));
+        return places(root,item->"FD6".equals(item.path("category_group_code").asText())
+            && !PlaceCandidate.notForMeals(item.path("category_name").asText("")),List.of(region),"RESTAURANT",limit);
+    }
+
+    /**
      * 관광지는 "○○ 명소"로 찾고 분류 이름이 '여행 > 관광,명소'인 곳만 받는다. 한옥마을·경기전처럼 대표 명소는
      * 분류 코드(AT4)가 비어 있는 경우가 많아 코드로 거르면 빠지기 때문이다. 정확도 순으로 최대 3쪽(45건)을 읽어
      * 앞쪽 15곳을 쓰고, "경기전 하마비"처럼 다른 후보 안의 시설은 뺀다.

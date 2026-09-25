@@ -130,16 +130,17 @@ public class ItineraryGenerator {
                 var next=forceCenter?dayCenter:pool.stream().min(order(builder.date,p->anchor==null?remaining.indexOf(p)
                     :distance(locations.get(anchor.placeId()),locations.get(p.placeId()))
                         *(!previousKind.isEmpty() && previousKind.equals(TripConstraints.kind(p))?SAME_KIND_PENALTY:1))).orElseThrow();
+                // 거리만 봤다면 직전과 같은 종류를 골랐을 때만 "다른 종류로 골랐다"고 이유에 적는다.
+                boolean variedKind=!forceCenter && anchor!=null && !previousKind.isEmpty() && pool.stream()
+                    .min(order(builder.date,p->distance(locations.get(anchor.placeId()),locations.get(p.placeId()))))
+                    .filter(p->!p.equals(next) && previousKind.equals(TripConstraints.kind(p))).isPresent();
                 var mark=builder.mark();
                 boolean hadLunch=builder.lunch;
                 try {
                     // 점심때가 됐는데 이 관광지를 마치면 너무 늦어지면(예: 12:06~13:36) 점심을 먼저 먹는다.
                     if(!builder.lunch && lunchFirst(builder,next)) eat(builder,builder.previous,false);
-                    builder.visit(next,"VISIT",input.visitMinutes(),"관광·관람"
-                        +(spare?"\n하루 시간이 남아 더 넣은 곳이에요.":"")
-                        +(centers.contains(next)?"\n이 날 일정의 중심으로 고른 곳이에요."
-                            :chosenCenters.contains(next)?"\n일정의 중심으로 고른 곳이에요. 가까운 중심 장소와 같은 날로 묶었어요.":"")
-                        +(next.religiousSite()?"\n종교 시설이라 미사·예불 등 행사 중에는 관람이 제한될 수 있어요. 방문 전 관람 가능 시간을 확인해 주세요.":""));
+                    builder.visit(next,"VISIT",input.visitMinutes(),visitNote(input,next,spare,centers.contains(next),
+                        chosenCenters.contains(next),variedKind?previousKind:null));
                     if(!builder.lunch && !builder.time.isBefore(LocalTime.NOON)) eat(builder,next,false);
                     // 이 관광지를 넣어도 남은 점심·숙소 도착까지 하루 종료 시간 안에 끝나는지 미리 확인한다.
                     checkClosing(builder,next,stay);
@@ -178,7 +179,7 @@ public class ItineraryGenerator {
             if(visits==0) throw routeError!=null?routeError:failure("INSUFFICIENT_PLACES",day+"일차에 넣을 관광지가 부족해요. 여행 기간을 줄이거나 장소 목록에서 후보를 더 찾아 주세요.");
             // 점심을 아직 넣지 못했으면 마지막 관광지 뒤에 넣는다. 들어가는지는 위에서 확인했다.
             if(!builder.lunch) eat(builder,last,false);
-            // 숙소를 고른 이유와 체크인 확인 안내는 '숙소 추천' 절에 한 번만 보여 준다.
+            // 숙소를 고른 이유는 따로 적지 않고, 다른 후보와 체크인 확인 안내는 초안의 첫 숙박 항목에 한 번만 보여 준다.
             if(stay!=null) arriveAndDine(builder,stay,"숙소 도착·휴식");
             // 하루 방문 수가 필수 조건이면 시간 때문에 줄어든 날을 그대로 두지 않고 이유를 알린다.
             if(constraints!=null && constraints.dailyVisitsRequired() && visits!=constraints.dailyVisits())
@@ -198,6 +199,34 @@ public class ItineraryGenerator {
     }
 
     /**
+     * 관광지 항목의 설명. 분류와 함께, 실제로 이 곳을 고르는 데 쓴 기준(필수 방문·여행 목적·취향·중심 장소·종류 섞기)만 이유로 적는다.
+     * 거리는 모든 관광지에 공통인 기준이라 이유로 따로 적지 않는다. 해당하는 기준이 없으면 분류만 보여 준다
+     * (취향을 골랐다면 취향 후보가 모자라 채운 곳이라고 알린다).
+     */
+    private static String visitNote(Input input,PlaceCandidate place,boolean spare,boolean dayCenter,boolean chosenCenter,String avoidedKind) {
+        var reasons=new ArrayList<String>();
+        if(input.constraints()!=null && input.constraints().requiredPlaceIds().contains(place.placeId())) reasons.add("필수 방문 장소로 고른 곳이에요.");
+        if(input.revision()!=null && input.revision().added().stream().anyMatch(p->p.placeId().equals(place.placeId())))
+            reasons.add("수정 요청에 따라 새로 넣은 곳이에요.");
+        var conditions=input.conditions();
+        if(conditions.purposeSearch()!=null && conditions.travelPurpose()!=null && !conditions.travelPurpose().isBlank()
+                && conditions.purposeSearch().places().stream().anyMatch(p->place.placeId().equals(p.placeId())))
+            reasons.add("여행 목적('"+conditions.travelPurpose().strip()+"')과 관련된 시설로 찾은 곳이에요.");
+        var themes=ThemePlaces.matched(place.name(),place.subtype(),conditions.themeNames());
+        if(!themes.isEmpty()) reasons.add("고른 여행 취향("+String.join("·",themes)+")에 맞는 분류예요.");
+        if(dayCenter) reasons.add("이 날 일정의 중심으로 고른 곳이라 첫 방문지로 넣었어요.");
+        else if(chosenCenter) reasons.add("일정의 중심으로 고른 곳이에요. 가까운 중심 장소와 같은 날로 묶었어요.");
+        if(avoidedKind!=null) reasons.add("바로 앞 방문지와 같은 종류("+avoidedKind.replace(",","·")+")가 이어지지 않게 골랐어요.");
+        if(spare) reasons.add("하루 시간이 남아 더 넣은 곳이에요.");
+        // 취향을 골랐는데 어느 기준에도 해당하지 않으면, 취향에 맞는 후보가 모자라 다른 종류로 채운 곳이다(TripConstraints.aroundCenters 순서).
+        else if(reasons.isEmpty() && avoidedKind==null && !ThemePlaces.placeThemes(conditions.themeNames()).isEmpty())
+            reasons.add("고른 취향에 맞는 관광지 후보가 모자라 이 지역의 다른 종류 관광지로 채운 곳이에요.");
+        return "관광·관람"+(place.subtypeLabel().isEmpty()?"":" · "+place.subtypeLabel())
+            +(reasons.isEmpty()?"":"\n고른 이유: "+String.join(" ",reasons))
+            +(place.religiousSite()?"\n종교 시설이라 미사·예불 등 행사 중에는 관람이 제한될 수 있어요. 방문 전 관람 가능 시간을 확인해 주세요.":"");
+    }
+
+    /**
      * 방금 방문한 관광지(after)에서 가까운 음식점으로 식사를 넣는다. 아직 가지 않은 음식점이 있으면 그중에서 고른다.
      * 점심은 12시 전에 도착하면 12시까지 자유시간을 두고, 저녁은 17시 이후에만 넣는다.
      */
@@ -206,33 +235,72 @@ public class ItineraryGenerator {
     }
 
     /**
-     * after에서 가장 가까운 음식점. 이미 간 곳은 후보가 모자랄 때만 다시 고른다.
-     * 간식·술집·카페는 끼니로 어울리지 않아, 다른 음식점이 하나도 없을 때만 고른다.
+     * after 주변의 음식점. 가장 가까운 곳에서 MEAL_CHOICE_KM 안쪽은 이동 부담이 비슷하다고 보고, 그중
+     * ① 이번 여행에서 아직 먹지 않은 음식 분류 ② 지역 대표 음식이 상호·분류에 들어간 곳 ③ 가까운 곳 순서로 고른다.
+     * 이미 간 곳은 후보가 모자랄 때만 다시 고른다. 간식·술집·카페는 끼니로 어울리지 않아, 다른 음식점이 하나도 없을 때만 고른다.
      */
     private PlaceCandidate pickRestaurant(DayBuilder builder,PlaceCandidate after) {
         var all=builder.input.places().restaurants();
         var meals=all.stream().filter(p->!PlaceCandidate.notForMeals(p.subtype())).toList();
         var restaurants=meals.isEmpty()?all:meals;
         var fresh=restaurants.stream().filter(p->!builder.usedRestaurants.contains(p.placeId())).toList();
-        return (fresh.isEmpty()?restaurants:fresh).stream().min(order(builder.date,
-            p->distance(builder.locations.get(after.placeId()),builder.locations.get(p.placeId())))).orElseThrow();
+        var from=builder.locations.get(after.placeId());
+        var sorted=(fresh.isEmpty()?restaurants:fresh).stream()
+            .sorted(order(builder.date,p->distance(from,builder.locations.get(p.placeId())))).toList();
+        var nearest=sorted.getFirst();
+        boolean nearestClosed=OperatingHoursValidator.closedOn(nearest.operatingInfo(),builder.date);
+        double limit=kilometers(from,builder.locations.get(nearest.placeId()))+MEAL_CHOICE_KM;
+        var eaten=eatenKinds(builder);
+        // sorted가 가까운 순서라 min은 우선순위가 같으면 더 가까운 곳을 고른다.
+        return sorted.stream()
+            .filter(p->OperatingHoursValidator.closedOn(p.operatingInfo(),builder.date)==nearestClosed
+                && kilometers(from,builder.locations.get(p.placeId()))<=limit)
+            .min(Comparator.<PlaceCandidate>comparingInt(p->eaten.contains(p.subtypeLabel())?1:0)
+                .thenComparingInt(p->regionalFood(builder,p).isPresent()?0:1)).orElse(nearest);
+    }
+
+    /** 가장 가까운 음식점보다 이 거리(km)까지 더 멀어도, 아직 먹지 않은 음식이나 지역 대표 음식이면 먼저 고른다. */
+    static final double MEAL_CHOICE_KM=2.0;
+    /** 이보다 먼 음식점은 가까운 후보가 없어 넣었다고 안내한다. */
+    static final double FAR_MEAL_KM=10.0;
+
+    /** 이번 여행에서 이미 먹은 음식 분류(예: 한식·국수). */
+    private static Set<String> eatenKinds(DayBuilder builder) {
+        var kinds=new LinkedHashSet<String>();
+        builder.input.places().restaurants().stream().filter(p->builder.usedRestaurants.contains(p.placeId()))
+            .map(PlaceCandidate::subtypeLabel).filter(k->!k.isEmpty()).forEach(kinds::add);
+        return kinds;
+    }
+
+    /** 상호나 분류에 들어 있는 지역 대표 음식(예: 부산 "밀면"). 메뉴를 확인한 것은 아니다. */
+    private static Optional<String> regionalFood(DayBuilder builder,PlaceCandidate restaurant) {
+        String text=restaurant.name()+" "+(restaurant.subtype()==null?"":restaurant.subtype());
+        return builder.foods.flatMap(g->g.foods().stream().filter(text::contains).findFirst());
     }
 
     private void eat(DayBuilder builder,PlaceCandidate after,boolean dinner,PlaceCandidate restaurant) {
         boolean fresh=!builder.usedRestaurants.contains(restaurant.placeId());
+        var eaten=eatenKinds(builder);
         builder.usedRestaurants.add(restaurant.placeId());
         builder.move(restaurant);
         if(!dinner && builder.time.isBefore(LocalTime.NOON) && !builder.input.end().isBefore(LocalTime.of(13,0)))
             builder.add("FREE",restaurant,"식사 전 자유시간",(int)Duration.between(builder.time,LocalTime.NOON).toMinutes(),"주변 휴식·자유시간",null,null);
-        // 음식 분류와 고른 이유(직전 관광지와의 거리)를 적는다(SFR-17-01). 지역 대표 음식(SFR-17-02)은 끼니마다 반복하지 않고
-        // 여행의 첫 식사에만 적는다. 저장한 일정 상세에는 대표 음식 절이 없어 이 한 줄로 남긴다.
+        // 음식 분류와 고른 이유를 적는다(SFR-17-01). 이유는 pickRestaurant가 실제로 쓴 기준(아직 먹지 않은 음식·지역 대표 음식)만 적고,
+        // 거리는 이유가 아니라 위치 정보로 함께 보여 준다. 지역 대표 음식 안내(SFR-17-02)는 끼니마다 반복하지 않고 여행의 첫 식사에만 적는다.
         boolean firstMeal=builder.usedRestaurants.size()==1 && fresh;
-        String mealNote=(dinner?"저녁 식사":"식사")+"\n"
-            +(restaurant.subtypeLabel().isEmpty()?"":"음식 분류: "+restaurant.subtypeLabel()+" · ")
-            // 거리 자체가 이유가 아니라 후보 중 가깝다는 점이 이유다(이미 들른 곳·휴무일은 뒤로 미뤄 가장 가깝지 않을 수 있다).
-            // 후보가 적으면 멀 수 있어 거리도 함께 적는다.
-            +"확인된 음식점 후보 중 "+after.name()+"에서 가까운 곳이라 골랐어요(직선 약 "
-            +kilometersText(builder.locations.get(after.placeId()),builder.locations.get(restaurant.placeId()))+")."
+        String kind=restaurant.subtypeLabel();
+        var reasons=new ArrayList<String>();
+        regionalFood(builder,restaurant).ifPresent(food->reasons.add("상호나 분류에 이 지역 대표 음식("+food+")이 들어간 곳이에요."));
+        if(fresh && !kind.isEmpty() && !eaten.isEmpty() && !eaten.contains(kind))
+            reasons.add("앞서 먹은 음식("+String.join("·",eaten)+")과 다른 분류예요.");
+        var from=builder.locations.get(after.placeId()); var to=builder.locations.get(restaurant.placeId());
+        String where=kilometers(from,to)>FAR_MEAL_KM
+            ?after.name()+"에서 직선 약 "+kilometersText(from,to)+" 떨어져 있어요. 더 가까운 곳에 확인된 음식점 후보가 없었어요."
+            :after.name()+"에서 직선 약 "+kilometersText(from,to)+"예요.";
+        String mealNote=(dinner?"저녁 식사":"식사")
+            +(kind.isEmpty()?"":" · "+kind)
+            +(reasons.isEmpty()?"":"\n고른 이유: "+String.join(" ",reasons))
+            +"\n위치: "+where
             +(firstMeal?builder.foods.map(g->"\n이 지역 대표 "+(g.snack()?"간식":"음식")+": "+g.joined()+" (음식점마다 메뉴는 달라요)").orElse(""):"")
             // 확인된 음식점이 모자라 이미 들른 곳을 다시 넣었다면 숨기지 않고 알린다.
             +(!fresh?"\n확인된 음식점 후보가 적어 앞에서 들른 곳을 다시 넣었어요. 장소 목록에서 후보를 더 찾은 뒤 다시 만들 수 있어요.":"");

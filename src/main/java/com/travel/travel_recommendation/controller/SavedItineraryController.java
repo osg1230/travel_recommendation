@@ -24,6 +24,7 @@ public class SavedItineraryController {
     private final ObjectProvider<com.travel.travel_recommendation.service.SavedItineraryEditService> edits;
     private final ObjectProvider<com.travel.travel_recommendation.service.PlaceRatingService> ratings;
     private final ObjectProvider<com.travel.travel_recommendation.service.VirtualReservationService> reservations;
+    private final ObjectProvider<com.travel.travel_recommendation.service.PlacePhotoService> photos;
     private final tools.jackson.databind.ObjectMapper mapper;
 
     @PostMapping
@@ -59,6 +60,13 @@ public class SavedItineraryController {
         model.addAttribute("ratingSummaries",rating==null?java.util.Map.of():rating.summaries(itinerary.days().stream()
             .flatMap(d->d.items().stream()).filter(i->i.placeId()!=null && java.util.Set.of("VISIT","MEAL","STAY").contains(i.type()))
             .map(com.travel.travel_recommendation.dto.SavedItinerary.Item::placeId).toList()));
+        // 초안을 만들 때 찾아 둔 관광지 사진(관광공사). 조회하지 못해도 일정 상세는 그대로 보여 준다.
+        var visitIds=itinerary.days().stream().flatMap(d->d.items().stream()).filter(i->"VISIT".equals(i.type()) && i.placeId()!=null)
+            .map(com.travel.travel_recommendation.dto.SavedItinerary.Item::placeId).toList();
+        var photo=photos.getIfAvailable();
+        java.util.Map<Long,?> photoByPlace=java.util.Map.of();
+        try { if(photo!=null && !visitIds.isEmpty()) photoByPlace=photo.photos(visitIds); } catch(RuntimeException error) { photoByPlace=java.util.Map.of(); }
+        model.addAttribute("photoByPlace",photoByPlace);
         // 같은 날짜에 가상 수량이 있는 숙소·관광시설은 가상 예약으로 이어 준다(SFR-13-01).
         var reservation=reservations.getIfAvailable();
         java.util.List<?> bookables=java.util.List.of();
