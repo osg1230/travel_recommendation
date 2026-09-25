@@ -207,6 +207,26 @@ class SavedItineraryRevisionIntegrationTests {
         assertThat(itineraries.findById(itineraryId).orElseThrow().getRequestId()).isEqualTo(requestId);
     }
 
+    // 동선 주변에서 따로 찾은 음식점처럼 지금 후보에 없는 식당도 다시 만든 초안의 후보에 넣어 미충족으로 보지 않는다.
+    @Test void restoredDraftKeepsSavedRestaurantMissingFromCurrentCandidates() {
+        em.createNativeQuery("""
+            INSERT INTO dbo.places(place_type,source_provider,source_place_id,place_name,region,address,subtype,description,source_url,verified_at)
+            VALUES('RESTAURANT','SYSTEM','TEST_RESTORE_MEAL',N'테스트 다른 지역 식당',N'강원특별자치도 속초시',N'강원특별자치도 속초시 테스트로 1',
+                   N'한식',N'테스트 식당',N'https://www.sokcho.go.kr/',DATEADD(day,-1,SYSUTCDATETIME()))""").executeUpdate();
+        Long restaurant=((Number)em.createNativeQuery("SELECT place_id FROM dbo.places WHERE source_place_id='TEST_RESTORE_MEAL'").getSingleResult()).longValue();
+        int meals=em.createNativeQuery("UPDATE dbo.itinerary_items SET place_id=?1 WHERE itinerary_id=?2 AND item_type='MEAL'")
+            .setParameter(1,restaurant).setParameter(2,itineraryId).executeUpdate();
+        assertThat(meals).isPositive();
+        expireJobs();
+
+        var draft=edits.prepare(itineraryId,owner.getLoginId());
+        em.flush(); em.clear();
+        var view=schedules.view(draft.jobId(),owner.getLoginId(),null);
+        assertThat(view.input().places().restaurants()).extracting(PlaceCandidate::placeId).contains(restaurant);
+        assertThat(ItineraryConditionReport.evaluate(view.input(),view.result()).checks())
+            .extracting(ItineraryConditionReport.Check::status).doesNotContain(ItineraryConditionReport.Status.UNMET);
+    }
+
     @Test void deletedHistoryDraftIsRestoredFromSavedItinerary() {
         Long requestId=itineraries.findById(itineraryId).orElseThrow().getRequestId();
         histories.delete(requestId,owner.getLoginId());

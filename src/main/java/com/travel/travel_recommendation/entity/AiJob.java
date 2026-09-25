@@ -38,10 +38,6 @@ public class AiJob {
         jobType="RECOMMENDATION"; status="QUEUED"; createdAt=LocalDateTime.now(ZoneOffset.UTC);
         message="확정 조건으로 여행지 후보를 조회할 준비를 하고 있어요.";
     }
-    /** 로그인 전에 이 세션에서 만든 비회원 작업을 로그인한 회원의 작업으로 옮긴다. 비회원 토큰은 지운다. */
-    public void adopt(Long userId, Long requestId) {
-        this.userId=userId; this.requestId=requestId; guestTokenHash=null;
-    }
     public void searching() { status="SEARCHING_CANDIDATES"; startedAt=LocalDateTime.now(ZoneOffset.UTC); }
     public static AiJob itinerary(AiJob parent, String input) {
         var job=new AiJob(parent.userId,parent.guestTokenHash,parent.requestId,input,parent.expiresAt);

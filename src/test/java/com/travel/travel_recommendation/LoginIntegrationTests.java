@@ -83,8 +83,9 @@ class LoginIntegrationTests {
 
     @Autowired com.travel.travel_recommendation.service.RecommendationJobService recommendations;
 
+    // 공용 PC에서 앞사람의 비회원 추천이 다음 사람 이력으로 옮겨지지 않도록 로그인해도 옮기지 않는다.
     @Test
-    void loginMovesGuestRecommendationsAndShowsNoticeOnce() throws Exception {
+    void loginDoesNotMoveGuestRecommendationsIntoHistory() throws Exception {
         var user = member();
         MockHttpSession session = new MockHttpSession();
         String token = UUID.randomUUID().toString();
@@ -92,14 +93,12 @@ class LoginIntegrationTests {
         byte[] hash = java.security.MessageDigest.getInstance("SHA-256").digest(token.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         var conditions = new com.travel.travel_recommendation.dto.ConfirmedTravelConditions("KEYWORD", "", "강릉", null, null, 2, null, 2, true, null, java.util.List.of(), "");
         UUID job = recommendations.create(conditions, null, hash);
-        var result = mvc.perform(post("/login").servletPath("/login").with(csrf()).session(session)
+        mvc.perform(post("/login").servletPath("/login").with(csrf()).session(session)
                 .param("loginId", user.getLoginId()).param("password", "Travel123!"))
-                .andExpect(redirectedUrl("/")).andReturn();
-        var loggedIn = (MockHttpSession) result.getRequest().getSession(false);
-        mvc.perform(get("/").session(loggedIn)).andExpect(content().string(containsString("로그인 전에 받은 추천 1건을 추천 이력에 옮겼어요")));
-        mvc.perform(get("/").session(loggedIn)).andExpect(content().string(org.hamcrest.Matchers.not(containsString("로그인 전에 받은 추천"))));
+                .andExpect(redirectedUrl("/"));
         em.flush(); em.clear();
-        assertThat(recommendations.view(job, user.getLoginId(), null).status()).isNotBlank();
+        assertThat(recommendations.findOwned(job, user.getLoginId(), null, "RECOMMENDATION")).isEmpty();
+        assertThat(recommendations.findOwned(job, user.getLoginId(), hash, "RECOMMENDATION")).isPresent();
     }
 
     @Test

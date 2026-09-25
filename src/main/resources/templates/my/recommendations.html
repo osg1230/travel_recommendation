@@ -27,7 +27,7 @@
         <p th:if="${!h.destinations.isEmpty()}" th:text="${'추천 여행지: ' + #strings.listJoin(h.destinations, ', ')}"></p>
         <p class="help" th:text="${'요청: ' + @timeText.dateTime(h.requestedAt)}"></p>
     </article>
-    <p class="guide-note" th:text="${'추천 이력은 추천 당시의 조건과 결과예요. 장소 정보와 운영 여부는 그 뒤 바뀌었을 수 있어요. 로그인 전에 이 브라우저에서 받은 추천은 로그인할 때 이력으로 옮겨요. 브라우저를 닫았거나 ' + @navigationAdvice.guestSessionMinutes() + '분 넘게 아무 동작이 없어 세션이 끝난 비회원 추천은 옮길 수 없어요.'}"></p>
+    <p class="guide-note" th:text="${'추천 이력은 추천 당시의 조건과 결과예요. 장소 정보와 운영 여부는 그 뒤 바뀌었을 수 있어요. 로그인하기 전에 받은 비회원 추천은 이력에 남지 않아요.'}"></p>
 </main>
 </body>
 </html>

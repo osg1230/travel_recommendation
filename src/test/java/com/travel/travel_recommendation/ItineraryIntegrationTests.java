@@ -347,19 +347,18 @@ class ItineraryIntegrationTests {
         }
         verifyNoInteractions(maps);
     }
-    @Test void adoptedGuestDraftIsSavedWithTheAdoptedRecommendation() {
+    // 로그인 전에 만든 초안은 옮기지 않고, 같은 세션의 비회원 토큰으로 저장한다. 추천 이력과는 연결하지 않는다.
+    @Test void guestDraftIsSavedAfterLoginWithoutRecommendationHistory() {
         String suffix=UUID.randomUUID().toString().substring(0,8);
         var member=users.saveAndFlush(new com.travel.travel_recommendation.entity.User("draft_"+suffix,"unused-hash","초안"+suffix));
         var id=schedules.create(parent,destination,null,hash,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90,
             null,null,null,LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).plusDays(10));
         var work=schedules.claim(id); schedules.complete(work,schedules.generate(work)); em.flush();
-        assertThat(recommendations.adoptGuestJobs(member.getLoginId(),hash)).isEqualTo(1);
-        em.flush(); em.clear();
-        var recommendation=jobs.findById(parent).orElseThrow(); var draft=jobs.findById(id).orElseThrow();
-        assertThat(draft.getUserId()).isEqualTo(member.getId());
-        assertThat(draft.getRequestId()).isNotNull().isEqualTo(recommendation.getRequestId());
-        var savedId=saved.save(id,member.getLoginId()).id(); em.flush();
-        assertThat(itineraryRows.findById(savedId).orElseThrow().getRequestId()).isEqualTo(recommendation.getRequestId());
+        var savedId=saved.save(id,member.getLoginId(),hash).id(); em.flush(); em.clear();
+        var row=itineraryRows.findById(savedId).orElseThrow();
+        assertThat(row.getUserId()).isEqualTo(member.getId());
+        assertThat(row.getRequestId()).isNull();
+        assertThat(jobs.findById(id).orElseThrow().getUserId()).isNull();
     }
     @Test void refusesOtherGuestWrongTypeAndExpiredJob() throws Exception {
         var id=create();
