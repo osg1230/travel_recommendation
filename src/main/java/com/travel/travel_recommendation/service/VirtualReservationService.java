@@ -69,7 +69,11 @@ public class VirtualReservationService {
 
     // ───────────── 조회 ─────────────
 
-    /** 저장 일정의 숙박·관광 항목 중 같은 날짜에 가상 수량이 있는 장소를 찾는다. 본인 일정만 조회한다. */
+    /**
+     * 저장 일정의 숙박·관광 항목 중 같은 날짜에 가상 수량이 있는 장소를 찾는다. 본인 일정만 조회한다.
+     * 가상 수량은 시스템 장소에만 있어, 카카오로 찾은 같은 곳(예: '오죽헌' ↔ '오죽헌·시립박물관')도
+     * 장소 유형과 공백을 뺀 주소가 같고 이름이 한쪽에 포함되면 같은 장소로 본다.
+     */
     @Transactional(readOnly=true,timeout=10)
     public List<Bookable> bookable(Long itineraryId, String loginId) {
         Long userId=member(loginId);
@@ -77,9 +81,15 @@ public class VirtualReservationService {
             SELECT DISTINCT i.day_no, i.item_type, s.stock_id
             FROM dbo.itinerary_items i
             JOIN dbo.itineraries t ON t.itinerary_id=i.itinerary_id AND t.user_id=?
-            JOIN dbo.reservation_stock s ON s.place_id=i.place_id AND s.is_active=1
-                 AND CAST(s.usage_start_at AS DATE)=CAST(i.start_at AS DATE)
+            JOIN dbo.places ip ON ip.place_id=i.place_id
+            JOIN dbo.reservation_stock s ON s.is_active=1 AND CAST(s.usage_start_at AS DATE)=CAST(i.start_at AS DATE)
+            JOIN dbo.places sp ON sp.place_id=s.place_id
             WHERE i.itinerary_id=? AND i.item_type IN ('STAY','VISIT')
+              AND (sp.place_id=ip.place_id
+                   OR (sp.place_type=ip.place_type
+                       AND REPLACE(sp.address,' ','')=REPLACE(ip.address,' ','')
+                       AND (CHARINDEX(REPLACE(ip.place_name,' ',''),REPLACE(sp.place_name,' ',''))>0
+                            OR CHARINDEX(REPLACE(sp.place_name,' ',''),REPLACE(ip.place_name,' ',''))>0)))
             ORDER BY i.day_no, s.stock_id""",
             (rs,n)->new Object[]{rs.getInt(1),rs.getString(2),rs.getLong(3)},userId,itineraryId);
         var result=new ArrayList<Bookable>();
