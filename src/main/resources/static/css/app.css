@@ -404,10 +404,6 @@ button.map-badge:hover { background: var(--badge, var(--brand)); transform: scal
 .shortcut-row + .shortcut-row { border-top: 1px solid var(--line); }
 .shortcut-row svg { grid-row: span 2; align-self: center; margin: 0; }
 .shortcut-row:hover { background: var(--brand-soft); transform: none; }
-.steps-list { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 0; padding: 0; list-style: none; counter-reset: step; }
-.steps-list li { counter-increment: step; display: flex; flex-direction: column; gap: 2px; font-size: 14px; color: var(--text-muted); }
-.steps-list li::before { content: counter(step); display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-bottom: 6px; border-radius: 50%; background: var(--brand-soft); color: var(--brand-strong); font-weight: 800; }
-.steps-list strong { color: var(--text); font-size: 15px; }
 
 /* 회원 탈퇴처럼 되돌릴 수 없는 동작 */
 .danger-zone { margin-top: 28px; border-color: var(--danger-line); }
@@ -507,7 +503,7 @@ button.map-badge:hover { background: var(--badge, var(--brand)); transform: scal
     .hero-inner { padding: 36px 0 100px; }
     .hero h1 { font-size: 25px; }
     .hero-search { flex-direction: column; }
-    .shortcuts, .steps-list { grid-template-columns: 1fr 1fr; }
+    .shortcuts { grid-template-columns: 1fr 1fr; }
     .shortcut-records { grid-column: 1 / -1; }
     .shortcut-row { padding: 14px 18px; }
     .auth-split { grid-template-columns: 1fr; margin-top: 20px; }

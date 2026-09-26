@@ -23,8 +23,8 @@
     <nav class="site-nav" id="site-nav" aria-label="주요 메뉴">
         <a th:href="@{/travel/conditions}">여행 계획</a>
         <th:block th:if="${loggedIn}">
+            <!-- 추천 이력은 내 일정과 헷갈리기 쉬워 상단 메뉴에서 빼고 마이페이지 메뉴·홈 바로가기에서만 연다. -->
             <a th:href="@{/my/itineraries}">내 일정</a>
-            <a th:href="@{/my/recommendations}">추천 이력</a>
             <a th:href="@{/my/favorites}">즐겨찾기</a>
             <a th:href="@{/account}">내 정보</a>
             <a th:if="${admin}" th:href="@{/admin/members}">회원 관리</a>

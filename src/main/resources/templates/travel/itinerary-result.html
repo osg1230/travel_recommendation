@@ -110,24 +110,23 @@
 <section class="condition-section" th:if="${job.result.assist != null}">
 <h2>AI 준비 안내</h2>
 <p style="white-space: pre-line" th:text="${job.result.assist.summary}"></p>
-<p class="help">AI가 이 초안을 읽고 쓴 안내예요. 일정의 시각·장소·순서는 바꾸지 않았고, 영업시간·가격·예약 가능 여부를 확인한 내용은 아니에요.</p>
 </section>
 
 
-<!--/* 일정 뒤의 참고 정보(가격·주변 지역·버스)는 제목만 보이게 접어 둔다. 조회 결과나 오류가 있으면 펼쳐서 보여 준다. */-->
+<!--/* 일정 뒤의 참고 정보(가격·대표 음식·주변 지역·버스)는 제목만 보이게 접어 둔다. 조회 결과나 오류가 있으면 펼쳐서 보여 준다. */-->
 
 <section class="condition-section" th:if="${job.result != null}" aria-labelledby="prices-title">
 <details th:open="${job.result.prices != null or priceError != null}"><summary><h2 id="prices-title" class="details-title">숙소·음식점 참고 가격</h2></summary>
 <p role="alert" th:if="${priceError != null}" th:text="${priceError}"></p>
 <th:block th:if="${job.result.prices == null}">
-<p class="help">일정에 넣은 숙소와 음식점(최대 8곳)의 가격을 AI 웹 검색으로 찾아요. 한 곳씩 검색해서 1분 가까이 걸릴 수 있어요. 최근에 다른 일정에서 찾은 장소는 다시 검색하지 않아요.</p>
+<p class="help">일정에 넣은 숙소·음식점(최대 8곳)의 가격을 AI 웹 검색으로 찾아요. 1분 가까이 걸릴 수 있어요.</p>
 <form method="post" th:action="@{/travel/recommendations/itineraries/{id}/prices(id=${job.id})}"><button type="submit">참고 가격 찾기</button></form>
 </th:block>
 <th:block th:if="${job.result.prices != null}">
 <p class="help" th:text="${'AI 웹 검색 조회: ' + pricesCheckedAt + ' (한국 시간)'}"></p>
 <article class="place-row" th:each="quote : ${job.result.prices.quotes}">
 <h3 th:text="${(quote.kind == 'ACCOMMODATION' ? '숙소 · ' : '음식점 · ') + quote.name}"></h3>
-<p class="help" th:if="${priceReusedAt.containsKey(quote.placeId)}" th:text="${'이전에 찾은 결과를 다시 사용했어요 (검색: ' + priceReusedAt.get(quote.placeId) + ', 한국 시간). 같은 장소는 가격을 찾으면 7일, 못 찾으면 하루 동안 다시 검색하지 않아요.'}"></p>
+<p class="help" th:if="${priceReusedAt.containsKey(quote.placeId)}" th:text="${'이전에 찾은 결과를 다시 사용했어요 (검색: ' + priceReusedAt.get(quote.placeId) + ')'}"></p>
 <th:block th:if="${quote.found()}">
 <p th:text="${quote.priceText + ' (' + quote.basis + ')'}"></p>
 <p class="help" th:text="${quote.status == 'VERIFIED' ? '출처 페이지에 상호와 가격이 적혀 있는 것을 확인했어요.' : 'AI 검색 결과예요. 출처 페이지 내용은 확인하지 못했으니 직접 확인해 주세요.'}"></p>
@@ -142,17 +141,18 @@
 <li th:if="${costEstimate.mealMin != null}" th:text="${'식사: 가격을 찾은 ' + costEstimate.pricedMeals + '끼(전체 ' + costEstimate.meals + '끼) × ' + costEstimate.partySize + '명(' + costEstimate.partyBasis + ') = ' + #numbers.formatInteger(costEstimate.mealMin, 0, 'COMMA') + '~' + #numbers.formatInteger(costEstimate.mealMax, 0, 'COMMA') + '원'}"></li>
 </ul>
 </th:block>
-<p class="help">실제 가격은 날짜·객실·메뉴·인원에 따라 달라요. 가격을 찾지 못한 곳, 교통비·입장료는 합계에 없어요. 예약·방문 전에 출처에서 확인해 주세요. 24시간 안에 다시 조회하면 같은 결과를 보여 줘요. 다른 일정에서 이미 찾은 장소는 저장해 둔 결과를 다시 써요(가격을 찾은 곳 7일, 못 찾은 곳 하루).</p>
+<p class="help">실제 가격은 날짜·객실·메뉴·인원에 따라 달라요. 가격을 찾지 못한 곳, 교통비·입장료는 합계에 없어요.</p>
 <form method="post" th:action="@{/travel/recommendations/itineraries/{id}/prices(id=${job.id})}"><button type="submit">참고 가격 다시 찾기</button></form>
 </th:block>
 </details>
 </section>
 
 <section class="condition-section" th:if="${foods != null}" aria-labelledby="foods-title">
-<h2 id="foods-title" th:text="${foods.region + ' 대표 ' + (foods.snack ? '간식' : '음식')}"></h2>
+<details><summary><h2 id="foods-title" class="details-title" th:text="${foods.region + ' 대표 ' + (foods.snack ? '간식' : '음식')}"></h2></summary>
 <p th:text="${foods.joined()}"></p>
-<p class="help">지역 공식 관광 자료에 소개된 음식이에요. 일정에 넣은 음식점에서 파는지는 음식점 출처에서 확인해 주세요.</p>
+<p class="help">지역 공식 관광 자료에 소개된 음식이에요. 일정의 음식점에서 파는지는 따로 확인해 주세요.</p>
 <div class="place-links"><a th:each="source : ${foods.sources}" th:href="${source.url}" th:text="${source.name + ' (새 창)'}" target="_blank" rel="noopener noreferrer"></a></div>
+</details>
 </section>
 
 <!--/* 주변 지역은 찾은 곳이 있거나 사용자가 '주변 지역 포함'을 골랐을 때만 보여 준다. 권하지 않은 이유만 있는 절은 숨긴다. */-->
@@ -175,13 +175,13 @@
 </ul>
 <a th:href="${region.sourceUrl}" target="_blank" rel="noopener noreferrer">지역 공식 관광 정보 (새 창)</a>
 </article>
-<p class="help">주변 지역은 일정에 넣지 않은 참고 추천이에요. 이동시간은 터미널 사이의 조회 시점 예상값이며 실시간 교통을 반영하지 않아요. 가려면 하루 시간을 조정하거나 일정을 나눠 계획해 주세요.</p>
+<p class="help">일정에 넣지 않은 참고 추천이에요. 이동시간은 조회 시점의 예상값이에요.</p>
 </details>
 </section>
 
 <section class="condition-section" th:if="${job.result.transport.name() != 'CAR'}" aria-labelledby="bus-title">
 <details th:open="${busGuide != null or busError != null}"><summary><h2 id="bus-title" class="details-title">버스로 가는 방법 (시외·고속버스)</h2></summary>
-<p class="help">필요할 때만 조회해요. 여행지로 갈 때는 출발 도시를 적거나 내 위치로 찾고, 주변 지역으로 갈 때는 비워 두면 지금 여행지에서 출발하는 버스를 찾아요.</p>
+<p class="help">국토교통부 TAGO의 오늘 배차 정보예요. 출발 도시를 비워 두면 지금 여행지에서 출발하는 버스를 찾아요. 등록되지 않은 노선도 있고 환승·좌석은 안내하지 않아요.</p>
 <p role="alert" th:if="${busError != null}" th:text="${busError}"></p>
 <div th:if="${busGuide != null}" class="bus-guide-result">
 <h3 th:text="${busGuide.from + ' → ' + busGuide.to}"></h3>
@@ -210,9 +210,7 @@
 <button type="button" class="button-quiet" data-bus-locate>내 위치로 찾기</button>
 </div>
 <p class="help" data-bus-status>'내 위치로 찾기'를 누르면 브라우저가 위치 권한을 물어요. 위치는 카카오 지도로 가까운 도시 이름을 확인하는 데만 쓰고 저장하지 않아요.</p>
-</form>
-<p class="help">국토교통부 TAGO 시외버스·고속버스 정보의 오늘 배차예요. 등록되지 않은 노선도 있어 버스가 없다고 단정하지 않아요. 환승 경로와 좌석 여부는 안내하지 않아요.</p>
-</details>
+</form></details>
 </section>
 
 </th:block>
@@ -221,21 +219,17 @@
 <section class="condition-section" th:if="${job.result != null}" aria-labelledby="revise-title">
 <h2 id="revise-title">일정 수정하기</h2>
 <div th:replace="~{fragments/revision-scope :: scope}"></div>
-<p class="help">바꾸고 싶은 점을 문장으로 적으면 AI가 확인된 후보 안에서 관광지·식당·숙소·이동수단·시간을 골라 새 수정안을 만들어요. 관광지 하나만 바꾸려면 일정의 '다른 곳으로 바꾸기'를 누르세요. 이 초안은 바뀌지 않아요.</p>
+<p class="help">바꾸고 싶은 점을 문장으로 적으면 새 수정안을 만들어요. 관광지 하나만 바꾸려면 일정의 '다른 곳으로 바꾸기'를 누르세요. 이 초안은 바뀌지 않아요.</p>
 <p class="notice" role="status" th:if="${aiQuestion != null}" th:text="${'확인이 필요해요 · ' + aiQuestion}"></p>
 <p class="notice" role="status" th:if="${aiNotice != null}" th:text="${'바꿀 수 없는 요청이에요 · ' + aiNotice}"></p>
 <p role="alert" th:if="${aiError != null}" th:text="${aiError}"></p>
 <form method="post" th:action="@{/travel/recommendations/itineraries/{id}/ai-revisions(id=${job.id})}">
 <label for="ai-request">수정 요청 (1~300자)</label>
-<!--/* 예시는 바꿀 수 있는 것(관광지 교체·하루 시간·체류시간)만 든다. 누르면 칸에 채우기만 하고 보내지는 않는다. 스크립트가 없으면 숨긴다. */-->
+<!--/* 예시는 바꿀 수 있는 것 중 자주 쓰는 네 가지(시작 시간·관광지·식당·숙소)만 하나씩 든다. 누르면 칸에 채우기만 하고 보내지는 않는다. 스크립트가 없으면 숨긴다. */-->
 <div class="request-examples" data-request-examples hidden>
 <span class="help">예시를 누르면 입력 칸에 넣어 드려요.</span>
 <button type="button" class="button-quiet button-small" data-example="아침은 10시부터 시작하고 싶어요.">10시에 시작</button>
-<button type="button" class="button-quiet button-small" data-example="저녁 6시 전에 일정을 마치고 싶어요.">6시 전에 마치기</button>
 <button type="button" class="button-quiet button-small" data-example="비가 올 수 있으니 실내 장소 위주로 바꿔 주세요.">실내 장소로</button>
-<button type="button" class="button-quiet button-small" data-example="사람 많은 곳 대신 조용한 곳으로 바꿔 주세요.">조용한 곳으로</button>
-<button type="button" class="button-quiet button-small" data-example="관광지마다 2시간씩 머물고 싶어요.">2시간씩 머물기</button>
-<button type="button" class="button-quiet button-small" data-example="자동차 대신 대중교통으로 다닐게요.">대중교통으로</button>
 <button type="button" class="button-quiet button-small" data-example="첫날 저녁 식당은 다른 곳으로 바꿔 주세요.">식당 바꾸기</button>
 <button type="button" class="button-quiet button-small" data-example="숙소를 바다와 가까운 곳으로 바꿔 주세요.">숙소 바꾸기</button>
 </div>
@@ -274,8 +268,8 @@
 <p class="help">이 초안은 만료되는 임시 결과예요. 저장하면 만료되지 않고 내 일정에서 다시 볼 수 있어요.</p>
 <form th:if="${loggedIn and job.input.conditions.startDate != null and report.complete}" th:action="@{/my/itineraries}" method="post">
 <input type="hidden" name="jobId" th:value="${job.id}">
-<div class="form-actions"><button type="submit">이 일정 저장하기</button>
-<a class="button button-quiet" th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">시간을 조정해서 다시 만들기</a></div>
+<!--/* 긴 일정을 끝까지 읽은 뒤 바로 저장할 수 있게 위 요약의 저장 버튼을 여기에도 둔다. 다시 만들기는 위 요약에만 둔다. */-->
+<div class="form-actions"><button type="submit">이 일정 저장하기</button></div>
 </form>
 <p th:if="${job.input.conditions.startDate == null}">여행 날짜가 정해지지 않은 초안이라 저장할 수 없어요. <a th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">출발일을 넣어 일정 다시 만들기</a></p>
 <p th:if="${loggedIn and job.input.conditions.startDate != null and !report.complete}">미충족 조건이 있어 저장할 수 없어요. <a th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">시간을 조정해서 다시 만들기</a></p>
@@ -289,5 +283,7 @@
 <p th:text="${'체류시간은 입력한 계획값이고 이동시간은 예상값이에요. 최단 경로가 아닐 수 있고, '
     + (job.input.home != null ? '집과 여행 지역 사이 이동은 편도 예상 시간으로 넣었어요(도로 상황에 따라 달라져요). ' : '여행 지역까지 오가는 이동은 포함하지 않았어요. ')
     + '영업시간·휴무일·예약은 방문 전 각 장소 출처에서 확인해 주세요.'}"></p>
+<!--/* AI 준비 안내 절 아래에 따로 적던 설명을 화면 끝 안내로 모은다. */-->
+<p th:if="${job.result.assist != null}">AI 준비 안내는 AI가 이 초안을 읽고 쓴 참고 글이에요. 일정의 시각·장소·순서는 바꾸지 않았고, 영업시간·가격·예약 가능 여부를 확인한 내용은 아니에요.</p>
 </div>
 </main></body></html>
