@@ -64,10 +64,11 @@
                 <a class="button button-quiet" th:href="@{/travel/recommendations/{id}/destinations/{destinationId}/places(id=${job.jobId},destinationId=${item.destination.placeId})}">장소 목록 먼저 보기</a>
             </div>
         </section>
-        <p class="help">'일정 만들기'를 누르면 09:00~18:00 기본 시간으로 바로 일정 초안을 만들어요. 집에서 출발·도착할 시각과 출발지를 먼저 묻고, 여행 일수·숙박·출발일·이동수단이 정해지지 않았다면 그것도 함께 물어봐요. 시간이나 장소는 초안을 본 뒤 바꿀 수 있어요.</p>
+        <p class="help">'일정 만들기'를 누르면 09:00~18:00 기본 시간으로 바로 일정 초안을 만들어요. 정하지 않은 여행 일수·출발일 같은 정보는 먼저 물어보고, 시간이나 장소는 초안을 본 뒤 바꿀 수 있어요.</p>
     </div>
     <section class="condition-section" th:if="${spending != null and (!job.candidates.isEmpty() or job.status == 'COMPLETED')}" aria-labelledby="budget-title">
-        <h2 id="budget-title">예산을 정하지 않았어요</h2>
+        <!--/* 예산을 일부러 비워 둔 사용자도 있으므로 참고 정보는 제목만 보이게 접어 둔다. */-->
+        <details><summary><h2 id="budget-title" class="details-title">예산 참고하기 (예산 미입력)</h2></summary>
         <p>예산 범위를 가늠할 수 있도록 공식 통계의 전국 평균과, 여행지별로 확인된 숙소를 유형에 따라 나눠 보여 드려요.</p>
         <p class="notice" th:text="${spending.surveyName + ' 기준, 국내여행 경험자 1인이 여행 1회에 쓴 평균은 당일여행 약 '
             + #numbers.formatInteger(spending.dayTripWon, 1, 'COMMA') + '원, 숙박여행 약 ' + #numbers.formatInteger(spending.overnightWon, 1, 'COMMA') + '원이에요.'}"></p>
@@ -88,22 +89,23 @@
             </article>
             <p class="help">숙소 유형 기준이라 실제 요금은 아니에요. 아직 확인된 숙소가 적은 여행지는 여행지를 고른 뒤 장소 목록에서 더 찾을 수 있어요. 일정 입력 화면에서 숙소 예산대를 고르면 그 유형을 먼저 골라요.</p>
         </th:block>
+        </details>
     </section>
     <form th:if="${job.canRecommend}" th:action="@{/travel/recommendations/{id}/recommend(id=${job.jobId})}" method="post" data-recommendation-form>
         <input type="hidden" name="attempt" th:value="${job.attemptCount}">
         <button class="button" type="submit" th:text="${job.attemptCount == 0 ? '추천 순위와 이유 받기' : '추천 다시 받기'}"></button>
-        <p class="help">확정한 조건으로 AI가 위 여행지를 비교해 순위와 이유를 알려 줘요. 10초쯤 걸릴 수 있어요.</p>
+        <p class="help">입력한 조건으로 AI가 위 여행지를 비교해 순위와 이유를 알려 줘요. 10초쯤 걸릴 수 있어요.</p>
         <p role="status" data-submit-status></p>
     </form>
     <form th:if="${job.status == 'FAILED' and job.candidates.isEmpty() and confirmationToken != null}" th:action="@{/travel/recommendations}" method="post" data-recommendation-form>
         <input type="hidden" name="confirmationToken" th:value="${confirmationToken}"><input type="hidden" name="retry" value="true">
-        <button class="button" type="submit">현재 확정 조건으로 다시 조회</button><p role="status" data-submit-status></p>
+        <button class="button" type="submit">같은 조건으로 다시 찾기</button><p role="status" data-submit-status></p>
     </form>
     <div class="form-actions"><a th:href="@{/travel/conditions}">여행 조건 입력하기</a><a th:if="${job.pending}" th:href="@{/travel/recommendations/{id}(id=${job.jobId})}">상태 새로고침</a></div>
     <p th:replace="~{fragments/guest-session :: notice}"></p>
     <!--/* 카드마다 반복하던 출처·AI 안내를 화면 끝에 한 번만 적는다. */-->
     <div class="guide-note" th:if="${!job.pending and (!job.candidates.isEmpty() or job.status == 'COMPLETED')}">
         <p>여행지 소개는 공식 관광 사이트에서 확인해 저장한 정보이며 실시간 조회가 아니에요.</p>
-        <p th:if="${job.status == 'COMPLETED'}">추천 이유는 확정한 조건과 지역 소개를 바탕으로 AI가 썼어요. 목적에 맞는 곳은 이름·주소만 확인했으니 운영·체험 내용과 비용은 방문 전 공식 정보에서 확인해 주세요.</p>
+        <p th:if="${job.status == 'COMPLETED'}">추천 이유는 입력한 조건과 지역 소개를 바탕으로 AI가 썼어요. 목적에 맞는 곳은 이름·주소만 확인했으니 운영·체험 내용과 비용은 방문 전 공식 정보에서 확인해 주세요.</p>
     </div>
 </main><script defer th:src="@{/js/recommendation-job.js}"></script></body></html>

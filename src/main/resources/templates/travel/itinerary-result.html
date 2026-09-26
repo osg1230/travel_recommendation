@@ -225,15 +225,11 @@
 <p role="alert" th:if="${aiError != null}" th:text="${aiError}"></p>
 <form method="post" th:action="@{/travel/recommendations/itineraries/{id}/ai-revisions(id=${job.id})}">
 <label for="ai-request">수정 요청 (1~300자)</label>
-<!--/* 예시는 바꿀 수 있는 것(관광지 교체·하루 시간·체류시간)만 든다. 누르면 칸에 채우기만 하고 보내지는 않는다. 스크립트가 없으면 숨긴다. */-->
+<!--/* 예시는 바꿀 수 있는 것 중 자주 쓰는 네 가지(시작 시간·관광지·식당·숙소)만 하나씩 든다. 누르면 칸에 채우기만 하고 보내지는 않는다. 스크립트가 없으면 숨긴다. */-->
 <div class="request-examples" data-request-examples hidden>
 <span class="help">예시를 누르면 입력 칸에 넣어 드려요.</span>
 <button type="button" class="button-quiet button-small" data-example="아침은 10시부터 시작하고 싶어요.">10시에 시작</button>
-<button type="button" class="button-quiet button-small" data-example="저녁 6시 전에 일정을 마치고 싶어요.">6시 전에 마치기</button>
 <button type="button" class="button-quiet button-small" data-example="비가 올 수 있으니 실내 장소 위주로 바꿔 주세요.">실내 장소로</button>
-<button type="button" class="button-quiet button-small" data-example="사람 많은 곳 대신 조용한 곳으로 바꿔 주세요.">조용한 곳으로</button>
-<button type="button" class="button-quiet button-small" data-example="관광지마다 2시간씩 머물고 싶어요.">2시간씩 머물기</button>
-<button type="button" class="button-quiet button-small" data-example="자동차 대신 대중교통으로 다닐게요.">대중교통으로</button>
 <button type="button" class="button-quiet button-small" data-example="첫날 저녁 식당은 다른 곳으로 바꿔 주세요.">식당 바꾸기</button>
 <button type="button" class="button-quiet button-small" data-example="숙소를 바다와 가까운 곳으로 바꿔 주세요.">숙소 바꾸기</button>
 </div>
@@ -272,8 +268,8 @@
 <p class="help">이 초안은 만료되는 임시 결과예요. 저장하면 만료되지 않고 내 일정에서 다시 볼 수 있어요.</p>
 <form th:if="${loggedIn and job.input.conditions.startDate != null and report.complete}" th:action="@{/my/itineraries}" method="post">
 <input type="hidden" name="jobId" th:value="${job.id}">
-<div class="form-actions"><button type="submit">이 일정 저장하기</button>
-<a class="button button-quiet" th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">시간을 조정해서 다시 만들기</a></div>
+<!--/* 긴 일정을 끝까지 읽은 뒤 바로 저장할 수 있게 위 요약의 저장 버튼을 여기에도 둔다. 다시 만들기는 위 요약에만 둔다. */-->
+<div class="form-actions"><button type="submit">이 일정 저장하기</button></div>
 </form>
 <p th:if="${job.input.conditions.startDate == null}">여행 날짜가 정해지지 않은 초안이라 저장할 수 없어요. <a th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">출발일을 넣어 일정 다시 만들기</a></p>
 <p th:if="${loggedIn and job.input.conditions.startDate != null and !report.complete}">미충족 조건이 있어 저장할 수 없어요. <a th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">시간을 조정해서 다시 만들기</a></p>
