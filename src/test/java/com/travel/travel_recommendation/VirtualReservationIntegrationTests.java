@@ -49,6 +49,7 @@ class VirtualReservationIntegrationTests {
     @MockitoSpyBean VirtualPaymentGateway gateway;
     private final List<Long> userIds=new ArrayList<>();
     private final List<Long> stockIds=new ArrayList<>();
+    private final List<Long> placeIds=new ArrayList<>();
     private long hotel;
     private static final Random RANDOM=new Random();
 
@@ -73,7 +74,8 @@ class VirtualReservationIntegrationTests {
         }
         for(Long stock:stockIds) jdbc.update("DELETE FROM dbo.reservation_stock WHERE stock_id=?",stock);
         for(Long user:userIds) jdbc.update("DELETE FROM dbo.users WHERE user_id=?",user);
-        userIds.clear(); stockIds.clear();
+        for(Long place:placeIds) jdbc.update("DELETE FROM dbo.places WHERE place_id=?",place);
+        userIds.clear(); stockIds.clear(); placeIds.clear();
     }
 
     private User member() {
@@ -261,6 +263,35 @@ class VirtualReservationIntegrationTests {
         savedItineraries.delete(itinerary,owner.getLoginId());
         assertThat(jdbc.queryForObject("SELECT itinerary_id FROM dbo.virtual_reservations WHERE reservation_id=?",Long.class,id)).isNull();
         assertThat(reservationStatus(id)).isEqualTo("PENDING");
+    }
+
+    @Test void aKakaoPlaceAtTheSameAddressOffersTheSystemPlacesStock() {
+        var owner=member();
+        var start=LocalDateTime.of(2032,1,1,15,0).plusDays(RANDOM.nextInt(3000));
+        long stock=stockAt(start,2);
+        String address=jdbc.queryForObject("SELECT address FROM dbo.places WHERE place_id=?",String.class,hotel);
+        // 카카오 이름은 띄어쓰기가 다르고, 이름만 같은 다른 주소의 장소는 연결하지 않는다.
+        long sameSpot=kakaoPlace("씨마크호텔",address.replace(" ","  "));
+        long elsewhere=kakaoPlace("씨마크 호텔","강원특별자치도 강릉시 다른로 1");
+        long itinerary=jdbc.queryForObject("""
+            INSERT INTO dbo.itineraries(user_id, destination_place_id, title, start_date, end_date, transportation, conditions_snapshot_json)
+            OUTPUT inserted.itinerary_id VALUES (?,?,N'카카오 장소 예약 테스트',?,?,'CAR','{}')""",Long.class,owner.getId(),hotel,start.toLocalDate(),start.toLocalDate().plusDays(1));
+        jdbc.update("""
+            INSERT INTO dbo.itinerary_items(itinerary_id, day_no, sequence_no, item_type, place_id, start_at, end_at, activity)
+            VALUES (?,1,1,'STAY',?,?,?,N'숙박')""",itinerary,elsewhere,start.plusHours(1),start.plusHours(18));
+        assertThat(service.bookable(itinerary,owner.getLoginId())).isEmpty();
+        jdbc.update("UPDATE dbo.itinerary_items SET place_id=? WHERE itinerary_id=?",sameSpot,itinerary);
+        assertThat(service.bookable(itinerary,owner.getLoginId()))
+            .singleElement().satisfies(b->assertThat(b.stock().stockId()).isEqualTo(stock));
+    }
+
+    private long kakaoPlace(String name, String address) {
+        long id=jdbc.queryForObject("""
+            INSERT INTO dbo.places(place_type, source_provider, source_place_id, place_name, region, address, verified_at)
+            OUTPUT inserted.place_id VALUES ('ACCOMMODATION','KAKAO',?,?,N'강원특별자치도 강릉시',?,SYSUTCDATETIME())""",
+            Long.class,"test_"+UUID.randomUUID(),name,address);
+        placeIds.add(id);
+        return id;
     }
 
     @Test void withdrawalRestoresHeldStockAndDeletesReservationRecords() {
