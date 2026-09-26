@@ -283,6 +283,11 @@ class VirtualReservationIntegrationTests {
         jdbc.update("UPDATE dbo.itinerary_items SET place_id=? WHERE itinerary_id=?",sameSpot,itinerary);
         assertThat(service.bookable(itinerary,owner.getLoginId()))
             .singleElement().satisfies(b->assertThat(b.stock().stockId()).isEqualTo(stock));
+        // 카카오는 시·도를 줄여 쓴다(예: '경상북도' → '경북'). 시·도 이름만 다르면 같은 주소로 본다.
+        long shortProvince=kakaoPlace("씨마크 호텔","강원 "+address.substring(address.indexOf(' ')+1));
+        jdbc.update("UPDATE dbo.itinerary_items SET place_id=? WHERE itinerary_id=?",shortProvince,itinerary);
+        assertThat(service.bookable(itinerary,owner.getLoginId()))
+            .singleElement().satisfies(b->assertThat(b.stock().stockId()).isEqualTo(stock));
     }
 
     private long kakaoPlace(String name, String address) {
