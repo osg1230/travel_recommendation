@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 /**
  * 첫날 집 출발·마지막 날 귀가 설정(2026-09-24 결정)을 만든다. 출발지와 돌아갈 곳은 따로 받으며, 돌아갈 곳을 비우면 출발지로 돌아온다.
  * 편도 이동시간은 사용자가 직접 적은 값이 먼저이고, 없으면 자동차는 카카오 길찾기, 대중교통은 카카오 대중교통 길찾기 → 직행 시외·고속버스 순서로 찾는다.
- * 찾지 못하면 추정하지 않고 직접 적어 달라고 한다. 좌표는 조회에만 쓰고 저장하지 않는다.
+ * 찾지 못하거나 제주처럼 비행기·배로 가야 하면 추정하지 않고 직접 적어 달라고 한다. 좌표는 조회에만 쓰고 저장하지 않는다.
  */
 @Service
 @Profile({"sqlserver","sqlserver-windows"})
@@ -75,6 +75,11 @@ public class HomeTripService {
         if (typed != null) return new Leg(home.label(), typed, "직접 입력한 편도 시간", null);
         if (target == null)
             throw failure("HOME_MINUTES", destination + " 관광지 위치를 확인하지 못해 이동시간을 계산하지 못했어요. 편도 이동시간을 직접 적어 주세요.");
+        // 제주를 오가는 길은 비행기나 배를 타야 한다. 카카오 자동차 길찾기는 카페리 구간을 넣어 '성공'으로 답하므로
+        // 자동으로 찾지 않고, 공항·항구 이동과 탑승 대기까지 포함한 시간을 직접 적어 달라고 한다.
+        if (onJejuIsland(home.location()) != onJejuIsland(target.location()))
+            throw failure("HOME_MINUTES", (outbound ? home.label() + "에서 " + destination : destination + "에서 " + home.label())
+                + "까지는 비행기나 배로 가야 해서 이동시간을 자동으로 찾지 않아요. 공항·항구까지 가는 시간과 탑승 대기를 포함한 편도 시간을 직접 적어 주세요.");
         // 여행지 관광지들의 가운데까지 조회한다. 첫 관광지까지와는 조금 다를 수 있다고 일정에 적는다.
         try {
             var time = outbound ? maps.travelTime(home.location(), target.location(), transport)
@@ -91,6 +96,14 @@ public class HomeTripService {
         }
         throw failure("HOME_MINUTES", (outbound ? home.label() + "에서 " + destination : destination + "에서 " + home.label()) + "까지 "
             + (transport == KakaoMapClient.Transport.CAR ? "자동차 경로" : "대중교통·직행 버스") + "를 찾지 못했어요. 편도 이동시간을 직접 적어 주세요.");
+    }
+
+    /**
+     * 제주도(추자도·마라도 포함)는 모두 북위 34도 남쪽에 있고, 육지에서 가장 남쪽인 해남 땅끝은 약 34.3도라 위도만으로 나눈다.
+     * 거제·여수처럼 다리로 이어진 곳은 육지와 같이 본다.
+     */
+    static boolean onJejuIsland(KakaoMapClient.Location location) {
+        return location.latitude() < 34.0;
     }
 
     private static void checkMinutes(Integer minutes, String what) {
