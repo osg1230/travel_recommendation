@@ -17,7 +17,8 @@
     <h1>어떤 여행을 생각하고 있나요?</h1>
     <p class="intro">원하는 조건을 고르거나, 생각한 여행을 문장으로 적어 주세요.</p>
     <p th:if="${discoveryMessage != null}" role="status" th:text="${discoveryMessage}"></p>
-    <div class="notice" th:if="${discoveryMessage == null}">
+    <p th:if="${festivalMessage != null}" class="notice" role="status" th:text="${festivalMessage}"></p>
+    <div class="notice" th:if="${discoveryMessage == null and festivalMessage == null}">
         <p>어떤 여행을 원하는지 아직 잘 모르겠다면 <a th:href="@{/travel/conditions/discover}">여행 장면 고르기로 취향 찾기</a>부터 해 보세요. 5개 질문이며 건너뛸 수 있어요.</p>
     </div>
     <p th:if="${preview}" class="notice">화면 확인용 예시 선택지입니다.</p>

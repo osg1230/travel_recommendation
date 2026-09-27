@@ -524,3 +524,22 @@ button.map-badge:hover { background: var(--badge, var(--brand)); transform: scal
     .report-table td:first-child { padding-top: 6px; }
     td:last-child { padding-bottom: 14px; }
 }
+/* 홈 지역 축제: 시·도 탭은 줄바꿈해 모두 보이고, 축제는 사진·기간·장소를 한 줄씩 둔다. */
+.festivals { scroll-margin-top: 76px; }
+.region-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 16px; }
+.region-tab { padding: 6px 13px; font-size: 14px; background: var(--surface); color: var(--text-muted); border: 1px solid var(--line-strong); border-radius: 999px; text-decoration: none; }
+.region-tab:hover { background: var(--brand-soft); color: var(--brand-strong); }
+.region-tab[aria-current] { background: var(--brand); color: #fff; border-color: var(--brand); }
+.festival-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin: 0 0 12px; padding: 0; list-style: none; }
+.festival { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+.festival-photo { margin: 0; }
+.festival-photo img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: var(--surface-muted); }
+.festival-photo figcaption { padding: 3px 10px 0; font-size: 11px; color: var(--text-muted); text-align: right; }
+.festival-body { display: flex; flex-direction: column; flex: 1; padding: 10px 14px 14px; }
+.festival-body h3 { margin: 4px 0 2px; font-size: 16px; }
+.festival-body .help { margin-top: 2px; }
+.festival-body form { margin-top: auto; padding-top: 10px; }
+.festival-body button { width: 100%; }
+.festival-date { margin: 0; font-size: 13px; font-weight: 600; color: var(--brand-strong); }
+.festival-badge { display: inline-block; margin-right: 6px; padding: 1px 7px; font-size: 12px; color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok-line); border-radius: 999px; }
+.festival-pages { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 0 0 12px; }
