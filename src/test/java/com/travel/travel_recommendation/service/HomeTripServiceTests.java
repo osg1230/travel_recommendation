@@ -85,6 +85,30 @@ class HomeTripServiceTests {
         assertThat(same.returnMinutes()).isEqualTo(150);
     }
 
+    // 제주를 오가는 길은 카카오가 카페리 경로를 자동차 '성공'으로 답하므로 조회하지 않고 직접 적어 달라고 한다. 적으면 그 값을 쓴다.
+    @Test void jejuTripAsksForFlightOrShipMinutes() {
+        var attraction = new PlaceCandidate(2L, "성산일출봉", "제주 서귀포시 성산읍", "여행 > 관광,명소", "", "https://place.map.kakao.com/2",
+            "", LocalDateTime.of(2026, 9, 1, 0, 0), 126.94, 33.46, "KAKAO", null);
+        var jeju = new PlaceCandidateView(UUID.randomUUID(), new DestinationCandidate(10L, "제주", "제주", "", "https://www.visitjeju.net/",
+            LocalDateTime.of(2026, 9, 1, 0, 0)), 3, true, List.of(attraction), List.of(), List.of());
+        when(maps.findOrigin("송파구")).thenReturn(songpa);
+        assertThatThrownBy(() -> service.resolve(request("송파구", null), jeju, KakaoMapClient.Transport.CAR))
+            .isInstanceOfSatisfying(RecommendationException.class, e -> {
+                assertThat(e.getCode()).isEqualTo("HOME_MINUTES");
+                assertThat(e.getMessage()).contains("비행기나 배");
+            });
+        verify(maps, never()).travelTime(any(), any(), any());
+
+        assertThat(service.resolve(request("송파구", 180), jeju, KakaoMapClient.Transport.CAR).minutes()).isEqualTo(180);
+
+        // 제주에 사는 사람이 제주를 여행하면 섬 안의 길이라 그대로 찾는다.
+        var jejuCity = new KakaoMapClient.Origin("제주특별자치도 제주시", "제주", new KakaoMapClient.Location("제주특별자치도 제주시", 126.53, 33.50, Instant.now()));
+        when(maps.findOrigin("제주시")).thenReturn(jejuCity);
+        when(maps.travelTime(any(), any(), eq(KakaoMapClient.Transport.CAR)))
+            .thenReturn(new KakaoMapClient.TravelTime(KakaoMapClient.Transport.CAR, 60 * 60, 45000, Instant.now()));
+        assertThat(service.resolve(request("제주시", null), jeju, KakaoMapClient.Transport.CAR).minutes()).isEqualTo(60);
+    }
+
     @Test void missingTimesOrOriginAreAskedFor() {
         assertThatThrownBy(() -> service.resolve(new HomeTripService.Request("잠실", null, null, null, LocalTime.of(20, 0), null),
             places(), KakaoMapClient.Transport.CAR)).hasMessageContaining("집에서 출발할 시각");
