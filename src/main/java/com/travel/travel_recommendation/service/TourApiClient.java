@@ -2,12 +2,15 @@ package com.travel.travel_recommendation.service;
 
 import com.travel.travel_recommendation.config.TourApiProperties;
 import com.travel.travel_recommendation.dto.PlaceOperatingInfo;
+import com.travel.travel_recommendation.dto.RegionalFestival;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.*;
 import java.nio.charset.StandardCharsets;
 import java.time.*;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Optional;
 import java.util.Set;
 import java.util.List;
@@ -19,7 +22,7 @@ import tools.jackson.databind.*;
 @Component
 public class TourApiClient {
     private static final Set<String> TYPES = Set.of("12", "14", "28", "32", "39"), FACILITY_TYPES = Set.of("12", "14");
-    static final int FACILITY_ROWS = 100;
+    static final int FACILITY_ROWS = 100, FESTIVAL_ROWS = 100;
     private final TourApiProperties properties;
     private final ObjectMapper mapper;
     private final URI endpoint;
@@ -133,6 +136,35 @@ public class TourApiClient {
                 result.add(new SearchPlace(id, type, title, address, x, y));
             } catch (RecommendationException ignored) {
                 // 한 항목의 형식 오류로 다른 시설까지 잃지 않는다.
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    /**
+     * 시·도(법정동 시·도 코드, 예: 충북 "43")에서 from 날짜에 진행 중이거나 그 뒤에 열리는 축제를 찾는다.
+     * 관광공사는 종료일이 from 이후인 행사를 돌려준다. 앞쪽 최대 100건만 보고, 날짜·제목이 없는 항목은 건너뛴다.
+     */
+    public List<RegionalFestival> searchFestivals(String regionCode, LocalDate from) {
+        if (regionCode == null || !regionCode.matches("[0-9]{2,5}") || from == null) throw failure("TOUR_INPUT", "축제를 찾을 지역을 확인해 주세요.");
+        var data = get(endpoint.resolve("searchFestival2"), FESTIVAL_ROWS,
+            "&lDongRegnCd=" + regionCode + "&eventStartDate=" + from.format(DateTimeFormatter.BASIC_ISO_DATE));
+        List<RegionalFestival> result = new ArrayList<>();
+        for (var item : data.path("items").path("item")) {
+            try {
+                String id = text(item, "contentid"), title = text(item, "title");
+                if (!id.matches("[1-9][0-9]{0,19}") || title.isBlank() || title.length() > 100) continue;
+                // 다른 시·도 행사가 섞여 오면 보여 주지 않는다.
+                if (!regionCode.equals(text(item, "lDongRegnCd"))) continue;
+                var start = LocalDate.parse(text(item, "eventstartdate"), DateTimeFormatter.BASIC_ISO_DATE);
+                var end = LocalDate.parse(text(item, "eventenddate"), DateTimeFormatter.BASIC_ISO_DATE);
+                if (end.isBefore(start)) continue;
+                // 사진은 출처 표시만 하면 쓸 수 있는 유형(Type1·Type3)의 https 주소만 쓴다.
+                String image = text(item, "firstimage");
+                if (!image.startsWith("https://") || image.length() > 500 || !Set.of("Type1", "Type3").contains(text(item, "cpyrhtDivCd"))) image = "";
+                result.add(new RegionalFestival(id, title, start, end, text(item, "addr1"), text(item, "addr2"), image, text(item, "tel")));
+            } catch (RecommendationException | DateTimeParseException ignored) {
+                // 한 행사의 형식 오류로 다른 축제까지 잃지 않는다.
             }
         }
         return List.copyOf(result);
