@@ -33,7 +33,8 @@ public class FestivalService {
     static final int LOOKAHEAD_DAYS = 60;
     /** 이보다 긴 행사는 상설 전시·연중 행사로 보고 뺀다. 축제 목록 앞쪽을 차지하기 때문이다. */
     static final int MAX_EVENT_DAYS = 62;
-    static final int MAX_SHOWN = 6;
+    /** 한 시·도에서 살펴볼 수 있는 축제 수와 한 쪽에 보여 줄 수(6개씩 3쪽: 6·6·3). */
+    static final int MAX_FESTIVALS = 15, PAGE_SIZE = 6;
 
     private final TourApiClient tourApi;
     private final Supplier<LocalDate> today;
@@ -58,7 +59,7 @@ public class FestivalService {
 
     public LocalDate today() { return today.get(); }
 
-    /** 시·도의 진행 중이거나 곧 열리는 축제를 시작일 순으로 최대 6개 돌려준다. 조회 실패는 RecommendationException으로 전달한다. */
+    /** 시·도의 진행 중이거나 곧 열리는 축제를 시작일 순으로 최대 15개 돌려준다. 조회 실패는 RecommendationException으로 전달한다. */
     public List<RegionalFestival> findFestivals(Province province) {
         LocalDate date = today.get();
         // 날짜가 바뀌면 끝난 축제가 빠지도록 키에 날짜를 넣는다.
@@ -66,7 +67,22 @@ public class FestivalService {
             .filter(f -> !f.endDate().isBefore(date) && !f.startDate().isAfter(date.plusDays(LOOKAHEAD_DAYS)))
             .filter(f -> ChronoUnit.DAYS.between(f.startDate(), f.endDate()) < MAX_EVENT_DAYS)
             .sorted(Comparator.comparing(RegionalFestival::startDate).thenComparing(RegionalFestival::title))
-            .limit(MAX_SHOWN).toList());
+            .limit(MAX_FESTIVALS).toList());
+    }
+
+    /** 한 쪽의 축제와 쪽 번호. page는 1부터 센다. */
+    public record FestivalPage(List<RegionalFestival> festivals, int page, int totalPages) {
+        public boolean hasPrevious() { return page > 1; }
+        public boolean hasNext() { return page < totalPages; }
+    }
+
+    /** 보관한 목록을 6개씩 나눠 요청한 쪽을 돌려준다. 없는 쪽 번호는 가장 가까운 쪽으로 맞추며 API를 다시 부르지 않는다. */
+    public FestivalPage findFestivalPage(Province province, int page) {
+        var all = findFestivals(province);
+        int totalPages = Math.max(1, (all.size() + PAGE_SIZE - 1) / PAGE_SIZE);
+        int current = Math.min(Math.max(page, 1), totalPages);
+        int from = (current - 1) * PAGE_SIZE;
+        return new FestivalPage(all.subList(from, Math.min(from + PAGE_SIZE, all.size())), current, totalPages);
     }
 
     /** 화면에서 고른 축제를 서버에서 다시 찾는다. 요청에 담긴 날짜를 믿지 않기 위해서다. */

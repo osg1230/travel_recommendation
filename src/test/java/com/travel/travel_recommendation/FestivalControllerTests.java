@@ -45,7 +45,11 @@ class FestivalControllerTests {
             new RegionalFestival("506376", "강경젓갈축제", today.plusDays(5), today.plusDays(8), "충청남도 논산시", "금강둔치", "", "041-730-2971")));
         mvc.perform(get("/").param("festivalRegion", "44")).andExpect(status().isOk())
             .andExpect(content().string(containsString("강경젓갈축제")))
-            .andExpect(content().string(containsString("이 축제 기간으로 일정 만들기")));
+            .andExpect(content().string(containsString("이 축제 기간으로 일정 만들기")))
+            // 한 쪽에 다 들어가면 쪽 넘기기를 보여 주지 않는다. 잘못된 쪽 번호는 첫 쪽으로 본다.
+            .andExpect(content().string(not(containsString("축제 목록 쪽"))));
+        mvc.perform(get("/").param("festivalRegion", "44").param("festivalPage", "abc")).andExpect(status().isOk())
+            .andExpect(content().string(containsString("강경젓갈축제")));
 
         when(tourApi.searchFestivals(eq("41"), any())).thenThrow(new RecommendationException("TOUR_TIMEOUT", "관광정보 조회 시간이 초과됐어요. 다시 시도해 주세요."));
         mvc.perform(get("/").param("festivalRegion", "41")).andExpect(status().isOk())

@@ -62,7 +62,7 @@
     <!-- 지역 축제: 시·도를 고르면 관광공사에 등록된 축제를 보여 주고, 축제를 고르면 그 지역·날짜로 조건 입력을 시작한다. -->
     <section class="card festivals" id="festivals" aria-labelledby="festivals-title">
         <h2 id="festivals-title">축제 따라 여행 떠나기</h2>
-        <p class="help">지역을 고르면 지금 열리고 있거나 두 달 안에 열리는 축제를 보여 드려요. 축제를 고르면 그 지역과 날짜로 여행 조건을 채워 드려요.</p>
+        <p class="help">지역을 고르면 지금 열리고 있거나 두 달 안에 열리는 축제를 시작일이 가까운 순으로 15개까지 보여 드려요. 축제를 고르면 그 지역과 날짜로 여행 조건을 채워 드려요.</p>
         <nav class="region-tabs" aria-label="축제를 볼 지역">
             <a th:each="p : ${provinces}" class="region-tab" th:href="@{/(festivalRegion=${p.code})} + '#festivals'" th:text="${p.label}"
                th:attr="aria-current=${festivalProvince != null and festivalProvince.code == p.code ? 'true' : null}"></a>
@@ -90,6 +90,16 @@
                 </div>
             </li>
         </ul>
+        <!-- 쪽 넘기기: 이미 받아 둔 목록을 6개씩 나눠 보여 주므로 쪽을 넘겨도 관광공사를 다시 부르지 않는다. -->
+        <nav class="festival-pages" aria-label="축제 목록 쪽" th:if="${festivalPage != null and festivalPage.totalPages > 1}">
+            <a th:if="${festivalPage.hasPrevious()}" class="region-tab"
+               th:href="@{/(festivalRegion=${festivalProvince.code},festivalPage=${festivalPage.page - 1})} + '#festivals'">이전</a>
+            <a th:each="n : ${#numbers.sequence(1, festivalPage.totalPages)}" class="region-tab" th:text="${n}"
+               th:href="@{/(festivalRegion=${festivalProvince.code},festivalPage=${n})} + '#festivals'"
+               th:attr="aria-current=${n == festivalPage.page ? 'page' : null},aria-label=${n + '쪽'}"></a>
+            <a th:if="${festivalPage.hasNext()}" class="region-tab"
+               th:href="@{/(festivalRegion=${festivalProvince.code},festivalPage=${festivalPage.page + 1})} + '#festivals'">다음</a>
+        </nav>
         <p class="help" th:if="${festivalProvince != null}">축제 정보: 한국관광공사 TourAPI. 지자체가 등록한 정보라 날짜·장소가 바뀔 수 있으니 방문 전에 주최 측 안내를 확인해 주세요.</p>
     </section>
 

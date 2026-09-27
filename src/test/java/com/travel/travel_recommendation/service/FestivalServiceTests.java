@@ -31,6 +31,28 @@ class FestivalServiceTests {
         verify(client, times(1)).searchFestivals("43", TODAY);
     }
 
+    // 15개까지 받아 6개씩 나누고, 없는 쪽 번호는 가장 가까운 쪽으로 맞춘다. 쪽을 넘겨도 API는 한 번만 부른다.
+    @Test void keepsFifteenFestivalsInPagesOfSix() {
+        var client = mock(TourApiClient.class);
+        var many = new java.util.ArrayList<RegionalFestival>();
+        for (int i = 0; i < 20; i++) many.add(festival(String.valueOf(i), TODAY.plusDays(i), TODAY.plusDays(i + 1)));
+        when(client.searchFestivals("12", TODAY)).thenReturn(many);
+        var service = new FestivalService(client, () -> TODAY);
+        var jeonnam = FestivalService.province("12").orElseThrow();
+
+        assertThat(service.findFestivals(jeonnam)).hasSize(15);
+        var first = service.findFestivalPage(jeonnam, 1);
+        assertThat(first.festivals()).extracting(RegionalFestival::id).containsExactly("0", "1", "2", "3", "4", "5");
+        assertThat(first.totalPages()).isEqualTo(3);
+        assertThat(first.hasPrevious()).isFalse();
+        var last = service.findFestivalPage(jeonnam, 3);
+        assertThat(last.festivals()).extracting(RegionalFestival::id).containsExactly("12", "13", "14");
+        assertThat(last.hasNext()).isFalse();
+        assertThat(service.findFestivalPage(jeonnam, 99).page()).isEqualTo(3);
+        assertThat(service.findFestivalPage(jeonnam, 0).page()).isEqualTo(1);
+        verify(client, times(1)).searchFestivals("12", TODAY);
+    }
+
     @Test void onlyKnownProvinceCodesAreAccepted() {
         assertThat(FestivalService.province("12").orElseThrow().regionName()).isEqualTo("전남");
         assertThat(FestivalService.province("99")).isEmpty();

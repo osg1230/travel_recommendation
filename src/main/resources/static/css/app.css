@@ -529,7 +529,7 @@ button.map-badge:hover { background: var(--badge, var(--brand)); transform: scal
 .region-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 16px; }
 .region-tab { padding: 6px 13px; font-size: 14px; background: var(--surface); color: var(--text-muted); border: 1px solid var(--line-strong); border-radius: 999px; text-decoration: none; }
 .region-tab:hover { background: var(--brand-soft); color: var(--brand-strong); }
-.region-tab[aria-current="true"] { background: var(--brand); color: #fff; border-color: var(--brand); }
+.region-tab[aria-current] { background: var(--brand); color: #fff; border-color: var(--brand); }
 .festival-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin: 0 0 12px; padding: 0; list-style: none; }
 .festival { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
 .festival-photo { margin: 0; }
@@ -542,3 +542,4 @@ button.map-badge:hover { background: var(--badge, var(--brand)); transform: scal
 .festival-body button { width: 100%; }
 .festival-date { margin: 0; font-size: 13px; font-weight: 600; color: var(--brand-strong); }
 .festival-badge { display: inline-block; margin-right: 6px; padding: 1px 7px; font-size: 12px; color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok-line); border-radius: 999px; }
+.festival-pages { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 0 0 12px; }
