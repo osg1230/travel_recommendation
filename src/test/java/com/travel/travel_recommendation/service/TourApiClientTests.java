@@ -129,4 +129,19 @@ class TourApiClientTests {
             assertThat(error.getMessage()).doesNotContain("secret-key"); assertThat(error.getCause()).isNull();
         });
     }
+    @Test void festivalSearchReadsDatesAndSkipsBrokenOrOtherRegionItems() {
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":4,\"items\":{\"item\":["
+            + "{\"contentid\":\"900168\",\"title\":\"보은대추 축제\",\"eventstartdate\":\"20261016\",\"eventenddate\":\"20261025\",\"lDongRegnCd\":\"43\","
+            + "\"addr1\":\"충청북도 보은군\",\"addr2\":\"뱃들공원 일원\",\"firstimage\":\"https://tong.visitkorea.or.kr/a.jpg\",\"cpyrhtDivCd\":\"Type3\",\"tel\":\"043-540-3392\"},"
+            + "{\"contentid\":\"2\",\"title\":\"사진 제한\",\"eventstartdate\":\"20261001\",\"eventenddate\":\"20261001\",\"lDongRegnCd\":\"43\",\"firstimage\":\"https://x/b.jpg\",\"cpyrhtDivCd\":\"Type2\"},"
+            + "{\"contentid\":\"3\",\"title\":\"날짜 오류\",\"eventstartdate\":\"2026-10-01\",\"eventenddate\":\"20261001\",\"lDongRegnCd\":\"43\"},"
+            + "{\"contentid\":\"4\",\"title\":\"다른 도\",\"eventstartdate\":\"20261001\",\"eventenddate\":\"20261001\",\"lDongRegnCd\":\"44\"}]}}}}");
+        var result = client("key").searchFestivals("43", java.time.LocalDate.of(2026, 9, 27));
+        assertThat(query.get()).contains("lDongRegnCd=43", "eventStartDate=20260927");
+        assertThat(result).extracting(f -> f.title()).containsExactly("보은대추 축제", "사진 제한");
+        assertThat(result.get(0).period()).isEqualTo("10.16(금) ~ 10.25(일)");
+        assertThat(result.get(0).place()).isEqualTo("뱃들공원 일원");
+        assertThat(result.get(1).image()).isEmpty();
+        assertCode("TOUR_INPUT", () -> client("key").searchFestivals("43&x=1", java.time.LocalDate.of(2026, 9, 27)));
+    }
 }

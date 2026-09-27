@@ -25,7 +25,7 @@ public class SecurityConfig {
                             "/travel/conditions", "/travel/conditions/check", "/travel/conditions/analyze",
                             "/travel/conditions/review", "/travel/conditions/confirm", "/travel/conditions/confirmed",
                             "/travel/conditions/recommend", "/travel/conditions/edit",
-                            "/travel/conditions/discover", "/travel/conditions/discover/**",
+                            "/travel/conditions/discover", "/travel/conditions/discover/**", "/travel/conditions/festival",
                             "/travel/recommendations", "/travel/recommendations/**").permitAll()
                     .requestMatchers("/signup", "/signup/complete").anonymous()
                     .requestMatchers("/admin", "/admin/**").hasRole("ADMIN")
