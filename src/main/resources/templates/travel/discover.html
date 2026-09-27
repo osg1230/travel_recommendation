@@ -4,6 +4,7 @@
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <title>여행 취향 탐색 | 다녀올게</title>
     <link rel="stylesheet" th:href="@{/css/app.css}">
+    <script defer th:src="@{/js/discover-steps.js}"></script>
 </head>
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
@@ -12,15 +13,19 @@
     <a class="back-link" th:href="@{/travel/conditions}">← 조건 입력으로</a>
     <p class="eyebrow">여행 준비 · 취향 탐색</p>
     <h1>어떤 장면이 더 끌리나요?</h1>
-    <p class="intro">두 장면 중 이번 여행에서 더 하고 싶은 쪽을 골라 주세요. 정답은 없고, 이번 여행에만 쓰여요.</p>
+    <p class="intro">두 장면 중 이번 여행에서 더 하고 싶은 쪽을 눌러 주세요. 정답은 없고, 이번 여행에만 쓰여요.</p>
     <p class="help">어느 쪽도 괜찮으면 '상관없음', 답하기 어려우면 '건너뛰기'를 고르세요. 고르지 않은 장면을 싫어한다고 보지 않아요.</p>
-    <form method="post" th:action="@{/travel/conditions/discover}">
-        <fieldset class="condition-section discover-question" th:each="q, st : ${questions}">
+    <form method="post" th:action="@{/travel/conditions/discover}" data-discover-form>
+        <!-- 스크립트가 있으면 질문을 한 장씩 보여 준다(discover-steps.js). 없으면 모든 질문이 그대로 보인다. -->
+        <p class="discover-progress" data-discover-progress hidden></p>
+        <fieldset class="condition-section discover-question" th:each="q, st : ${questions}" data-discover-step>
             <legend th:text="${(st.index + 1) + '. ' + q.prompt}"></legend>
+            <!-- 화면을 반으로 나눠 두 장면을 그림과 문구로 보여 준다. 그림 파일은 질문·선택지 ID로 찾는다. -->
             <div class="discover-options">
                 <label class="discover-option" th:each="o : ${q.options}">
-                    <input type="radio" th:name="${'q_' + q.id}" th:value="${o.id}" th:checked="${answers.get(q.id) == o.id}">
-                    <span th:text="${o.scene}"></span>
+                    <input class="visually-hidden" type="radio" th:name="${'q_' + q.id}" th:value="${o.id}" th:checked="${answers.get(q.id) == o.id}">
+                    <img class="discover-image" th:src="@{/images/discover/{file}.svg(file=${#strings.toLowerCase(q.id + '-' + o.id)})}" alt="">
+                    <span class="discover-scene" th:text="${o.scene}"></span>
                 </label>
             </div>
             <div class="discover-extra">
@@ -28,7 +33,11 @@
                 <label><input type="radio" th:name="${'q_' + q.id}" value="SKIP" th:checked="${answers.get(q.id) == null or answers.get(q.id) == 'SKIP'}"> 건너뛰기</label>
             </div>
         </fieldset>
-        <div class="form-actions"><button type="submit">내 취향 확인하기</button>
+        <div class="discover-nav" data-discover-nav hidden>
+            <button type="button" class="button-quiet" data-discover-prev>← 이전 질문</button>
+            <button type="button" class="button-quiet" data-discover-next>다음 질문 →</button>
+        </div>
+        <div class="form-actions" data-discover-submit><button type="submit">내 취향 확인하기</button>
             <a class="button button-quiet" th:href="@{/travel/conditions}">탐색 없이 조건 입력하기</a></div>
     </form>
 </main>

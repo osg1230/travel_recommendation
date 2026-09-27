@@ -30,6 +30,7 @@ class PreferenceDiscoveryControllerTests {
     @Test void guestSeesQuestionsWithSkipAndNoPreferenceChoices() throws Exception {
         mvc.perform(get("/travel/conditions/discover")).andExpect(status().isOk())
             .andExpect(content().string(containsString("바다가 보이는 카페에서 느긋하게 쉬기")))
+            .andExpect(content().string(containsString("/images/discover/q1-a.svg")))
             .andExpect(content().string(containsString("상관없음")))
             .andExpect(content().string(containsString("건너뛰기")));
         mvc.perform(get("/travel/conditions")).andExpect(content().string(containsString("/travel/conditions/discover")));

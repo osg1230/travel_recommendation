@@ -21,7 +21,7 @@ public class SecurityConfig {
         // 회원가입에도 CSRF 보호를 유지한다. 새 기능은 구현할 때 접근 규칙을 추가한다.
         return http.addFilterBefore(new LoginInputFilter(), org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
-                    .requestMatchers("/", "/login", "/css/**", "/js/**", "/error",
+                    .requestMatchers("/", "/login", "/css/**", "/js/**", "/images/**", "/error",
                             "/travel/conditions", "/travel/conditions/check", "/travel/conditions/analyze",
                             "/travel/conditions/review", "/travel/conditions/confirm", "/travel/conditions/confirmed",
                             "/travel/conditions/recommend", "/travel/conditions/edit",
