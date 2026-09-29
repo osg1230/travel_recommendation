@@ -160,6 +160,35 @@ class ItineraryIntegrationTests {
     }
     private String formUrl() { return "/travel/recommendations/"+parent+"/destinations/"+destination+"/schedule"; }
 
+    // 회원이 내 정보에 적은 '주로 출발하는 곳'을 일정 입력의 출발지 칸에 미리 넣는다. 적지 않은 회원·비회원은 빈 칸이다.
+    @Test void memberHomeAreaPrefillsTheOrigin() throws Exception {
+        String suffix=UUID.randomUUID().toString().replace("-","");
+        var member=users.saveAndFlush(new com.travel.travel_recommendation.entity.User("test_"+suffix,"$2a$10$notusedhashnotusedhashnotusedhashnotusedhashnotuse","여행_"+suffix));
+        var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",null,null,2,null,2,true,false,List.of(),"");
+        UUID owned=recommendations.create(conditions,member.getLoginId(),null); recommendations.prepare(owned);
+        var candidate=recommendations.view(owned,member.getLoginId(),null).candidates().getFirst();
+        jobs.findById(owned).orElseThrow().completeRecommendation(mapper.writeValueAsString(List.of(new RankedDestination(1,candidate,"추천"))));
+        em.flush();
+        String info="/travel/recommendations/"+owned+"/destinations/"+candidate.placeId()+"/trip-info";
+        String form="/travel/recommendations/"+owned+"/destinations/"+candidate.placeId()+"/schedule";
+        var auth=org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(member.getLoginId());
+        // 아직 적지 않은 회원에게는 내 정보에 적어 두라고 안내한다.
+        mvc.perform(get(info).with(auth)).andExpect(content().string(containsString("내 정보에 '주로 출발하는 곳'을 적어 두면")));
+        member.changeHomeArea("서울 송파구"); users.saveAndFlush(member);
+        // '일정 만들기'를 처음 누르면(아무 값 없이) 여행 정보 화면으로 넘어오는데, 이때도 출발지를 미리 넣는다.
+        var memberSession=new MockHttpSession();
+        mvc.perform(post("/travel/recommendations/"+owned+"/destinations/"+candidate.placeId()+"/quick-schedule").session(memberSession).with(auth).with(csrf()))
+            .andExpect(header().string("Location",info));
+        mvc.perform(get(info).session(memberSession).with(auth)).andExpect(content().string(containsString("value=\"서울 송파구\"")));
+        for(String url:List.of(info,form))
+            mvc.perform(get(url).with(auth)).andExpect(status().isOk())
+                .andExpect(content().string(containsString("value=\"서울 송파구\"")))
+                .andExpect(content().string(containsString("내 정보의 '주로 출발하는 곳'을 넣어 두었어요")));
+        // 비회원 화면에는 회원 안내가 없다.
+        mvc.perform(get("/travel/recommendations/"+parent+"/destinations/"+destination+"/trip-info").session(session))
+            .andExpect(content().string(org.hamcrest.Matchers.not(containsString("주로 출발하는 곳"))));
+    }
+
     // 일정 작업 전에 고른 관광지 주변의 음식점을 찾아 저장하고 요청에 더한다. 그 요청으로 만든 일정은 그대로 검증을 통과한다.
     @Test void nearbyRestaurantsAreAddedBeforeTheScheduleIsMade() {
         var region=placeRepository.findById(destination).orElseThrow().getRegion();

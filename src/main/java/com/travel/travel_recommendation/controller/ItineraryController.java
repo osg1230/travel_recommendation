@@ -30,6 +30,7 @@ public class ItineraryController {
     private final ObjectProvider<PlaceDiscoveryService> discoveries;
     private final ObjectProvider<PlacePhotoService> photos;
     private final ObjectProvider<HomeTripService> homeTrips;
+    private final ObjectProvider<ProfileService> profiles;
     private final tools.jackson.databind.ObjectMapper mapper;
     private record Submission(UUID parent,long destination,String login,String token,UUID job) {}
     private static final String SESSION_KEY="itinerarySubmission";
@@ -46,6 +47,10 @@ public class ItineraryController {
      */
     public record HomeValues(String origin,LocalTime departAt,LocalTime arriveBy,Integer minutes,String returnPlace,Integer returnMinutes) {
         static final HomeValues DEFAULT=new HomeValues(null,LocalTime.of(8,0),LocalTime.of(20,0),null,null,null);
+        /** 처음 화면 값. 회원이 내 정보에 적은 '주로 출발하는 곳'이 있으면 출발지 칸에 미리 넣는다(화면에서 고칠 수 있다). */
+        static HomeValues startingFrom(String homeArea) {
+            return homeArea==null?DEFAULT:new HomeValues(homeArea,DEFAULT.departAt(),DEFAULT.arriveBy(),null,null,null);
+        }
     }
 
     @GetMapping("/{id}/destinations/{destinationId}/schedule")
@@ -69,8 +74,9 @@ public class ItineraryController {
         session.removeAttribute(CONFLICT_KEY);
         // 여행 조건에서 이동수단을 정하지 않았다면 자동차로 미리 고르지 않고 사용자가 직접 고르게 한다.
         var transport=options.conditions().keywordNames("TRANSPORTATION").isEmpty()?null:options.transport();
+        var homeArea=homeArea(principal,model);
         model.addAttribute("values",conflict!=null?conflict:new ConstraintInput(id,options.start(),options.end(),transport,
-            options.visitMinutes(),purposeIds,null,false,null,List.of(),null,List.of(),null,null,null,centerIds,HomeValues.DEFAULT));
+            options.visitMinutes(),purposeIds,null,false,null,List.of(),null,List.of(),null,null,null,centerIds,HomeValues.startingFrom(homeArea)));
         model.addAttribute("stayTiers",BudgetGuide.StayTier.values());
         synchronized(session) {
             var submission=new Submission(id,destinationId,login(principal),UUID.randomUUID().toString(),null);
@@ -141,7 +147,12 @@ public class ItineraryController {
         model.addAttribute("options",options);
         var previous=session.getAttribute(TRIP_INFO_KEY) instanceof TripInfoInput input && input.parent().equals(id) ? input : null;
         session.removeAttribute(TRIP_INFO_KEY);
-        model.addAttribute("values",previous!=null?previous:new TripInfoInput(id,null,null,null,null,null,HomeValues.DEFAULT));
+        var homeArea=homeArea(principal,model);
+        // 바로 일정 만들기를 처음 눌러 넘어온 경우(집 출발·귀가를 아직 적지 않음)도 내 정보의 출발지를 미리 넣는다.
+        if(previous!=null && HomeValues.DEFAULT.equals(previous.home()))
+            previous=new TripInfoInput(previous.parent(),previous.durationDays(),previous.accommodationNeeded(),previous.startDate(),
+                previous.transport(),previous.error(),HomeValues.startingFrom(homeArea));
+        model.addAttribute("values",previous!=null?previous:new TripInfoInput(id,null,null,null,null,null,HomeValues.startingFrom(homeArea)));
         model.addAttribute("askTransport",options.conditions().keywordNames("TRANSPORTATION").isEmpty());
         return "travel/trip-info";
     }
@@ -407,6 +418,20 @@ public class ItineraryController {
         return service;
     }
     private String login(Principal principal) { return principal==null?null:principal.getName(); }
+    /**
+     * 회원이 내 정보에 적은 '주로 출발하는 곳'. 비회원이거나 적지 않았으면 null이다.
+     * 화면 안내(미리 넣었다는 문구·내 정보에 적어 두라는 문구)를 위해 모델에도 넣는다. 읽지 못해도 일정 입력은 빈 칸으로 이어 간다.
+     */
+    private String homeArea(Principal principal,Model model) {
+        var service=profiles.getIfAvailable();
+        String area=null;
+        if(principal!=null && service!=null) {
+            try { area=service.getHomeArea(principal.getName()); } catch(DataAccessException ignored) { }
+        }
+        model.addAttribute("member",principal!=null);
+        model.addAttribute("savedHomeArea",area);
+        return area;
+    }
     private static ResponseEntity<?> seeOther(String location) {
         return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create(location)).cacheControl(CacheControl.noStore()).build();
     }

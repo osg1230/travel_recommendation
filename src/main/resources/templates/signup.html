@@ -52,6 +52,14 @@
             <p class="field-error" id="confirm-error" th:errors="*{passwordConfirm}"></p>
             <p class="field-error" id="matching-error" th:errors="*{passwordMatching}"></p>
         </div>
+        <div class="field">
+            <label for="homeArea">주로 출발하는 곳 (선택)</label>
+            <input id="homeArea" th:field="*{homeArea}" type="text" maxlength="60" autocomplete="off"
+                   placeholder="예) 서울 송파구, 대전역" aria-describedby="homeArea-help homeArea-error"
+                   th:attr="aria-invalid=${#fields.hasErrors('homeArea')}">
+            <p class="help" id="homeArea-help">일정을 만들 때 출발지 칸에 미리 넣어 드려요. 여행지까지 이동시간을 찾는 데만 쓰고, 일정마다 바꿀 수 있어요. 나중에 내 정보에서 적어도 돼요.</p>
+            <p class="field-error" id="homeArea-error" th:errors="*{homeArea}"></p>
+        </div>
         <button type="submit">가입하기</button>
         <p id="submit-status" class="help" role="status" aria-live="polite"></p>
     </form>

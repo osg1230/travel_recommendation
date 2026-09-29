@@ -51,9 +51,12 @@ class SignupIntegrationTests {
         SignupForm form = form();
         mvc.perform(post("/signup").with(csrf()).param("loginId", " " + form.getLoginId() + " ")
                         .param("nickname", form.getNickname()).param("password", form.getPassword())
-                        .param("passwordConfirm", form.getPasswordConfirm()).param("role", "ADMIN").param("status", "RESTRICTED"))
+                        .param("passwordConfirm", form.getPasswordConfirm()).param("role", "ADMIN").param("status", "RESTRICTED")
+                        .param("homeArea", " 서울 송파구 "))
                 .andExpect(redirectedUrl("/signup/complete"));
         var saved = users.findByLoginId(form.getLoginId()).orElseThrow();
+        // 주로 출발하는 곳은 선택 입력이며 앞뒤 공백을 지워 저장한다.
+        assertThat(saved.getHomeArea()).isEqualTo("서울 송파구");
         assertThat(saved.getPasswordHash()).isNotEqualTo(form.getPassword()).startsWith("$2");
         assertThat(encoder.matches(form.getPassword(), saved.getPasswordHash())).isTrue();
         assertThat(saved.getRole()).isEqualTo(UserRole.MEMBER);

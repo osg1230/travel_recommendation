@@ -27,12 +27,20 @@ public class SignupForm {
     @Size(min = 2, max = 50, message = "닉네임은 2~50자로 입력해 주세요.")
     private String nickname;
 
+    // 주로 출발하는 곳(선택). 일정 입력의 출발지 기본값이 된다.
+    @Size(max = 60, message = "주로 출발하는 곳은 60자 이내로 입력해 주세요.")
+    private String homeArea;
+
     public void setLoginId(String loginId) {
         this.loginId = loginId == null ? null : loginId.strip();
     }
 
     public void setNickname(String nickname) {
         this.nickname = nickname == null ? null : nickname.strip();
+    }
+
+    public void setHomeArea(String homeArea) {
+        this.homeArea = homeArea == null ? null : homeArea.strip();
     }
 
     @AssertTrue(message = "비밀번호 확인이 일치하지 않습니다.")

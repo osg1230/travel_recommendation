@@ -11,6 +11,10 @@ public class ProfileForm {
     @Size(min = 2, max = 50, message = "닉네임은 2~50자로 입력해 주세요.")
     private String nickname;
 
+    // 주로 출발하는 곳(선택). 비우면 저장된 값을 지운다.
+    @Size(max = 60, message = "주로 출발하는 곳은 60자 이내로 입력해 주세요.")
+    private String homeArea = "";
+
     @NotBlank(message = "현재 비밀번호를 입력해 주세요.")
     @Size(max = 64, message = "현재 비밀번호는 64자 이내로 입력해 주세요.")
     @Pattern(regexp = "[!-~]{8,64}", message = "현재 비밀번호의 형식을 확인해 주세요.")
@@ -25,6 +29,10 @@ public class ProfileForm {
 
     public void setNickname(String nickname) {
         this.nickname = nickname == null ? null : nickname.strip();
+    }
+
+    public void setHomeArea(String homeArea) {
+        this.homeArea = homeArea == null ? "" : homeArea.strip();
     }
 
     public void setNewPassword(String password) {
