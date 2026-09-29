@@ -10,27 +10,45 @@
 <main class="travel">
 <nav th:replace="~{fragments/layout :: flowSteps(1)}"></nav>
     <a class="back-link" th:href="@{/travel/conditions}">← 조건 입력으로</a>
-    <p class="eyebrow">여행 준비 · 취향 탐색</p>
-    <h1>어떤 장면이 더 끌리나요?</h1>
-    <p class="intro">두 장면 중 이번 여행에서 더 하고 싶은 쪽을 골라 주세요. 정답은 없고, 이번 여행에만 쓰여요.</p>
-    <p class="help">어느 쪽도 괜찮으면 '상관없음', 답하기 어려우면 '건너뛰기'를 고르세요. 고르지 않은 장면을 싫어한다고 보지 않아요.</p>
+    <p class="eyebrow" th:text="${'여행 준비 · 취향 탐색 ' + (step + 1) + ' / ' + total}"></p>
+    <h1>어느 쪽이 더 끌리나요?</h1>
+    <p class="intro">정답은 없고, 이번 여행에만 쓰여요. 고른 답에 따라 다음 질문이 달라져요.</p>
+    <p class="help">어느 쪽도 괜찮으면 '상관없음', 답하기 어려우면 '건너뛰기'를 고르세요. 고르지 않은 쪽을 싫어한다고 보지 않아요.</p>
+
     <form method="post" th:action="@{/travel/conditions/discover}">
-        <fieldset class="condition-section discover-question" th:each="q, st : ${questions}">
-            <legend th:text="${(st.index + 1) + '. ' + q.prompt}"></legend>
+        <input type="hidden" name="question" th:value="${question.id}">
+        <input type="hidden" name="step" th:value="${step}">
+        <fieldset class="condition-section discover-question">
+            <legend th:text="${(step + 1) + '. ' + question.prompt}"></legend>
             <div class="discover-options">
-                <label class="discover-option" th:each="o : ${q.options}">
-                    <input type="radio" th:name="${'q_' + q.id}" th:value="${o.id}" th:checked="${answers.get(q.id) == o.id}">
+                <label class="discover-option" th:each="o : ${question.options}">
+                    <input type="radio" name="answer" th:value="${o.id}" th:checked="${selected == o.id}" required>
                     <span th:text="${o.scene}"></span>
                 </label>
             </div>
             <div class="discover-extra">
-                <label><input type="radio" th:name="${'q_' + q.id}" value="ANY" th:checked="${answers.get(q.id) == 'ANY'}"> 상관없음</label>
-                <label><input type="radio" th:name="${'q_' + q.id}" value="SKIP" th:checked="${answers.get(q.id) == null or answers.get(q.id) == 'SKIP'}"> 건너뛰기</label>
+                <label><input type="radio" name="answer" value="ANY" th:checked="${selected == 'ANY'}"> 상관없음</label>
+                <label><input type="radio" name="answer" value="SKIP" th:checked="${selected == 'SKIP'}"> 건너뛰기</label>
             </div>
         </fieldset>
-        <div class="form-actions"><button type="submit">내 취향 확인하기</button>
-            <a class="button button-quiet" th:href="@{/travel/conditions}">탐색 없이 조건 입력하기</a></div>
+        <div class="form-actions">
+            <button type="submit" th:text="${step + 1 < total ? '다음 질문' : '내 취향 확인하기'}">다음 질문</button>
+            <a class="button button-quiet" th:if="${!history.isEmpty() and step + 1 < total}" th:href="@{/travel/conditions/discover/result}">남은 질문 건너뛰고 결과 보기</a>
+            <a class="button button-quiet" th:if="${history.isEmpty()}" th:href="@{/travel/conditions}">탐색 없이 조건 입력하기</a>
+        </div>
     </form>
+
+    <section class="condition-section" th:if="${!history.isEmpty()}">
+        <h2>지금까지 고른 답</h2>
+        <p class="help">답을 바꾸면 그 뒤 질문은 새로 이어져요.</p>
+        <ol class="discover-history">
+            <li th:each="h : ${history}">
+                <span th:text="${h.prompt + ' → ' + h.choice}"></span>
+                <a th:if="${h.step != step}" th:href="@{/travel/conditions/discover(step=${h.step})}">다시 고르기</a>
+                <strong th:if="${h.step == step}">지금 고치는 중</strong>
+            </li>
+        </ol>
+    </section>
 </main>
 </body>
 </html>

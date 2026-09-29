@@ -7,6 +7,7 @@ import com.travel.travel_recommendation.service.TravelConditionOptions;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
@@ -28,29 +29,61 @@ public class PreferenceDiscoveryController {
     public static final String ANSWERS_KEY = "preferenceDiscoveryAnswers";
     /** 조건 확인 화면에서 '취향 탐색으로 고른 취향'을 설명하는 데 쓴다. */
     public static final String APPLIED_KEY = "preferenceDiscoveryApplied";
+    /** 이번 탐색의 첫 질문 ID. 무작위로 한 번 고른 뒤 다시 탐색할 때까지 유지한다. */
+    public static final String FIRST_KEY = "preferenceDiscoveryFirst";
     private static final int PRESELECT = 3;
     private final TravelConditionOptions options;
     private final ObjectMapper mapper;
 
+    /**
+     * 질문을 한 개씩 보여 준다. step이 없으면 다음 질문을, 있으면 이미 답한 그 질문을 다시 보여 줘 답을 고치게 한다.
+     * 앞 답에 따라 다음 질문이 달라지므로 한 화면에 모든 질문을 보여 주지 않는다.
+     */
     @GetMapping
-    String questions(HttpSession session, HttpServletResponse response, Model model) {
+    String questions(@RequestParam(required = false) Integer step, HttpSession session, HttpServletResponse response, Model model) {
         response.setHeader("Cache-Control", "no-store");
-        model.addAttribute("questions", PreferenceDiscovery.QUESTIONS);
-        model.addAttribute("answers", answers(session));
+        var answers = answers(session);
+        var ids = new ArrayList<>(answers.keySet());
+        PreferenceDiscovery.Question question;
+        int current;
+        if (step != null && step >= 0 && step < ids.size()) {
+            question = PreferenceDiscovery.question(ids.get(step));
+            current = step;
+        } else {
+            question = expectedQuestion(answers, session);
+            if (question == null) return "redirect:/travel/conditions/discover/result";
+            current = answers.size();
+        }
+        model.addAttribute("question", question);
+        model.addAttribute("step", current);
+        model.addAttribute("total", PreferenceDiscovery.MAX_QUESTIONS);
+        model.addAttribute("selected", answers.get(question.id()));
+        model.addAttribute("history", PreferenceDiscovery.summarize(answers));
         return "travel/discover";
     }
 
+    /**
+     * 한 질문의 답을 저장한다. 앞 질문의 답을 바꾸면 이어지는 질문도 달라지므로 그 뒤 답은 지운다.
+     * 같은 답을 다시 고르면 뒤 답은 그대로 둔다.
+     */
     @PostMapping
-    String answer(@RequestParam Map<String, String> params, HttpSession session) {
-        var answers = new LinkedHashMap<String, String>();
-        params.forEach((key, value) -> { if (key.startsWith("q_")) answers.put(key.substring(2), value); });
+    String answer(@RequestParam String question, @RequestParam String answer, @RequestParam int step, HttpSession session) {
+        var answers = answers(session);
+        if (step < 0 || step > answers.size()) throw forged();
+        var kept = new LinkedHashMap<String, String>();
+        answers.entrySet().stream().limit(step).forEach(e -> kept.put(e.getKey(), e.getValue()));
+        // 이 순서에 나와야 하는 질문인지 서버에서 다시 정해 보고 비교한다.
+        var expected = kept.isEmpty() ? PreferenceDiscovery.question(first(session)) : PreferenceDiscovery.nextQuestion(kept);
+        if (expected == null || !expected.id().equals(question)) throw forged();
+        var updated = answer.equals(answers.get(question)) ? answers : kept;
+        updated.put(question, answer);
         try {
-            PreferenceDiscovery.evaluate(answers);
-        } catch (IllegalArgumentException forged) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "화면에 없는 질문이나 선택지예요. 취향 탐색을 처음부터 다시 진행해 주세요.");
+            PreferenceDiscovery.evaluate(updated);
+        } catch (IllegalArgumentException invalid) {
+            throw forged();
         }
-        session.setAttribute(ANSWERS_KEY, Map.copyOf(answers));
-        return "redirect:/travel/conditions/discover/result";
+        session.setAttribute(ANSWERS_KEY, updated);
+        return PreferenceDiscovery.nextQuestion(updated) == null ? "redirect:/travel/conditions/discover/result" : "redirect:/travel/conditions/discover";
     }
 
     @GetMapping("/result")
@@ -60,6 +93,7 @@ public class PreferenceDiscoveryController {
         if (answers.isEmpty()) return "redirect:/travel/conditions/discover";
         var result = PreferenceDiscovery.evaluate(answers);
         model.addAttribute("result", result);
+        model.addAttribute("lastStep", answers.size() - 1);
         model.addAttribute("themes", themes());
         // 점수가 높은 순으로 최대 3개를 미리 골라 둔다. 사용자가 확인하고 바꿀 수 있다.
         model.addAttribute("preselected", result.preferences().stream().limit(PRESELECT)
@@ -88,6 +122,7 @@ public class PreferenceDiscoveryController {
             var existing = draft == null ? List.<String>of() : draft.getThemes();
             if (resolve == null && !existing.isEmpty() && !new HashSet<>(existing).equals(new HashSet<>(chosen))) {
                 model.addAttribute("result", PreferenceDiscovery.evaluate(answers));
+                model.addAttribute("lastStep", answers.size() - 1);
                 model.addAttribute("themes", themes());
                 model.addAttribute("preselected", chosen);
                 model.addAttribute("existingNames", names(existing));
@@ -122,10 +157,11 @@ public class PreferenceDiscoveryController {
         return "redirect:/travel/conditions";
     }
 
-    /** 탐색을 처음부터 다시 한다. 이전 답변과 점수는 남기지 않는다. */
+    /** 탐색을 처음부터 다시 한다. 이전 답변과 점수는 남기지 않고, 첫 질문도 새로 뽑는다. */
     @PostMapping("/reset")
     String reset(HttpSession session) {
         session.removeAttribute(ANSWERS_KEY);
+        session.removeAttribute(FIRST_KEY);
         return "redirect:/travel/conditions/discover";
     }
 
@@ -136,9 +172,36 @@ public class PreferenceDiscoveryController {
         return "travel/discover-error";
     }
 
+    private static ResponseStatusException forged() {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, "화면에 없는 질문이나 선택지예요. 취향 탐색을 처음부터 다시 진행해 주세요.");
+    }
+
+    /** 묻는 순서가 중요하므로 순서를 지키는 LinkedHashMap 복사본을 돌려준다. 예전 형식이거나 잘못된 답은 버린다. */
     @SuppressWarnings("unchecked")
-    private static Map<String, String> answers(HttpSession session) {
-        return session.getAttribute(ANSWERS_KEY) instanceof Map<?, ?> map ? (Map<String, String>) map : Map.of();
+    private static LinkedHashMap<String, String> answers(HttpSession session) {
+        if (!(session.getAttribute(ANSWERS_KEY) instanceof LinkedHashMap<?, ?> saved)) return new LinkedHashMap<>();
+        var answers = new LinkedHashMap<>((Map<String, String>) saved);
+        try {
+            PreferenceDiscovery.evaluate(answers);
+            return answers;
+        } catch (IllegalArgumentException | ClassCastException invalid) {
+            session.removeAttribute(ANSWERS_KEY);
+            return new LinkedHashMap<>();
+        }
+    }
+
+    /** 첫 질문은 시작 질문 중 하나를 무작위로 골라 세션에 둔다. 새로고침해도 같은 질문이 나온다. */
+    private static String first(HttpSession session) {
+        if (session.getAttribute(FIRST_KEY) instanceof String id && PreferenceDiscovery.START_IDS.contains(id)) return id;
+        var starts = PreferenceDiscovery.START_IDS;
+        String id = starts.get(ThreadLocalRandom.current().nextInt(starts.size()));
+        session.setAttribute(FIRST_KEY, id);
+        return id;
+    }
+
+    /** 지금까지의 답으로 다음에 물어볼 질문. 다 물었으면 null이다. */
+    private static PreferenceDiscovery.Question expectedQuestion(LinkedHashMap<String, String> answers, HttpSession session) {
+        return answers.isEmpty() ? PreferenceDiscovery.question(first(session)) : PreferenceDiscovery.nextQuestion(answers);
     }
     private List<TravelKeyword> themes() {
         try {

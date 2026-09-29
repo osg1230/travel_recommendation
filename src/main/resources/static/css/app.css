@@ -316,6 +316,9 @@ summary:has(.details-title):hover .details-title { color: var(--brand-strong); }
 .discover-option:has(input:checked) { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-strong); }
 .discover-extra { display: flex; gap: 18px; margin-top: 10px; font-size: 14px; color: var(--text-muted); }
 .discover-extra label { display: flex; align-items: center; gap: 6px; font-weight: 400; }
+.discover-history { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 8px; }
+.discover-history li { line-height: 1.5; }
+.discover-history a, .discover-history strong { margin-left: 8px; font-size: 14px; }
 
 /* 지도: 번호 표시는 일차 색을 쓰고, 주소로 찾은 대략 위치는 점선 테두리로 구분한다. */
 .trip-map-canvas { width: 100%; height: 380px; margin-top: 12px; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
