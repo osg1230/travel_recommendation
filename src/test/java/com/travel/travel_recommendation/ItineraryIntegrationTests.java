@@ -110,31 +110,31 @@ class ItineraryIntegrationTests {
             .andExpect(status().isSeeOther()).andExpect(header().string("Location",infoUrl));
         mvc.perform(get(infoUrl).session(session)).andExpect(status().isOk())
             .andExpect(content().string(containsString("출발일 (필수)"))).andExpect(content().string(containsString("이동수단 (필수)")))
-            .andExpect(content().string(containsString("첫날 집에서 출발하는 시각 (필수)"))).andExpect(content().string(containsString("마지막 날 돌아갈 곳에 도착할 시각 (필수)")))
+            // 집 출발·귀가 시각과 편도 시간은 입력받지 않는다(09:00 출발·20:00 도착, 이동시간은 자동).
+            .andExpect(content().string(containsString("출발지 (선택")))
+            .andExpect(content().string(org.hamcrest.Matchers.not(containsString("name=\"departAt\""))))
+            .andExpect(content().string(org.hamcrest.Matchers.not(containsString("name=\"homeMinutes\""))))
             .andExpect(content().string(org.hamcrest.Matchers.not(containsString("여행 일수 (필수)"))))
             .andExpect(content().string(org.hamcrest.Matchers.not(containsString("반드시 지킬 조건"))));
         // 지난 날짜는 되돌려 보내고 이유를 알린다.
         mvc.perform(post(quickUrl).session(session).with(csrf()).param("startDate",LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1).toString()).param("transport","CAR"))
             .andExpect(header().string("Location",infoUrl));
         mvc.perform(get(infoUrl).session(session)).andExpect(content().string(containsString("출발일은 오늘이나 그 이후")));
-        // 집 출발지·이동시간이 없으면 추측하지 않고 다시 묻는다.
+        // 비회원이 출발지 칸을 아직 보지 않았으면(출발지 없이 보냄) 여행 정보 화면에서 한 번 묻는다.
         LocalDate chosen=LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(15);
-        mvc.perform(post(quickUrl).session(session).with(csrf()).param("startDate",chosen.toString()).param("transport","PUBLIC_TRANSIT")
-                .param("departAt","07:00").param("arriveBy","21:00"))
+        mvc.perform(post(quickUrl).session(session).with(csrf()).param("startDate",chosen.toString()).param("transport","PUBLIC_TRANSIT"))
             .andExpect(header().string("Location",infoUrl));
-        mvc.perform(get(infoUrl).session(session)).andExpect(content().string(containsString("출발지(집)를 적거나")));
-        // 여행 정보 화면에서 받은 출발일·이동수단과 집 출발·귀가(편도 직접 입력 120분)로 기본 시간 초안을 만든다.
+        mvc.perform(get(infoUrl).session(session)).andExpect(content().string(containsString("출발지를 적으면 집에서 오가는 이동까지")));
+        // 출발지를 비워 보내면 집 이동 없이 여행지 도착(하루 시작 09:00)부터 기본 시간 초안을 만든다.
         String made=mvc.perform(post(quickUrl).session(session).with(csrf()).param("startDate",chosen.toString()).param("transport","PUBLIC_TRANSIT")
-                .param("departAt","07:00").param("arriveBy","21:00").param("homeMinutes","120"))
+                .param("origin","").param("returnPlace",""))
             .andExpect(status().isSeeOther()).andReturn().getResponse().getHeader("Location");
         var madeInput=schedules.view(UUID.fromString(made.replace("/travel/recommendations/itineraries/","")),null,hash).input();
         assertThat(madeInput.conditions().startDate()).isEqualTo(chosen);
         assertThat(madeInput.transport()).isEqualTo(KakaoMapClient.Transport.PUBLIC_TRANSIT);
         assertThat(madeInput.start()).isEqualTo(LocalTime.of(9,0));
-        assertThat(madeInput.home().minutes()).isEqualTo(120);
-        assertThat(madeInput.home().origin()).isEqualTo("집");
-        assertThat(madeInput.dayStart(1)).isEqualTo(LocalTime.of(9,10));
-        assertThat(madeInput.dayEnd(2)).isEqualTo(LocalTime.of(18,50));
+        assertThat(madeInput.home()).isNull();
+        assertThat(madeInput.dayStart(1)).isEqualTo(LocalTime.of(9,0));
 
         var car=new TravelKeyword(null,"TRANSPORTATION","자동차","{\"value\":\"CAR\"}");
         LocalDate start=LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(20);
@@ -148,15 +148,28 @@ class ItineraryIntegrationTests {
         // 여행 조건이 모두 있어도 집 출발·귀가는 추천 조건에 없어 한 번 묻는다.
         mvc.perform(post(quickUrl).session(session).with(csrf())).andExpect(header().string("Location",
             "/travel/recommendations/"+parent+"/destinations/"+destination+"/trip-info"));
-        String location=mvc.perform(post(quickUrl).session(session).with(csrf()).param("departAt","08:00").param("arriveBy","20:00").param("homeMinutes","150"))
+        // 출발지를 적으면 09:00 출발·20:00 도착으로 정하고 이동시간은 카카오 길찾기로 찾는다(테스트에서는 5분).
+        // 이동시간은 관광지 가운데까지 찾으므로, 좌표가 없는 시스템 관광지에 이 테스트에서만 좌표를 넣는다.
+        withAttractionCoordinates(destination);
+        when(maps.findOrigin("서울 송파구")).thenReturn(new KakaoMapClient.Origin("서울특별시 송파구","서울",
+            new KakaoMapClient.Location("서울특별시 송파구",127.1,37.5,Instant.now())));
+        String location=mvc.perform(post(quickUrl).session(session).with(csrf()).param("origin","서울 송파구"))
             .andExpect(status().isSeeOther()).andReturn().getResponse().getHeader("Location");
         assertThat(location).startsWith("/travel/recommendations/itineraries/");
         var input=schedules.view(UUID.fromString(location.replace("/travel/recommendations/itineraries/","")),null,hash).input();
         assertThat(input.conditions().startDate()).isEqualTo(start);
         assertThat(input.conditions().durationDays()).isEqualTo(2);
+        assertThat(input.home().departAt()).isEqualTo(LocalTime.of(9,0));
+        assertThat(input.home().arriveBy()).isEqualTo(LocalTime.of(20,0));
+        assertThat(input.home().origin()).isEqualTo("서울특별시 송파구");
         // 다시 눌러도 새로 만들지 않고 같은 초안으로 보낸다.
-        mvc.perform(post(quickUrl).session(session).with(csrf()).param("departAt","08:00").param("arriveBy","20:00").param("homeMinutes","150"))
+        mvc.perform(post(quickUrl).session(session).with(csrf()).param("origin","서울 송파구"))
             .andExpect(header().string("Location",location));
+    }
+    private void withAttractionCoordinates(long destinationId) {
+        var region=placeRepository.findById(destinationId).orElseThrow().getRegion();
+        jdbc.update("UPDATE dbo.places SET latitude=37.7, longitude=128.9 WHERE place_type='ATTRACTION' AND region=?",region);
+        em.flush(); em.clear();
     }
     private String formUrl() { return "/travel/recommendations/"+parent+"/destinations/"+destination+"/schedule"; }
 
@@ -184,6 +197,25 @@ class ItineraryIntegrationTests {
             mvc.perform(get(url).with(auth)).andExpect(status().isOk())
                 .andExpect(content().string(containsString("value=\"서울 송파구\"")))
                 .andExpect(content().string(containsString("내 정보의 '주로 출발하는 곳'을 넣어 두었어요")));
+        // 조건이 모두 있는 추천이면, 출발지를 적어 둔 회원은 여행 정보 화면 없이 그 출발지로 바로 초안을 만든다.
+        withAttractionCoordinates(candidate.placeId());
+        when(maps.findOrigin("서울 송파구")).thenReturn(new KakaoMapClient.Origin("서울특별시 송파구","서울",
+            new KakaoMapClient.Location("서울특별시 송파구",127.1,37.5,Instant.now())));
+        var car=new TravelKeyword(null,"TRANSPORTATION","자동차","{\"value\":\"CAR\"}");
+        LocalDate start=LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(20);
+        UUID full=recommendations.create(new ConfirmedTravelConditions("KEYWORD","","강릉",start,start.plusDays(1),2,null,2,true,false,List.of(car),""),
+            member.getLoginId(),null);
+        recommendations.prepare(full);
+        var fullCandidate=recommendations.view(full,member.getLoginId(),null).candidates().getFirst();
+        jobs.findById(full).orElseThrow().completeRecommendation(mapper.writeValueAsString(List.of(new RankedDestination(1,fullCandidate,"추천"))));
+        em.flush();
+        String direct=mvc.perform(post("/travel/recommendations/"+full+"/destinations/"+fullCandidate.placeId()+"/quick-schedule")
+                .session(new MockHttpSession()).with(auth).with(csrf()))
+            .andExpect(status().isSeeOther()).andReturn().getResponse().getHeader("Location");
+        assertThat(direct).startsWith("/travel/recommendations/itineraries/");
+        var directHome=schedules.view(UUID.fromString(direct.replace("/travel/recommendations/itineraries/","")),member.getLoginId(),null).input().home();
+        assertThat(directHome.origin()).isEqualTo("서울특별시 송파구");
+        assertThat(directHome.departAt()).isEqualTo(LocalTime.of(9,0));
         // 비회원 화면에는 회원 안내가 없다.
         mvc.perform(get("/travel/recommendations/"+parent+"/destinations/"+destination+"/trip-info").session(session))
             .andExpect(content().string(org.hamcrest.Matchers.not(containsString("주로 출발하는 곳"))));
