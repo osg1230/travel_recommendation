@@ -117,6 +117,8 @@ public class ItineraryGenerator {
             if(day==1 && input.home()!=null) builder.homeDeparture();
             // 남은 관광지를 남은 날짜에 고르게 나눈 수가 오늘의 최대치다. 시간이 모자라면 그보다 적게 넣고 다음 날로 넘긴다.
             int target=(remaining.size()+dayCount-day)/(dayCount-day+1);
+            // 하루 방문 수를 정했으면 낮 관광도 그 수를 넘기지 않는다(저녁 관광으로 채운 날의 남은 관광지가 다음 날로 몰리지 않게).
+            if(!fillSpareTime) target=Math.min(target,constraints.dailyVisits());
             PlaceCandidate last=null; int visits=0;
             final int today=day;
             PlaceCandidate dayCenter=day<=centers.size()?centers.get(day-1):null;
@@ -202,14 +204,17 @@ public class ItineraryGenerator {
             // 점심을 아직 넣지 못했으면 마지막 관광지 뒤에 넣는다. 들어가는지는 위에서 확인했다.
             if(!builder.lunch) eat(builder,last,false);
             // 숙소를 고른 이유는 따로 적지 않고, 다른 후보와 체크인 확인 안내는 초안의 첫 숙박 항목에 한 번만 보여 준다.
+            // 하루 방문 수를 정했으면 저녁 관광도 그 수에 센다(예: 하루 5곳 = 낮 4곳 + 저녁 1곳).
+            // 낮 관광으로 이미 정한 수를 채웠으면 저녁 관광은 넣지 않고 숙소에서 쉰다.
+            int eveningVisits=0;
             if(stay!=null) {
                 arriveAndDine(builder,stay,"숙소 도착·휴식");
-                addEvening(builder,stay,days,addresses);
+                if(fillSpareTime || visits<constraints.dailyVisits()) eveningVisits=addEvening(builder,stay,days,addresses)?1:0;
             }
             // 마지막 날 귀가 시각을 정했으면 마지막 장소 → 집 이동을 맨 뒤에 넣는다.
             if(day==dayCount && input.home()!=null) builder.homeReturn();
             // 하루 방문 수가 필수 조건이면 시간 때문에 줄어든 날을 그대로 두지 않고 이유를 알린다.
-            if(constraints!=null && constraints.dailyVisitsRequired() && visits!=constraints.dailyVisits())
+            if(constraints!=null && constraints.dailyVisitsRequired() && visits+eveningVisits!=constraints.dailyVisits())
                 throw failure("TIME_OVERLAP",day+"일차에 관광지 "+constraints.dailyVisits()+"곳을 하루 시간 안에 넣지 못했어요. 하루 시간을 늘리거나 체류시간·하루 방문 수를 줄여 주세요.");
             days.add(new Day(day,builder.date,List.copyOf(builder.items)));
             previous=hotel!=null?hotel:null;
@@ -398,9 +403,9 @@ public class ItineraryGenerator {
      * 한국관광공사 야간관광 실태조사(2022)에서 많이 한 활동이 야간 산책·식도락·도시야경·야시장이라 그런 분류의 후보만 쓴다.
      * 식당에서 가까운 곳부터 세 곳까지 넣어 보고, 오가는 시간이 길거나 운영시간·저녁 한도와 맞지 않으면 넣지 않는다.
      */
-    private void addEvening(DayBuilder builder,PlaceCandidate stay,List<Day> days,Map<String,KakaoMapClient.Location> addresses) {
+    private boolean addEvening(DayBuilder builder,PlaceCandidate stay,List<Day> days,Map<String,KakaoMapClient.Location> addresses) {
         // 숙소 근처 저녁을 먹은 날만 넣는다. 관광 중에 저녁을 먹었거나 저녁이 들어가지 않은 날은 숙소에서 쉬며 마친다.
-        if(builder.items.isEmpty() || !"MEAL".equals(builder.items.getLast().type())) return;
+        if(builder.items.isEmpty() || !"MEAL".equals(builder.items.getLast().type())) return false;
         Set<Long> visited=new HashSet<>();
         days.forEach(d->d.items().forEach(i->{ if("VISIT".equals(i.type())) visited.add(i.placeId()); }));
         builder.items.forEach(i->{ if("VISIT".equals(i.type())) visited.add(i.placeId()); });
@@ -420,13 +425,14 @@ public class ItineraryGenerator {
                 if(builder.travelMinutes(from,place)>EVENING_MAX_MOVE || builder.travelMinutes(place,stay)>EVENING_MAX_MOVE) continue;
                 builder.visit(place,"VISIT",EVENING_MINUTES,eveningNote(place,from));
                 builder.visit(stay,"STAY",RETURN_REST_MINUTES,"저녁 관광 뒤 숙소 복귀·휴식");
-                return;
+                return true;
             } catch(RecommendationException error) {
                 if(!DAY_FULL_CODES.contains(error.getCode()) && !UNREACHABLE_CODES.contains(error.getCode())
                     && !"MAP_SAME_LOCATION".equals(error.getCode())) throw error;
                 builder.reset(mark);
             }
         }
+        return false;
     }
 
     private static String eveningNote(PlaceCandidate place,PlaceCandidate from) {
@@ -649,7 +655,7 @@ public class ItineraryGenerator {
             if(!Objects.equals(date,day.date())) throw invalid();
             LocalTime end=input.dayStart(dayNumber), dayEnd=input.dayEnd(dayNumber);
             Long previous=dayNumber>1?hotelId:null;
-            Long transferDestination=null; boolean transferred=false; int meals=0, visits=0;
+            Long transferDestination=null; boolean transferred=false; int meals=0, visits=0, eveningVisits=0;
             boolean stayDay=input.places().accommodationNeeded() && dayNumber<result.days().size();
             boolean lastDay=dayNumber==result.days().size();
             var items=new ArrayList<>(day.items());
@@ -689,7 +695,7 @@ public class ItineraryGenerator {
                     switch(item.type()) {
                         case "VISIT" -> {
                             // 숙소 도착 뒤의 방문은 저녁 관광이다. 저녁 관광 후보에서만, 정해진 시간만큼 들른다.
-                            if(afterStay) { if(!eveningIds.contains(item.placeId()) || !seen.add(item.placeId()) || minutes!=EVENING_MINUTES) throw invalid(); }
+                            if(afterStay) { if(!eveningIds.contains(item.placeId()) || !seen.add(item.placeId()) || minutes!=EVENING_MINUTES) throw invalid(); eveningVisits++; }
                             else { if(!(expected.contains(item.placeId()) || reserveIds.contains(item.placeId())) || !seen.add(item.placeId()) || minutes!=input.visitMinutes()) throw invalid(); visits++; }
                         }
                         case "MEAL" -> {
@@ -714,8 +720,9 @@ public class ItineraryGenerator {
             }
             // 식사는 하루 점심 1번, 종료 시간이 늦은 날이나 숙박하는 날은 저녁까지 최대 2번이다.
             if(meals<1 || meals>(TripConstraints.includesDinner(dayEnd) || stayDay?2:1) || visits==0 || transferred) throw invalid();
-            // 하루 방문 수가 필수 조건이면 매일 그 수를 지켜야 한다.
-            if(constraints!=null && constraints.dailyVisitsRequired() && visits!=constraints.dailyVisits()) throw invalid();
+            // 하루 방문 수는 저녁 관광까지 센다. 정한 수를 넘으면 안 되고, 필수 조건이면 매일 그 수를 지켜야 한다.
+            if(constraints!=null && constraints.dailyVisits()!=null && visits+eveningVisits>constraints.dailyVisits()) throw invalid();
+            if(constraints!=null && constraints.dailyVisitsRequired() && visits+eveningVisits!=constraints.dailyVisits()) throw invalid();
             // 숙박하는 날은 숙소 도착이 있어야 하고, 그 뒤에는 숙소 근처 저녁과 저녁 관광 한 곳(다녀와 숙소 복귀)만 올 수 있다.
             if(stayDay && (stayAt<0 || !Objects.equals(hotelId,items.get(stayAt).placeId())
                     || !afterStayIsEveningOnly(items,stayAt))) throw invalid();
