@@ -80,6 +80,23 @@ class PreferenceDiscoveryControllerTests {
             .andExpect(model().attribute("preselected", contains("바다", "휴식", "체험·액티비티")));
     }
 
+    @Test void resultOffersDirectRecommendationWithGeneratedSentenceAndWeekend() throws Exception {
+        var session = startingWithSeason();
+        answer(session, 0, "SEASON", "A");
+        var page = mvc.perform(get("/travel/conditions/discover/result").session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("action=\"/travel/conditions/recommend\"")))
+            .andExpect(content().string(containsString("이 문장으로 바로 추천받기")))
+            .andExpect(model().attribute("tripSentence", containsString("1박 2일로 국내 여행을 가고 싶어요. 바다, 체험·액티비티 위주로")))
+            .andReturn();
+        // 추천 요청이 받아들이도록 조건 입력과 같은 입력 토큰을 발급한다.
+        assertThat(page.getResponse().getContentAsString()).contains((String) session.getAttribute("travelInputToken"));
+        var saturday = (java.time.LocalDate) session.getAttribute(PreferenceDiscoveryController.WEEKEND_KEY);
+        assertThat(saturday.getDayOfWeek()).isEqualTo(java.time.DayOfWeek.SATURDAY);
+        // 새로고침해도 같은 날짜를 쓴다.
+        mvc.perform(get("/travel/conditions/discover/result").session(session));
+        assertThat(session.getAttribute(PreferenceDiscoveryController.WEEKEND_KEY)).isEqualTo(saturday);
+    }
+
     @Test void forgedQuestionOptionOrOrderIsRejected() throws Exception {
         var session = startingWithSeason();
         mvc.perform(post("/travel/conditions/discover").session(session).with(csrf())

@@ -4,6 +4,7 @@
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <title>탐색한 여행 취향 | 다녀올게</title>
     <link rel="stylesheet" th:href="@{/css/app.css}">
+    <script defer th:src="@{/js/travel-analysis.js}"></script>
 </head>
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
@@ -23,22 +24,37 @@
         <p>모든 질문을 건너뛰었거나 '상관없음'을 골라서 취향을 정하지 않았어요. 임의로 취향을 만들지 않고 기존 조건 입력으로 진행해요.</p>
     </section>
 
+    <section class="condition-section" th:if="${!result.empty()}">
+        <h2>도출된 취향과 근거</h2>
+        <p class="help">고른 장면에 붙은 취향마다 1점씩 더했어요. 점수가 같으면 바다·자연·휴식·맛집·문화·역사·체험 순서로 앞에 두었어요.</p>
+        <article class="place-row" th:each="p : ${result.preferences}">
+            <h3 th:text="${p.name + ' · ' + p.score + '점'}"></h3>
+            <ul class="help"><li th:each="r : ${p.reasons}" th:text="${'고른 장면: ' + r}"></li></ul>
+        </article>
+    </section>
+
+    <!-- 바로 추천받기: 홈의 문장 입력과 같은 요청(/travel/conditions/recommend)으로 보내 AI가 문장을 분석하고 여행지를 추천한다. -->
+    <form class="condition-section" method="post" th:action="@{/travel/conditions/recommend}" th:if="${existingNames == null}" data-analysis-form>
+        <h2>이 취향으로 바로 추천받기</h2>
+        <p class="help" th:text="${'취향과 날짜로 여행 문장을 만들었어요. 날짜는 오늘부터 1주~한 달 사이 주말 중 하나(' + #temporals.format(tripSaturday, 'M월 d일') + ' 토요일 출발, 1박 2일)를 골랐어요. 지역은 정하지 않아 전국에서 찾아요.'}"></p>
+        <input type="hidden" name="inputMode" value="TEXT">
+        <input type="hidden" name="inputToken" th:value="${inputToken}">
+        <label for="originalText">AI에게 보낼 문장 <span class="help">(날짜·지역·동행 등을 고쳐서 보내도 돼요)</span></label>
+        <textarea id="originalText" name="originalText" rows="4" maxlength="2000" required th:text="${tripSentence}"></textarea>
+        <div class="form-actions"><button type="submit">이 문장으로 바로 추천받기</button></div>
+        <p class="help" role="status" data-analysis-status hidden>문장을 분석하고 여행지를 찾고 있어요. 10초쯤 걸릴 수 있어요.</p>
+    </form>
+
     <form method="post" th:action="@{/travel/conditions/discover/apply}">
-        <section class="condition-section" th:if="${!result.empty()}">
-            <h2>도출된 취향과 근거</h2>
-            <p class="help">고른 장면에 붙은 취향마다 1점씩 더했어요. 점수가 높은 순으로 최대 3개를 미리 골라 두었어요. 점수가 같으면 바다·자연·휴식·맛집·문화·역사·체험 순서로 골랐으니 확인하고 바꿔 주세요.</p>
-            <article class="place-row" th:each="p : ${result.preferences}">
-                <h3 th:text="${p.name + ' · ' + p.score + '점'}"></h3>
-                <ul class="help"><li th:each="r : ${p.reasons}" th:text="${'고른 장면: ' + r}"></li></ul>
-            </article>
-        </section>
+        <h2 th:if="${existingNames == null}">조건을 직접 고르고 싶다면</h2>
+        <p class="help" th:if="${existingNames == null}">아래 취향을 조건 입력의 '여행 취향'에 넣고, 날짜·지역 같은 나머지 조건을 직접 고를 수 있어요. 점수가 높은 3개를 미리 골라 두었어요.</p>
         <fieldset class="condition-section theme-choices">
             <legend>이번 여행의 여행 취향으로 반영할 항목</legend>
             <label th:each="t : ${themes}"><input type="checkbox" name="themes" th:value="${t.selectionValue}" th:checked="${preselected.contains(t.selectionValue)}"><span th:text="${t.name}"></span></label>
         </fieldset>
         <p class="help">확정한 취향은 조건 입력의 '여행 취향'으로 들어가고, 여행지 추천 이유에 어떻게 연결되는지 함께 보여 드려요. 성격을 판단하는 결과는 아니에요.</p>
         <div class="form-actions" th:if="${existingNames == null}">
-            <button type="submit">이 취향으로 조건 입력 계속하기</button>
+            <button type="submit" class="button-quiet">이 취향으로 조건 직접 고르기</button>
         </div>
         <div class="form-actions" th:if="${existingNames != null}">
             <button type="submit" name="resolve" value="replace">탐색 결과로 바꾸기</button>

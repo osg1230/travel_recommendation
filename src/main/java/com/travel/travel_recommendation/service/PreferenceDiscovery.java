@@ -1,6 +1,9 @@
 package com.travel.travel_recommendation.service;
 
+import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.util.*;
+import java.util.random.RandomGenerator;
 
 /**
  * 선택형 여행 취향 탐색(SFR-02-05·06). 여행 장면이나 평소 모습을 고르는 질문과, 선택지에 붙인 태그의 단순 점수 규칙으로
@@ -195,6 +198,34 @@ public final class PreferenceDiscovery {
             summaries.add(new AnswerSummary(summaries.size(), question.prompt(), choice));
         }
         return summaries;
+    }
+
+    /** 바로 추천받을 때 날짜를 정하지 않았으므로, 오늘부터 7~30일 뒤 사이의 토요일 하나를 무작위로 고른다(토·일 1박 2일). */
+    public static LocalDate pickWeekend(LocalDate today, RandomGenerator random) {
+        var saturdays = today.plusDays(7).datesUntil(today.plusDays(31))
+            .filter(day -> day.getDayOfWeek() == DayOfWeek.SATURDAY).toList();
+        return saturdays.get(random.nextInt(saturdays.size()));
+    }
+
+    /**
+     * 탐색 결과와 고른 주말로 AI에게 보낼 여행 문장을 만든다. 점수가 높은 취향 3개와 그 근거 장면 2개까지 넣는다.
+     * 지역은 묻지 않았으므로 넣지 않는다(전국에서 추천). 사용자가 화면에서 고쳐서 보낼 수 있다.
+     */
+    public static String tripSentence(Result result, LocalDate saturday) {
+        var sunday = saturday.plusDays(1);
+        var sentence = new StringBuilder("%d년 %d월 %d일 토요일부터 %d월 %d일 일요일까지 1박 2일로 국내 여행을 가고 싶어요.".formatted(
+            saturday.getYear(), saturday.getMonthValue(), saturday.getDayOfMonth(), sunday.getMonthValue(), sunday.getDayOfMonth()));
+        var top = result.preferences().stream().limit(3).toList();
+        if (!top.isEmpty()) {
+            sentence.append(' ').append(String.join(", ", top.stream().map(Preference::name).toList()))
+                .append(" 위주로 즐길 수 있는 곳이면 좋겠어요.");
+            // 시작 질문(노래·쉬는 날 같은 평소 모습)보다 이어지는 질문의 장면이 실제 여행 활동에 가까우므로 먼저 넣는다.
+            var startScenes = START_IDS.stream().flatMap(id -> question(id).options().stream()).map(Option::scene).toList();
+            var scenes = top.stream().flatMap(p -> p.reasons().stream()).distinct()
+                .sorted(Comparator.comparing(startScenes::contains)).limit(2).map(s -> "'" + s + "'").toList();
+            sentence.append(" 특히 ").append(String.join(", ", scenes)).append(" 같은 여행이 끌려요.");
+        }
+        return sentence.toString();
     }
 
     public static Question question(String id) {

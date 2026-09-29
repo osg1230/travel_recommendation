@@ -6,6 +6,8 @@ import com.travel.travel_recommendation.service.PreferenceDiscovery;
 import com.travel.travel_recommendation.service.TravelConditionOptions;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +33,8 @@ public class PreferenceDiscoveryController {
     public static final String APPLIED_KEY = "preferenceDiscoveryApplied";
     /** 이번 탐색의 첫 질문 ID. 무작위로 한 번 고른 뒤 다시 탐색할 때까지 유지한다. */
     public static final String FIRST_KEY = "preferenceDiscoveryFirst";
+    /** 바로 추천받기에 쓸, 무작위로 고른 토요일. */
+    public static final String WEEKEND_KEY = "preferenceDiscoveryWeekend";
     private static final int PRESELECT = 3;
     private final TravelConditionOptions options;
     private final ObjectMapper mapper;
@@ -98,6 +102,11 @@ public class PreferenceDiscoveryController {
         // 점수가 높은 순으로 최대 3개를 미리 골라 둔다. 사용자가 확인하고 바꿀 수 있다.
         model.addAttribute("preselected", result.preferences().stream().limit(PRESELECT)
             .map(p -> selectionValue(p.tag())).filter(Objects::nonNull).toList());
+        // 바로 추천받기: 취향과 자동으로 고른 주말로 문장을 만들어 두고, 홈의 문장 입력과 같은 추천 요청으로 보낸다.
+        var saturday = weekend(session);
+        model.addAttribute("tripSaturday", saturday);
+        model.addAttribute("tripSentence", PreferenceDiscovery.tripSentence(result, saturday));
+        model.addAttribute("inputToken", TravelConditionController.issueInputToken(session));
         return "travel/discover-result";
     }
 
@@ -162,6 +171,7 @@ public class PreferenceDiscoveryController {
     String reset(HttpSession session) {
         session.removeAttribute(ANSWERS_KEY);
         session.removeAttribute(FIRST_KEY);
+        session.removeAttribute(WEEKEND_KEY);
         return "redirect:/travel/conditions/discover";
     }
 
@@ -197,6 +207,18 @@ public class PreferenceDiscoveryController {
         String id = starts.get(ThreadLocalRandom.current().nextInt(starts.size()));
         session.setAttribute(FIRST_KEY, id);
         return id;
+    }
+
+    /**
+     * 바로 추천받기에 쓸 토요일. 한 번 고르면 새로고침해도 같은 날짜를 보여 준다.
+     * 날짜가 지나 7일 범위를 벗어났으면(오래 열어 둔 세션) 새로 고른다.
+     */
+    private static LocalDate weekend(HttpSession session) {
+        var today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+        if (session.getAttribute(WEEKEND_KEY) instanceof LocalDate saved && !saved.isBefore(today.plusDays(7))) return saved;
+        var saturday = PreferenceDiscovery.pickWeekend(today, ThreadLocalRandom.current());
+        session.setAttribute(WEEKEND_KEY, saturday);
+        return saturday;
     }
 
     /** 지금까지의 답으로 다음에 물어볼 질문. 다 물었으면 null이다. */

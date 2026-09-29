@@ -72,6 +72,35 @@ class PreferenceDiscoveryTests {
         assertThatThrownBy(() -> PreferenceDiscovery.evaluate(answers("SEASON", "B", "SUMMER_DAY", "A"))).isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test void pickedWeekendIsASaturdayOneWeekToOneMonthAhead() {
+        var today = java.time.LocalDate.of(2026, 9, 29); // 화요일
+        var seen = new HashSet<java.time.LocalDate>();
+        var random = new java.util.Random(1);
+        for (int i = 0; i < 200; i++) {
+            var saturday = PreferenceDiscovery.pickWeekend(today, random);
+            assertThat(saturday.getDayOfWeek()).isEqualTo(java.time.DayOfWeek.SATURDAY);
+            assertThat(saturday).isBetween(today.plusDays(7), today.plusDays(30));
+            seen.add(saturday);
+        }
+        // 10월 10·17·24일 중에서 고른다(10월 3일은 7일 안이라 제외).
+        assertThat(seen).containsExactlyInAnyOrder(java.time.LocalDate.of(2026, 10, 10),
+            java.time.LocalDate.of(2026, 10, 17), java.time.LocalDate.of(2026, 10, 24));
+    }
+
+    @Test void tripSentenceHasDatesTopPreferencesAndScenes() {
+        var saturday = java.time.LocalDate.of(2026, 10, 31);
+        var result = PreferenceDiscovery.evaluate(answers("SEASON", "A", "SUMMER_DAY", "A", "SEA_TIME", "B"));
+        assertThat(PreferenceDiscovery.tripSentence(result, saturday)).isEqualTo(
+            "2026년 10월 31일 토요일부터 11월 1일 일요일까지 1박 2일로 국내 여행을 가고 싶어요. 바다, 체험·액티비티, 휴식 위주로 즐길 수 있는 곳이면 좋겠어요."
+            + " 특히 '해수욕장에서 물놀이나 서핑하기', '바다가 보이는 카페에서 느긋하게 쉬기' 같은 여행이 끌려요.");
+        // 이어지는 질문의 장면이 없으면 시작 질문 장면을 쓴다.
+        assertThat(PreferenceDiscovery.tripSentence(PreferenceDiscovery.evaluate(answers("SEASON", "A")), saturday))
+            .endsWith("특히 '여름, 시원한 물가에서 신나게 놀기' 같은 여행이 끌려요.");
+        // 취향이 없으면 날짜만 넣고 취향을 지어내지 않는다.
+        assertThat(PreferenceDiscovery.tripSentence(PreferenceDiscovery.evaluate(answers("SEASON", "SKIP")), saturday))
+            .isEqualTo("2026년 10월 31일 토요일부터 11월 1일 일요일까지 1박 2일로 국내 여행을 가고 싶어요.");
+    }
+
     @Test void everyQuestionIsWellFormed() {
         var ids = PreferenceDiscovery.QUESTIONS.stream().map(PreferenceDiscovery.Question::id).toList();
         assertThat(ids).doesNotHaveDuplicates().containsAll(PreferenceDiscovery.START_IDS);
