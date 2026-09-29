@@ -245,9 +245,10 @@ public class SavedItineraryService {
         var accommodations=withSavedPlaces(pool.accommodations(),savedItems,"STAY");
         var candidates=new PlaceCandidateView(parentId,pool.destination(),pool.durationDays(),pool.accommodationNeeded(),
             List.copyOf(attractions),accommodations,restaurants);
+        // 필수 방문 장소·하루 방문 수 같은 사용자가 정한 조건도 되살려, 다시 만든 초안의 수정안과 조건표가 같은 기준을 쓰게 한다.
         var input=new Input(parentId,candidates,conditions,LocalTime.parse(schedule.path("dayStart").asText()),
             LocalTime.parse(schedule.path("dayEnd").asText()),KakaoMapClient.Transport.valueOf(schedule.path("transport").asText()),
-            schedule.path("visitMinutes").asInt(90))
+            schedule.path("visitMinutes").asInt(90),null,savedConstraints(snapshot.path("constraints")))
             .withEvening(pool.accommodationNeeded()?TripConstraints.eveningPlaces(TripConstraints.nearCenterFirst(pool.attractions()),
                 attractions.stream().map(PlaceCandidate::placeId).toList(),conditions.durationDays()==null?0:conditions.durationDays()+1):List.of())
             .withHome(savedHome(snapshot.path("home")));
@@ -270,6 +271,10 @@ public class SavedItineraryService {
             places.findById(item.getPlaceId()).ifPresent(place->result.add(placeCandidates.candidate(place)));
         }
         return List.copyOf(result);
+    }
+    /** 저장할 때 남긴 사용자 조건(필수 방문 장소·하루 방문 수·예산 기준 등). 조건 없이 만들었거나 예전에 저장한 일정에는 없다. */
+    private Constraints savedConstraints(tools.jackson.databind.JsonNode constraints) {
+        return constraints.isObject()?mapper.treeToValue(constraints,Constraints.class):null;
     }
     /** 저장할 때 남긴 집 출발·귀가 설정. 출발지는 시·구 이름만 있고 좌표는 없다. 예전에 저장한 일정에는 없다. */
     private static HomeTrip savedHome(tools.jackson.databind.JsonNode home) {
@@ -358,6 +363,8 @@ public class SavedItineraryService {
             "arriveBy",home.arriveBy().toString(),"minutes",home.minutes(),"basis",home.basis(),
             "returnPlace",home.returnPlace(),"returnMinutes",home.returnMinutes(),"returnBasis",home.returnBasis()));
         snapshot.put("conditions",input.conditions());
+        // 사용자가 정한 조건은 원래 초안이 없어져도 수정할 때 이어서 쓰도록 남긴다.
+        if(input.constraints()!=null) snapshot.put("constraints",input.constraints());
         snapshot.put("conditionChecks",report.checks().stream()
             .map(c->Map.of("name",c.name(),"status",c.status().name(),"detail",c.detail()==null?"":c.detail())).toList());
         if(result.prices()!=null) snapshot.put("prices",result.prices());

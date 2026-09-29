@@ -88,21 +88,35 @@ public final class ItineraryConditionReport {
     }
 
     // 하루 방문 수를 정하지 않았으면 비어 있는 날만 미충족으로 본다. 정했으면 필수는 미충족, 선호는 확인 필요로 구분한다.
+    // 숙소 도착 뒤의 저녁 관광도 하루 방문 수에 센다(일정 생성·검증과 같은 기준, 예: 하루 5곳 = 낮 4곳 + 저녁 1곳).
     private static Check dailyVisits(Input input, Result result) {
         var counts = new ArrayList<String>();
+        var totals = new ArrayList<Long>();
         for (var day : result.days()) {
             long visits = day.items().stream().filter(i -> "VISIT".equals(i.type())).count();
             if (visits == 0) return new Check("하루 방문 수", Status.UNMET, day.number() + "일차에 관광지가 없어요.");
-            counts.add(day.number() + "일차 " + visits + "곳");
+            long evening = eveningVisits(day);
+            counts.add(day.number() + "일차 " + visits + "곳" + (evening > 0 ? "(저녁 관광 " + evening + "곳 포함)" : ""));
+            totals.add(visits);
         }
         var c = input.constraints();
         if (c == null || c.dailyVisits() == null)
             return new Check("하루 방문 수", Status.MET, String.join(" · ", counts) + " (따로 정하지 않아 이동시간에 맞춰 나눴어요)");
         int want = c.dailyVisits();
-        boolean every = result.days().stream().allMatch(d -> d.items().stream().filter(i -> "VISIT".equals(i.type())).count() == want);
+        boolean every = totals.stream().allMatch(n -> n == want);
         if (every) return new Check("하루 방문 수", Status.MET, "하루 " + want + "곳 (" + (c.dailyVisitsRequired() ? "필수" : "선호") + ") · " + String.join(" · ", counts));
         if (c.dailyVisitsRequired()) return new Check("하루 방문 수", Status.UNMET, "필수 조건 하루 " + want + "곳과 달라요 · " + String.join(" · ", counts));
         return new Check("하루 방문 수", Status.NEEDS_CHECK, "선호 조건 하루 " + want + "곳은 시간·후보에 맞춰 가능한 만큼만 반영했어요 · " + String.join(" · ", counts));
+    }
+
+    // 그날 첫 숙소 도착(STAY) 뒤에 있는 방문은 저녁 관광이다.
+    private static long eveningVisits(Day day) {
+        boolean afterStay = false; long count = 0;
+        for (var item : day.items()) {
+            if ("STAY".equals(item.type())) afterStay = true;
+            else if (afterStay && "VISIT".equals(item.type())) count++;
+        }
+        return count;
     }
 
     // 고른 여행 취향마다 맞는 관광지가 일정에 들어갔는지 본다. 취향은 선호 조건이라 없으면 미충족이 아니라 확인 필요로 둔다.

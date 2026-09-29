@@ -1,0 +1,25 @@
+# PR과 push마다 Java 21과 Maven Wrapper로 기본 검증(clean verify)을 실행한다.
+# SQL Server·OpenAI·카카오 등 실제 DB·외부 API 테스트는 환경변수가 없으면 건너뛰므로 비밀정보 없이 돌아간다.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: '21'
+          cache: maven
+      - name: Maven verify
+        run: sh ./mvnw -B clean verify

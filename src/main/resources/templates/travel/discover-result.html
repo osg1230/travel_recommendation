@@ -36,7 +36,7 @@
     <!-- 바로 추천받기: 홈의 문장 입력과 같은 요청(/travel/conditions/recommend)으로 보내 AI가 문장을 분석하고 여행지를 추천한다. -->
     <form class="condition-section" method="post" th:action="@{/travel/conditions/recommend}" th:if="${existingNames == null}" data-analysis-form>
         <h2>이 취향으로 바로 추천받기</h2>
-        <p class="help" th:text="${'취향과 날짜로 여행 문장을 만들었어요. 날짜는 오늘부터 1주~한 달 사이 주말 중 하나(' + #temporals.format(tripSaturday, 'M월 d일') + ' 토요일 출발, 1박 2일)를 골랐어요. 지역은 정하지 않아 전국에서 찾아요.'}"></p>
+        <p class="help" th:text="${'취향과 날짜로 여행 문장을 만들었어요. 날짜는 ' + (tripSeason == null ? '오늘부터 1주~한 달 사이 주말' : tripSeason + '에 즐기는 여행을 골라 ' + tripSeason + ' 성수기 주말') + ' 중 하나(' + #temporals.format(tripSaturday, 'yyyy년 M월 d일') + ' 토요일 출발, 1박 2일)를 골랐어요. 지역은 정하지 않아 전국에서 찾아요.'}"></p>
         <input type="hidden" name="inputMode" value="TEXT">
         <input type="hidden" name="inputToken" th:value="${inputToken}">
         <label for="originalText">AI에게 보낼 문장 <span class="help">(날짜·지역·동행 등을 고쳐서 보내도 돼요)</span></label>

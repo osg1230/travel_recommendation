@@ -2,6 +2,7 @@ package com.travel.travel_recommendation.service;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.MonthDay;
 import java.util.*;
 import java.util.random.RandomGenerator;
 
@@ -202,9 +203,70 @@ public final class PreferenceDiscovery {
 
     /** 바로 추천받을 때 날짜를 정하지 않았으므로, 오늘부터 7~30일 뒤 사이의 토요일 하나를 무작위로 고른다(토·일 1박 2일). */
     public static LocalDate pickWeekend(LocalDate today, RandomGenerator random) {
-        var saturdays = today.plusDays(7).datesUntil(today.plusDays(31))
-            .filter(day -> day.getDayOfWeek() == DayOfWeek.SATURDAY).toList();
+        var saturdays = saturdays(today.plusDays(7), today.plusDays(30));
         return saturdays.get(random.nextInt(saturdays.size()));
+    }
+
+    /**
+     * 한 계절에만 즐길 수 있는 장면(스키·해수욕 등)이 여행 문장에 들어가면, 가까운 주말 대신 그 계절 성수기의 주말로 날짜를 잡는다.
+     * 성수기 기간은 흔히 말하는 여름 휴가철(7월 말~8월 중순)과 스키 시즌 절정(12월 말~2월 초)을 기준으로 정했다.
+     */
+    public enum Season {
+        SUMMER("여름", MonthDay.of(7, 20), MonthDay.of(8, 20)),
+        WINTER("겨울", MonthDay.of(12, 20), MonthDay.of(2, 10));
+        private final String label; private final MonthDay from, to;
+        Season(String label, MonthDay from, MonthDay to) { this.label = label; this.from = from; this.to = to; }
+        public String getLabel() { return label; }
+        /** year에 시작하는 성수기의 마지막 날. 겨울은 해를 넘겨 끝난다. */
+        private LocalDate end(int year) { return to.atYear(to.isBefore(from) ? year + 1 : year); }
+        public boolean contains(LocalDate day) {
+            return !day.isBefore(from.atYear(day.getYear() - 1)) && !day.isAfter(end(day.getYear() - 1))
+                || !day.isBefore(from.atYear(day.getYear())) && !day.isAfter(end(day.getYear()));
+        }
+    }
+    /** 그 계절에만 할 수 있는 장면. 여름·겨울을 고른 시작 질문의 장면도 계절이 정해져 있어 함께 둔다. */
+    private static final Map<String, Season> SEASONAL_SCENES = Map.of(
+        "여름, 시원한 물가에서 신나게 놀기", Season.SUMMER,
+        "해수욕장에서 물놀이나 서핑하기", Season.SUMMER,
+        "계곡 그늘에 발 담그고 쉬기", Season.SUMMER,
+        "겨울, 찬 공기 속에서 따뜻하게 쉬기", Season.WINTER,
+        "스키장이나 눈썰매장에서 신나게 놀기", Season.WINTER,
+        "눈 쌓인 산사와 설경 명소를 천천히 걷기", Season.WINTER);
+
+    /** 여행 문장에 들어갈 장면 중 먼저 나오는 계절 장면의 계절. 계절 장면이 없으면 null이다. */
+    public static Season season(Result result) {
+        return sentenceScenes(result).stream().map(SEASONAL_SCENES::get).filter(Objects::nonNull).findFirst().orElse(null);
+    }
+
+    /** 계절이 있으면 7일 뒤부터 가장 가까운 그 계절 성수기의 토요일 하나를, 없으면 7~30일 뒤 토요일 하나를 고른다. */
+    public static LocalDate pickWeekend(LocalDate today, Season season, RandomGenerator random) {
+        if (season == null) return pickWeekend(today, random);
+        var earliest = today.plusDays(7);
+        // 지난해에 시작해 아직 진행 중인 겨울 성수기부터 본다. 남은 토요일이 없으면 다음 성수기로 넘어간다.
+        for (int year = earliest.getYear() - 1; ; year++) {
+            var start = season.from.atYear(year);
+            var saturdays = saturdays(start.isBefore(earliest) ? earliest : start, season.end(year));
+            if (!saturdays.isEmpty()) return saturdays.get(random.nextInt(saturdays.size()));
+        }
+    }
+
+    /** 세션에 둔 날짜를 계속 써도 되는지. 계절이 있으면 그 성수기 안, 없으면 7~30일 뒤여야 한다. */
+    public static boolean weekendFits(LocalDate saturday, LocalDate today, Season season) {
+        if (saturday.isBefore(today.plusDays(7))) return false;
+        return season == null ? !saturday.isAfter(today.plusDays(30)) : season.contains(saturday);
+    }
+
+    private static List<LocalDate> saturdays(LocalDate from, LocalDate to) {
+        if (to.isBefore(from)) return List.of();
+        return from.datesUntil(to.plusDays(1)).filter(day -> day.getDayOfWeek() == DayOfWeek.SATURDAY).toList();
+    }
+
+    /** 여행 문장에 넣을 장면: 점수가 높은 취향 3개의 근거 장면 중 2개까지. */
+    private static List<String> sentenceScenes(Result result) {
+        // 시작 질문(노래·쉬는 날 같은 평소 모습)보다 이어지는 질문의 장면이 실제 여행 활동에 가까우므로 먼저 넣는다.
+        var startScenes = START_IDS.stream().flatMap(id -> question(id).options().stream()).map(Option::scene).toList();
+        return result.preferences().stream().limit(3).flatMap(p -> p.reasons().stream()).distinct()
+            .sorted(Comparator.comparing(startScenes::contains)).limit(2).toList();
     }
 
     /**
@@ -219,10 +281,7 @@ public final class PreferenceDiscovery {
         if (!top.isEmpty()) {
             sentence.append(' ').append(String.join(", ", top.stream().map(Preference::name).toList()))
                 .append(" 위주로 즐길 수 있는 곳이면 좋겠어요.");
-            // 시작 질문(노래·쉬는 날 같은 평소 모습)보다 이어지는 질문의 장면이 실제 여행 활동에 가까우므로 먼저 넣는다.
-            var startScenes = START_IDS.stream().flatMap(id -> question(id).options().stream()).map(Option::scene).toList();
-            var scenes = top.stream().flatMap(p -> p.reasons().stream()).distinct()
-                .sorted(Comparator.comparing(startScenes::contains)).limit(2).map(s -> "'" + s + "'").toList();
+            var scenes = sentenceScenes(result).stream().map(s -> "'" + s + "'").toList();
             sentence.append(" 특히 ").append(String.join(", ", scenes)).append(" 같은 여행이 끌려요.");
         }
         return sentence.toString();

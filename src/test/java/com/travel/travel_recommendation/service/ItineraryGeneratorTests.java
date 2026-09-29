@@ -147,6 +147,36 @@ class ItineraryGeneratorTests {
         var forged=new Result(result.destination(),days,result.transport(),result.createdAt()).withLodging(result.lodging());
         assertThatThrownBy(()->generator.validate(input,forged)).isInstanceOf(RecommendationException.class);
     }
+    // 하루 방문 수는 저녁 관광까지 센다. 하루 1곳(필수)을 낮 관광으로 채운 날은 저녁 관광을 넣지 않아 조건표도 충족이다.
+    @Test void requiredDailyVisitsFilledByDayLeavesNoEveningSpot() {
+        var base=input(2,LocalTime.of(18,0));
+        var tower=new PlaceCandidate(8L,"전망대8","강원 강릉시 경포로 8","여행 > 관광,명소 > 전망대","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var input=new Input(base.recommendationId(),base.places(),base.conditions(),base.start(),base.end(),base.transport(),90,null,
+            new Constraints(List.of(),1,true,null,List.of()),List.of()).withEvening(List.of(tower));
+        var result=generator.generate(input);
+        assertThat(result.days()).allSatisfy(d->assertThat(d.items().stream().filter(i->i.type().equals("VISIT"))).hasSize(1));
+        assertThat(result.days().getFirst().items()).noneMatch(i->Long.valueOf(8L).equals(i.placeId()));
+        generator.validate(input,result);
+        var report=ItineraryConditionReport.evaluate(input,result);
+        assertThat(report.complete()).isTrue();
+        assertThat(report.checks()).anySatisfy(c->{ assertThat(c.name()).isEqualTo("하루 방문 수"); assertThat(c.status()).isEqualTo(ItineraryConditionReport.Status.MET); });
+    }
+    // 낮 관광이 정한 수보다 적은 숙박일은 저녁 관광 한 곳으로 채우고, 조건표도 저녁 관광을 포함해 센다.
+    @Test void eveningSpotCountsTowardDailyVisits() {
+        var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,null,2,true,false,List.of(),"");
+        var pool=new PlaceCandidateView(UUID.randomUUID(),new DestinationCandidate(99L,"강릉","강원","소개","https://www.gn.go.kr/",LocalDateTime.of(2026,9,1,0,0)),2,true,
+            List.of(place(1),place(2),place(5),place(6)),List.of(place(4)),List.of(place(3),place(7)));
+        var tower=new PlaceCandidate(8L,"전망대8","강원 강릉시 경포로 8","여행 > 관광,명소 > 전망대","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var input=new Input(pool.jobId(),pool,conditions,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90,null,
+            new Constraints(List.of(),3,false,null,List.of()),List.of()).withEvening(List.of(tower));
+        var result=generator.generate(input);
+        var first=result.days().getFirst().items();
+        assertThat(first.stream().filter(i->i.type().equals("VISIT"))).hasSize(3);
+        assertThat(first).anyMatch(i->Long.valueOf(8L).equals(i.placeId()));
+        generator.validate(input,result);
+        var report=ItineraryConditionReport.evaluate(input,result);
+        assertThat(report.checks()).anySatisfy(c->{ assertThat(c.name()).isEqualTo("하루 방문 수"); assertThat(c.detail()).contains("1일차 3곳(저녁 관광 1곳 포함)"); });
+    }
     // 하루 시간이 길고 체류가 짧아도 예비 관광지로 채우는 것은 하루 4곳까지다.
     @Test void spareFillStopsAtFourVisitsADay() {
         var base=input(1,LocalTime.of(21,0));

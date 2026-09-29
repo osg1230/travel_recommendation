@@ -46,20 +46,24 @@ public class HomeTripService {
 
         // 가는 길: 출발지(적은 이름 또는 현재 위치) → 여행지
         Leg out;
+        KakaoMapClient.Origin origin = null;
         if (!request.located() && !request.typed()) {
             if (request.minutes() == null) throw failure("HOME_ORIGIN", "출발지(집)를 적거나 '내 위치로 찾기'를 눌러 주세요.");
             out = new Leg("집", request.minutes(), "직접 입력한 편도 시간", null);
         } else {
-            var origin = request.located() ? maps.originAt(request.longitude(), request.latitude()) : maps.findOrigin(request.origin());
+            origin = request.located() ? maps.originAt(request.longitude(), request.latitude()) : maps.findOrigin(request.origin());
             out = leg(origin, request.minutes(), target, destination, transport, true);
         }
 
         // 오는 길: 돌아갈 곳을 따로 적었으면 그곳까지 따로 찾고, 아니면 출발지로 돌아온다(편도 시간만 따로 적었으면 그 값).
+        // 같은 곳으로 돌아와도 가는 길과 오는 길의 소요시간이 다를 수 있어, 가는 길을 자동으로 찾았으면 여행지 → 출발지 방향도 따로 찾는다.
         Leg back;
         if (request.separateReturn()) {
             back = leg(maps.findOrigin(request.returnPlace()), request.returnMinutes(), target, destination, transport, false);
         } else if (request.returnMinutes() != null) {
             back = new Leg(out.place(), request.returnMinutes(), "직접 입력한 편도 시간", null);
+        } else if (origin != null && request.minutes() == null) {
+            back = leg(origin, null, target, destination, transport, false);
         } else {
             back = out;
         }
