@@ -28,7 +28,7 @@ public class ProfileController {
 
     @InitBinder("profileForm")
     void bindProfile(WebDataBinder binder) {
-        binder.setAllowedFields("nickname", "currentPassword", "newPassword", "newPasswordConfirm");
+        binder.setAllowedFields("nickname", "homeArea", "currentPassword", "newPassword", "newPasswordConfirm");
     }
 
     @GetMapping("/account")
@@ -37,6 +37,7 @@ public class ProfileController {
         ProfileForm form = new ProfileForm();
         try {
             form.setNickname(profiles.getNickname(authentication.getName()));
+            form.setHomeArea(profiles.getHomeArea(authentication.getName()));
         } catch (DataAccessException ex) {
             response.setStatus(503);
             return "account-unavailable";

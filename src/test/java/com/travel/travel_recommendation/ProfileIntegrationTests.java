@@ -86,6 +86,24 @@ class ProfileIntegrationTests {
         em.clear(); assertThat(users.findById(owner.getId()).orElseThrow().getPasswordHash()).isEqualTo(hash);
     }
 
+    // '주로 출발하는 곳'만 바꿔도 저장되고, 비우고 저장하면 지운다. 같은 값이면 변경 없음이다.
+    @Test
+    void homeAreaCanBeSetClearedAndIsShownOnTheForm() throws Exception {
+        var owner=member();
+        mvc.perform(update(owner, owner.getNickname()).param("homeArea", "  서울 송파구 "))
+                .andExpect(redirectedUrl("/account"));
+        em.clear(); assertThat(users.findById(owner.getId()).orElseThrow().getHomeArea()).isEqualTo("서울 송파구");
+        mvc.perform(get("/account").with(user(owner.getLoginId())))
+                .andExpect(content().string(containsString("value=\"서울 송파구\"")));
+        mvc.perform(update(owner, owner.getNickname()).param("homeArea", "서울 송파구"))
+                .andExpect(content().string(containsString("변경할 내용이 없습니다.")));
+        mvc.perform(update(owner, owner.getNickname()).param("homeArea", ""))
+                .andExpect(redirectedUrl("/account"));
+        em.clear(); assertThat(users.findById(owner.getId()).orElseThrow().getHomeArea()).isNull();
+        mvc.perform(update(owner, owner.getNickname()).param("homeArea", "가".repeat(61)))
+                .andExpect(model().attributeHasFieldErrors("profileForm", "homeArea"));
+    }
+
     @Test
     void ownNicknameCaseChangeUsesDatabaseDuplicateRulesAndNoChangeIsReported() throws Exception {
         var owner=member();

@@ -62,6 +62,8 @@ class WithdrawalIntegrationTests {
         clear();
         assertThat(count("favorites")+count("place_ratings")+count("recommendation_requests")+count("ai_jobs")).isEqualTo(4);
         String nickname=member.getNickname();
+        users.findById(member.getId()).orElseThrow().changeHomeArea("서울 송파구");
+        clear();
 
         withdrawals.withdraw(member.getLoginId(),PASSWORD,true);
         clear();
@@ -69,6 +71,7 @@ class WithdrawalIntegrationTests {
         assertThat(after.getStatus()).isEqualTo(UserStatus.WITHDRAWN);
         assertThat(after.getWithdrawnAt()).isNotNull();
         assertThat(after.getNickname()).isEqualTo(WithdrawalService.ANONYMOUS_NICKNAME);
+        assertThat(after.getHomeArea()).isNull();
         assertThat(encoder.matches(PASSWORD,after.getPasswordHash())).isFalse();
         assertThat(count("favorites")+count("place_ratings")+count("recommendation_requests")+count("ai_jobs")+count("itineraries")).isZero();
         // 탈퇴 회원이 쓰던 닉네임은 다른 회원이 쓸 수 있고, 익명 닉네임은 여러 탈퇴 회원이 함께 쓴다.

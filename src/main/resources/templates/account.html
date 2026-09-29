@@ -12,7 +12,7 @@
     <nav th:replace="~{fragments/layout :: myNav('account')}"></nav>
     <a class="back-link" th:href="@{/}">← 처음으로</a>
     <h1>내 정보</h1>
-    <p class="intro">닉네임과 비밀번호를 변경할 수 있습니다.</p>
+    <p class="intro">닉네임, 주로 출발하는 곳, 비밀번호를 변경할 수 있습니다.</p>
     <p role="status" class="status-ok" th:if="${profileUpdated}">회원 정보를 저장했습니다.</p>
     <p>아이디 <strong th:text="${loginId}"></strong></p>
     <form th:action="@{/account}" th:object="${profileForm}" method="post">
@@ -27,6 +27,14 @@
                    th:attr="aria-invalid=${#fields.hasErrors('nickname')}">
             <p class="help" id="nickname-help">서비스에서 사용할 이름, 2~50자</p>
             <p class="field-error" id="nickname-error" th:errors="*{nickname}"></p>
+        </div>
+        <div class="field">
+            <label for="homeArea">주로 출발하는 곳 (선택)</label>
+            <input id="homeArea" th:field="*{homeArea}" type="text" maxlength="60" autocomplete="off"
+                   placeholder="예) 서울 송파구, 대전역" aria-describedby="homeArea-help homeArea-error"
+                   th:attr="aria-invalid=${#fields.hasErrors('homeArea')}">
+            <p class="help" id="homeArea-help">일정을 만들 때 출발지 칸에 미리 넣어 드려요. 여행지까지 이동시간을 찾는 데만 쓰고, 일정마다 바꿀 수 있어요. 비우고 저장하면 지워져요.</p>
+            <p class="field-error" id="homeArea-error" th:errors="*{homeArea}"></p>
         </div>
         <div class="field">
             <label for="currentPassword">현재 비밀번호 (필수)</label>

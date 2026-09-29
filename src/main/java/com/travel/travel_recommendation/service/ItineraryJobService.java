@@ -176,7 +176,7 @@ public class ItineraryJobService {
             // 집에서 오가는 시간 때문에 첫날·마지막 날 시간이 모자라면 입력 화면에서 이유와 고칠 방법을 보여 준다.
             if(!error.getCode().startsWith("HOME_")) throw error;
             throw new TripConstraints.ConflictException(List.of(new TripConstraints.Conflict(error.getMessage(),
-                List.of("집 출발 시각 앞당기기","귀가 시각 늦추기","하루 시간 늘리기"))));
+                List.of("하루 시작·종료 시간 늘리기","출발지를 비워 집 이동 없이 여행지 도착부터 일정 짜기"))));
         }
         var parent=access.owned(parentId,login,hash,"RECOMMENDATION");
         return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();

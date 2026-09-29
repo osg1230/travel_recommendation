@@ -23,7 +23,7 @@ public class SignupController {
 
     @InitBinder("signupForm")
     void bindSignupFields(WebDataBinder binder) {
-        binder.setAllowedFields("loginId", "password", "passwordConfirm", "nickname");
+        binder.setAllowedFields("loginId", "password", "passwordConfirm", "nickname", "homeArea");
     }
 
     @GetMapping("/signup")

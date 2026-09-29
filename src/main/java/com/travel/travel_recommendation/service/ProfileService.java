@@ -30,6 +30,14 @@ public class ProfileService {
         return user.getNickname();
     }
 
+    /** 내 정보·일정 입력 화면에 채울 '주로 출발하는 곳'. 정하지 않았거나 이용할 수 없는 계정이면 null이다. */
+    @Transactional(readOnly = true)
+    public String getHomeArea(String authenticatedLoginId) {
+        return users.findByLoginId(authenticatedLoginId)
+                .filter(user -> user.getStatus() == UserStatus.ACTIVE)
+                .map(User::getHomeArea).orElse(null);
+    }
+
     @Transactional
     public boolean update(String authenticatedLoginId, @NotNull @Valid ProfileForm form) {
         // 로그인 세션의 아이디만 사용한다. 요청 파라미터로 수정 대상을 받지 않는다.
@@ -45,11 +53,14 @@ public class ProfileService {
         boolean nicknameChanged = !user.getNickname().equals(form.getNickname());
         boolean passwordChanged = !form.getNewPassword().isEmpty()
                 && !encoder.matches(form.getNewPassword(), user.getPasswordHash());
-        if (!nicknameChanged && !passwordChanged) {
+        String homeArea = form.getHomeArea().isEmpty() ? null : form.getHomeArea();
+        boolean homeAreaChanged = !java.util.Objects.equals(user.getHomeArea(), homeArea);
+        if (!nicknameChanged && !passwordChanged && !homeAreaChanged) {
             throw new ProfileUpdateException(null, "변경할 내용이 없습니다.");
         }
         // 모든 검증을 마친 뒤 함께 저장한다. 실패하면 트랜잭션이 전체 변경을 취소한다.
         if (nicknameChanged) user.changeNickname(form.getNickname());
+        if (homeAreaChanged) user.changeHomeArea(homeArea);
         if (passwordChanged) user.changePasswordHash(encoder.encode(form.getNewPassword()));
         users.flush();
         return passwordChanged;

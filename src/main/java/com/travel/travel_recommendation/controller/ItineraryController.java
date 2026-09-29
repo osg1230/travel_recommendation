@@ -30,6 +30,7 @@ public class ItineraryController {
     private final ObjectProvider<PlaceDiscoveryService> discoveries;
     private final ObjectProvider<PlacePhotoService> photos;
     private final ObjectProvider<HomeTripService> homeTrips;
+    private final ObjectProvider<ProfileService> profiles;
     private final tools.jackson.databind.ObjectMapper mapper;
     private record Submission(UUID parent,long destination,String login,String token,UUID job) {}
     private static final String SESSION_KEY="itinerarySubmission";
@@ -41,11 +42,21 @@ public class ItineraryController {
                                   List<String> budgetIncludes,String stayTier,List<TripConstraints.Conflict> conflicts,
                                   Integer durationDays,Boolean accommodationNeeded,LocalDate startDate,List<Long> centers,HomeValues home) {}
     /**
-     * 집 출발·귀가 입력값. 다시 보여 줄 때 쓰며 '내 위치로 찾기' 좌표는 담지 않는다(위치를 세션에 두지 않는다).
-     * 처음 화면에는 08:00 출발·20:00 귀가를 채워 두고 사용자가 고치게 한다.
+     * 집 출발·귀가 입력값(출발지·돌아갈 곳). 다시 보여 줄 때 쓰며 '내 위치로 찾기' 좌표는 담지 않는다(위치를 세션에 두지 않는다).
+     * 출발·귀가 시각과 편도 이동시간은 입력받지 않는다(2026-09-29 결정). 시각은 아래 고정값, 이동시간은 카카오 길찾기로 찾는다.
      */
-    public record HomeValues(String origin,LocalTime departAt,LocalTime arriveBy,Integer minutes,String returnPlace,Integer returnMinutes) {
-        static final HomeValues DEFAULT=new HomeValues(null,LocalTime.of(8,0),LocalTime.of(20,0),null,null,null);
+    public record HomeValues(String origin,String returnPlace) {
+        static final HomeValues DEFAULT=new HomeValues(null,null);
+        /** 처음 화면 값. 회원이 내 정보에 적은 '주로 출발하는 곳'이 있으면 출발지 칸에 미리 넣는다(화면에서 고칠 수 있다). */
+        static HomeValues startingFrom(String homeArea) {
+            return homeArea==null?DEFAULT:new HomeValues(homeArea,null);
+        }
+    }
+    /** 첫날 집에서 떠나는 시각과 마지막 날 집에 도착할 시각. 화면에서 받지 않고 이 값으로 정한다. */
+    static final LocalTime HOME_DEPART_AT=LocalTime.of(9,0), HOME_ARRIVE_BY=LocalTime.of(20,0);
+    /** 출발지·돌아갈 곳으로 집 출발·귀가 요청을 만든다. 출발지를 비우면 집 이동 없이 만든다(home()에서 null). */
+    private static HomeTripService.Request homeRequest(String origin,Double longitude,Double latitude,String returnPlace) {
+        return new HomeTripService.Request(origin,longitude,latitude,HOME_DEPART_AT,HOME_ARRIVE_BY,null,returnPlace,null);
     }
 
     @GetMapping("/{id}/destinations/{destinationId}/schedule")
@@ -69,8 +80,9 @@ public class ItineraryController {
         session.removeAttribute(CONFLICT_KEY);
         // 여행 조건에서 이동수단을 정하지 않았다면 자동차로 미리 고르지 않고 사용자가 직접 고르게 한다.
         var transport=options.conditions().keywordNames("TRANSPORTATION").isEmpty()?null:options.transport();
+        var homeArea=homeArea(principal,model);
         model.addAttribute("values",conflict!=null?conflict:new ConstraintInput(id,options.start(),options.end(),transport,
-            options.visitMinutes(),purposeIds,null,false,null,List.of(),null,List.of(),null,null,null,centerIds,HomeValues.DEFAULT));
+            options.visitMinutes(),purposeIds,null,false,null,List.of(),null,List.of(),null,null,null,centerIds,HomeValues.startingFrom(homeArea)));
         model.addAttribute("stayTiers",BudgetGuide.StayTier.values());
         synchronized(session) {
             var submission=new Submission(id,destinationId,login(principal),UUID.randomUUID().toString(),null);
@@ -89,13 +101,11 @@ public class ItineraryController {
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(name="center",required=false) List<Long> centers,
             @RequestParam(required=false) String origin,@RequestParam(required=false) Double originLongitude,
-            @RequestParam(required=false) Double originLatitude,@RequestParam(required=false) LocalTime departAt,
-            @RequestParam(required=false) LocalTime arriveBy,@RequestParam(required=false) Integer homeMinutes,
-            @RequestParam(required=false) String returnPlace,@RequestParam(required=false) Integer returnMinutes,
+            @RequestParam(required=false) Double originLatitude,@RequestParam(required=false) String returnPlace,
             Principal principal,HttpSession session,
             @RequestHeader(value="Accept",defaultValue="") String accept) {
-        var homeRequest=new HomeTripService.Request(origin,originLongitude,originLatitude,departAt,arriveBy,homeMinutes,returnPlace,returnMinutes);
-        var homeValues=new HomeValues(origin,departAt,arriveBy,homeMinutes,returnPlace,returnMinutes);
+        var homeRequest=homeRequest(origin,originLongitude,originLatitude,returnPlace);
+        var homeValues=new HomeValues(origin,returnPlace);
         if(!Set.of("REQUIRED","PREFERRED").contains(dailyMode)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"하루 방문 수의 구분을 다시 골라 주세요.");
         String basis=budgetBasis==null || budgetBasis.isBlank()?null:budgetBasis;
         String tier=stayTier==null || stayTier.isBlank()?null:stayTier;
@@ -141,7 +151,12 @@ public class ItineraryController {
         model.addAttribute("options",options);
         var previous=session.getAttribute(TRIP_INFO_KEY) instanceof TripInfoInput input && input.parent().equals(id) ? input : null;
         session.removeAttribute(TRIP_INFO_KEY);
-        model.addAttribute("values",previous!=null?previous:new TripInfoInput(id,null,null,null,null,null,HomeValues.DEFAULT));
+        var homeArea=homeArea(principal,model);
+        // 바로 일정 만들기를 처음 눌러 넘어온 경우(집 출발·귀가를 아직 적지 않음)도 내 정보의 출발지를 미리 넣는다.
+        if(previous!=null && HomeValues.DEFAULT.equals(previous.home()))
+            previous=new TripInfoInput(previous.parent(),previous.durationDays(),previous.accommodationNeeded(),previous.startDate(),
+                previous.transport(),previous.error(),HomeValues.startingFrom(homeArea));
+        model.addAttribute("values",previous!=null?previous:new TripInfoInput(id,null,null,null,null,null,HomeValues.startingFrom(homeArea)));
         model.addAttribute("askTransport",options.conditions().keywordNames("TRANSPORTATION").isEmpty());
         return "travel/trip-info";
     }
@@ -158,13 +173,15 @@ public class ItineraryController {
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required=false) KakaoMapClient.Transport transport,
             @RequestParam(required=false) String origin,@RequestParam(required=false) Double originLongitude,
-            @RequestParam(required=false) Double originLatitude,@RequestParam(required=false) LocalTime departAt,
-            @RequestParam(required=false) LocalTime arriveBy,@RequestParam(required=false) Integer homeMinutes,
-            @RequestParam(required=false) String returnPlace,@RequestParam(required=false) Integer returnMinutes,
+            @RequestParam(required=false) Double originLatitude,@RequestParam(required=false) String returnPlace,
             Principal principal,HttpSession session) {
-        var homeRequest=new HomeTripService.Request(origin,originLongitude,originLatitude,departAt,arriveBy,homeMinutes,returnPlace,returnMinutes);
-        var homeValues=departAt==null && arriveBy==null && origin==null && homeMinutes==null && returnPlace==null && returnMinutes==null
-            ?HomeValues.DEFAULT:new HomeValues(origin,departAt,arriveBy,homeMinutes,returnPlace,returnMinutes);
+        // 출발지 칸을 한 번도 보지 않은 첫 요청(origin 없음)이면 회원이 내 정보에 적은 출발지를 쓴다.
+        // 여행 정보 화면에서 출발지를 비우고 보내면(빈 문자열) 집 이동 없이 만든다.
+        boolean originAsked=origin!=null || originLongitude!=null;
+        String savedArea=originAsked?null:savedHomeArea(principal);
+        String from=originAsked?origin:savedArea;
+        var homeRequest=homeRequest(from,originLongitude,originLatitude,returnPlace);
+        var homeValues=origin==null && returnPlace==null?HomeValues.DEFAULT:new HomeValues(origin,returnPlace);
         String base="/travel/recommendations/"+id+"/destinations/"+destinationId;
         UUID job;
         synchronized(session) {
@@ -184,10 +201,10 @@ public class ItineraryController {
                 : date==null ? "출발일을 골라 주세요."
                 : c.startDate()==null && date.isBefore(LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))) ? "출발일은 오늘이나 그 이후 날짜로 골라 주세요."
                 : mode==null ? "이동수단을 골라 주세요."
-                : departAt==null || arriveBy==null ? "첫날 집에서 출발할 시각과 마지막 날 집에 도착할 시각을 적어 주세요."
-                : !homeRequest.located() && !homeRequest.typed() && homeMinutes==null ? "출발지(집)를 적거나 '내 위치로 찾기'를 눌러 주세요." : null;
+                // 출발지는 선택이다. 비회원이거나 내 정보에 적지 않았으면 여행 정보 화면에서 한 번 물어본다(비워서 보내도 된다).
+                : !originAsked && savedArea==null ? "출발지를 적으면 집에서 오가는 이동까지 일정에 넣어요." : null;
             // 처음 눌렀을 때(아무것도 보내지 않음)는 안내 문장 없이 여행 정보 화면만 보여 준다.
-            boolean submitted=durationDays!=null || accommodationNeeded!=null || startDate!=null || transport!=null || departAt!=null;
+            boolean submitted=durationDays!=null || accommodationNeeded!=null || startDate!=null || transport!=null || originAsked;
             if(missing!=null) {
                 session.setAttribute(TRIP_INFO_KEY,new TripInfoInput(id,durationDays,accommodationNeeded,startDate,transport,submitted?missing:null,homeValues));
                 return seeOther(base+"/trip-info");
@@ -407,6 +424,22 @@ public class ItineraryController {
         return service;
     }
     private String login(Principal principal) { return principal==null?null:principal.getName(); }
+    /** 회원이 내 정보에 적은 '주로 출발하는 곳'(화면 없이 쓸 때). 비회원이거나 적지 않았거나 읽지 못하면 null이다. */
+    private String savedHomeArea(Principal principal) {
+        var service=profiles.getIfAvailable();
+        if(principal==null || service==null) return null;
+        try { return service.getHomeArea(principal.getName()); } catch(DataAccessException ignored) { return null; }
+    }
+    /**
+     * 회원이 내 정보에 적은 '주로 출발하는 곳'. 비회원이거나 적지 않았으면 null이다.
+     * 화면 안내(미리 넣었다는 문구·내 정보에 적어 두라는 문구)를 위해 모델에도 넣는다. 읽지 못해도 일정 입력은 빈 칸으로 이어 간다.
+     */
+    private String homeArea(Principal principal,Model model) {
+        String area=savedHomeArea(principal);
+        model.addAttribute("member",principal!=null);
+        model.addAttribute("savedHomeArea",area);
+        return area;
+    }
     private static ResponseEntity<?> seeOther(String location) {
         return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create(location)).cacheControl(CacheControl.noStore()).build();
     }
@@ -422,16 +455,15 @@ public class ItineraryController {
     private ItineraryPlan.HomeTrip home(HomeTripService.Request request,UUID id,long destinationId,Principal principal,HttpSession session,
                                         KakaoMapClient.Transport transport) {
         var service=homeTrips.getIfAvailable();
-        // 화면에서는 필수지만, 집 출발·귀가 값을 하나도 보내지 않은 요청(이전 화면·직접 호출)은 여행지 안 일정만 만든다.
-        boolean empty=request.departAt()==null && request.arriveBy()==null && !request.located() && !request.typed() && request.minutes()==null
-            && !request.separateReturn() && request.returnMinutes()==null;
+        // 출발지를 비우면(현재 위치도 찾지 않음) 집 이동 없이 여행지 도착부터 일정을 만든다.
+        boolean empty=!request.located() && !request.typed();
         if(service==null || empty) return null;
         try {
             return service.resolve(request,service().options(id,destinationId,login(principal),hash(session)).places(),transport);
         } catch(RecommendationException error) {
             if(!error.getCode().startsWith("HOME_") && !error.getCode().startsWith("MAP_ORIGIN") && !"MAP_LOCATION".equals(error.getCode())) throw error;
             throw new TripConstraints.ConflictException(List.of(new TripConstraints.Conflict(error.getMessage(),
-                List.of("여행지까지(또는 돌아갈 곳까지) 편도 이동시간을 직접 적기","출발지·돌아갈 곳을 시·구·동이나 역 이름으로 다시 적기"))));
+                List.of("출발지·돌아갈 곳을 시·구·동이나 역 이름으로 다시 적기","출발지를 비워 집 이동 없이 여행지 도착부터 일정 짜기"))));
         }
     }
     private record DefaultPlaces(List<Long> purposeIds,List<Long> centerIds) {}

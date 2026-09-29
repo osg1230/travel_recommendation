@@ -46,7 +46,7 @@ class HomeTripServiceTests {
         verifyNoInteractions(maps, buses);
     }
 
-    // 대중교통 길찾기가 없으면 직행 시외·고속버스 최단 소요를 쓰고, 그것도 없으면 추정하지 않고 직접 적어 달라고 한다.
+    // 대중교통 길찾기가 없으면 직행 시외·고속버스 최단 소요를 쓰고, 그것도 없으면 추정하지 않고 출발지를 다시 적거나 비우라고 한다.
     @Test void transitFallsBackToBusThenAsksForMinutes() {
         when(maps.findOrigin("잠실")).thenReturn(songpa);
         when(maps.travelTime(any(), any(), eq(KakaoMapClient.Transport.PUBLIC_TRANSIT)))
@@ -60,7 +60,7 @@ class HomeTripServiceTests {
         assertThatThrownBy(() -> service.resolve(request("잠실", null), places(), KakaoMapClient.Transport.PUBLIC_TRANSIT))
             .isInstanceOfSatisfying(RecommendationException.class, e -> {
                 assertThat(e.getCode()).isEqualTo("HOME_MINUTES");
-                assertThat(e.getMessage()).contains("편도 이동시간을 직접 적어 주세요");
+                assertThat(e.getMessage()).contains("출발지를 비우면 여행지 도착부터");
             });
     }
 
@@ -89,7 +89,8 @@ class HomeTripServiceTests {
         assertThat(same.returnMinutes()).isEqualTo(170);
     }
 
-    // 제주를 오가는 길은 카카오가 카페리 경로를 자동차 '성공'으로 답하므로 조회하지 않고 직접 적어 달라고 한다. 적으면 그 값을 쓴다.
+    // 제주를 오가는 길은 카카오가 카페리 경로를 자동차 '성공'으로 답하므로 조회하지 않고, 출발지를 비우라고 안내한다.
+    // 편도 시간을 받는 경로(자연어 수정 요청)로 시간이 오면 그 값을 쓴다.
     @Test void jejuTripAsksForFlightOrShipMinutes() {
         var attraction = new PlaceCandidate(2L, "성산일출봉", "제주 서귀포시 성산읍", "여행 > 관광,명소", "", "https://place.map.kakao.com/2",
             "", LocalDateTime.of(2026, 9, 1, 0, 0), 126.94, 33.46, "KAKAO", null);
@@ -99,7 +100,7 @@ class HomeTripServiceTests {
         assertThatThrownBy(() -> service.resolve(request("송파구", null), jeju, KakaoMapClient.Transport.CAR))
             .isInstanceOfSatisfying(RecommendationException.class, e -> {
                 assertThat(e.getCode()).isEqualTo("HOME_MINUTES");
-                assertThat(e.getMessage()).contains("비행기나 배");
+                assertThat(e.getMessage()).contains("비행기나 배").contains("출발지를 비우면");
             });
         verify(maps, never()).travelTime(any(), any(), any());
 

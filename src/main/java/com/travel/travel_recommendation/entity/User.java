@@ -48,6 +48,11 @@ public class User {
     @Column(name = "withdrawn_at", columnDefinition = "datetime2(3)")
     private LocalDateTime withdrawnAt;
 
+    // 주로 출발하는 곳(선택). 일정 입력 화면의 출발지 기본값으로만 쓴다.
+    @Nationalized
+    @Column(name = "home_area", length = 60)
+    private String homeArea;
+
     public User(String loginId, String passwordHash, String nickname) {
         this.loginId = loginId.strip();
         this.passwordHash = passwordHash;
@@ -56,6 +61,11 @@ public class User {
 
     public void changeNickname(String nickname) {
         this.nickname = nickname.strip();
+    }
+
+    /** 빈 값은 '정하지 않음'으로 보고 NULL로 저장한다. */
+    public void changeHomeArea(String homeArea) {
+        this.homeArea = homeArea == null || homeArea.isBlank() ? null : homeArea.strip();
     }
 
     public void changePasswordHash(String passwordHash) {
@@ -76,6 +86,8 @@ public class User {
         this.withdrawnAt = LocalDateTime.now(ZoneOffset.UTC);
         this.nickname = anonymousNickname;
         this.passwordHash = unusablePasswordHash;
+        // 출발지는 개인 데이터라 탈퇴하면 남기지 않는다.
+        this.homeArea = null;
     }
 
     @PrePersist

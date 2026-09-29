@@ -31,6 +31,7 @@ public class UserService {
         }
         // 권한과 상태는 입력받지 않는다. User의 기본값 MEMBER / ACTIVE를 사용한다.
         User user = new User(form.getLoginId(), passwordEncoder.encode(form.getPassword()), form.getNickname());
+        user.changeHomeArea(form.getHomeArea());
         // 동시에 같은 값으로 가입해도 DB의 UNIQUE 제약이 최종적으로 막는다.
         users.saveAndFlush(user);
     }
