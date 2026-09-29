@@ -308,14 +308,22 @@ summary:has(.details-title):hover .details-title { color: var(--brand-strong); }
 .status-needs_check { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); }
 .status-not_applicable { background: var(--surface-muted); color: var(--text-muted); border-color: var(--line); }
 
-/* 취향 탐색: 두 장면을 카드처럼 나란히 비교하고, 상관없음·건너뛰기는 작게 둔다. */
+/* 취향 탐색: 화면을 반으로 나눠 두 장면(그림 + 문구) 중 하나를 누른다. 좁은 화면에서도 좌우 반씩 둔다. 상관없음·건너뛰기는 작게 둔다. */
 .discover-question { border: 1px solid transparent; }
-.discover-question legend { font-weight: 700; padding: 0 4px; }
-.discover-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
-.discover-option { display: flex; gap: 10px; align-items: flex-start; padding: 16px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; font-weight: 600; }
+.discover-question legend { font-weight: 700; font-size: 19px; padding: 0 4px; }
+.discover-options { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; }
+.discover-option { position: relative; display: flex; flex-direction: column; overflow: hidden; border: 2px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); cursor: pointer; font-weight: 600; }
+.discover-option:hover { border-color: var(--brand); }
+.discover-option:has(input:focus-visible) { outline: 3px solid var(--brand); outline-offset: 2px; }
 .discover-option:has(input:checked) { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-strong); }
-.discover-extra { display: flex; gap: 18px; margin-top: 10px; font-size: 14px; color: var(--text-muted); }
+.discover-option:has(input:checked)::after { content: "✓ 선택"; position: absolute; top: 10px; right: 10px; padding: 3px 10px; border-radius: 999px; background: var(--brand); color: #fff; font-size: 13px; }
+.discover-image { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--surface-muted); }
+.discover-scene { padding: 14px 16px 16px; line-height: 1.45; }
+.discover-extra { display: flex; justify-content: center; gap: 18px; margin-top: 12px; font-size: 14px; color: var(--text-muted); }
 .discover-extra label { display: flex; align-items: center; gap: 6px; font-weight: 400; }
+.discover-history { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 8px; }
+.discover-history li { line-height: 1.5; }
+.discover-history a, .discover-history strong { margin-left: 8px; font-size: 14px; }
 
 /* 지도: 번호 표시는 일차 색을 쓰고, 주소로 찾은 대략 위치는 점선 테두리로 구분한다. */
 .trip-map-canvas { width: 100%; height: 380px; margin-top: 12px; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
@@ -497,7 +505,6 @@ button.map-badge:hover { background: var(--badge, var(--brand)); transform: scal
     .condition-summary dt { border-bottom: 0; padding-bottom: 0; background: var(--surface); }
     .schedule-item { grid-template-columns: 1fr; }
     .trip-map-canvas { height: 300px; }
-    .discover-options { grid-template-columns: 1fr; }
     .place-grid { grid-template-columns: 1fr; }
     .destination-candidate { padding: 20px; }
     .hero-inner { padding: 36px 0 100px; }

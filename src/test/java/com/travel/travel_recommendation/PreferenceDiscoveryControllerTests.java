@@ -1,6 +1,8 @@
 package com.travel.travel_recommendation;
 
+import com.travel.travel_recommendation.controller.PreferenceDiscoveryController;
 import com.travel.travel_recommendation.dto.TravelConditionForm;
+import com.travel.travel_recommendation.service.PreferenceDiscovery;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -19,44 +21,99 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class PreferenceDiscoveryControllerTests {
     @Autowired MockMvc mvc;
 
-    private MockHttpSession answered(String... pairs) throws Exception {
+    /** 첫 질문을 SEASON으로 고정한 세션. 실제로는 시작 질문 중 무작위로 고른다. */
+    private static MockHttpSession startingWithSeason() {
         var session = new MockHttpSession();
-        var request = post("/travel/conditions/discover").session(session).with(csrf());
-        for (int i = 0; i < pairs.length; i += 2) request.param("q_" + pairs[i], pairs[i + 1]);
-        mvc.perform(request).andExpect(redirectedUrl("/travel/conditions/discover/result"));
+        session.setAttribute(PreferenceDiscoveryController.FIRST_KEY, "SEASON");
         return session;
     }
 
-    @Test void guestSeesQuestionsWithSkipAndNoPreferenceChoices() throws Exception {
-        mvc.perform(get("/travel/conditions/discover")).andExpect(status().isOk())
-            .andExpect(content().string(containsString("바다가 보이는 카페에서 느긋하게 쉬기")))
+    private void answer(MockHttpSession session, int step, String question, String answer) throws Exception {
+        mvc.perform(post("/travel/conditions/discover").session(session).with(csrf())
+            .param("question", question).param("answer", answer).param("step", String.valueOf(step)))
+            .andExpect(status().is3xxRedirection());
+    }
+
+    @Test void firstQuestionIsRandomStartQuestionWithSkipAndNoPreferenceChoices() throws Exception {
+        var session = new MockHttpSession();
+        mvc.perform(get("/travel/conditions/discover").session(session)).andExpect(status().isOk())
             .andExpect(content().string(containsString("상관없음")))
             .andExpect(content().string(containsString("건너뛰기")));
+        var first = (String) session.getAttribute(PreferenceDiscoveryController.FIRST_KEY);
+        assertThat(PreferenceDiscovery.START_IDS).contains(first);
+        // 새로고침해도 같은 첫 질문이 나온다.
+        mvc.perform(get("/travel/conditions/discover").session(session))
+            .andExpect(model().attribute("question", PreferenceDiscovery.question(first)));
         mvc.perform(get("/travel/conditions")).andExpect(content().string(containsString("/travel/conditions/discover")));
     }
 
-    @Test void resultExplainsScoresAndPreselectsTopPreferences() throws Exception {
-        var session = answered("Q1", "A", "Q3", "B", "Q2", "SKIP");
-        mvc.perform(get("/travel/conditions/discover/result").session(session)).andExpect(status().isOk())
-            .andExpect(content().string(containsString("바다 · 2점")))
-            .andExpect(content().string(containsString("고른 장면: 해변을 걷다가 노을 보기")))
-            .andExpect(model().attribute("preselected", contains("바다", "자연", "휴식")));
-        // 선택을 고치면 이전 답변은 남지 않는다.
-        mvc.perform(post("/travel/conditions/discover").session(session).with(csrf()).param("q_Q1", "B"))
-            .andExpect(redirectedUrl("/travel/conditions/discover/result"));
-        mvc.perform(get("/travel/conditions/discover/result").session(session))
-            .andExpect(model().attribute("preselected", contains("맛집", "문화·역사")));
+    @Test void nextQuestionFollowsChosenAnswer() throws Exception {
+        var session = startingWithSeason();
+        mvc.perform(get("/travel/conditions/discover").session(session))
+            .andExpect(content().string(containsString("/images/discover/season-a.svg")));
+        // 비회원도 그림을 받을 수 있다.
+        mvc.perform(get("/images/discover/season-a.svg")).andExpect(status().isOk());
+        answer(session, 0, "SEASON", "A");
+        mvc.perform(get("/travel/conditions/discover").session(session))
+            .andExpect(content().string(containsString("여름 낮에 하고 싶은 건?")))
+            .andExpect(content().string(containsString("여름과 겨울 중 어느 쪽이 더 좋아요? → 여름, 시원한 물가에서 신나게 놀기")));
+        // 앞 답을 바꾸면 그 뒤 답은 지우고 바뀐 답에 맞는 질문이 이어진다.
+        answer(session, 1, "SUMMER_DAY", "A");
+        answer(session, 0, "SEASON", "B");
+        mvc.perform(get("/travel/conditions/discover").session(session))
+            .andExpect(model().attribute("question", PreferenceDiscovery.question("WINTER_DAY")))
+            .andExpect(model().attribute("step", 1));
     }
 
-    @Test void forgedQuestionOrOptionIsRejected() throws Exception {
-        mvc.perform(post("/travel/conditions/discover").with(csrf()).param("q_Q1", "Z")).andExpect(status().isBadRequest());
-        mvc.perform(post("/travel/conditions/discover").with(csrf()).param("q_Q99", "A")).andExpect(status().isBadRequest())
+    @Test void resultAfterFiveAnswersExplainsScores() throws Exception {
+        var session = startingWithSeason();
+        answer(session, 0, "SEASON", "A");
+        answer(session, 1, "SUMMER_DAY", "A");
+        answer(session, 2, "SEA_TIME", "B");
+        answer(session, 3, "AFTERNOON", "A");
+        mvc.perform(post("/travel/conditions/discover").session(session).with(csrf())
+            .param("question", "NIGHT").param("answer", "SKIP").param("step", "4"))
+            .andExpect(redirectedUrl("/travel/conditions/discover/result"));
+        mvc.perform(get("/travel/conditions/discover/result").session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("바다 · 3점")))
+            .andExpect(content().string(containsString("고른 장면: 해수욕장에서 물놀이나 서핑하기")))
+            .andExpect(model().attribute("preselected", contains("바다", "휴식", "체험·액티비티")));
+    }
+
+    @Test void resultOffersDirectRecommendationWithGeneratedSentenceAndWeekend() throws Exception {
+        var session = startingWithSeason();
+        answer(session, 0, "SEASON", "A");
+        var page = mvc.perform(get("/travel/conditions/discover/result").session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("action=\"/travel/conditions/recommend\"")))
+            .andExpect(content().string(containsString("이 문장으로 바로 추천받기")))
+            .andExpect(model().attribute("tripSentence", containsString("1박 2일로 국내 여행을 가고 싶어요. 바다, 체험·액티비티 위주로")))
+            .andReturn();
+        // 추천 요청이 받아들이도록 조건 입력과 같은 입력 토큰을 발급한다.
+        assertThat(page.getResponse().getContentAsString()).contains((String) session.getAttribute("travelInputToken"));
+        var saturday = (java.time.LocalDate) session.getAttribute(PreferenceDiscoveryController.WEEKEND_KEY);
+        assertThat(saturday.getDayOfWeek()).isEqualTo(java.time.DayOfWeek.SATURDAY);
+        // 새로고침해도 같은 날짜를 쓴다.
+        mvc.perform(get("/travel/conditions/discover/result").session(session));
+        assertThat(session.getAttribute(PreferenceDiscoveryController.WEEKEND_KEY)).isEqualTo(saturday);
+    }
+
+    @Test void forgedQuestionOptionOrOrderIsRejected() throws Exception {
+        var session = startingWithSeason();
+        mvc.perform(post("/travel/conditions/discover").session(session).with(csrf())
+            .param("question", "SEASON").param("answer", "Z").param("step", "0")).andExpect(status().isBadRequest());
+        mvc.perform(post("/travel/conditions/discover").session(session).with(csrf())
+            .param("question", "SUMMER_DAY").param("answer", "A").param("step", "0")).andExpect(status().isBadRequest())
             .andExpect(content().string(containsString("화면에 없는 질문")));
-        mvc.perform(post("/travel/conditions/discover").param("q_Q1", "A")).andExpect(status().isForbidden());
+        mvc.perform(post("/travel/conditions/discover").session(session).with(csrf())
+            .param("question", "SEASON").param("answer", "A").param("step", "3")).andExpect(status().isBadRequest());
+        mvc.perform(post("/travel/conditions/discover").session(session)
+            .param("question", "SEASON").param("answer", "A").param("step", "0")).andExpect(status().isForbidden());
     }
 
     @Test void allSkippedDoesNotInventPreferences() throws Exception {
-        var session = answered("Q1", "SKIP", "Q2", "ANY");
+        var session = startingWithSeason();
+        answer(session, 0, "SEASON", "SKIP");
+        answer(session, 1, "PHOTO", "ANY");
         mvc.perform(get("/travel/conditions/discover/result").session(session)).andExpect(status().isOk())
             .andExpect(content().string(containsString("도출된 취향이 없어요")))
             .andExpect(model().attribute("preselected", empty()));
@@ -65,8 +122,18 @@ class PreferenceDiscoveryControllerTests {
             .andExpect(flash().attribute("discoveryMessage", containsString("고른 취향 없이")));
     }
 
+    @Test void resetStartsOverWithNewFirstQuestion() throws Exception {
+        var session = startingWithSeason();
+        answer(session, 0, "SEASON", "A");
+        mvc.perform(post("/travel/conditions/discover/reset").session(session).with(csrf()))
+            .andExpect(redirectedUrl("/travel/conditions/discover"));
+        assertThat(session.getAttribute(PreferenceDiscoveryController.ANSWERS_KEY)).isNull();
+        assertThat(session.getAttribute(PreferenceDiscoveryController.FIRST_KEY)).isNull();
+    }
+
     @Test void appliedPreferencesPrefillFormAndAreValidatedOnSubmit() throws Exception {
-        var session = answered("Q1", "A");
+        var session = startingWithSeason();
+        answer(session, 0, "SEASON", "A");
         mvc.perform(post("/travel/conditions/discover/apply").session(session).with(csrf()).param("themes", "바다", "휴식"))
             .andExpect(redirectedUrl("/travel/conditions"));
         // 미리 채운 값은 검증 전이라 초안이 아니다.
@@ -83,7 +150,8 @@ class PreferenceDiscoveryControllerTests {
     }
 
     @Test void conflictWithDirectlyChosenThemesAsksHowToApply() throws Exception {
-        var session = answered("Q1", "A");
+        var session = startingWithSeason();
+        answer(session, 0, "SEASON", "A");
         mvc.perform(post("/travel/conditions").session(session).with(csrf()).param("inputMode", "KEYWORD").param("themes", "맛집"))
             .andExpect(redirectedUrl("/travel/conditions/check"));
         mvc.perform(post("/travel/conditions/discover/apply").session(session).with(csrf()).param("themes", "바다"))
