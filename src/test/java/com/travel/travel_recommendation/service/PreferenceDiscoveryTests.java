@@ -80,6 +80,9 @@ class PreferenceDiscoveryTests {
             q.options().forEach(o -> {
                 assertThat(PreferenceDiscovery.TAG_NAMES).containsKeys(o.tags().toArray(String[]::new));
                 assertThat(ids).containsAll(o.next());
+                // 화면은 질문·선택지 ID로 그림을 찾으므로 선택지마다 그림 파일이 있어야 한다.
+                String image = "/static/images/discover/" + (q.id() + "-" + o.id()).toLowerCase() + ".svg";
+                assertThat(getClass().getResource(image)).as(image).isNotNull();
             });
         });
         // 시작 질문이 아닌 질문은 모두 어떤 선택지에서 이어진다.
