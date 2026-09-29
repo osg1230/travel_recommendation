@@ -103,8 +103,11 @@ public class PreferenceDiscoveryController {
         model.addAttribute("preselected", result.preferences().stream().limit(PRESELECT)
             .map(p -> selectionValue(p.tag())).filter(Objects::nonNull).toList());
         // 바로 추천받기: 취향과 자동으로 고른 주말로 문장을 만들어 두고, 홈의 문장 입력과 같은 추천 요청으로 보낸다.
-        var saturday = weekend(session);
+        // 스키·해수욕처럼 한 계절에만 하는 장면이 문장에 들어가면 그 계절 성수기의 주말로 잡는다.
+        var season = PreferenceDiscovery.season(result);
+        var saturday = weekend(session, season);
         model.addAttribute("tripSaturday", saturday);
+        model.addAttribute("tripSeason", season == null ? null : season.getLabel());
         model.addAttribute("tripSentence", PreferenceDiscovery.tripSentence(result, saturday));
         model.addAttribute("inputToken", TravelConditionController.issueInputToken(session));
         return "travel/discover-result";
@@ -211,12 +214,12 @@ public class PreferenceDiscoveryController {
 
     /**
      * 바로 추천받기에 쓸 토요일. 한 번 고르면 새로고침해도 같은 날짜를 보여 준다.
-     * 날짜가 지나 7일 범위를 벗어났으면(오래 열어 둔 세션) 새로 고른다.
+     * 날짜가 지나 7일 범위를 벗어났거나(오래 열어 둔 세션) 답을 고쳐 계절이 바뀌었으면 새로 고른다.
      */
-    private static LocalDate weekend(HttpSession session) {
+    private static LocalDate weekend(HttpSession session, PreferenceDiscovery.Season season) {
         var today = LocalDate.now(ZoneId.of("Asia/Seoul"));
-        if (session.getAttribute(WEEKEND_KEY) instanceof LocalDate saved && !saved.isBefore(today.plusDays(7))) return saved;
-        var saturday = PreferenceDiscovery.pickWeekend(today, ThreadLocalRandom.current());
+        if (session.getAttribute(WEEKEND_KEY) instanceof LocalDate saved && PreferenceDiscovery.weekendFits(saved, today, season)) return saved;
+        var saturday = PreferenceDiscovery.pickWeekend(today, season, ThreadLocalRandom.current());
         session.setAttribute(WEEKEND_KEY, saturday);
         return saturday;
     }

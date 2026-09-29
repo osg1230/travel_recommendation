@@ -227,6 +227,30 @@ class SavedItineraryRevisionIntegrationTests {
             .extracting(ItineraryConditionReport.Check::status).doesNotContain(ItineraryConditionReport.Status.UNMET);
     }
 
+    // 하루 방문 수 같은 사용자 조건은 저장 기록에 남아, 원래 초안이 만료된 뒤 다시 만든 초안에도 이어진다.
+    @Test void restoredDraftKeepsUserConstraints() {
+        var start=LocalDate.now().plusDays(7);
+        var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",start,start.plusDays(1),2,null,2,true,false,List.of(),"");
+        var parent=recommendations.create(conditions,owner.getLoginId(),null);
+        recommendations.prepare(parent);
+        var candidates=recommendations.view(parent,owner.getLoginId(),null).candidates();
+        jobs.findById(parent).orElseThrow().completeRecommendation(
+            mapper.writeValueAsString(List.of(new RankedDestination(1,candidates.getFirst(),"추천"))));
+        em.flush();
+        var draft=schedules.create(parent,candidates.getFirst().placeId(),owner.getLoginId(),null,LocalTime.of(9,0),LocalTime.of(18,0),
+            KakaoMapClient.Transport.CAR,90,new ItineraryPlan.Constraints(List.of(),2,false,null,List.of(),"BUDGET"));
+        finish(draft);
+        Long id=saved.save(draft,owner.getLoginId()).id();
+        expireJobs();
+
+        var restored=edits.prepare(id,owner.getLoginId());
+        em.flush(); em.clear();
+        var constraints=schedules.view(restored.jobId(),owner.getLoginId(),null).input().constraints();
+        assertThat(constraints).isNotNull();
+        assertThat(constraints.dailyVisits()).isEqualTo(2);
+        assertThat(constraints.stayTier()).isEqualTo("BUDGET");
+    }
+
     @Test void deletedHistoryDraftIsRestoredFromSavedItinerary() {
         Long requestId=itineraries.findById(itineraryId).orElseThrow().getRequestId();
         histories.delete(requestId,owner.getLoginId());

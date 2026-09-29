@@ -64,7 +64,7 @@ class HomeTripServiceTests {
             });
     }
 
-    // 돌아갈 곳을 따로 적으면 여행지 → 그곳 방향으로 따로 찾고, 비우면 출발지로 같은 시간만큼 돌아온다.
+    // 돌아갈 곳을 따로 적으면 여행지 → 그곳 방향으로 따로 찾고, 비우면 여행지 → 출발지 방향을 따로 찾아 돌아온다.
     @Test void returnPlaceIsLookedUpSeparately() {
         var daejeon = new KakaoMapClient.Origin("대전광역시 서구", "대전", new KakaoMapClient.Location("대전광역시 서구", 127.38, 36.35, Instant.now()));
         when(maps.findOrigin("송파구")).thenReturn(songpa);
@@ -80,9 +80,13 @@ class HomeTripServiceTests {
         assertThat(home.returnPlace()).isEqualTo("대전광역시 서구");
         assertThat(home.returnMinutes()).isEqualTo(190);
 
+        // 같은 곳으로 돌아와도 오는 길(170분)은 가는 길(150분)과 따로 조회한다.
+        when(maps.travelTime(any(), eq(songpa.location()), eq(KakaoMapClient.Transport.CAR)))
+            .thenReturn(new KakaoMapClient.TravelTime(KakaoMapClient.Transport.CAR, 170 * 60, 230000, Instant.now()));
         var same = service.resolve(request("송파구", null), places(), KakaoMapClient.Transport.CAR);
         assertThat(same.returnPlace()).isEqualTo(same.origin());
-        assertThat(same.returnMinutes()).isEqualTo(150);
+        assertThat(same.minutes()).isEqualTo(150);
+        assertThat(same.returnMinutes()).isEqualTo(170);
     }
 
     // 제주를 오가는 길은 카카오가 카페리 경로를 자동차 '성공'으로 답하므로 조회하지 않고, 출발지를 비우라고 안내한다.

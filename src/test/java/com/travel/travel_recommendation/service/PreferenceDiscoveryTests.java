@@ -87,6 +87,37 @@ class PreferenceDiscoveryTests {
             java.time.LocalDate.of(2026, 10, 17), java.time.LocalDate.of(2026, 10, 24));
     }
 
+    // 스키·눈썰매처럼 겨울에만 하는 장면이 문장에 들어가면 가까운 10월 주말이 아니라 겨울 성수기(12/20~2/10) 토요일을 고른다.
+    @Test void seasonalSceneMovesTheWeekendIntoItsPeakSeason() {
+        var today = java.time.LocalDate.of(2026, 9, 29);
+        var winter = PreferenceDiscovery.evaluate(answers("SEASON", "B", "WINTER_DAY", "A"));
+        assertThat(PreferenceDiscovery.season(winter)).isEqualTo(PreferenceDiscovery.Season.WINTER);
+        var random = new java.util.Random(1);
+        for (int i = 0; i < 100; i++) {
+            var saturday = PreferenceDiscovery.pickWeekend(today, PreferenceDiscovery.Season.WINTER, random);
+            assertThat(saturday.getDayOfWeek()).isEqualTo(java.time.DayOfWeek.SATURDAY);
+            assertThat(saturday).isBetween(java.time.LocalDate.of(2026, 12, 20), java.time.LocalDate.of(2027, 2, 10));
+            assertThat(PreferenceDiscovery.weekendFits(saturday, today, PreferenceDiscovery.Season.WINTER)).isTrue();
+        }
+        // 성수기가 거의 끝나 7일 뒤 토요일이 없으면 다음 해 성수기로 넘어간다.
+        var late = PreferenceDiscovery.pickWeekend(java.time.LocalDate.of(2026, 8, 15), PreferenceDiscovery.Season.SUMMER, random);
+        assertThat(late).isBetween(java.time.LocalDate.of(2027, 7, 20), java.time.LocalDate.of(2027, 8, 20));
+        // 1월에는 이미 시작한 겨울 성수기 안에서 고른다.
+        var january = PreferenceDiscovery.pickWeekend(java.time.LocalDate.of(2027, 1, 5), PreferenceDiscovery.Season.WINTER, random);
+        assertThat(january).isBetween(java.time.LocalDate.of(2027, 1, 12), java.time.LocalDate.of(2027, 2, 10));
+        // 계절 장면이 없으면 계절을 정하지 않고, 앞서 고른 10월 주말은 겨울 문장에 쓰지 않는다.
+        assertThat(PreferenceDiscovery.season(PreferenceDiscovery.evaluate(answers("PHOTO", "B")))).isNull();
+        assertThat(PreferenceDiscovery.weekendFits(java.time.LocalDate.of(2026, 10, 10), today, PreferenceDiscovery.Season.WINTER)).isFalse();
+        assertThat(PreferenceDiscovery.weekendFits(java.time.LocalDate.of(2026, 10, 10), today, null)).isTrue();
+    }
+
+    @Test void seasonalScenesExistInQuestions() {
+        var scenes = PreferenceDiscovery.QUESTIONS.stream().flatMap(q -> q.options().stream()).map(PreferenceDiscovery.Option::scene).toList();
+        for (var answer : List.of(answers("SEASON", "A", "SUMMER_DAY", "A"), answers("SEASON", "A", "SUMMER_DAY", "B"), answers("SEASON", "B", "WINTER_DAY", "B")))
+            assertThat(PreferenceDiscovery.season(PreferenceDiscovery.evaluate(answer))).isNotNull();
+        assertThat(scenes).contains("스키장이나 눈썰매장에서 신나게 놀기");
+    }
+
     @Test void tripSentenceHasDatesTopPreferencesAndScenes() {
         var saturday = java.time.LocalDate.of(2026, 10, 31);
         var result = PreferenceDiscovery.evaluate(answers("SEASON", "A", "SUMMER_DAY", "A", "SEA_TIME", "B"));
