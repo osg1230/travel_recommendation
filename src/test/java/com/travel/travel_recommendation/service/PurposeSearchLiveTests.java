@@ -19,8 +19,8 @@ class PurposeSearchLiveTests {
         "경상북도 안동시", "경상북도 포항시", "경상남도 통영시", "경상남도 거제시", "제주특별자치도");
 
     @Test void sharkPurposeFindsAquariumsInServiceRegions() {
-        String key = System.getenv("OPENAI_API_KEY") != null ? System.getenv("OPENAI_API_KEY") : System.getenv("Portfolio_java_API");
-        var ai = new OpenAiPurposeClient(new OpenAiProperties(key, "gpt-4.1-mini"), new JsonMapper());
+        String key = System.getenv("OPEN_AI_API");
+        var ai = new OpenAiPurposeClient(new OpenAiProperties(key, "gpt-6-luna", "none"), new JsonMapper());
         var maps = new KakaoMapClient(new KakaoMapProperties(System.getenv("KAKAO_REST_API_KEY")), new JsonMapper());
         for (String purpose : List.of("상어 관람", "별 보기", "휴식")) {
             var terms = ai.terms(purpose); var keywords = terms.keywords();

@@ -17,8 +17,8 @@ class OpenAiPriceLiveTests {
     }
 
     @Test void looksUpRealPlacesAndNeverKeepsUnsupportedSources() {
-        String key = System.getenv("OPENAI_API_KEY") != null ? System.getenv("OPENAI_API_KEY") : System.getenv("Portfolio_java_API");
-        var client = new OpenAiPriceClient(new OpenAiProperties(key, "gpt-4.1-mini"), new JsonMapper());
+        String key = System.getenv("OPEN_AI_API");
+        var client = new OpenAiPriceClient(new OpenAiProperties(key, "gpt-6-luna", "none"), new JsonMapper());
         var targets = List.of(
             new Object[] {place(1, "씨마크호텔", "강원특별자치도 강릉시 해안로406번길 2"), OpenAiPriceClient.LODGING},
             new Object[] {place(2, "교동짬뽕", "강원특별자치도 강릉시 강릉대로 205"), OpenAiPriceClient.RESTAURANT},

@@ -44,7 +44,7 @@ class OpenAiRevisionClientTests {
     }
     @AfterEach void stop() { server.stop(0); }
     private OpenAiRevisionClient client(String key) {
-        return new OpenAiRevisionClient(new OpenAiProperties(key,"gpt-4.1-mini"),mapper,
+        return new OpenAiRevisionClient(new OpenAiProperties(key, "gpt-6-luna", "none"),mapper,
             URI.create("http://127.0.0.1:"+server.getAddress().getPort()+"/responses"),Duration.ofSeconds(3));
     }
     private void output(String json) {

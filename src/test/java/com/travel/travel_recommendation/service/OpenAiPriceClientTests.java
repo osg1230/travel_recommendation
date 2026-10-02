@@ -38,7 +38,7 @@ class OpenAiPriceClientTests {
         var pages = new PricePageChecker() {
             @Override public boolean confirms(String url, String name, String address, Integer min, Integer max) { return pageConfirms.get(); }
         };
-        return new OpenAiPriceClient(new OpenAiProperties(key, "gpt-4.1-mini"), mapper,
+        return new OpenAiPriceClient(new OpenAiProperties(key, "gpt-6-luna", "none"), mapper,
             URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/responses"), Duration.ofSeconds(5), pages);
     }
     /** 웹 검색 호출(검색한 페이지 목록)과 최종 JSON 답을 담은 응답을 만든다. */
