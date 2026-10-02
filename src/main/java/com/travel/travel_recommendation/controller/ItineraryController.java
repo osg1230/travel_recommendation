@@ -26,6 +26,7 @@ public class ItineraryController {
     private final ObjectProvider<ItineraryJobService> services;
     private final ObjectProvider<SavedItineraryService> savedItineraries;
     private final ObjectProvider<BusGuideService> busGuides;
+    private final ObjectProvider<FlightGuideService> flightGuides;
     private final ObjectProvider<PlaceCandidateService> candidates;
     private final ObjectProvider<PlaceDiscoveryService> discoveries;
     private final ObjectProvider<PlacePhotoService> photos;
@@ -392,6 +393,31 @@ public class ItineraryController {
             redirect.addFlashAttribute("busGuide",guides.guide(id,login(principal),hash(session),to,from,longitude,latitude));
         } catch(RecommendationException e) {
             redirect.addFlashAttribute("busError",e.getMessage());
+        }
+        return back;
+    }
+
+    private static final String FLIGHT_COOLDOWN_KEY="itineraryFlightGuideNext";
+    /** 요청 시 비행기 안내(제주처럼 바다를 건너는 여행). 버스 안내와 같이 저장하지 않고 다음 화면에 한 번만 보여 준다. */
+    @PostMapping("/itineraries/{id}/flight-guide")
+    String flightGuide(@PathVariable UUID id,@RequestParam(defaultValue="") String from,Principal principal,HttpSession session,
+                       org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
+        String back="redirect:/travel/recommendations/itineraries/"+id+"#flight-title";
+        redirect.addFlashAttribute("flightFrom",from.matches("NAA[A-Z]{4}")?from:"");
+        synchronized(session) {
+            var next=session.getAttribute(FLIGHT_COOLDOWN_KEY) instanceof java.time.Instant at?at:null;
+            if(next!=null && next.isAfter(java.time.Instant.now())) {
+                redirect.addFlashAttribute("flightError","방금 조회했어요. 10초 후에 다시 찾아 주세요.");
+                return back;
+            }
+            session.setAttribute(FLIGHT_COOLDOWN_KEY,java.time.Instant.now().plusSeconds(10));
+        }
+        var guides=flightGuides.getIfAvailable();
+        if(guides==null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"비행기 안내는 DB 연결 후 이용할 수 있어요.");
+        try {
+            redirect.addFlashAttribute("flightGuide",guides.guide(id,login(principal),hash(session),from));
+        } catch(RecommendationException e) {
+            redirect.addFlashAttribute("flightError",e.getMessage());
         }
         return back;
     }

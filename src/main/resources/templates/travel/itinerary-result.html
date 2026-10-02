@@ -145,6 +145,7 @@
 <a href="#prices-title">숙소·음식점 참고 가격</a>
 <a href="#nearby-title" th:if="${job.result.nearby != null and (!job.result.nearby.regions.isEmpty() or job.input.conditions.includeNearby == true)}">주변 지역도 둘러보기</a>
 <a href="#bus-title" th:if="${job.result.transport.name() != 'CAR'}">버스로 가는 방법</a>
+<a href="#flight-title" th:if="${#strings.startsWith(job.input.places.destination.region, '제주') or (job.input.home != null and #strings.startsWith(job.input.home.basis, '비행기'))}">비행기로 가는 방법</a>
 <a href="#revise-title">일정 수정하기</a>
 <a href="#save-title">내 일정으로 저장</a>
 </div>
@@ -255,6 +256,31 @@
 <button type="button" class="button-quiet" data-bus-locate>내 위치로 찾기</button>
 </div>
 <p class="help" data-bus-status>'내 위치로 찾기'를 누르면 브라우저가 위치 권한을 물어요. 위치는 카카오 지도로 가까운 도시 이름을 확인하는 데만 쓰고 저장하지 않아요.</p>
+</form></details>
+</section>
+
+<!--/* 비행기 안내는 제주처럼 바다를 건너는 여행이거나 집 출발 이동을 비행기로 찾은 일정에서만 보여 준다. */-->
+<section class="condition-section" th:if="${#strings.startsWith(job.input.places.destination.region, '제주') or (job.input.home != null and #strings.startsWith(job.input.home.basis, '비행기'))}" aria-labelledby="flight-title">
+<details th:open="${flightGuide != null or flightError != null}"><summary><h2 id="flight-title" class="details-title">비행기로 가는 방법</h2></summary>
+<p class="help">국토교통부 TAGO의 국내선 운항편 정보예요. 출발 공항을 고르면 여행지에서 가까운 공항으로 가는 편을 항공사별로 요약해요. 요금은 일반석 기준이고 예약 가능 여부는 안내하지 않아요.</p>
+<p role="alert" th:if="${flightError != null}" th:text="${flightError}"></p>
+<div th:if="${flightGuide != null}">
+<h3 th:text="${flightGuide.fromAirport + ' → ' + flightGuide.toAirport}"></h3>
+<p class="notice" th:text="${#temporals.format(flightGuide.serviceDate, 'yyyy-MM-dd') + ' 운항 기준 정보예요.'
+    + (flightGuide.otherDay() ? ' 여행 날짜(' + #temporals.format(flightGuide.tripDate, 'yyyy-MM-dd') + ')의 운항편은 아직 등록되지 않아 다른 날 기준으로 보여 드려요. 항공사나 예매처에서 꼭 확인해 주세요.' : ' 이용 전에 항공사나 예매처에서 확인해 주세요.')}"></p>
+<p th:if="${flightGuide.message != null}" th:text="${flightGuide.message}"></p>
+<article class="place-row" th:each="route : ${flightGuide.routes}">
+<h4 th:text="${route.airline}"></h4>
+<p th:text="${'하루 ' + route.flights + '편 · 첫 편 ' + route.firstDeparture + ' · 막 편 ' + route.lastDeparture + ' · 비행 약 ' + route.fastestMinutes + '분'
+    + (route.minCharge == null ? '' : ' · 일반석 ' + #numbers.formatInteger(route.minCharge, 1, 'COMMA') + '원부터')}"></p>
+</article>
+</div>
+<form method="post" th:action="@{/travel/recommendations/itineraries/{id}/flight-guide(id=${job.id})}">
+<label for="flight-from">출발 공항</label>
+<select id="flight-from" name="from">
+<option th:each="airport : ${T(com.travel.travel_recommendation.service.Airports).ALL}" th:value="${airport.id}" th:text="${airport.name}" th:selected="${flightFrom == airport.id}"></option>
+</select>
+<div class="form-actions"><button type="submit">비행기 편 찾기</button></div>
 </form></details>
 </section>
 

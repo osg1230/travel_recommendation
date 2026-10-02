@@ -14,6 +14,7 @@ import tools.jackson.databind.*;
 
 @Component
 public class OpenAiRecommendationClient {
+    private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(OpenAiRecommendationClient.class);
     private final OpenAiProperties properties;
     private final ObjectMapper mapper;
     private final HttpClient http;
@@ -80,7 +81,11 @@ public class OpenAiRecommendationClient {
                 .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body),StandardCharsets.UTF_8)).build();
             // 실패 시 자동 유료 재시도는 하지 않는다.
             var response=http.send(request,HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if(response.statusCode()==429) throw failure("AI_RATE_LIMIT","추천 API 사용량이 제한됐어요. 잠시 후 다시 시도해 주세요.");
+            if(response.statusCode()==429) {
+                // 분당·일일 한도 중 무엇에 걸렸는지 알 수 있게 응답 앞부분만 남긴다. 오류 본문에는 인증키가 없다.
+                log.warn("추천 API 요청 제한(429) request-id={} body={}",response.headers().firstValue("x-request-id").orElse(""),snippet(response.body()));
+                throw failure("AI_RATE_LIMIT","추천 API 사용량이 제한됐어요. 잠시 후 다시 시도해 주세요.");
+            }
             if(response.statusCode()==401 || response.statusCode()==403)
                 throw failure("AI_AUTH","추천 연결 설정을 확인해야 해요. 나중에 다시 이용해 주세요.");
             if(response.statusCode()!=200) throw failure("AI_UNAVAILABLE","추천 서비스에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.");
@@ -97,12 +102,17 @@ public class OpenAiRecommendationClient {
                 }
             }
             if(output==null || output.length()>16000) throw invalid();
-            return validate(mapper.readTree(output),candidates);
+            try { return validate(mapper.readTree(output),candidates); }
+            catch(RecommendationException e) {
+                // 어떤 응답이 검증에 걸렸는지 알 수 있게 앞부분만 남긴다. 사용자 원문·인증키는 응답에 없다.
+                log.warn("추천 응답 검증 실패: {}",snippet(output));
+                throw e;
+            }
         } catch(RecommendationException e) { throw e; }
         catch(HttpTimeoutException e) { throw failure("AI_TIMEOUT","추천 응답 시간이 초과됐어요. 잠시 후 다시 시도해 주세요."); }
         catch(InterruptedException e) { Thread.currentThread().interrupt(); throw failure("AI_INTERRUPTED","추천 처리가 중단됐어요. 다시 시도해 주세요."); }
         catch(IOException e) { throw failure("AI_UNAVAILABLE","추천 서비스에 연결하지 못했어요. 잠시 후 다시 시도해 주세요."); }
-        catch(RuntimeException e) { throw invalid(); }
+        catch(RuntimeException e) { log.warn("추천 응답 처리 실패: {}",e.toString()); throw invalid(); }
     }
 
     List<RankedDestination> validate(JsonNode root,List<DestinationCandidate> candidates) {
@@ -171,6 +181,11 @@ public class OpenAiRecommendationClient {
         for(String category:List.of("SEASON","COMPANION","THEME","TRANSPORTATION")) p.put(category,c.keywordNames(category));
         // 원문, 계정 식별자, 세션 토큰과 DB 키워드 ID는 외부로 전송하지 않는다.
         return p;
+    }
+    /** 로그용 응답 앞부분(공백 정리, 300자). */
+    private static String snippet(String text) {
+        String compact=text==null?"":text.replaceAll("\\s+"," ");
+        return compact.substring(0,Math.min(300,compact.length()));
     }
     private RecommendationException invalid() { return failure("AI_INVALID_RESPONSE","추천 결과를 검증하지 못했어요. 다시 시도하거나 조건을 수정해 주세요."); }
     private RecommendationException failure(String code,String message) { return new RecommendationException(code,message); }
