@@ -70,10 +70,14 @@ public class PlacePhotoService {
         return result;
     }
 
+    /** 자연 관광지 가운데서도 지역 대표 경치로 어울리는 제목에 먼저 들어가는 말. 같은 자연 분류라도 기념공원·천연기념물 나무보다 이런 곳을 앞세운다. */
+    private static final java.util.regex.Pattern SCENIC = java.util.regex.Pattern.compile(
+        "해변|해수욕장|해안|바다|섬|산|봉|호수|호반|폭포|계곡|숲|전망|일출|습지|둘레길");
+
     /**
-     * 추천 결과의 여행지(도시)마다 대표 사진을 찾아 저장한다. GPT가 추천 이유에서 든 중심 장소(centerPlaces, 실제 후보와 이름이 맞는 곳만)를
-     * 관광공사에서 찾아 그 지역 안의 같은 이름 관광지 사진을 쓰고, 어느 관광지 사진인지(title)를 함께 저장해 도시 전체 사진으로 오해하지 않게 한다.
-     * 중심 장소가 없는 여행지는 검색하지 않고 사진 없이 둔다. until이 지나면 멈추고, 실패해도 추천 결과는 그대로다.
+     * 추천 결과의 여행지(도시)마다 대표 사진을 찾아 저장한다. ① GPT가 추천 이유에서 든 중심 장소(centerPlaces, 실제 후보와 이름이 맞는 곳만)를
+     * 관광공사에서 찾아 그 지역 안의 같은 이름 관광지 사진을 쓴다. ② 없으면 그 시·군의 자연 관광지 목록에서 경치 사진(해변·산·호수 등 제목을 먼저)을 쓴다.
+     * 어느 관광지 사진인지(title)를 함께 저장해 도시 전체 사진으로 오해하지 않게 한다. until이 지나면 멈추고, 실패해도 추천 결과는 그대로다.
      */
     public void findForDestinations(List<RankedDestination> ranked, Instant until) {
         if (!tour.configured()) return;
@@ -81,7 +85,7 @@ public class PlacePhotoService {
             if (Instant.now().isAfter(until)) return;
             var destination = item.destination();
             var place = places.findById(destination.placeId()).orElse(null);
-            if (item.centerPlaces().isEmpty() || place == null || PlacePhotoDetails.read(place, Instant.now(), mapper) != null) continue;
+            if (place == null || PlacePhotoDetails.read(place, Instant.now(), mapper) != null) continue;
             try {
                 PlacePhotoDetails.Photo photo = null;
                 for (String landmark : item.centerPlaces()) {
@@ -90,6 +94,7 @@ public class PlacePhotoService {
                         .map(PlacePhotoService::usable).filter(Objects::nonNull).findFirst().orElse(null);
                     if (photo != null) break;
                 }
+                if (photo == null) photo = scenicPhoto(destination);
                 save(destination.placeId(), photo == null ? new PlacePhotoDetails.Photo(null, null, Instant.now(), null) : photo);
             } catch (RuntimeException error) {
                 log.warn("여행지 사진 찾기를 건너뜀 place={} ({})", destination.placeId(), error.toString());
@@ -133,6 +138,24 @@ public class PlacePhotoService {
         String road = PlaceOperatingService.road(place.address());
         return !road.isEmpty() && road.equals(PlaceOperatingService.road(found.address()));
     }
+
+    /**
+     * 여행지 지역명("강원특별자치도 강릉시")으로 관광공사 법정동 코드를 찾아 그 시·군의 자연 관광지 사진 하나를 고른다.
+     * 시·도 하나가 여행지(서울·제주 등)면 시·도 전체에서 고른다. 코드를 찾지 못하면 사진 없이 둔다.
+     */
+    private PlacePhotoDetails.Photo scenicPhoto(DestinationCandidate destination) {
+        String[] region = (destination.region() == null ? "" : destination.region().strip()).split("\\s+");
+        String province = tour.districtCode(null, region[0]).orElse(null);
+        if (province == null) return null;
+        String district = region.length > 1 ? tour.districtCode(province, region[1]).orElse(null) : null;
+        if (region.length > 1 && district == null) return null;
+        return tour.naturePhotos(province, district).stream()
+            .sorted(Comparator.comparing((TourApiClient.SearchPlace found) -> !scenic(found)))
+            .map(PlacePhotoService::usable).filter(Objects::nonNull).findFirst().orElse(null);
+    }
+
+    /** 제목에 해변·산·호수처럼 경치를 뜻하는 말이 있어 지역 대표 사진으로 먼저 고를 만한지. */
+    static boolean scenic(TourApiClient.SearchPlace found) { return SCENIC.matcher(found.name()).find(); }
 
     /** 관광공사 제목(앞의 지역명과 뒤의 괄호 설명은 뺌)이 장소 이름과 같은지. 띄어쓰기·가운뎃점 차이는 무시한다. */
     static boolean sameName(String name, String city, TourApiClient.SearchPlace found) {

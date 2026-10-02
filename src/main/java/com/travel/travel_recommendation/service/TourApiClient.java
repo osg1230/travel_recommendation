@@ -102,7 +102,37 @@ public class TourApiClient {
      */
     public List<SearchPlace> searchPhotos(String name) {
         if (name == null || name.isBlank() || name.length() > 200) throw failure("TOUR_INPUT", "장소 이름을 확인해 주세요.");
-        var data = get(endpoint.resolve("searchKeyword2"), 30, "&keyword=" + URLEncoder.encode(name, StandardCharsets.UTF_8));
+        return photoItems(get(endpoint.resolve("searchKeyword2"), 30, "&keyword=" + URLEncoder.encode(name, StandardCharsets.UTF_8)));
+    }
+
+    /**
+     * 법정동 코드 조회. provinceCode가 없으면 시·도 목록에서, 있으면 그 시·도의 시·군·구 목록에서 이름이 같은 코드를 찾는다.
+     * 예) districtCode(null, "강원특별자치도") → "51", districtCode("51", "강릉시") → "150". 없으면 비어 있다.
+     */
+    public Optional<String> districtCode(String provinceCode, String name) {
+        if (name == null || name.isBlank() || name.length() > 40) return Optional.empty();
+        if (provinceCode != null && !provinceCode.matches("[0-9]{2,5}")) return Optional.empty();
+        var data = get(endpoint.resolve("ldongCode2"), 100, provinceCode == null ? "" : "&lDongRegnCd=" + provinceCode);
+        for (var item : data.path("items").path("item")) {
+            String code = item.path("code").asText("");
+            if (name.equals(item.path("name").asText("")) && code.matches("[0-9]{2,5}")) return Optional.of(code);
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * 시·도(와 시·군·구) 안의 자연 관광지(대분류 A01, 관광지 12) 가운데 사진이 있는 곳을 제목순으로 받는다.
+     * 여행지 대표 경치 사진을 고를 때 쓴다. districtCode가 없으면 시·도 전체에서 찾는다.
+     */
+    public List<SearchPlace> naturePhotos(String provinceCode, String districtCode) {
+        if (provinceCode == null || !provinceCode.matches("[0-9]{2,5}")) throw failure("TOUR_INPUT", "지역 코드를 확인해 주세요.");
+        String extra = "&lDongRegnCd=" + provinceCode + "&cat1=A01&contentTypeId=12&arrange=O";
+        if (districtCode != null && districtCode.matches("[0-9]{2,5}")) extra += "&lDongSignguCd=" + districtCode;
+        return photoItems(get(endpoint.resolve("areaBasedList2"), 30, extra));
+    }
+
+    /** 사진 검색·자연 관광지 목록의 항목을 SearchPlace로 바꾼다. 사진이 없거나 형식이 맞지 않는 항목은 뺀다. */
+    private static List<SearchPlace> photoItems(JsonNode data) {
         List<SearchPlace> result = new ArrayList<>();
         for (var item : data.path("items").path("item")) {
             String id = item.path("contentid").asText(""), type = item.path("contenttypeid").asText("");
