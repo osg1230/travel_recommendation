@@ -138,10 +138,37 @@ h2[id] { scroll-margin-top: 84px; }
 .nearby-attractions { margin: 12px 0; padding: 0; list-style: none; }
 .nearby-attractions li { padding: 10px 0; border-top: 1px solid var(--line); }
 .nearby-attractions li p { margin: 2px 0; }
-/* 여행지 추천 카드: 화면의 주인공이라 바깥 카드와 같게 띄우고, 1순위는 청록 테두리로 한 번 더 구분한다. */
-.destination-candidate { padding: 24px 28px; margin-bottom: var(--gap); background: var(--surface); border: 1px solid transparent; border-radius: var(--radius-lg); box-shadow: var(--shadow); }
-.destination-candidate h2 { margin-bottom: 2px; }
-.recommendation-list > .destination-candidate:first-of-type { border-color: var(--brand); }
+/* 여행지 후보·추천 카드: 화면의 주인공이라 바깥 카드와 같게 띄우고, 관광공사 사진을 위에 글을 아래에 둔다. 사진이 없으면 글만 보인다. */
+.destination-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-bottom: var(--gap); }
+.destination-candidate { display: flex; flex-direction: column; overflow: hidden; background: var(--surface); border: 1px solid transparent; border-radius: var(--radius-lg); box-shadow: var(--shadow); }
+.destination-photo { margin: 0; }
+.destination-photo img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: var(--surface-muted); }
+.destination-photo figcaption { padding: 3px 14px 0; font-size: 11px; color: var(--text-muted); text-align: right; }
+.destination-body { display: flex; flex-direction: column; flex: 1; padding: 18px 22px 22px; }
+.destination-body h2 { margin: 0 0 2px; font-size: 20px; }
+.destination-body .form-actions { margin-top: auto; padding-top: 16px; }
+/* 1순위 카드는 한 줄을 다 쓰고 청록 테두리로 구분하며, 넓은 화면에서는 사진을 왼쪽에 둔다. */
+.destination-candidate.is-top { grid-column: 1 / -1; border-color: var(--brand); }
+@media (min-width: 701px) {
+    .destination-candidate.is-top { flex-direction: row; }
+    .destination-candidate.is-top .destination-photo { display: flex; flex-direction: column; flex: 0 0 42%; }
+    .destination-candidate.is-top .destination-photo img { flex: 1; aspect-ratio: auto; min-height: 220px; }
+    .destination-candidate.is-top .destination-photo figcaption { padding-bottom: 6px; }
+}
+/* 일정 초안: 넓은 화면에서는 일정표 옆에 숙소·식사·바로 가기 요약 패널을 고정해 둔다. */
+.itinerary-page { width: min(100% - 32px, 1120px); }
+@media (min-width: 1000px) {
+    .itinerary-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 0 20px; align-items: start; }
+    .itinerary-side { position: sticky; top: 84px; }
+}
+.condition-section.side-card { padding: 20px 22px; }
+.side-card h2 { margin: 0 0 10px; font-size: 15px; color: var(--text-muted); }
+.side-card h3 { margin: 0 0 4px; font-size: 18px; }
+.side-list { margin: 0; padding: 0; list-style: none; }
+.side-list li { display: flex; gap: 10px; align-items: baseline; padding: 7px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.side-list li:first-child { border-top: 0; padding-top: 0; }
+.side-day { flex-shrink: 0; font-size: 12px; font-weight: 700; color: var(--brand-strong); }
+.side-links { display: grid; gap: 8px; font-size: 14px; }
 .card-region { margin: 0 0 10px; color: var(--text-muted); font-size: 14px; }
 /* 목적에 맞는 곳(예: 아쿠아리움)은 추천 근거라 옅은 청록 칸으로 묶어 보여 준다. */
 .purpose-matches { margin: 12px 0; padding: 10px 14px; list-style: none; border-radius: var(--radius-sm); background: var(--brand-soft); font-size: 14px; }
@@ -506,7 +533,7 @@ button.map-badge:hover { background: var(--badge, var(--brand)); transform: scal
     .schedule-item { grid-template-columns: 1fr; }
     .trip-map-canvas { height: 300px; }
     .place-grid { grid-template-columns: 1fr; }
-    .destination-candidate { padding: 20px; }
+    .destination-body { padding: 16px 18px 18px; }
     .hero-inner { padding: 36px 0 100px; }
     .hero h1 { font-size: 25px; }
     .hero-search { flex-direction: column; }

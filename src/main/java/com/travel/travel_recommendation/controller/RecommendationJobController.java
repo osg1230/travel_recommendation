@@ -5,6 +5,8 @@ import com.travel.travel_recommendation.service.RecommendationJobService;
 import com.travel.travel_recommendation.service.BudgetGuide;
 import com.travel.travel_recommendation.service.BudgetGuideService;
 import com.travel.travel_recommendation.service.DestinationRecommendationService;
+import com.travel.travel_recommendation.service.PlacePhotoDetails;
+import com.travel.travel_recommendation.service.PlacePhotoService;
 import jakarta.servlet.http.HttpSession;
 import java.nio.charset.StandardCharsets;
 import java.security.*;
@@ -25,6 +27,7 @@ public class RecommendationJobController {
     private final ObjectProvider<RecommendationJobService> services;
     private final ObjectProvider<DestinationRecommendationService> recommendations;
     private final ObjectProvider<BudgetGuideService> budgetGuides;
+    private final ObjectProvider<PlacePhotoService> photos;
     private static final String GUEST_TOKEN="recommendationGuestToken";
     private static final String LAST_JOB="lastRecommendationJob";
     private record Submission(String token, String loginId, UUID jobId) {}
@@ -67,13 +70,16 @@ public class RecommendationJobController {
         // 예산을 입력하지 않았으면 전국 평균 지출액과 여행지별 숙소 유형(예산대)을 함께 보여 준다(SFR-03-03).
         var conditions=service().conditions(id,login,guestHash(session,false));
         model.addAttribute("conditions",conditions);
+        // 화면에 보이는 여행지: 추천이 끝났으면 순위 목록, 아니면 후보 목록이다.
+        List<DestinationCandidate> shown="COMPLETED".equals(job.status())
+            ?job.recommendations().stream().map(RankedDestination::destination).toList():job.candidates();
+        // 여행지 카드의 관광공사 대표 사진(찾아 둔 것만). 없는 여행지는 글만 보인다.
+        model.addAttribute("photoByDestination",photosOf(shown.stream().map(DestinationCandidate::placeId).toList()));
         var guides=budgetGuides.getIfAvailable();
         if(conditions.budget()==null && guides!=null) {
             boolean overnight=(conditions.durationDays()!=null && conditions.durationDays()>1) || Boolean.TRUE.equals(conditions.accommodationNeeded());
             model.addAttribute("spending",BudgetGuide.NATIONAL_AVERAGE);
             model.addAttribute("overnight",overnight);
-            List<DestinationCandidate> shown="COMPLETED".equals(job.status())
-                ?job.recommendations().stream().map(RankedDestination::destination).toList():job.candidates();
             // 숙박이 필요한 여행에서만 숙소 예산대를 보여 준다. 당일 여행은 전국 평균만 안내한다.
             if(overnight) model.addAttribute("budgetTiers",shown.stream().map(d->guides.tiers(d.name(),d.region())).toList());
         }
@@ -97,6 +103,11 @@ public class RecommendationJobController {
     ResponseEntity<RecommendationJobView> status(@PathVariable UUID id,Principal principal,HttpSession session) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
             .body(service().view(id,principal==null?null:principal.getName(),guestHash(session,false)));
+    }
+    private Map<Long,PlacePhotoDetails.Photo> photosOf(List<Long> placeIds) {
+        var service=photos.getIfAvailable();
+        if(service==null || placeIds.isEmpty()) return Map.of();
+        try { return service.photos(placeIds); } catch(RuntimeException error) { return Map.of(); }
     }
     private RecommendationJobService service() {
         var service=services.getIfAvailable();

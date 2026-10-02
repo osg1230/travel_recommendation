@@ -40,7 +40,13 @@ public class RecommendationJobWorker {
         for(UUID id:recommendations.queued()) {
             var work=recommendations.claim(id);
             if(work==null) continue;
-            try { recommendations.complete(work,recommendations.generate(work)); }
+            try {
+                var ranked=recommendations.generate(work);
+                recommendations.complete(work,ranked);
+                // 추천 이유에 나온 중심 장소의 관광공사 사진을 여행지 카드 사진으로 찾아 둔다(최대 10초). 한 번 찾은 사진은 30일 동안 다시 쓰고, 실패해도 추천은 그대로다.
+                try { photos.findForDestinations(ranked,java.time.Instant.now().plusSeconds(10)); }
+                catch(RuntimeException e) { log.warn("여행지 사진 찾기를 건너뜀 job={} ({})",id,e.toString()); }
+            }
             catch(RecommendationException e) { recommendations.fail(work,e.getCode(),e.getMessage()); }
             catch(RuntimeException e) { recommendations.fail(work,"RECOMMENDATION_FAILED","추천 결과를 저장하지 못했어요. 잠시 후 다시 시도해 주세요."); }
         }
