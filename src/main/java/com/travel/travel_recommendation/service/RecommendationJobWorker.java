@@ -64,8 +64,15 @@ public class RecommendationJobWorker {
                 try { photos.findForItinerary(work.input(),result,until); } catch(RuntimeException e) { log.warn("장소 사진 찾기를 건너뜀 job={} ({})",id,e.toString()); }
                 itineraries.complete(work,result);
             }
-            catch(RecommendationException e) { itineraries.fail(work,e.getCode(),e.getMessage()); }
-            catch(RuntimeException e) { itineraries.fail(work,"SCHEDULE_FAILED","일정을 만들지 못했어요. 잠시 후 다시 요청해 주세요."); }
+            catch(RecommendationException e) {
+                // 어느 단계에서 실패했는지 로그로 남긴다(장소 이름만 들어가고 사용자 정보는 없다).
+                log.warn("일정 생성 실패 job={} code={} ({})",id,e.getCode(),e.getMessage(),e);
+                itineraries.fail(work,e.getCode(),e.getMessage());
+            }
+            catch(RuntimeException e) {
+                log.warn("일정 생성 오류 job={}",id,e);
+                itineraries.fail(work,"SCHEDULE_FAILED","일정을 만들지 못했어요. 잠시 후 다시 요청해 주세요.");
+            }
         }
     }
     @Scheduled(fixedDelay=60000)
