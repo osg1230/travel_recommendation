@@ -192,7 +192,11 @@ public class TourApiClient {
                 // 사진은 출처 표시만 하면 쓸 수 있는 유형(Type1·Type3)의 https 주소만 쓴다.
                 String image = text(item, "firstimage");
                 if (!image.startsWith("https://") || image.length() > 500 || !Set.of("Type1", "Type3").contains(text(item, "cpyrhtDivCd"))) image = "";
-                result.add(new RegionalFestival(id, title, start, end, text(item, "addr1"), text(item, "addr2"), image, text(item, "tel")));
+                // 행사 장소 좌표는 일정에 넣을 실제 장소를 찾을 때만 쓴다. 국내 범위를 벗어나면 없는 것으로 둔다.
+                double x = coordinate(item, "mapx"), y = coordinate(item, "mapy");
+                boolean located = x >= 124 && x <= 132 && y >= 33 && y <= 39;
+                result.add(new RegionalFestival(id, title, start, end, text(item, "addr1"), text(item, "addr2"), image, text(item, "tel"),
+                    located ? x : null, located ? y : null));
             } catch (RecommendationException | DateTimeParseException ignored) {
                 // 한 행사의 형식 오류로 다른 축제까지 잃지 않는다.
             }

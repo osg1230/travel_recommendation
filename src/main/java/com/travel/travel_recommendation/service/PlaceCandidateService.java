@@ -63,6 +63,9 @@ public class PlaceCandidateService {
         if (!"COMPLETED".equals(job.status())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "여행지 추천을 마친 뒤 지역을 선택해 주세요.");
         }
+        // 축제가 열리는 곳으로 확인한 관광지. 목적 시설처럼 후보 수 제한에 밀리지 않게 앞에 둔다.
+        var festivalIds = job.recommendations().stream().filter(r -> r.destination().placeId() == destinationId)
+            .flatMap(r -> r.festivalPlaceIds().values().stream()).toList();
         var destination = job.recommendations().stream().map(RankedDestination::destination)
             .filter(candidate -> candidate.placeId() == destinationId).findFirst()
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -85,7 +88,7 @@ public class PlaceCandidateService {
         var themes = conditions.themeNames();
         var candidates = places.findLocalPlaces(current.getRegion()).stream()
             .filter(place -> usable(place, current.getRegion()))
-            .sorted(Comparator.comparing((Place p)->!purposeIds.contains(p.getId()))
+            .sorted(Comparator.comparing((Place p)->!purposeIds.contains(p.getId()) && !festivalIds.contains(p.getId()))
                 .thenComparing((Place p)->ThemePlaces.matched(p.getName(),p.getSubtype(),themes).isEmpty())
                 .thenComparing((Place p)->!"KAKAO".equals(p.getSourceProvider()))
                 .thenComparing(Place::getName).thenComparing(Place::getId)).toList();

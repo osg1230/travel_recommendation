@@ -20,6 +20,7 @@ public class RecommendationJobWorker {
     private final DestinationRecommendationService recommendations;
     private final ItineraryJobService itineraries;
     private final PurposePlaceService purposes;
+    private final FestivalPlaceService festivalPlaces;
     private final PlacePhotoService photos;
     private final NearbyRestaurantService restaurants;
     private volatile boolean ready;
@@ -43,6 +44,9 @@ public class RecommendationJobWorker {
             try {
                 var ranked=recommendations.generate(work);
                 recommendations.complete(work,ranked);
+                // 추천에 붙은 축제가 열리는 곳을 카카오 장소로 확인해 둔다. 일정에 축제를 넣을 때 쓰며, 실패해도 추천은 그대로다.
+                try { festivalPlaces.attach(id,ranked); }
+                catch(RuntimeException e) { log.warn("축제 장소 확인을 건너뜀 job={} ({})",id,e.toString()); }
                 // 추천 이유에 나온 중심 장소의 관광공사 사진을 여행지 카드 사진으로 찾아 둔다(최대 10초). 한 번 찾은 사진은 30일 동안 다시 쓰고, 실패해도 추천은 그대로다.
                 try { photos.findForDestinations(ranked,java.time.Instant.now().plusSeconds(10)); }
                 catch(RuntimeException e) { log.warn("여행지 사진 찾기를 건너뜀 job={} ({})",id,e.toString()); }
