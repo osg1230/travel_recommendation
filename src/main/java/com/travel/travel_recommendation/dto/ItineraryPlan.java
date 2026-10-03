@@ -180,7 +180,11 @@ public final class ItineraryPlan {
     }
     public record Day(int number, LocalDate date, List<Item> items) {}
     /** AI가 작성한 보조 안내. 서버가 만든 시각·장소·순서를 바꾸지 않으며 검증 완료를 뜻하지 않는다. */
-    public record Assist(String summary, List<DayAdvice> days, Instant createdAt) {}
+    /** placeReasons는 장소 ID → AI가 쓴 "왜 가 볼 만한지" 한 문장이다. 일정 항목의 '고른 이유'에 반영하며 이전 JSON에는 없다. */
+    public record Assist(String summary, List<DayAdvice> days, Instant createdAt, java.util.Map<Long, String> placeReasons) {
+        public Assist { placeReasons = placeReasons == null ? java.util.Map.of() : java.util.Map.copyOf(placeReasons); }
+        public Assist(String summary, List<DayAdvice> days, Instant createdAt) { this(summary, days, createdAt, null); }
+    }
     public record DayAdvice(int number, String advice) {}
     /**
      * 주변 지역 추천 결과(SFR-07). decision은 추천 여부 판단이고 regions는 기준 시간 안의 지역만 담는다.
@@ -258,6 +262,7 @@ public final class ItineraryPlan {
             this(destination, days, transport, createdAt, assist, nearby, lodging, null, null);
         }
         public Result withAssist(Assist assist) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
+        public Result withDays(List<Day> days) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
         public Result withNearby(Nearby nearby) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
         public Result withLodging(Lodging lodging) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
         public Result withSkipped(List<PlaceRef> skipped) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
