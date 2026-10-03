@@ -58,6 +58,8 @@
             <div class="destination-body">
             <h2 th:text="${item.rank + '순위 · ' + item.destination.name}"></h2>
             <p class="card-region" th:text="${item.destination.region}"></p>
+            <!--/* AI가 여러 여행 방향을 제안한 경우 이 여행지에 고른 방향을 먼저 보여 준다. */-->
+            <p class="card-region" th:if="${item.direction != null}" th:text="${'이런 여행으로 추천 · ' + item.direction}"></p>
             <p th:text="${item.reason}"></p>
             <p class="help" th:if="${conditions != null and conditions.includeNearby != null and conditions.includeNearby
                     and !T(com.travel.travel_recommendation.service.NearbyRegionService).supports(item.destination.name)}"

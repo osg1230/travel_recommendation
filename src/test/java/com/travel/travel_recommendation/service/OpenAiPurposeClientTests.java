@@ -49,10 +49,10 @@ class OpenAiPurposeClientTests {
 
     // 목적과 가까운 여행지 분류는 정해진 목록 안에서 최대 2개만 받는다.
     @Test void themesAreLimitedToKnownDestinationCategories() {
-        answer(List.of("갯벌체험"), List.of("바다", "갯벌", "바다", "자연", "휴식"));
+        answer(List.of("갯벌체험"), List.of("바다", "갯벌", "바다", "자연", "휴식", "맛집"));
         var terms = client("key").terms("갯벌 체험");
         assertThat(terms.keywords()).containsExactly("갯벌체험");
-        assertThat(terms.themes()).containsExactly("바다", "자연");
+        assertThat(terms.themes()).containsExactly("바다", "자연", "휴식");
         assertThat(request.get()).contains("\"themes\"", "체험·액티비티");
         answer(List.of(), List.of("휴식"));
         assertThat(client("key").terms("쉬고 싶어").themes()).containsExactly("휴식");

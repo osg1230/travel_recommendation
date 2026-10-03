@@ -77,9 +77,11 @@ public class DestinationRecommendationService {
         // 저장 직전에도 ID·개수·중복·이유를 검증하고 명칭·출처는 DB에서 얻은 스냅샷으로 고정한다.
         var validated=client.validate(mapper.valueToTree(Map.of("recommendations",ranked.stream().map(r->
             Map.of("placeId",r.destination().placeId(),"reason",r.reason(),"places",r.centerPlaces())).toList())),work.candidates())
-            // 축제는 GPT 응답이 아니라 서버가 관광공사에서 찾은 값이라 검증한 결과에 그대로 다시 붙인다.
-            .stream().map(v->v.withFestivals(ranked.stream().filter(r->r.destination().placeId().equals(v.destination().placeId()))
-                .findFirst().map(RankedDestination::festivals).orElse(List.of()))).toList();
+            // 축제는 서버가 관광공사에서 찾은 값이고 제안 방향은 추천 때 이미 목록과 대조한 값이라 검증한 결과에 그대로 다시 붙인다.
+            .stream().map(v->{ var source=ranked.stream().filter(r->r.destination().placeId().equals(v.destination().placeId())).findFirst();
+                return v.withFestivals(source.map(RankedDestination::festivals).orElse(List.of()))
+                    .withFestivalPlaces(source.map(RankedDestination::festivalPlaceIds).orElse(Map.of()))
+                    .withDirection(source.map(RankedDestination::direction).orElse(null)); }).toList();
         if(job.getUserId()!=null) {
             var request=requests.findById(job.getRequestId()).orElseThrow(()->new IllegalStateException("Request missing"));
             if(!job.getUserId().equals(request.getUserId())) throw new IllegalStateException("Owner mismatch");
