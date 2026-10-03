@@ -17,7 +17,9 @@ class OpenAiPriceLiveTests {
     }
 
     @Test void looksUpRealPlacesAndNeverKeepsUnsupportedSources() {
+        // application.properties와 같은 순서: OPEN_AI_API가 없으면 OPENAI_API_KEY를 쓴다.
         String key = System.getenv("OPEN_AI_API");
+        if (key == null || key.isBlank()) key = System.getenv("OPENAI_API_KEY");
         var client = new OpenAiPriceClient(new OpenAiProperties(key, "gpt-6-luna", "none"), new JsonMapper());
         var targets = List.of(
             new Object[] {place(1, "씨마크호텔", "강원특별자치도 강릉시 해안로406번길 2"), OpenAiPriceClient.LODGING},
