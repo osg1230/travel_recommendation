@@ -243,7 +243,7 @@ public class ItineraryGenerator {
         var conditions=input.conditions();
         if(conditions.purposeSearch()!=null && conditions.travelPurpose()!=null && !conditions.travelPurpose().isBlank()
                 && conditions.purposeSearch().places().stream().anyMatch(p->place.placeId().equals(p.placeId())))
-            reasons.add("여행 목적('"+conditions.travelPurpose().strip()+"')과 관련된 시설로 찾은 곳이에요.");
+            reasons.add(conditions.purposeLabel()+"('"+conditions.travelPurpose().strip()+"')과 관련된 시설로 찾은 곳이에요.");
         var themes=ThemePlaces.matched(place.name(),place.subtype(),conditions.themeNames());
         if(!themes.isEmpty()) reasons.add("고른 여행 취향("+String.join("·",themes)+")에 맞는 분류예요.");
         if(dayCenter) reasons.add("이 날 일정의 중심으로 고른 곳이라 첫 방문지로 넣었어요.");

@@ -50,6 +50,9 @@ public class OpenAiRecommendationClient {
                 travelPurpose에 예전 지역·기간·예산이 남아 있다면 별도의 구조화된 조건 값을 우선한다.
                 목적은 travelPurpose에 적힌 그대로만 다룬다. 이 지시문에 없는 동물·시설·활동을 예로 들거나
                 travelPurpose에 없는 목적을 언급하지 않는다. travelPurpose가 비어 있으면 목적 이야기를 하지 않는다.
+                purposeSuggested가 true면 travelPurpose는 사용자가 말한 목적이 아니라, 하고 싶은 것을 말하지 않아 서비스가 계절에 맞춰 제안한 여행 방향이다.
+                이때는 '원하신'·'말씀하신'처럼 사용자가 요청한 것처럼 쓰지 말고 '요즘 같은 여름에는 계곡에서 쉬기 좋아요'처럼 제안하는 말투로 쓰며,
+                SEASON(계절)과 그 방향이 후보의 어떤 점과 어울리는지 설명한다. 순위도 그 계절과 방향에 잘 맞는 후보를 앞에 둔다.
                 구체적인 관람·체험 목적을 단순한 지역 여행으로 바꾸지 않는다. 후보 소개에 그 관람·체험 근거가 없으면
                 해당 목적에 맞는 장소는 아직 확인하지 못했다고 명시한다. 장소나 전시 내용을 지어내지 않는다.
                 후보의 purposePlaces는 목적 검색어(purposeKeywords)로 찾은 그 지역의 시설 이름이다.
@@ -150,7 +153,7 @@ public class OpenAiRecommendationClient {
     private static Map<String,String> fieldNames() {
         Map<String,String> names=new LinkedHashMap<>();
         names.put("purposePlaces","목적 시설 검색 결과");names.put("purposeKeywords","목적 검색어");
-        names.put("travelPurpose","여행 목적");names.put("placeId","후보");names.put("durationDays","여행 일수");
+        names.put("travelPurpose","여행 목적");names.put("purposeSuggested","제안한 여행 방향");names.put("placeId","후보");names.put("durationDays","여행 일수");
         names.put("budgetKrw","예산");names.put("partySize","인원");names.put("accommodationNeeded","숙박 여부");
         names.put("includeNearby","주변 지역 포함 여부");names.put("startDate","출발일");names.put("endDate","도착일");
         names.put("THEME","여행 취향");names.put("SEASON","계절");names.put("COMPANION","동행자");
@@ -177,6 +180,7 @@ public class OpenAiRecommendationClient {
         p.put("durationDays",c.durationDays());p.put("budgetKrw",c.budget());p.put("partySize",c.partySize());
         p.put("accommodationNeeded",c.accommodationNeeded());p.put("includeNearby",c.includeNearby());
         p.put("travelPurpose",c.travelPurpose() == null ? "" : c.travelPurpose());
+        p.put("purposeSuggested",c.purposeSuggested());
         p.put("purposeKeywords",c.purposeSearch() == null ? List.of() : c.purposeSearch().keywords());
         for(String category:List.of("SEASON","COMPANION","THEME","TRANSPORTATION")) p.put(category,c.keywordNames(category));
         // 원문, 계정 식별자, 세션 토큰과 DB 키워드 ID는 외부로 전송하지 않는다.

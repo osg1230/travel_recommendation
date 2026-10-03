@@ -33,8 +33,9 @@ public class PlaceCandidateService {
         "www.seamarqhotel.com", "booking.seamarqhotel.com", "www.shillahotels.com",
         "www.haeundaegalbi.com", "www.lahanhotels.com", "lahanhotels.com");
 
-    /** 이 추천에서 찾은 여행 목적 시설 중 이 여행지에 있는 관광지. 장소 목록 표시와 일정의 필수 방문 기본값에 쓴다. */
-    public record PurposeView(String purpose, List<Long> placeIds) {
+    /** 이 추천에서 찾은 여행 목적 시설 중 이 여행지에 있는 관광지. 장소 목록 표시와 일정의 필수 방문 기본값에 쓴다. label은 목적을 부르는 말(여행 목적 또는 AI가 제안한 여행 방향)이다. */
+    public record PurposeView(String purpose, List<Long> placeIds, String label) {
+        public PurposeView(String purpose, List<Long> placeIds) { this(purpose, placeIds, "여행 목적"); }
         public static final PurposeView NONE = new PurposeView("", List.of());
     }
     @Transactional(readOnly = true, timeout = 10)
@@ -45,7 +46,7 @@ public class PlaceCandidateService {
         var c = mapper.readValue(stored.getRequestJson(), ConfirmedTravelConditions.class);
         if (c.purposeSearch() == null) return PurposeView.NONE;
         return new PurposeView(c.travelPurpose() == null ? "" : c.travelPurpose(),
-            c.purposeSearch().placesIn(destinationId).stream().map(p -> p.placeId()).toList());
+            c.purposeSearch().placesIn(destinationId).stream().map(p -> p.placeId()).toList(), c.purposeLabel());
     }
 
     @Transactional(readOnly = true, timeout = 10)

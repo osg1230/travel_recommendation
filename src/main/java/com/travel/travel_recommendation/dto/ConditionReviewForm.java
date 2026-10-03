@@ -13,4 +13,6 @@ public class ConditionReviewForm extends TravelConditionForm {
     private String includeNearby = "";
     /** AI가 추출한 여행 활동만 보관한다. 요청 바인딩으로 덮어쓸 수 없다. */
     private String travelPurpose = "";
+    /** 사용자가 목적을 말하지 않아 AI가 제안한 여행 방향이면 true다. travelPurpose와 함께 서버에서만 정한다. */
+    private boolean purposeSuggested;
 }
