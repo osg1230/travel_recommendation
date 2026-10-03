@@ -140,6 +140,21 @@ class ConditionReviewTests {
         assertThat(ConditionReviewService.seasonName(7)).isEqualTo("여름");
         assertThat(ConditionReviewService.seasonName(12)).isEqualTo("겨울");
     }
+    @Test void excludedRegionsAreKeptAndMalformedOnesRejected() {
+        var excluding = result.deepCopy();
+        excluding.putArray("excludedRegions").add("부산").add("부산").add("강릉");
+        when(client.analyze(anyString(), anyMap())).thenReturn(excluding);
+        TravelConditionForm source = new TravelConditionForm();
+        source.setOriginalText("부산 말고 강릉으로");
+        var analysis = service.analyze(source, options.getChoices());
+        // 중복과, 가고 싶다고 한 지역(강릉)과 같은 값은 버린다.
+        assertThat(analysis.form().getExcludedRegions()).containsExactly("부산");
+        assertThat(service.confirm(analysis.form(), source, "", options.getChoices()).excludedRegions()).containsExactly("부산");
+        var malformed = result.deepCopy();
+        malformed.putArray("excludedRegions").add("<b>부산</b>");
+        when(client.analyze(anyString(), anyMap())).thenReturn(malformed);
+        assertThatThrownBy(() -> service.analyze(source, options.getChoices())).isInstanceOf(ConditionAnalysisException.class);
+    }
     @Test void userPurposeIsKeptEvenWhenAiAlsoSuggestsConcept() {
         when(client.analyze(anyString(), anyMap())).thenReturn(result.deepCopy().put("suggestedConcept", "해수욕장에서 바다 즐기기"));
         TravelConditionForm source = new TravelConditionForm();

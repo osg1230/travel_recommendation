@@ -26,7 +26,8 @@
               + (conditions.partySize == null ? '' : ' · ' + conditions.partySize + '명')
               + (transport.isEmpty() ? '' : ' · 이동 ' + transport)
               + (conditions.budget == null ? '' : ' · 예산 ' + #numbers.formatInteger(conditions.budget, 1, 'COMMA') + '원')
-              + (conditions.accommodationNeeded == null ? '' : (conditions.accommodationNeeded ? ' · 숙박 여행' : ' · 숙박 없음'))}"></p>
+              + (conditions.accommodationNeeded == null ? '' : (conditions.accommodationNeeded ? ' · 숙박 여행' : ' · 숙박 없음'))
+              + (conditions.excludedRegions.isEmpty() ? '' : ' · 제외 ' + #strings.listJoin(conditions.excludedRegions, ', '))}"></p>
         <a th:href="@{/travel/conditions/edit(recommendationId=${job.jobId})}">조건 수정하기</a>
         <p class="help">원하는 내용과 다르게 해석됐다면 수정해 주세요. 날짜·예산이 미정이어도 추천을 볼 수 있어요.</p>
     </section>

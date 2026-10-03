@@ -25,7 +25,7 @@ public class DestinationFestivalService {
     /** 여행지 ID → 그 여행지의 축제(시작일 순, 최대 3개). 축제가 없는 여행지는 넣지 않는다. */
     public Map<Long, List<RegionalFestival>> find(ConfirmedTravelConditions conditions, List<DestinationCandidate> candidates) {
         Map<Long, List<RegionalFestival>> result = new LinkedHashMap<>();
-        if (!festivals.configured()) return result;
+        if (!festivals.configured() || otherSeason(conditions)) return result;
         for (var candidate : candidates) {
             try {
                 var found = inDestination(candidate).stream()
@@ -37,6 +37,16 @@ public class DestinationFestivalService {
             }
         }
         return result;
+    }
+
+    /**
+     * 날짜는 없지만 "12월에"처럼 지금과 다른 계절의 여행이면 축제를 붙이지 않는다.
+     * 조회되는 축제는 오늘부터 60일 안의 것이라 그 여행 시기의 축제가 아니기 때문이다.
+     */
+    private boolean otherSeason(ConfirmedTravelConditions conditions) {
+        String season = conditions.keywordNames("SEASON");
+        return conditions.startDate() == null && !season.isEmpty()
+            && !season.equals(ConditionReviewService.seasonName(festivals.today().getMonthValue()));
     }
 
     /** 그 여행지 주소의 축제만 고른다. 시·도 전체 축제에서 주소에 시·군 이름(없으면 여행지 이름)이 들어 있는 것만 남긴다. */
