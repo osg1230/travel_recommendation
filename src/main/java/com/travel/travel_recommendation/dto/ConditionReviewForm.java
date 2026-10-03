@@ -15,4 +15,6 @@ public class ConditionReviewForm extends TravelConditionForm {
     private String travelPurpose = "";
     /** 사용자가 목적을 말하지 않아 AI가 제안한 여행 방향이면 true다. travelPurpose와 함께 서버에서만 정한다. */
     private boolean purposeSuggested;
+    /** 사용자가 가지 않겠다고 한 지역 이름. 서버에서만 정하며 요청 바인딩으로 덮어쓸 수 없다. */
+    private java.util.List<String> excludedRegions = java.util.List.of();
 }

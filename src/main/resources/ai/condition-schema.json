@@ -17,7 +17,8 @@
     "includeNearby": {"type": ["boolean", "null"]},
     "summary": {"type": "string"},
     "travelPurpose": {"type": "string", "maxLength": 200},
-    "suggestedConcept": {"type": "string", "maxLength": 100}
+    "suggestedConcept": {"type": "string", "maxLength": 100},
+    "excludedRegions": {"type": "array", "maxItems": 5, "items": {"type": "string", "maxLength": 20}}
   },
-  "required": ["isTravel", "region", "startDate", "endDate", "durationDays", "season", "companion", "themes", "budget", "transportation", "partySize", "accommodationNeeded", "includeNearby", "summary", "travelPurpose", "suggestedConcept"]
+  "required": ["isTravel", "region", "startDate", "endDate", "durationDays", "season", "companion", "themes", "budget", "transportation", "partySize", "accommodationNeeded", "includeNearby", "summary", "travelPurpose", "suggestedConcept", "excludedRegions"]
 }

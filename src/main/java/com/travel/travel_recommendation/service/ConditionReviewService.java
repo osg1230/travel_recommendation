@@ -23,7 +23,7 @@ public class ConditionReviewService {
     private final TravelConditionValidator validator;
     private static final Set<String> RESPONSE_FIELDS = Set.of("isTravel", "region", "startDate", "endDate",
             "durationDays", "season", "companion", "themes", "budget", "transportation", "partySize",
-            "accommodationNeeded", "includeNearby", "summary", "travelPurpose", "suggestedConcept");
+            "accommodationNeeded", "includeNearby", "summary", "travelPurpose", "suggestedConcept", "excludedRegions");
 
     public record Analysis(ConditionReviewForm form, String summary) {}
 
@@ -55,6 +55,17 @@ public class ConditionReviewService {
         boolean suggested = purpose.isEmpty() && !concept.isEmpty();
         form.setTravelPurpose(suggested ? concept : purpose);
         form.setPurposeSuggested(suggested);
+        // "부산 말고"처럼 가지 않겠다고 한 지역. 한글 지역 이름만 받고, 가고 싶다고 한 지역과 같으면 모순이라 버린다.
+        JsonNode excluded = result.get("excludedRegions");
+        if (!excluded.isArray() || excluded.size() > 5) throw invalid();
+        List<String> excludedRegions = new ArrayList<>();
+        for (JsonNode name : excluded) {
+            if (!name.isTextual()) throw invalid();
+            String value = name.asText().replaceAll("\\s+", "");
+            if (!value.matches("[가-힣]{2,20}")) throw invalid();
+            if (!value.equals(form.getRegion().replaceAll("\\s+", "")) && !excludedRegions.contains(value)) excludedRegions.add(value);
+        }
+        form.setExcludedRegions(excludedRegions);
         JsonNode budget = result.get("budget");
         if (!budget.isNull() && !budget.isNumber()) throw invalid();
         form.setBudget(budget.isNull() ? "" : budget.decimalValue().toPlainString());
@@ -123,6 +134,7 @@ public class ConditionReviewService {
         var form = new ConditionReviewForm();
         form.setTravelPurpose(c.travelPurpose() == null ? "" : c.travelPurpose());
         form.setPurposeSuggested(c.purposeSuggested());
+        form.setExcludedRegions(c.excludedRegions());
         form.setRegion(c.region());
         form.setStartDate(c.startDate() == null ? "" : c.startDate().toString());
         form.setEndDate(c.endDate() == null ? "" : c.endDate().toString());
@@ -173,7 +185,8 @@ public class ConditionReviewService {
         return new ConfirmedTravelConditions(source.getInputMode(), source.getOriginalText(), form.getRegion(),
                 start, end, days, form.getBudget().isEmpty() ? null : new BigDecimal(form.getBudget()),
                 number(form.getPartySize()), flag(form.getAccommodationNeeded()), flag(form.getIncludeNearby()),
-                List.copyOf(snapshots), summary).withPurpose(form.getTravelPurpose(), form.isPurposeSuggested());
+                List.copyOf(snapshots), summary).withPurpose(form.getTravelPurpose(), form.isPurposeSuggested())
+                .withExcludedRegions(form.getExcludedRegions());
     }
 
     private LocalDate date(String value) { return value.isEmpty() ? null : LocalDate.parse(value); }

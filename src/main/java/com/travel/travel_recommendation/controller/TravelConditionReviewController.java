@@ -224,6 +224,7 @@ public class TravelConditionReviewController {
             }
             form.setTravelPurpose(review.form().getTravelPurpose());
             form.setPurposeSuggested(review.form().isPurposeSuggested());
+            form.setExcludedRegions(review.form().getExcludedRegions());
             session.setAttribute(CONFIRMED_KEY, service.confirm(form, draft, review.summary(), choices));
             session.setAttribute(CONFIRMATION_TOKEN, UUID.randomUUID().toString());
             // 확정 때마다 토큰을 교체해 이전 탭이나 중복 제출이 최신 결과를 덮어쓰지 않게 한다.
