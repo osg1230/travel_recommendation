@@ -68,6 +68,34 @@ public class ItineraryJobService {
             ranked==null?List.of():ranked.centerPlaces(),days);
     }
 
+    /**
+     * 여행 기간에 이 여행지에서 열리는 축제 중 장소를 확인한 첫 축제. 일정의 필수 방문 장소 기본값과 방문 이유 안내에 쓴다.
+     * 출발일·일수가 미정이거나 기간이 겹치는 축제가 없으면 null이다.
+     */
+    @Transactional(readOnly=true,timeout=10)
+    public FestivalVisit festivalVisit(UUID parentId,long destinationId,String login,byte[] hash,LocalDate startDate,Integer days) {
+        if(startDate==null || days==null) return null;
+        var ranked=access.view(parentId,login,hash).recommendations().stream()
+            .filter(r->r.destination().placeId()==destinationId).findFirst().orElse(null);
+        if(ranked==null) return null;
+        LocalDate endDate=startDate.plusDays(days-1);
+        for(var festival:ranked.festivals()) {
+            Long placeId=ranked.festivalPlaceIds().get(festival.id());
+            if(placeId==null || festival.startDate().isAfter(endDate) || festival.endDate().isBefore(startDate)) continue;
+            // 축제가 여행 중간에 시작하면 그날을, 이미 열리고 있으면 첫날을 축제 보는 날로 잡는다.
+            LocalDate first=festival.startDate().isBefore(startDate)?startDate:festival.startDate();
+            return new FestivalVisit(placeId,(int)java.time.temporal.ChronoUnit.DAYS.between(startDate,first)+1,festival.title(),festival.period());
+        }
+        return null;
+    }
+
+    /** 출발일을 정하지 않았을 때 제안할 축제. 이 여행지의 축제 중 가장 먼저 열리는 것이며 없으면 null이다. */
+    @Transactional(readOnly=true,timeout=10)
+    public RegionalFestival firstFestival(UUID parentId,long destinationId,String login,byte[] hash) {
+        return access.view(parentId,login,hash).recommendations().stream().filter(r->r.destination().placeId()==destinationId)
+            .flatMap(r->r.festivals().stream()).findFirst().orElse(null);
+    }
+
     /** 필수 방문 장소로 고를 수 있는 전체 관광지 후보(여행 일수에 따라 16~27곳). */
     @Transactional(readOnly=true,timeout=10)
     public List<PlaceCandidate> attractionPool(UUID parentId,long destinationId,String login,byte[] hash) {
@@ -128,6 +156,10 @@ public class ItineraryJobService {
             if(startDate.isBefore(LocalDate.now(ZoneId.of("Asia/Seoul")))) throw scheduleConflict("출발일은 오늘이나 그 이후 날짜로 골라 주세요.");
             c=c.withStartDate(startDate);
         }
+        // 필수 방문 장소에 여행 기간의 축제 장소가 들어 있으면 일정의 방문 이유에 축제 이름·기간을 안내하도록 표시한다.
+        var festival=festivalVisit(parentId,destinationId,login,hash,c.startDate(),c.durationDays());
+        if(constraints!=null && festival!=null && constraints.requiredPlaceIds().contains(festival.placeId()))
+            constraints=constraints.withFestival(festival);
         current=new Input(parentId,candidates.findForSchedule(parentId,destinationId,login,hash,c),c,
             current.start(),current.end(),current.transport(),current.visitMinutes());
         var fixed=confirmedTransport(current.conditions());

@@ -3,6 +3,7 @@ package com.travel.travel_recommendation.service;
 import com.travel.travel_recommendation.dto.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,7 +23,7 @@ public class ConditionReviewService {
     private final TravelConditionValidator validator;
     private static final Set<String> RESPONSE_FIELDS = Set.of("isTravel", "region", "startDate", "endDate",
             "durationDays", "season", "companion", "themes", "budget", "transportation", "partySize",
-            "accommodationNeeded", "includeNearby", "summary", "travelPurpose");
+            "accommodationNeeded", "includeNearby", "summary", "travelPurpose", "suggestedConcept");
 
     public record Analysis(ConditionReviewForm form, String summary) {}
 
@@ -48,11 +49,12 @@ public class ConditionReviewService {
         if (form.getAccommodationNeeded().isEmpty() && draft.getOriginalText().matches("(?s).*[1-9][0-9]?\\s*박.*"))
             form.setAccommodationNeeded("true");
         form.setIncludeNearby(bool(result, "includeNearby"));
-        if(!result.get("travelPurpose").isTextual()) throw invalid();
-        String purpose = result.get("travelPurpose").asText().strip();
-        if(purpose.length() > 200 || purpose.contains("<") || purpose.contains(">")
-            || purpose.matches("(?s).*(https?://|@|[0-9]{3,}).*")) throw invalid();
-        form.setTravelPurpose(purpose);
+        String purpose = purposeText(result, "travelPurpose", 200);
+        String concept = purposeText(result, "suggestedConcept", 100);
+        // 사용자가 하고 싶은 것을 말하지 않았을 때만 AI가 제안한 여행 방향을 목적 자리에 넣고, 제안이라는 표시를 남긴다.
+        boolean suggested = purpose.isEmpty() && !concept.isEmpty();
+        form.setTravelPurpose(suggested ? concept : purpose);
+        form.setPurposeSuggested(suggested);
         JsonNode budget = result.get("budget");
         if (!budget.isNull() && !budget.isNumber()) throw invalid();
         form.setBudget(budget.isNull() ? "" : budget.decimalValue().toPlainString());
@@ -64,6 +66,14 @@ public class ConditionReviewService {
             themeValues.add(theme.asText());
         }
         form.setThemes(themeValues);
+        // 계절을 말하지 않았으면 여행 시작일(없으면 오늘)의 계절로 채운다. 날짜 계산이라 AI에 맡기지 않는다.
+        if (form.getSeason().isEmpty()) {
+            LocalDate when = form.getStartDate().matches("\\d{4}-\\d{2}-\\d{2}") ? LocalDate.parse(form.getStartDate())
+                    : LocalDate.now(ZoneId.of("Asia/Seoul"));
+            String season = seasonName(when.getMonthValue());
+            choices.getOrDefault("season", List.of()).stream().filter(k -> k.name().equals(season)).findFirst()
+                    .ifPresent(k -> form.setSeason(k.getSelectionValue()));
+        }
         if (!result.get("summary").isTextual()) throw invalid();
         String summary = result.get("summary").asText().strip();
         if (summary.length() > 1000) throw invalid();
@@ -76,6 +86,23 @@ public class ConditionReviewService {
             throw invalid();
         }
         return new Analysis(form, summary);
+    }
+
+    /** 월을 계절 키워드 이름으로 바꾼다. 3~5월 봄, 6~8월 여름, 9~11월 가을, 12~2월 겨울. */
+    public static String seasonName(int month) {
+        if (month >= 3 && month <= 5) return "봄";
+        if (month >= 6 && month <= 8) return "여름";
+        if (month >= 9 && month <= 11) return "가을";
+        return "겨울";
+    }
+
+    // 목적·제안 문장에는 태그·URL·이메일 형태·긴 숫자열을 허용하지 않는다.
+    private String purposeText(JsonNode result, String field, int maxLength) {
+        if (!result.get(field).isTextual()) throw invalid();
+        String value = result.get(field).asText().strip();
+        if (value.length() > maxLength || value.contains("<") || value.contains(">")
+                || value.matches("(?s).*(https?://|@|[0-9]{3,}).*")) throw invalid();
+        return value;
     }
 
     public ConditionReviewForm fromKeywords(TravelConditionForm draft) {
@@ -95,6 +122,7 @@ public class ConditionReviewService {
     public ConditionReviewForm fromConfirmed(ConfirmedTravelConditions c) {
         var form = new ConditionReviewForm();
         form.setTravelPurpose(c.travelPurpose() == null ? "" : c.travelPurpose());
+        form.setPurposeSuggested(c.purposeSuggested());
         form.setRegion(c.region());
         form.setStartDate(c.startDate() == null ? "" : c.startDate().toString());
         form.setEndDate(c.endDate() == null ? "" : c.endDate().toString());
@@ -145,7 +173,7 @@ public class ConditionReviewService {
         return new ConfirmedTravelConditions(source.getInputMode(), source.getOriginalText(), form.getRegion(),
                 start, end, days, form.getBudget().isEmpty() ? null : new BigDecimal(form.getBudget()),
                 number(form.getPartySize()), flag(form.getAccommodationNeeded()), flag(form.getIncludeNearby()),
-                List.copyOf(snapshots), summary).withPurpose(form.getTravelPurpose());
+                List.copyOf(snapshots), summary).withPurpose(form.getTravelPurpose(), form.isPurposeSuggested());
     }
 
     private LocalDate date(String value) { return value.isEmpty() ? null : LocalDate.parse(value); }

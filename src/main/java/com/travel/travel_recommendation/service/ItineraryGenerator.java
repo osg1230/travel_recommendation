@@ -240,10 +240,13 @@ public class ItineraryGenerator {
         if(input.constraints()!=null && input.constraints().requiredPlaceIds().contains(place.placeId())) reasons.add("필수 방문 장소로 고른 곳이에요.");
         if(input.revision()!=null && input.revision().added().stream().anyMatch(p->p.placeId().equals(place.placeId())))
             reasons.add("수정 요청에 따라 새로 넣은 곳이에요.");
+        if(input.constraints()!=null && input.constraints().festival()!=null && place.placeId().equals(input.constraints().festival().placeId()))
+            reasons.add("여행 기간에 이곳이나 바로 근처에서 "+input.constraints().festival().title()+"("+input.constraints().festival().period()
+                +") 행사가 열려요. 정확한 행사 장소와 일정은 출발 전에 확인해 주세요.");
         var conditions=input.conditions();
         if(conditions.purposeSearch()!=null && conditions.travelPurpose()!=null && !conditions.travelPurpose().isBlank()
                 && conditions.purposeSearch().places().stream().anyMatch(p->place.placeId().equals(p.placeId())))
-            reasons.add("여행 목적('"+conditions.travelPurpose().strip()+"')과 관련된 시설로 찾은 곳이에요.");
+            reasons.add(conditions.purposeLabel()+"('"+conditions.travelPurpose().strip()+"')과 관련된 시설로 찾은 곳이에요.");
         var themes=ThemePlaces.matched(place.name(),place.subtype(),conditions.themeNames());
         if(!themes.isEmpty()) reasons.add("고른 여행 취향("+String.join("·",themes)+")에 맞는 분류예요.");
         if(dayCenter) reasons.add("이 날 일정의 중심으로 고른 곳이라 첫 방문지로 넣었어요.");

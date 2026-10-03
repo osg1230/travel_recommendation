@@ -11,7 +11,8 @@ import static org.mockito.Mockito.*;
 class HomeTripServiceTests {
     private final KakaoMapClient maps = mock(KakaoMapClient.class);
     private final BusGuideService buses = mock(BusGuideService.class);
-    private final HomeTripService service = new HomeTripService(maps, buses);
+    private final FlightGuideService flights = mock(FlightGuideService.class);
+    private final HomeTripService service = new HomeTripService(maps, buses, flights);
     private final KakaoMapClient.Origin songpa = new KakaoMapClient.Origin("서울특별시 송파구", "서울",
         new KakaoMapClient.Location("서울특별시 송파구", 127.1, 37.5, Instant.now()));
 
@@ -91,18 +92,30 @@ class HomeTripServiceTests {
 
     // 제주를 오가는 길은 카카오가 카페리 경로를 자동차 '성공'으로 답하므로 조회하지 않고, 출발지를 비우라고 안내한다.
     // 편도 시간을 받는 경로(자연어 수정 요청)로 시간이 오면 그 값을 쓴다.
-    @Test void jejuTripAsksForFlightOrShipMinutes() {
+    // 제주처럼 바다를 건너면 카카오 길찾기 대신 비행기(공항 이동 + 대기 + 비행)로 찾고, 오는 길은 여행지 → 집 방향으로 따로 찾는다.
+    @Test void jejuTripUsesFlightsOrAsksForMinutes() {
         var attraction = new PlaceCandidate(2L, "성산일출봉", "제주 서귀포시 성산읍", "여행 > 관광,명소", "", "https://place.map.kakao.com/2",
             "", LocalDateTime.of(2026, 9, 1, 0, 0), 126.94, 33.46, "KAKAO", null);
         var jeju = new PlaceCandidateView(UUID.randomUUID(), new DestinationCandidate(10L, "제주", "제주", "", "https://www.visitjeju.net/",
             LocalDateTime.of(2026, 9, 1, 0, 0)), 3, true, List.of(attraction), List.of(), List.of());
         when(maps.findOrigin("송파구")).thenReturn(songpa);
+        when(flights.fastest(eq(songpa.location()), any(), eq(KakaoMapClient.Transport.CAR)))
+            .thenReturn(Optional.of(new FlightGuideService.Leg(215, "비행기 · 김포국제공항 → 제주국제공항 약 65분(오늘 운항 기준)", Instant.now())));
+        when(flights.fastest(any(), eq(songpa.location()), eq(KakaoMapClient.Transport.CAR)))
+            .thenReturn(Optional.of(new FlightGuideService.Leg(230, "비행기 · 제주국제공항 → 김포국제공항 약 70분(오늘 운항 기준)", Instant.now())));
+        var home = service.resolve(request("송파구", null), jeju, KakaoMapClient.Transport.CAR);
+        assertThat(home.minutes()).isEqualTo(215);
+        assertThat(home.basis()).startsWith("비행기 · 김포국제공항");
+        assertThat(home.returnMinutes()).isEqualTo(230);
+        verify(maps, never()).travelTime(any(), any(), any());
+
+        // 운항편이나 공항까지의 길을 찾지 못하면 추정하지 않고 출발지를 비우라고 안내한다.
+        when(flights.fastest(any(), any(), any())).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.resolve(request("송파구", null), jeju, KakaoMapClient.Transport.CAR))
             .isInstanceOfSatisfying(RecommendationException.class, e -> {
                 assertThat(e.getCode()).isEqualTo("HOME_MINUTES");
-                assertThat(e.getMessage()).contains("비행기나 배").contains("출발지를 비우면");
+                assertThat(e.getMessage()).contains("비행기").contains("출발지를 비우면");
             });
-        verify(maps, never()).travelTime(any(), any(), any());
 
         assertThat(service.resolve(request("송파구", 180), jeju, KakaoMapClient.Transport.CAR).minutes()).isEqualTo(180);
 

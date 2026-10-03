@@ -1,0 +1,54 @@
+package com.travel.travel_recommendation.service;
+
+import com.travel.travel_recommendation.dto.ConfirmedTravelConditions;
+import com.travel.travel_recommendation.dto.DestinationCandidate;
+import com.travel.travel_recommendation.dto.RegionalFestival;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+class DestinationFestivalServiceTests {
+    private final FestivalService festivals = mock(FestivalService.class);
+    private final DestinationFestivalService service = new DestinationFestivalService(festivals);
+    private final DestinationCandidate gangneung = new DestinationCandidate(1L, "강릉", "강원특별자치도 강릉시", "바다", "https://www.gn.go.kr", LocalDateTime.now());
+    private final DestinationCandidate busan = new DestinationCandidate(2L, "부산", "부산광역시", "바다", "https://www.visitbusan.net", LocalDateTime.now());
+
+    private static RegionalFestival festival(String id, String title, String start, String end, String address) {
+        return new RegionalFestival(id, title, LocalDate.parse(start), LocalDate.parse(end), address, "", "", "");
+    }
+    private static ConfirmedTravelConditions conditions(LocalDate start, LocalDate end) {
+        return new ConfirmedTravelConditions("TEXT", "아무 데나", "", start, end, null, null, null, null, null, List.of(), "");
+    }
+
+    @Test void keepsOnlyFestivalsInsideTheDestinationAndTripDates() {
+        when(festivals.configured()).thenReturn(true);
+        when(festivals.findFestivals(any())).thenAnswer(call -> {
+            FestivalService.Province province = call.getArgument(0);
+            if (province.regionName().equals("강원")) return List.of(
+                festival("1", "강릉커피축제", "2026-10-22", "2026-10-25", "강원특별자치도 강릉시 창해로 14"),
+                festival("2", "춘천마임축제", "2026-10-22", "2026-10-25", "강원특별자치도 춘천시 중앙로 1"),
+                festival("3", "강릉단풍축제", "2026-11-10", "2026-11-12", "강원특별자치도 강릉시 성산면"));
+            return List.of(festival("4", "부산불꽃축제", "2026-11-07", "2026-11-07", "부산광역시 수영구 광안해변로"));
+        });
+        // 날짜 미정: 여행지 주소의 축제를 모두 쓴다. 시·군 이름이 없는 광역시는 여행지 이름으로 맞춘다.
+        var open = service.find(conditions(null, null), List.of(gangneung, busan));
+        assertThat(open.get(1L)).extracting(RegionalFestival::title).containsExactly("강릉커피축제", "강릉단풍축제");
+        assertThat(open.get(2L)).extracting(RegionalFestival::title).containsExactly("부산불꽃축제");
+        // 날짜 확정: 여행 기간과 겹치는 축제만 쓰고, 축제가 없는 여행지는 결과에 넣지 않는다.
+        var dated = service.find(conditions(LocalDate.parse("2026-10-24"), LocalDate.parse("2026-10-26")), List.of(gangneung, busan));
+        assertThat(dated.get(1L)).extracting(RegionalFestival::title).containsExactly("강릉커피축제");
+        assertThat(dated).doesNotContainKey(2L);
+    }
+
+    @Test void recommendationContinuesWithoutFestivalsWhenLookupFails() {
+        when(festivals.configured()).thenReturn(true);
+        when(festivals.findFestivals(any())).thenThrow(new RecommendationException("TOUR_UNAVAILABLE", "조회 실패"));
+        assertThat(service.find(conditions(null, null), List.of(gangneung))).isEmpty();
+        when(festivals.configured()).thenReturn(false);
+        assertThat(service.find(conditions(null, null), List.of(gangneung))).isEmpty();
+    }
+}

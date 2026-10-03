@@ -40,6 +40,20 @@ class OpenAiRecommendationClientTests {
         response.set(mapper.writeValueAsString(Map.of("status","completed","output",List.of(Map.of("type","message","content",
             List.of(Map.of("type","output_text","text",json)))))));
     }
+    @Test void suggestedDirectionsAreOfferedAsChoicesAndOnlyListedOnesAreKept() {
+        long id=pool.getFirst().placeId();
+        output("{\"recommendations\":[{\"placeId\":"+id+",\"direction\":\"가을 바다 걷기\",\"reason\":\"가을 바다를 걷기 좋아요.\",\"places\":[]}]}");
+        var suggested=conditions().withPurpose("단풍 숲길 산책 / 가을 바다 걷기",true);
+        var result=client("test-key",Duration.ofSeconds(2)).recommend(suggested,pool);
+        assertThat(result.getFirst().direction()).isEqualTo("가을 바다 걷기");
+        // 제안 방향 목록을 고를 수 있는 값으로 넘긴다.
+        var item=mapper.readTree(request.get()).path("text").path("format").path("schema").path("properties").path("recommendations").path("items");
+        assertThat(item.path("properties").path("direction").path("enum").toString()).isEqualTo("[\"단풍 숲길 산책\",\"가을 바다 걷기\"]");
+        // 목록에 없는 방향은 버리고, 사용자가 직접 말한 목적에는 방향을 묻지 않는다.
+        output("{\"recommendations\":[{\"placeId\":"+id+",\"direction\":\"지어낸 방향\",\"reason\":\"좋아요.\",\"places\":[]}]}");
+        assertThat(client("test-key",Duration.ofSeconds(2)).recommend(suggested,pool).getFirst().direction()).isNull();
+        assertThat(OpenAiRecommendationClient.directions(conditions().withPurpose("상어 관람 / 바다"))).isEmpty();
+    }
     @Test void sendsOnlyConfirmedConditionsAndCandidateFacts() {
         var result=client("test-key",Duration.ofSeconds(2)).recommend(conditions().withPurpose("상어 관람"),pool);
         assertThat(result).hasSize(1);assertThat(result.getFirst().rank()).isEqualTo(1);

@@ -91,6 +91,14 @@ public class DestinationCandidateService {
         ranked.sort(Comparator.comparingInt((Place p)->purposeDestinationIds.contains(p.getId())?0:1)
             .thenComparingInt(p->-themeScore(p,themes)).thenComparingInt(p->-themeScore(p,purposeThemes)).thenComparing(Place::getId));
         List<Place> chosen=new ArrayList<>(); Set<String> provinces=new HashSet<>();
+        // 목적과 가까운 분류가 여러 개면(예: AI가 제안한 방향이 자연·바다·문화·역사) 분류마다 한 곳씩 먼저 골라
+        // 후보가 한 종류의 여행지로만 채워지지 않게 한다.
+        if(purposeThemes.size()>1)
+            for(String theme:purposeThemes) for(var place:ranked) {
+                if(chosen.size()==MAX_CANDIDATES || chosen.contains(place) || themeScore(place,List.of(theme))==0) continue;
+                if(nationwide && !provinces.add(province(place))) continue;
+                chosen.add(place); break;
+            }
         if(nationwide)
             for(var place:ranked) if(chosen.size()<MAX_CANDIDATES && provinces.add(province(place))) chosen.add(place);
         for(var place:ranked) if(chosen.size()<MAX_CANDIDATES && !chosen.contains(place)) chosen.add(place);

@@ -77,6 +77,11 @@ public class AiJob {
         if(!"ITINERARY".equals(jobType) || !"QUEUED".equals(status)) throw new IllegalStateException("Only queued itineraries");
         requestJson=json;
     }
+    /** 완료된 추천 결과에 나중에 확인한 축제 장소를 붙인다. 추천 순위·이유는 그대로 둔다. */
+    public void attachToRecommendation(String json) {
+        if(!"RECOMMENDATION".equals(jobType) || !"COMPLETED".equals(status)) throw new IllegalStateException("Only completed recommendations");
+        resultJson=json;
+    }
     /** 완성된 일정 초안에 나중에 찾은 참고 정보(숙소·음식점 가격)를 붙인다. 일정 자체는 서버가 만든 그대로 둔다. */
     public void attachToResult(String json) {
         if(!"ITINERARY".equals(jobType) || !"COMPLETED".equals(status)) throw new IllegalStateException("Only completed itineraries");

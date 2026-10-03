@@ -121,6 +121,33 @@ class ConditionReviewTests {
         source.setOriginalText("강릉 바다 여행");
         assertThat(service.analyze(source, options.getChoices()).form().getAccommodationNeeded()).isEmpty();
     }
+    @Test void fillsBlankPurposeWithAiSuggestionAndBlankSeasonWithCurrentSeason() {
+        var vague = result.deepCopy().put("travelPurpose", "").put("suggestedConcept", "시원한 계곡 물놀이와 숲길 산책");
+        vague.putNull("season");
+        when(client.analyze(anyString(), anyMap())).thenReturn(vague);
+        TravelConditionForm source = new TravelConditionForm();
+        source.setInputMode("TEXT");
+        source.setOriginalText("그냥 아무 데나 가고 싶어");
+        var analysis = service.analyze(source, options.getChoices());
+        assertThat(analysis.form().getTravelPurpose()).isEqualTo("시원한 계곡 물놀이와 숲길 산책");
+        assertThat(analysis.form().isPurposeSuggested()).isTrue();
+        // 계절은 서버가 오늘 날짜로 채운다.
+        String season = ConditionReviewService.seasonName(java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).getMonthValue());
+        var confirmed = service.confirm(analysis.form(), source, analysis.summary(), options.getChoices());
+        assertThat(confirmed.keywordNames("SEASON")).isEqualTo(season);
+        assertThat(confirmed.purposeSuggested()).isTrue();
+        assertThat(confirmed.purposeLabel()).isEqualTo("AI가 제안한 여행 방향");
+        assertThat(ConditionReviewService.seasonName(7)).isEqualTo("여름");
+        assertThat(ConditionReviewService.seasonName(12)).isEqualTo("겨울");
+    }
+    @Test void userPurposeIsKeptEvenWhenAiAlsoSuggestsConcept() {
+        when(client.analyze(anyString(), anyMap())).thenReturn(result.deepCopy().put("suggestedConcept", "해수욕장에서 바다 즐기기"));
+        TravelConditionForm source = new TravelConditionForm();
+        source.setOriginalText("강릉 바다 여행");
+        var form = service.analyze(source, options.getChoices()).form();
+        assertThat(form.getTravelPurpose()).isEqualTo("바다 구경");
+        assertThat(form.isPurposeSuggested()).isFalse();
+    }
     @Test void rejectsMalformedAiFieldsAndConditionConflicts() {
         TravelConditionForm source = new TravelConditionForm();
         source.setOriginalText("강릉 여행");

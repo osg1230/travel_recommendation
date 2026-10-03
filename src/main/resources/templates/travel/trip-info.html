@@ -22,7 +22,8 @@
 <option value="true" th:selected="${values.accommodationNeeded == true}">숙소 포함</option>
 <option value="false" th:selected="${values.accommodationNeeded == false}">숙소는 따로 정할게요</option></select></p>
 <p th:if="${options.conditions.startDate == null}"><label for="startDate">출발일 (필수)</label>
-<input id="startDate" name="startDate" type="date" required th:min="${#temporals.format(#temporals.createToday(), 'yyyy-MM-dd')}" th:value="${values.startDate}"></p>
+<input id="startDate" name="startDate" type="date" required th:min="${#temporals.format(#temporals.createToday(), 'yyyy-MM-dd')}" th:value="${values.startDate != null ? values.startDate : festivalDate}"></p>
+<p class="notice" th:if="${options.conditions.startDate == null and festival != null}" th:text="${festival.title + '(' + festival.period() + ') 기간에 맞춰 출발일을 넣어 두었어요. 축제 장소를 지도에서 확인한 경우 일정에도 넣어요. 다른 날로 바꿔도 돼요.'}"></p>
 <p class="help" th:if="${options.conditions.startDate == null}">날짜가 있어야 장소별 휴무일을 확인하고 내 일정으로 저장할 수 있어요.</p>
 <p th:if="${askTransport}"><label for="transport">이동수단 (필수)</label>
 <select id="transport" name="transport" required><option value="">선택해 주세요</option>
