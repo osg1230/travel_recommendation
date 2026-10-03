@@ -44,6 +44,19 @@ class DestinationFestivalServiceTests {
         assertThat(dated).doesNotContainKey(2L);
     }
 
+    @Test void skipsFestivalsWhenTripIsInAnotherSeasonWithoutDates() {
+        when(festivals.configured()).thenReturn(true);
+        when(festivals.today()).thenReturn(LocalDate.parse("2026-10-04"));
+        when(festivals.findFestivals(any())).thenReturn(List.of(festival("1", "강릉커피축제", "2026-10-22", "2026-10-25", "강원특별자치도 강릉시 창해로 14")));
+        // "12월에 가고 싶어"처럼 날짜 없이 다른 계절이면 지금 열리는 축제는 그 여행의 축제가 아니다.
+        var winter = new ConfirmedTravelConditions("TEXT", "12월에", "", null, null, null, null, null, null, null,
+            List.of(new com.travel.travel_recommendation.dto.TravelKeyword(1L, "SEASON", "겨울", null)), "");
+        assertThat(service.find(winter, List.of(gangneung))).isEmpty();
+        var autumn = new ConfirmedTravelConditions("TEXT", "아무 데나", "", null, null, null, null, null, null, null,
+            List.of(new com.travel.travel_recommendation.dto.TravelKeyword(2L, "SEASON", "가을", null)), "");
+        assertThat(service.find(autumn, List.of(gangneung))).containsKey(1L);
+    }
+
     @Test void recommendationContinuesWithoutFestivalsWhenLookupFails() {
         when(festivals.configured()).thenReturn(true);
         when(festivals.findFestivals(any())).thenThrow(new RecommendationException("TOUR_UNAVAILABLE", "조회 실패"));
