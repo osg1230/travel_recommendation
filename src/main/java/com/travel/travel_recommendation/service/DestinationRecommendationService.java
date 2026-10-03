@@ -24,6 +24,7 @@ public class DestinationRecommendationService {
     private final RecommendationJobService jobService;
     private final DestinationCandidateService places;
     private final OpenAiRecommendationClient client;
+    private final DestinationFestivalService festivals;
     private final ObjectMapper mapper;
 
     public record Work(UUID jobId,int attempt,ConfirmedTravelConditions conditions,List<DestinationCandidate> candidates) {}
@@ -60,7 +61,10 @@ public class DestinationRecommendationService {
     }
 
     // 이 메서드에는 트랜잭션을 두지 않는다. API를 기다리는 동안 DB 연결·행 잠금을 점유하지 않는다.
-    public List<RankedDestination> generate(Work work) { return client.recommend(work.conditions(),work.candidates()); }
+    // 후보 여행지의 축제를 먼저 찾아 추천 이유에 반영한다. 사용자가 축제를 고르지 않아도 여행 시기의 축제를 알려 주기 위해서다.
+    public List<RankedDestination> generate(Work work) {
+        return client.recommend(work.conditions(),work.candidates(),festivals.find(work.conditions(),work.candidates()));
+    }
 
     @Transactional(timeout=10)
     public void complete(Work work,List<RankedDestination> ranked) {
@@ -72,7 +76,10 @@ public class DestinationRecommendationService {
         }
         // 저장 직전에도 ID·개수·중복·이유를 검증하고 명칭·출처는 DB에서 얻은 스냅샷으로 고정한다.
         var validated=client.validate(mapper.valueToTree(Map.of("recommendations",ranked.stream().map(r->
-            Map.of("placeId",r.destination().placeId(),"reason",r.reason(),"places",r.centerPlaces())).toList())),work.candidates());
+            Map.of("placeId",r.destination().placeId(),"reason",r.reason(),"places",r.centerPlaces())).toList())),work.candidates())
+            // 축제는 GPT 응답이 아니라 서버가 관광공사에서 찾은 값이라 검증한 결과에 그대로 다시 붙인다.
+            .stream().map(v->v.withFestivals(ranked.stream().filter(r->r.destination().placeId().equals(v.destination().placeId()))
+                .findFirst().map(RankedDestination::festivals).orElse(List.of()))).toList();
         if(job.getUserId()!=null) {
             var request=requests.findById(job.getRequestId()).orElseThrow(()->new IllegalStateException("Request missing"));
             if(!job.getUserId().equals(request.getUserId())) throw new IllegalStateException("Owner mismatch");

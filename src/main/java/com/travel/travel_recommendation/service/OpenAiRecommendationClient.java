@@ -33,6 +33,12 @@ public class OpenAiRecommendationClient {
     public boolean configured() { return properties.isConfigured(); }
 
     public List<RankedDestination> recommend(ConfirmedTravelConditions conditions,List<DestinationCandidate> candidates) {
+        return recommend(conditions,candidates,Map.of());
+    }
+
+    /** festivals는 여행지 ID별로 서버가 찾은 축제다. 이유에 반영하도록 넘기고, 결과에도 그대로 붙여 돌려준다. */
+    public List<RankedDestination> recommend(ConfirmedTravelConditions conditions,List<DestinationCandidate> candidates,
+                                             Map<Long,List<RegionalFestival>> festivals) {
         if(!configured()) throw failure("AI_NOT_CONFIGURED","추천 연결 설정을 확인해야 해요. 잠시 후 다시 이용해 주세요.");
         if(candidates.isEmpty() || candidates.size()>5) throw invalid();
         try {
@@ -62,6 +68,10 @@ public class OpenAiRecommendationClient {
                 purposePlaces에 없는 시설 이름은 쓰지 않는다. purposePlaces가 비어 있지 않은 후보에는 목적 시설을 찾지 못했다고 쓰지 않는다.
                 travelPurpose에 '조용한'·'사람 적은' 같은 분위기 조건이 있으면 각 reason에서 다루되, 혼잡도는 확인하지 않았으니
                 소개에 근거가 없으면 그 분위기인지는 확인하지 못했다고 쓴다. COMPANION(동행자)이 있으면 그 동행자에게 맞는 점이나 한계를 짧게 밝힌다.
+                후보의 festivals는 관광공사에서 확인한, 여행 시기에 그 지역에서 열리는 축제의 이름과 기간이다.
+                있으면 reason에 축제 이름과 기간을 넣어 한 문장 더 쓰고, 여행 목적·취향·계절과 어울리는 축제면 순위에도 반영한다.
+                startDate가 비어 있으면 '그 기간에 맞춰 가면 볼 수 있어요'처럼 쓴다. festivals에 없는 축제·행사 이름은 쓰지 않고,
+                festivals가 비어 있는 후보에는 축제 이야기를 하지 않는다.
                 특정 지역 후보 하나만 있으면 다른 지역을 추가하지 말고 그 지역의 적합성과 한계를 설명한다.
                 각 reason은 띄어쓰기와 맞춤법을 지킨 일반 텍스트 1~2문장, 120자 안팎으로 짧게 쓰고 HTML·URL·연락처는 넣지 않는다.
                 places에는 reason과 관련해 그 지역을 여행하는 사람들이 널리 찾는, 실제로 있는 관광 장소 이름을 0~3개 쓴다
@@ -76,7 +86,9 @@ public class OpenAiRecommendationClient {
                 "input",mapper.writeValueAsString(Map.of("conditions",promptConditions(conditions),
                     "candidates",candidates.stream().map(c->Map.of("placeId",c.placeId(),"name",c.name(),
                         "region",c.region(),"description",Objects.toString(c.description(),""),
-                        "purposePlaces",purposePlaces(conditions,c))).toList())),
+                        "purposePlaces",purposePlaces(conditions,c),
+                        "festivals",festivals.getOrDefault(c.placeId(),List.of()).stream()
+                            .map(f->Map.of("title",f.title(),"period",f.period())).toList())).toList())),
                 "text",Map.of("format",Map.of("type","json_schema","name","destination_recommendations","strict",true,
                     "schema",schema(candidates))));
             HttpRequest request=HttpRequest.newBuilder(endpoint).timeout(timeout)
@@ -105,7 +117,10 @@ public class OpenAiRecommendationClient {
                 }
             }
             if(output==null || output.length()>16000) throw invalid();
-            try { return validate(mapper.readTree(output),candidates); }
+            try {
+                return validate(mapper.readTree(output),candidates).stream()
+                    .map(r->r.withFestivals(festivals.getOrDefault(r.destination().placeId(),List.of()))).toList();
+            }
             catch(RecommendationException e) {
                 // 어떤 응답이 검증에 걸렸는지 알 수 있게 앞부분만 남긴다. 사용자 원문·인증키는 응답에 없다.
                 log.warn("추천 응답 검증 실패: {}",snippet(output));
@@ -152,7 +167,7 @@ public class OpenAiRecommendationClient {
     private static final ReadableText FIELD_NAMES=new ReadableText(fieldNames());
     private static Map<String,String> fieldNames() {
         Map<String,String> names=new LinkedHashMap<>();
-        names.put("purposePlaces","목적 시설 검색 결과");names.put("purposeKeywords","목적 검색어");
+        names.put("purposePlaces","목적 시설 검색 결과");names.put("festivals","축제 정보");names.put("purposeKeywords","목적 검색어");
         names.put("travelPurpose","여행 목적");names.put("purposeSuggested","제안한 여행 방향");names.put("placeId","후보");names.put("durationDays","여행 일수");
         names.put("budgetKrw","예산");names.put("partySize","인원");names.put("accommodationNeeded","숙박 여부");
         names.put("includeNearby","주변 지역 포함 여부");names.put("startDate","출발일");names.put("endDate","도착일");
