@@ -39,8 +39,11 @@ class KeywordIntegrationTests {
         assertThat(draft.getSelectedKeywords()).containsExactly(selected);
         mvc.perform(get("/travel/conditions/check").session(session)).andExpect(status().isOk())
                 .andExpect(content().string(containsString(selected.name())));
-        mvc.perform(get("/travel/conditions").session(session)).andExpect(status().isOk())
-                .andExpect(content().string(containsString("value=\"" + selected.id() + "\" selected=\"selected\"")));
+        String editHtml = mvc.perform(get("/travel/conditions").session(session)).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        // 지역은 칩 모양 라디오 버튼이다. 고른 지역의 라디오가 선택된 채로 나오는지 본다(속성 순서는 따지지 않음).
+        assertThat(editHtml).containsPattern("<input(?=[^>]*type=\"radio\")(?=[^>]*name=\"region\")"
+                + "(?=[^>]*value=\"" + selected.id() + "\")(?=[^>]*checked=\"checked\")[^>]*>");
     }
 
     @Test void readsKoreanNamesJsonAndDatabaseOrder() {

@@ -1,6 +1,6 @@
 # 프로젝트 진행 요약
 
-기준일: 2026-10-04 | 프로젝트: travel_recommendation | 서비스 이름: 다녀올게
+기준일: 2026-10-05 | 프로젝트: travel_recommendation | 서비스 이름: 다녀올게
 
 작업 시작 시 이 요약과 Git 상태를 확인한다. 기능별 상세 구현·검증 기록은 [2026-09-22 정리 전 원문](progress-history/2026-09-22-before-cleanup.md)에 있으며, 과거 결정·검증 근거가 필요할 때 해당 부분만 읽는다.
 
@@ -46,6 +46,7 @@
 
 - 2026-10-04 지도 실제 이동 경로(1단계, 일정 초안 + 자동차만): 이동시간을 조회하는 카카오 자동차 길찾기 호출을 `summary=false`로 바꿔 같은 호출에서 도로 좌표를 받고, 구간당 80점 이하로 솎아 `KakaoMapClient`가 서버 메모리에 6시간 보관한다(추가 호출·DB 변경 없음). 초안 지도는 그 경로를 따라 선을 그리고, 경로가 없는 구간(서버 재시작 후 등)과 대중교통·저장한 일정은 직선 그대로다. 브라우저에서 강릉 1박 2일 자동차 초안의 11개 구간이 모두 도로를 따라 그려지는 것을 확인했다.
 - 2026-10-04 OpenAI 키·한도: 서버가 `Portfolio_java_API` 키로 떠서 크레딧 소진(429 insufficient_quota)이 났다. 키 환경변수를 `OPENAI_API_KEY` → `OPEN_AI_API` → `Portfolio_java_API` 순으로 읽게 바꾸고, 크레딧 소진은 요청 제한과 구분해 `AI_QUOTA`로 안내한다(OpenAI 클라이언트 6곳, `OpenAiQuota`). 클라이언트 단위 테스트만 통과했고 실제 소진 응답 화면은 확인하지 않았다.
+- 2026-10-05 통합 테스트 기대값 정리(`fix/keyword-test-chip-markup`): 조건 고르기 화면이 `<select>`에서 칩 모양 라디오로 바뀐 뒤(2026-10-04) `KeywordIntegrationTests.databaseChoiceWorksThroughInputConfirmationAndEdit`가 `selected="selected"`를 찾다 실패했다. 고른 지역의 라디오(`name="region"`, `checked="checked"`)를 확인하도록 테스트만 고쳤다(화면·기능 변경 없음). SQL Server로 `KeywordIntegrationTests` 3개 통과, 전체 테스트는 실행하지 않음.
 - 기능별 마지막 기록(2026-09-21, 원문 참고): SQL Server 포함 전체 269개 중 255개 통과, 외부 API 7개 건너뜀, 실패 7개. 실패 7개는 브라우저 확인 중 저장된 KAKAO 캐시 16행 때문에 지역별 장소 수·첫 후보를 가정하는 통합 테스트(`ItineraryIntegrationTests`·`ItineraryRevisionIntegrationTests`·`PlaceCandidateIntegrationTests`·`PlaceDiscoveryIntegrationTests`)가 어긋난 것으로, 변경 전 main에서도 같게 실패했다.
 - 2026-09-22 사용자 확인: 병합 후 전체 테스트를 사용자 PC에서 실행했다. 통과 수치는 이 문서에 기록되지 않았다.
 - 2026-09-22 가상 예약·결제: 이 PC DB에 SQL 013 적용(시드 460행, 기존 데이터 변경 없음). Java 21.0.12로 SQL Server 전체 verify 285개 중 271개 통과, 외부 API 7개 건너뜀, 실패 7개는 위 KAKAO 캐시 16행 때문인 기존 7개와 같다(새 실패 없음). 새 `VirtualReservationIntegrationTests` 14개(마지막 1개 동시 2건, 20건 병렬, 같은/다른 멱등키 동시 결제, 결제 중 예외 롤백, 재환불 차단, 날짜 변경, 타인 접근, 일정 삭제·탈퇴 연동)는 3회 연속 통과. 화면은 테스트가 실제 DB로 그린 HTML로 데스크톱·모바일(375px)을 확인했다. 로그인한 브라우저 흐름은 아래 2026-09-22 기록에서 확인했다. DB 테스트는 `-DargLine=-Djava.library.path=<DLL 폴더>`가 필요하다.
