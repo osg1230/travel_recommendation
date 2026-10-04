@@ -20,6 +20,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 @RequestMapping("/my/ratings")
 public class PlaceRatingController {
     private final ObjectProvider<PlaceRatingService> services;
+    private final ObjectProvider<com.travel.travel_recommendation.service.PlacePhotoService> photos;
 
     @GetMapping
     String list(Principal principal, HttpServletResponse response, Model model) {
@@ -33,6 +34,11 @@ public class PlaceRatingController {
                 HttpServletResponse response, Model model) {
         response.setHeader("Cache-Control","no-store");
         model.addAttribute("form",service().form(placeId,principal.getName()));
+        // 저장해 둔 관광공사 사진이 있으면 장소 카드에 보여 준다. 없거나 조회하지 못하면 사진 없이 보여 준다.
+        Object placePhoto=null;
+        var photo=photos.getIfAvailable();
+        try { if(photo!=null) placePhoto=photo.photos(List.of(placeId)).get(placeId); } catch(RuntimeException error) { placePhoto=null; }
+        model.addAttribute("placePhoto",placePhoto);
         model.addAttribute("maxTags",PlaceRatingService.MAX_TAGS);
         model.addAttribute("returnTo",safe(returnTo));
         return "my/rating";

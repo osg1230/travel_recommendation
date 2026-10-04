@@ -114,8 +114,8 @@
         <h2 id="edit-title">일정 수정하기</h2>
         <div th:replace="~{fragments/revision-scope :: scope}"></div>
         <th:block th:if="${itinerary.editableJobId != null}">
-            <p class="help">원래 초안에서 바꿀 관광지와 하루 시간을 골라 수정안을 만들어요. 수정안을 확인하고 '이 일정에 적용하기'를 눌러야 바뀌며, 그 전까지 이 일정은 그대로예요.</p>
-            <div class="form-actions"><a class="button" th:href="@{/travel/recommendations/itineraries/{id}(id=${itinerary.editableJobId})}">수정안 만들러 가기</a></div>
+            <p class="help">장소를 빼거나 바꾸고 더하거나, AI에게 문장으로 요청해 수정안을 만들어요. 수정안을 확인하고 '이 일정에 적용하기'를 눌러야 바뀌며, 그 전까지 이 일정은 그대로예요.</p>
+            <div class="form-actions"><a class="button" th:href="@{/travel/recommendations/itineraries/{id}/edit(id=${itinerary.editableJobId})}">수정안 만들러 가기</a></div>
         </th:block>
         <form th:if="${itinerary.editableJobId == null}" method="post" th:action="@{/my/itineraries/{id}/edit(id=${itinerary.summary.id})}">
             <p class="help">원래 초안의 보관 기간이 지났거나 추천 이력을 삭제해서, 저장한 일정으로 수정할 초안을 다시 만들어요. 교체할 관광지 후보는 지금 기준으로 다시 확인하느라 잠시 걸릴 수 있어요. 처음 일정을 만들 때 정한 필수 방문 장소 설정은 이어지지 않아요.</p>

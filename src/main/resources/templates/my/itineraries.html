@@ -7,7 +7,7 @@
 </head>
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
-<main class="travel">
+<main class="travel my-page">
     <nav th:replace="~{fragments/layout :: myNav('itineraries')}"></nav>
     <a class="back-link" th:href="@{/}">← 처음으로</a>
     <p class="eyebrow">내 여행 · 저장한 일정</p>
@@ -16,10 +16,34 @@
     <p role="status" class="status-ok" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
     <p role="status" th:if="${itineraries.isEmpty()}">아직 저장한 일정이 없어요. 여행 조건을 입력하고 만든 일정 초안에서 저장할 수 있어요.</p>
     <p th:if="${itineraries.isEmpty()}"><a th:href="@{/travel/conditions}">여행 조건 입력하고 일정 만들기 →</a></p>
-    <article class="place-row" th:each="itinerary : ${itineraries}">
-        <h2><a th:href="@{/my/itineraries/{id}(id=${itinerary.id})}" th:text="${itinerary.title}"></a></h2>
-        <p th:text="${itinerary.destination + ' · ' + itinerary.startDate + ' ~ ' + itinerary.endDate + ' (' + itinerary.dayCount + '일)'}"></p>
-        <p class="help" th:text="${'저장: ' + @timeText.dateTime(itinerary.savedAt)}"></p>
+    <p class="list-count" th:unless="${itineraries.isEmpty()}" th:text="${'전체 ' + itineraries.size() + '개'}"></p>
+    <!--/* 일정 카드: 왼쪽 대표 사진, 가운데 이름·기간, 오른쪽 저장일과 버튼 */-->
+    <article class="saved-card" th:each="itinerary : ${itineraries}"
+             th:with="extra=${extras.get(itinerary.id)}, thumb=${thumbs.get(itinerary.id)}">
+        <!--/* 관광공사 사진은 출처 표시 조건(공공누리)에 따라 사진 아래에 출처를 적는다. 사진이 없으면 여행지 이름을 보여 준다. */-->
+        <figure class="saved-thumb" th:if="${thumb != null}">
+            <img th:src="${thumb.url}" th:alt="${thumb.title != null ? thumb.title + ' 사진' : itinerary.destination + ' 사진'}" loading="lazy" referrerpolicy="no-referrer">
+            <figcaption>사진: 한국관광공사</figcaption>
+        </figure>
+        <div class="saved-thumb saved-thumb-empty" th:if="${thumb == null}" aria-hidden="true" th:text="${itinerary.destination}"></div>
+        <div class="saved-body">
+            <h2><a th:href="@{/my/itineraries/{id}(id=${itinerary.id})}" th:text="${itinerary.title}"></a>
+                <span class="type-chip" th:if="${extra != null}" th:text="${extra.transportName}"></span></h2>
+            <p th:text="${#temporals.format(itinerary.startDate, 'yyyy.MM.dd') + ' ~ ' + #temporals.format(itinerary.endDate, 'yyyy.MM.dd')
+                + ' (' + (itinerary.dayCount == 1 ? '당일' : (itinerary.dayCount - 1) + '박 ' + itinerary.dayCount + '일') + ')'}"></p>
+            <p class="help" th:text="${itinerary.destination + ' 여행'}"></p>
+        </div>
+        <div class="saved-side">
+            <p class="help" th:text="${'저장일 ' + #temporals.format(itinerary.savedAt, 'yyyy.MM.dd')}"></p>
+            <div class="saved-actions">
+                <a class="button button-quiet button-small" th:href="@{/my/itineraries/{id}(id=${itinerary.id})}">상세보기</a>
+                <a class="button button-quiet button-small" th:href="@{/my/itineraries/{id}(id=${itinerary.id})} + '#edit-title'">수정</a>
+                <form th:action="@{/my/itineraries/{id}/delete(id=${itinerary.id})}" method="post"
+                      onsubmit="return confirm('저장한 일정을 삭제할까요? 삭제하면 되돌릴 수 없어요.');">
+                    <button type="submit" class="button-small button-danger">삭제</button>
+                </form>
+            </div>
+        </div>
     </article>
     <p class="guide-note">영업시간·휴무일·예산·예약 가능 여부는 저장 이후에도 확인이 필요해요. 방문 전 각 장소의 출처에서 다시 확인해 주세요.</p>
 </main>
