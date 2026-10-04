@@ -337,7 +337,8 @@ public class KakaoMapClient {
         JsonNode root;
         if (transport==Transport.CAR) {
             root=get(carEndpoint.resolve("/v1/directions?origin="+from.longitude()+","+from.latitude()
-                +"&destination="+to.longitude()+","+to.latitude()+"&summary=true&alternatives=false&priority=RECOMMEND"));
+                // summary=false로 받아야 지도에 그릴 도로 경로(sections)가 함께 온다. 호출 횟수는 그대로다.
+                +"&destination="+to.longitude()+","+to.latitude()+"&summary=false&alternatives=false&priority=RECOMMEND"));
         } else {
             root=get(localEndpoint.resolve("/v2/routing/publictraffic?start_x="+from.longitude()+"&start_y="+from.latitude()
                 +"&end_x="+to.longitude()+"&end_y="+to.latitude()));
@@ -352,7 +353,7 @@ public class KakaoMapClient {
         }
         var routes=root.path("routes");
         if (!routes.isArray() || routes.isEmpty() || routes.size()>100) throw noRoute();
-        TravelTime fastest=null;
+        TravelTime fastest=null; JsonNode fastestRoute=null;
         for (var route:routes) {
             if (transport==Transport.CAR) {
                 var code=route.path("result_code");
@@ -367,10 +368,54 @@ public class KakaoMapClient {
                     || meters.intValue()<=0 || meters.intValue()>2000000) throw invalid();
             var candidate=new TravelTime(transport,seconds.intValue(),meters.intValue(),Instant.now(),
                 transport==Transport.PUBLIC_TRANSIT ? transitSummary(route) : null);
-            if (fastest==null || candidate.seconds()<fastest.seconds()) fastest=candidate;
+            if (fastest==null || candidate.seconds()<fastest.seconds()) { fastest=candidate; fastestRoute=route; }
         }
         if (fastest==null) throw noRoute();
+        // 자동차 경로는 지도에 실제 이동 경로를 그릴 수 있게 잠시 보관한다. 일정 계산에는 쓰지 않는다.
+        if (transport==Transport.CAR) {
+            var path=roadPath(fastestRoute);
+            if (!path.isEmpty()) roadPaths.get(pathKey(from.latitude(),from.longitude(),to.latitude(),to.longitude()),()->path);
+        }
         return fastest;
+    }
+
+    /** 지도 데이터가 커지지 않게 한 구간의 도로 경로는 이 개수 이하의 점으로 줄인다. */
+    static final int PATH_MAX_POINTS=80;
+    // 서버 메모리에만 두며 서버를 다시 켜면 비워진다. 그때는 지도가 직선으로 잇는다.
+    private final ExpiringCache<String,List<double[]>> roadPaths=new ExpiringCache<>(Duration.ofHours(6),3000);
+
+    private static String pathKey(double fromLat,double fromLng,double toLat,double toLng) {
+        return fromLat+","+fromLng+">"+toLat+","+toLng;
+    }
+
+    /**
+     * 이동시간을 조회할 때 받아 둔 자동차 도로 경로([위도, 경도] 목록)를 돌려준다.
+     * 받은 적이 없거나 보관 기간이 지났으면 빈 목록이며, 새로 조회하지 않는다.
+     */
+    public List<double[]> roadPath(double fromLat,double fromLng,double toLat,double toLng) {
+        var path=roadPaths.peek(pathKey(fromLat,fromLng,toLat,toLng));
+        return path==null ? List.of() : path;
+    }
+
+    // 응답의 sections[].roads[].vertexes는 [경도, 위도, 경도, 위도, ...] 순서다.
+    // 국내 범위를 벗어난 값이 섞여 있으면 경로 전체를 쓰지 않고, 점이 많으면 일정한 간격으로 솎아 낸다.
+    static List<double[]> roadPath(JsonNode route) {
+        var all=new ArrayList<double[]>();
+        for (var section:route.path("sections")) for (var road:section.path("roads")) {
+            var vertexes=road.path("vertexes");
+            for (int i=0;i+1<vertexes.size();i+=2) {
+                double lng=vertexes.get(i).asDouble(Double.NaN), lat=vertexes.get(i+1).asDouble(Double.NaN);
+                if (!(lat>=33 && lat<=39 && lng>=124 && lng<=132)) return List.of();
+                // 소수 다섯째 자리(약 1m)까지만 남겨 화면으로 보내는 글자 수를 줄인다.
+                all.add(new double[]{Math.round(lat*1e5)/1e5,Math.round(lng*1e5)/1e5});
+            }
+        }
+        if (all.size()<2) return List.of();
+        if (all.size()<=PATH_MAX_POINTS) return List.copyOf(all);
+        var thinned=new ArrayList<double[]>();
+        double step=(all.size()-1)/(double)(PATH_MAX_POINTS-1);
+        for (int i=0;i<PATH_MAX_POINTS;i++) thinned.add(all.get((int)Math.round(i*step)));
+        return List.copyOf(thinned);
     }
 
     /** 도보로 대신할 최대 직선거리(m). 이보다 멀면 대중교통 경로가 없는 것으로 본다. */

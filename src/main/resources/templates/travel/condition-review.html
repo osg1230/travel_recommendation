@@ -21,28 +21,58 @@
         </section>
         <section class="condition-section">
             <h2>여행 기간</h2>
+            <!--/* 마지막 날은 묻지 않는다. 출발일과 여행 일수로 서버가 계산한다(조건 입력 화면과 같다). */-->
             <div class="field-grid">
-                <div><label for="startDate">출발일</label><input type="date" th:field="*{startDate}" min="0001-01-01" max="9999-12-31"><p class="field-error" th:errors="*{startDate}"></p></div>
-                <div><label for="endDate">마지막 날</label><input type="date" th:field="*{endDate}" min="0001-01-01" max="9999-12-31"><p class="field-error" th:errors="*{endDate}"></p></div>
+                <div><label for="durationDays">여행 일수</label><input type="number" th:field="*{durationDays}" min="1" max="32767" step="1"><p class="field-error" th:errors="*{durationDays}"></p></div>
+                <div><label for="startDate">출발일</label><input type="date" th:field="*{startDate}" min="0001-01-01" max="9999-12-31"><p class="field-error" th:errors="*{startDate}"></p><p class="field-error" th:errors="*{endDate}"></p></div>
             </div>
-            <label for="durationDays">여행 일수</label><input type="number" th:field="*{durationDays}" min="1" max="32767" step="1">
-            <p class="help">2박 3일은 3일이에요. 날짜를 바꿨다면 일수도 맞추거나 비워 주세요.</p><p class="field-error" th:errors="*{durationDays}"></p>
+            <p class="help">2박 3일은 3일이에요. 마지막 날은 출발일과 여행 일수로 자동으로 정해져요.</p>
         </section>
+        <!--/* 선택지가 적은 조건은 조건 입력 화면과 같은 버튼 모양(choice-chips)으로 보여 준다. 전송되는 이름과 값은 목록 상자일 때와 같다. */-->
         <section class="condition-section">
-            <div class="field-grid">
-                <div><label for="season">계절</label><select th:field="*{season}"><option value="">상관없음</option><option th:each="item : ${choices.season}" th:value="${item.selectionValue}" th:text="${item.name}"></option></select><p class="field-error" th:errors="*{season}"></p></div>
-                <div><label for="companion">동행자</label><select th:field="*{companion}"><option value="">상관없음</option><option th:each="item : ${choices.companion}" th:value="${item.selectionValue}" th:text="${item.name}"></option></select><p class="field-error" th:errors="*{companion}"></p></div>
-            </div>
-            <fieldset class="theme-choices"><legend>여행 취향 <span class="optional">여러 개 선택 가능</span></legend><label th:each="item : ${choices.themes}"><input type="checkbox" th:field="*{themes}" th:value="${item.selectionValue}"><span th:text="${item.name}"></span></label></fieldset><p class="field-error" th:errors="*{themes}"></p>
+            <fieldset class="choice-chips">
+                <legend>계절</legend>
+                <label><input type="radio" th:field="*{season}" value=""><span>상관없음</span></label>
+                <label th:each="item : ${choices.season}"><input type="radio" th:field="*{season}" th:value="${item.selectionValue}"><span th:text="${item.name}"></span></label>
+            </fieldset>
+            <p class="field-error" th:errors="*{season}"></p>
+            <fieldset class="choice-chips condition-block">
+                <legend>동행자</legend>
+                <label><input type="radio" th:field="*{companion}" value=""><span>상관없음</span></label>
+                <label th:each="item : ${choices.companion}"><input type="radio" th:field="*{companion}" th:value="${item.selectionValue}"><span th:text="${item.name}"></span></label>
+            </fieldset>
+            <p class="field-error" th:errors="*{companion}"></p>
+            <fieldset class="choice-chips condition-block">
+                <legend>여행 취향 <span class="optional">여러 개 선택 가능</span></legend>
+                <label th:each="item : ${choices.themes}"><input type="checkbox" th:field="*{themes}" th:value="${item.selectionValue}"><span th:text="${item.name}"></span></label>
+            </fieldset>
+            <p class="field-error" th:errors="*{themes}"></p>
         </section>
         <section class="condition-section">
             <div class="field-grid">
                 <div><label for="partySize">전체 인원</label><input type="number" th:field="*{partySize}" min="1" max="32767" step="1"><p class="field-error" th:errors="*{partySize}"></p></div>
                 <div><label for="budget">전체 여행 예산 <span class="optional">원</span></label><input type="number" th:field="*{budget}" min="0" max="9999999999.99" step="0.01"><p class="help">모든 인원의 총예산 상한이에요.</p><p class="field-error" th:errors="*{budget}"></p></div>
-                <div><label for="transportation">이동수단</label><select th:field="*{transportation}"><option value="">상관없음</option><option th:each="item : ${choices.transportation}" th:value="${item.selectionValue}" th:text="${item.name}"></option></select><p class="field-error" th:errors="*{transportation}"></p></div>
-                <div><label for="accommodationNeeded">숙박이 필요한가요?</label><select th:field="*{accommodationNeeded}"><option value="">아직 미정</option><option value="true">숙박 필요</option><option value="false">숙박 불필요</option></select><p class="field-error" th:errors="*{accommodationNeeded}"></p></div>
             </div>
-            <label for="includeNearby">주변 지역도 포함할까요?</label><select th:field="*{includeNearby}"><option value="">아직 미정</option><option value="true">주변 지역 포함</option><option value="false">선택 지역 중심</option></select><p class="field-error" th:errors="*{includeNearby}"></p><p class="help" th:text="${'주변 지역 추천은 지금 ' + T(com.travel.travel_recommendation.service.NearbyRegionService).supportedNames() + ' 여행지에서만 제공돼요.'}"></p>
+            <fieldset class="choice-chips condition-block">
+                <legend>이동수단</legend>
+                <label><input type="radio" th:field="*{transportation}" value=""><span>상관없음</span></label>
+                <label th:each="item : ${choices.transportation}"><input type="radio" th:field="*{transportation}" th:value="${item.selectionValue}"><span th:text="${item.name}"></span></label>
+            </fieldset>
+            <p class="field-error" th:errors="*{transportation}"></p>
+            <fieldset class="choice-chips condition-block">
+                <legend>숙박이 필요한가요?</legend>
+                <label><input type="radio" th:field="*{accommodationNeeded}" value=""><span>아직 미정</span></label>
+                <label><input type="radio" th:field="*{accommodationNeeded}" value="true"><span>숙박 필요</span></label>
+                <label><input type="radio" th:field="*{accommodationNeeded}" value="false"><span>숙박 불필요</span></label>
+            </fieldset>
+            <p class="field-error" th:errors="*{accommodationNeeded}"></p>
+            <fieldset class="choice-chips condition-block">
+                <legend>주변 지역도 포함할까요?</legend>
+                <label><input type="radio" th:field="*{includeNearby}" value=""><span>아직 미정</span></label>
+                <label><input type="radio" th:field="*{includeNearby}" value="true"><span>주변 지역 포함</span></label>
+                <label><input type="radio" th:field="*{includeNearby}" value="false"><span>선택 지역 중심</span></label>
+            </fieldset>
+            <p class="field-error" th:errors="*{includeNearby}"></p><p class="help" th:text="${'주변 지역 추천은 지금 ' + T(com.travel.travel_recommendation.service.NearbyRegionService).supportedNames() + ' 여행지에서만 제공돼요.'}"></p>
         </section>
         <div class="form-actions"><button type="submit" th:text="${directFlow == true ? '수정한 조건으로 추천받기' : '이 조건으로 확정하기'}"></button><p class="help">바꾸고 싶은 조건만 수정해 주세요. 아직 정하지 않은 항목은 비워 둬도 괜찮아요.</p></div>
     </form>

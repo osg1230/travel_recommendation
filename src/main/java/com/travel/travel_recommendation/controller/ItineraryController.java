@@ -32,6 +32,7 @@ public class ItineraryController {
     private final ObjectProvider<PlacePhotoService> photos;
     private final ObjectProvider<HomeTripService> homeTrips;
     private final ObjectProvider<ProfileService> profiles;
+    private final ObjectProvider<KakaoMapClient> mapClients;
     private final tools.jackson.databind.ObjectMapper mapper;
     private record Submission(UUID parent,long destination,String login,String token,UUID job) {}
     private static final String SESSION_KEY="itinerarySubmission";
@@ -260,9 +261,13 @@ public class ItineraryController {
         if(job.result()!=null) {
             model.addAttribute("report",ItineraryConditionReport.evaluate(job.input(),job.result()));
             // 일차별 방문 순서와 구간별 길찾기 링크(SFR-11-02·03).
+            // 자동차 일정은 이동시간을 조회할 때 받아 둔 도로 경로로 지도 선을 그린다. 경로가 없는 구간은 화면에서 직선으로 잇는다.
+            boolean car=job.result().transport()==KakaoMapClient.Transport.CAR;
+            var mapClient=mapClients.getIfAvailable();
+            TripMap.PathFinder roads=car && mapClient!=null ? mapClient::roadPath : null;
             var route=TripMap.route(job.result().days().stream().map(d->new TripMap.Day(d.number(),
                 d.items().stream().map(i->new TripMap.Stop(i.type(),i.name(),i.mapUrl())).toList())).toList(),
-                job.result().transport()==KakaoMapClient.Transport.CAR);
+                car,roads);
             model.addAttribute("route",route); model.addAttribute("mapJson",mapper.writeValueAsString(route));
             // 지역 대표 음식 안내(SFR-17-01). 공식 출처로 확인한 지역만 보여 준다.
             model.addAttribute("foods",RegionalFoods.of(job.result().destination()).orElse(null));
@@ -306,6 +311,43 @@ public class ItineraryController {
         return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create("/travel/recommendations/itineraries/"+job))
             .cacheControl(CacheControl.noStore()).build();
     }
+    /**
+     * 직접 수정 화면(SFR-08-04). 왼쪽에 기본 정보(이동수단·시간), 오른쪽에 일차별 장소 목록을 보여 주고
+     * 장소 빼기·바꾸기·더하기, 식당·숙소 바꾸기를 고르면 수정안을 만든다. AI 수정 요청도 같은 화면 아래에 둔다.
+     */
+    @GetMapping("/itineraries/{id}/edit")
+    String edit(@PathVariable UUID id,Principal principal,HttpSession session,HttpServletResponse response,Model model) {
+        response.setHeader("Cache-Control","no-store");
+        var options=service().editOptions(id,login(principal),hash(session));
+        model.addAttribute("jobId",id);
+        model.addAttribute("options",options);
+        model.addAttribute("photoByPlace",photosOf(options.result().days().stream().flatMap(d->d.items().stream())
+            .filter(i->"VISIT".equals(i.type()) && i.placeId()!=null).map(ItineraryPlan.Item::placeId).toList()));
+        return "travel/itinerary-edit";
+    }
+
+    /** 직접 수정 화면에서 고른 변경으로 새 수정안 작업을 만든다. 원래 초안은 그대로 두고, 만들지 못한 이유는 수정 화면에 보여 준다. */
+    @PostMapping("/itineraries/{id}/direct-revisions")
+    String reviseDirect(@PathVariable UUID id,@RequestParam(required=false) List<Long> remove,@RequestParam(required=false) List<Long> add,
+            @RequestParam(required=false) Long avoidRestaurant,@RequestParam(required=false) Long stay,
+            @RequestParam(required=false) KakaoMapClient.Transport transport,@RequestParam(required=false) LocalTime start,
+            @RequestParam(required=false) LocalTime end,@RequestParam(required=false) Integer visitMinutes,Principal principal,HttpSession session,
+            org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
+        try {
+            UUID job=service().reviseDirect(id,login(principal),hash(session),
+                new ItineraryJobService.DirectChange(remove,add,avoidRestaurant,stay,transport,start,end,visitMinutes));
+            return "redirect:/travel/recommendations/itineraries/"+job;
+        } catch(ResponseStatusException e) {
+            if(e.getStatusCode().value()==404) throw e;
+            redirect.addFlashAttribute("editError",e.getReason()+" 원래 일정은 그대로예요.");
+        } catch(RecommendationException e) {
+            redirect.addFlashAttribute("editError",e.getMessage()+" 원래 일정은 그대로예요.");
+        } catch(TripConstraints.ConflictException conflict) {
+            // 하루 방문 수처럼 반드시 지키기로 한 조건과 맞지 않는 변경이다.
+            redirect.addFlashAttribute("editError",conflict.conflicts().get(0).reason()+" 원래 일정은 그대로예요.");
+        }
+        return "redirect:/travel/recommendations/itineraries/"+id+"/edit";
+    }
     private static final String AI_COOLDOWN_KEY="itineraryAiRevisionNext";
     /** 초안마다 "후보에 없다"고 되물은 장소 이름. 같은 장소를 다시 요청하면 되묻지 않고 비슷한 곳으로 바꾼다. */
     private static final String AI_ASKED_KEY="itineraryAiAskedPlaces";
@@ -340,9 +382,11 @@ public class ItineraryController {
      * 되묻는 질문이나 실패 사유는 원래 초안 화면에 그대로 보여 주고, 원래 초안은 바꾸지 않는다.
      */
     @PostMapping("/itineraries/{id}/ai-revisions")
-    String aiRevise(@PathVariable UUID id,@RequestParam(defaultValue="") String request,Principal principal,HttpSession session,
+    String aiRevise(@PathVariable UUID id,@RequestParam(defaultValue="") String request,@RequestParam(defaultValue="false") boolean fromEdit,
+                    Principal principal,HttpSession session,
                     org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
-        String back="redirect:/travel/recommendations/itineraries/"+id+"#revise-title";
+        // 직접 수정 화면에서 보낸 요청은 되묻는 말이나 오류를 그 화면에 보여 준다.
+        String back="redirect:/travel/recommendations/itineraries/"+id+(fromEdit?"/edit#ai-title":"#revise-title");
         redirect.addFlashAttribute("aiRequest",request.length()>300?request.substring(0,300):request);
         // 유료 호출이므로 같은 세션에서 연달아 누르지 않도록 20초 간격을 둔다.
         synchronized(session) {

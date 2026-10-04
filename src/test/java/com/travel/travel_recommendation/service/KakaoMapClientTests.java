@@ -55,6 +55,27 @@ class KakaoMapClientTests {
         assertThat(result.minutes()).isEqualTo(6); assertThat(result.meters()).isEqualTo(3800);
         assertThat(path.get()).startsWith("/v1/directions?origin=128.87,37.77");
     }
+    // 자동차 응답의 도로 좌표(경도, 위도 순)는 지도에 그릴 수 있게 [위도, 경도]로 보관한다. 받은 적 없는 구간은 빈 목록이다.
+    @Test void carKeepsRoadPathForTheMap() {
+        body.set("{\"routes\":[{\"result_code\":0,\"summary\":{\"duration\":324,\"distance\":3800},\"sections\":[{\"roads\":["
+            +"{\"vertexes\":[128.87,37.77,128.875,37.772]},{\"vertexes\":[128.88,37.775]}]}]}]}");
+        var maps=client("key");
+        maps.travelTime(from,to,KakaoMapClient.Transport.CAR);
+        assertThat(maps.roadPath(from.latitude(),from.longitude(),to.latitude(),to.longitude()))
+            .containsExactly(new double[]{37.77,128.87},new double[]{37.772,128.875},new double[]{37.775,128.88});
+        assertThat(maps.roadPath(to.latitude(),to.longitude(),from.latitude(),from.longitude())).isEmpty();
+    }
+    // 점이 많은 경로는 정해 둔 개수 이하로 솎아 내되 처음과 끝은 남기고, 국내 범위를 벗어난 좌표가 섞이면 쓰지 않는다.
+    @Test void roadPathIsThinnedAndRejectsOutOfRangePoints() throws Exception {
+        var vertexes=new StringBuilder();
+        for (int i=0;i<500;i++) vertexes.append(i==0 ? "" : ",").append(128.0+i*0.001).append(",").append(37.0+i*0.001);
+        var mapper=new tools.jackson.databind.ObjectMapper();
+        var thinned=KakaoMapClient.roadPath(mapper.readTree("{\"sections\":[{\"roads\":[{\"vertexes\":["+vertexes+"]}]}]}"));
+        assertThat(thinned).hasSize(KakaoMapClient.PATH_MAX_POINTS);
+        assertThat(thinned.getFirst()).containsExactly(37.0,128.0);
+        assertThat(thinned.getLast()).containsExactly(37.499,128.499);
+        assertThat(KakaoMapClient.roadPath(mapper.readTree("{\"sections\":[{\"roads\":[{\"vertexes\":[128.87,37.77,0,0]}]}]}"))).isEmpty();
+    }
     @Test void transitUsesItsOwnResponseAndSelectsFastest() {
         body.set("{\"status\":\"OK\",\"routes\":[{\"properties\":{\"totalTime\":1200,\"totalDistance\":4000}},{\"properties\":{\"totalTime\":1096,\"totalDistance\":3800}}]}");
         var result=client("key").travelTime(from,to,KakaoMapClient.Transport.PUBLIC_TRANSIT);

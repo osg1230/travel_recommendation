@@ -11,3 +11,11 @@
     inputs.forEach(i => i.addEventListener('change', update));
     update();
 })();
+
+// 고른 별점을 별 옆에 '4 / 5'처럼 숫자로도 보여 준다.
+(function () {
+    const score = document.querySelector('.star-score');
+    if (!score) return;
+    document.querySelectorAll('.star-input input[name=score]').forEach(input =>
+        input.addEventListener('change', () => { score.textContent = input.value + ' / 5'; }));
+})();

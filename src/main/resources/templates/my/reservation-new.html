@@ -7,7 +7,7 @@
 </head>
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
-<main class="travel">
+<main class="travel my-page">
     <nav th:replace="~{fragments/layout :: myNav('reservations')}"></nav>
     <a class="back-link" th:if="${itineraryId != null}" th:href="@{/my/itineraries/{id}(id=${itineraryId})}">← 저장한 일정으로</a>
     <p class="eyebrow">내 여행 · 가상 예약 신청</p>

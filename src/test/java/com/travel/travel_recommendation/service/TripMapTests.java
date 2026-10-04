@@ -37,6 +37,24 @@ class TripMapTests {
         assertThat(route.missing()).isZero();
     }
 
+    // 도로 경로를 찾는 방법을 주면 이웃한 방문지 사이(legs)를 그 경로로 채우고, 주지 않으면 빈 목록(직선)으로 둔다.
+    @Test void legsCarryRoadPathsBetweenNeighbouringStops() {
+        var day = new TripMap.Day(1, List.of(
+            new Stop("VISIT", "경포대", map("경포대", 37.79, 128.90)),
+            new Stop("TRANSIT", "경포대 → 오죽헌", map("오죽헌", 37.78, 128.87)),
+            new Stop("VISIT", "오죽헌", map("오죽헌", 37.78, 128.87)),
+            new Stop("TRANSIT", "오죽헌 → 호텔", map("호텔", 37.75, 128.92)),
+            new Stop("STAY", "호텔", map("호텔", 37.75, 128.92))));
+        List<double[]> road = List.of(new double[]{37.785, 128.88});
+        // 첫 구간(경포대 → 오죽헌)의 경로만 알고 있다고 가정한다.
+        var route = TripMap.route(List.of(day), true,
+            (fromLat, fromLng, toLat, toLng) -> fromLat == 37.79 && toLat == 37.78 ? road : List.of());
+        assertThat(route.days().getFirst().legs()).hasSize(2);
+        assertThat(route.days().getFirst().legs().get(0)).containsExactly(new double[]{37.785, 128.88});
+        assertThat(route.days().getFirst().legs().get(1)).isEmpty();
+        assertThat(TripMap.route(List.of(day), true).days().getFirst().legs()).allSatisfy(leg -> assertThat(leg).isEmpty());
+    }
+
     @Test void itemsWithoutTrustedCoordinatesAreLeftOffTheMap() {
         var day = new TripMap.Day(1, List.of(
             new Stop("VISIT", "좌표 없음", ""),
