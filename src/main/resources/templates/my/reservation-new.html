@@ -2,7 +2,7 @@
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>가상 예약 신청 | 다녀올게</title>
+    <title>예약 신청 | 다녀올게</title>
     <link rel="stylesheet" th:href="@{/css/app.css}">
 </head>
 <body>
@@ -10,9 +10,9 @@
 <main class="travel my-page">
     <nav th:replace="~{fragments/layout :: myNav('reservations')}"></nav>
     <a class="back-link" th:if="${itineraryId != null}" th:href="@{/my/itineraries/{id}(id=${itineraryId})}">← 저장한 일정으로</a>
-    <p class="eyebrow">내 여행 · 가상 예약 신청</p>
+    <p class="eyebrow">내 여행 · 예약 신청</p>
     <h1 th:text="${stock.placeName}"></h1>
-    <p class="notice">가상 예약이에요. 실제 시설에 예약이 전달되지 않고, 결제도 테스트 결제수단으로만 처리돼 실제 돈이 오가지 않아요.</p>
+    <p class="notice">체험용 예약이에요. 실제 시설에 예약이 전달되지 않고, 결제도 테스트 결제수단으로만 처리돼 실제 돈이 오가지 않아요.</p>
 
     <section class="condition-section">
         <h2>예약 정보</h2>
@@ -31,7 +31,7 @@
                 <label for="date">다른 날짜로 보기</label>
                 <input id="date" name="date" type="date" min="2026-10-01" max="2026-12-31"
                        th:value="${#temporals.format(stock.usageStart, 'yyyy-MM-dd')}" aria-describedby="date-help">
-                <p id="date-help" class="help">가상 수량은 2026-10-01~2026-12-31에만 있어요.</p>
+                <p id="date-help" class="help">예약 수량은 2026-10-01~2026-12-31에만 있어요.</p>
             </div>
             <div class="form-actions"><button type="submit" class="button-quiet">이 날짜로 보기</button></div>
         </form>
@@ -59,7 +59,7 @@
                 </div>
             </div>
             <p class="help">금액은 서버가 남은 수량을 확인한 뒤 계산해요. 신청하면 수량이 먼저 잡히고, 결제하면 예약이 확정돼요.</p>
-            <div class="form-actions"><button type="submit">가상 예약 신청</button></div>
+            <div class="form-actions"><button type="submit">예약 신청</button></div>
         </form>
     </section>
 </main>

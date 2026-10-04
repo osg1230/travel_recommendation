@@ -189,7 +189,7 @@ public class VirtualReservationService {
                    expected_amount, status, payment_required, booking_snapshot_json)
             OUTPUT inserted.reservation_id VALUES (?,?,?,?,?,?,?,?,?,?)""",Long.class,
             userId,stockId,itineraryId,requestKey.toString(),quantity,partySize,amount,status,paymentRequired,snapshot(stock));
-        log(id,stockId,UUID.randomUUID(),"CREATE",change,null,status,"가상 예약 신청");
+        log(id,stockId,UUID.randomUUID(),"CREATE",change,null,status,"예약 신청");
         return id;
     }
 
@@ -269,7 +269,7 @@ public class VirtualReservationService {
             WHERE reservation_id=? AND status IN ('PENDING','CONFIRMED')""",r.id());
         if(canceled!=1) throw new IllegalStateException("Reservation state changed while locked");
         var change=giveBack(r.stockId(),r.quantity());
-        log(r.id(),r.stockId(),UUID.randomUUID(),"CANCEL",change,r.status(),"CANCELED",refunded>0?reason+" · 가상 환불":reason);
+        log(r.id(),r.stockId(),UUID.randomUUID(),"CANCEL",change,r.status(),"CANCELED",refunded>0?reason+" · 환불":reason);
         return refunded>0?CancelOutcome.REFUNDED:CancelOutcome.CANCELED;
     }
 

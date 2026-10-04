@@ -94,18 +94,18 @@
         </th:block>
     </section>
 
-    <!--/* 가상 예약은 체험용 선택 기능이라, 예약할 수 있는 장소가 있는 일정에서만 보여 준다.
+    <!--/* 예약은 체험용 선택 기능이라, 예약할 수 있는 장소가 있는 일정에서만 보여 준다.
          (가상 수량은 숙소 3곳·관광시설 2곳의 2026-10-01~12-31에만 있다. SQL 013) */-->
     <section class="condition-section" th:unless="${bookables.isEmpty()}" aria-labelledby="reserve-title">
-        <h2 id="reserve-title">가상 예약 (체험)</h2>
+        <h2 id="reserve-title">예약 (체험)</h2>
         <p class="help">예약·결제 과정을 체험하는 기능이에요. 실제 시설에 예약이 전달되지 않고 실제 돈이 오가지 않아요.</p>
         <article class="place-row" th:each="b : ${bookables}">
             <p class="help" th:text="${b.dayNo + '일차 · ' + b.itemTypeName + ' · ' + #temporals.format(b.stock.usageStart, 'yyyy-MM-dd')}"></p>
             <h3 th:text="${b.stock.placeName}"></h3>
             <p th:text="${'남은 수량 ' + b.stock.remaining + (b.stock.room() ? '실' : '명') + ' · ' + #numbers.formatInteger(b.stock.unitPrice, 1, 'COMMA') + '원 / ' + (b.stock.room() ? '1실 1박' : '1명')}"></p>
             <div class="place-links">
-                <a th:if="${b.activeReservationId != null}" th:href="@{/my/reservations/{rid}(rid=${b.activeReservationId})}">내 가상 예약 보기</a>
-                <a th:if="${b.activeReservationId == null}" th:href="@{/my/reservations/new(stockId=${b.stock.stockId},itineraryId=${itinerary.summary.id})}">가상 예약하기</a>
+                <a th:if="${b.activeReservationId != null}" th:href="@{/my/reservations/{rid}(rid=${b.activeReservationId})}">내 예약 보기</a>
+                <a th:if="${b.activeReservationId == null}" th:href="@{/my/reservations/new(stockId=${b.stock.stockId},itineraryId=${itinerary.summary.id})}">예약하기</a>
             </div>
         </article>
     </section>
