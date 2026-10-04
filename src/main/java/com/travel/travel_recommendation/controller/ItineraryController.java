@@ -70,11 +70,14 @@ public class ItineraryController {
         model.addAttribute("options",options);
         var pool=service().attractionPool(id,destinationId,login(principal),hash(session));
         model.addAttribute("pool",pool);
-        // 추천 조건에 날짜·일수가 이미 있을 때만 축제 장소를 미리 골라 둔다. 화면에서 체크를 풀 수 있다.
+        // 여행 기간에 열리는 축제의 장소는 미리 고르지 않고 안내만 한다. 넣고 싶은 사람이 꼭 가야 하는 관광지에서 직접 고른다.
+        // 축제 장소는 좌표 근처의 관광지로 찾은 곳이라 축제와 상관없는 곳일 수 있어, 자동으로 필수에 넣으면 원하지 않는 장소가 일정에 들어갔다.
         var festival=service().festivalVisit(id,destinationId,login(principal),hash(session),
             options.conditions().startDate(),options.conditions().durationDays());
-        var defaults=defaultPlaces(id,destinationId,principal,session,pool,festival,options.conditions().durationDays());
-        model.addAttribute("festivalVisit",festival!=null && defaults.purposeIds().contains(festival.placeId())?festival:null);
+        var festivalPlace=festival==null?null:pool.stream().filter(p->p.placeId().equals(festival.placeId())).findFirst().orElse(null);
+        var defaults=defaultPlaces(id,destinationId,principal,session,pool);
+        model.addAttribute("festivalVisit",festivalPlace==null?null:festival);
+        model.addAttribute("festivalPlaceName",festivalPlace==null?null:festivalPlace.name());
         var purposeIds=defaults.purposeIds();
         var centerIds=defaults.centerIds();
         model.addAttribute("purposePlaceIds",purposeIds);
@@ -232,9 +235,8 @@ public class ItineraryController {
                 return seeOther(base+"/trip-info");
             }
             var pool=service().attractionPool(id,destinationId,login(principal),hash(session));
-            // 여행 기간에 축제가 열리면 사용자가 고르지 않아도 축제 장소를 일정에 넣는다.
-            var defaults=defaultPlaces(id,destinationId,principal,session,pool,
-                service().festivalVisit(id,destinationId,login(principal),hash(session),date,days),days);
+            // 축제 장소는 자동으로 넣지 않는다. 넣으려면 자세한 입력 화면의 꼭 가야 하는 관광지에서 고른다.
+            var defaults=defaultPlaces(id,destinationId,principal,session,pool);
             var constraints=new ItineraryPlan.Constraints(defaults.purposeIds(),null,false,null,List.of(),null,defaults.centerIds());
             Integer newDays=c.durationDays()==null?days:null;
             Boolean newStay=c.accommodationNeeded()==null?stay:null;
@@ -552,22 +554,14 @@ public class ItineraryController {
     private record DefaultPlaces(List<Long> purposeIds,List<Long> centerIds) {}
     // 여행 목적 시설 중 첫 곳만 필수 방문 장소로 미리 골라 둔다. 여러 곳을 모두 필수로 두면 먼 시설까지 억지로 넣게 된다.
     // 중심 장소와 같은 종류(예: 서원)인 목적 시설은 중심 장소가 목적을 채우므로 고르지 않는다. 입력 화면에서는 사용자가 바꿀 수 있다.
-    // 여행 기간에 열리는 축제 장소(festival)가 있으면 필수 방문 장소에 더하고, 축제를 볼 수 있는 날의 중심 장소로 둔다.
-    private DefaultPlaces defaultPlaces(UUID id,long destinationId,Principal principal,HttpSession session,List<PlaceCandidate> pool,
-                                        ItineraryPlan.FestivalVisit festival,Integer days) {
+    // 축제 장소는 미리 고르지 않는다(입력 화면에서 안내만 한다).
+    private DefaultPlaces defaultPlaces(UUID id,long destinationId,Principal principal,HttpSession session,List<PlaceCandidate> pool) {
         var centerIds=service().defaultCenterPlaceIds(id,destinationId,login(principal),hash(session));
         var poolIds=pool.stream().map(p->p.placeId()).toList();
         var purposeIds=CenterPlaces.notCoveredByCenters(pool,
             service().purposePlaceIds(id,destinationId,login(principal),hash(session)).stream().filter(poolIds::contains).toList(),centerIds)
             .stream().limit(1).toList();
-        if(festival==null || days==null || !poolIds.contains(festival.placeId())) return new DefaultPlaces(purposeIds,centerIds);
-        var required=new ArrayList<>(purposeIds);
-        if(!required.contains(festival.placeId())) required.add(festival.placeId());
-        // 중심 장소는 1일차부터 차례로 쓰인다. 축제 날 자리에 축제 장소를 끼워 넣고, 여행 일수를 넘는 뒤쪽은 뺀다.
-        var centers=new ArrayList<>(centerIds);
-        centers.remove(festival.placeId());
-        if(festival.day()-1<=centers.size()) centers.add(festival.day()-1,festival.placeId());
-        return new DefaultPlaces(List.copyOf(required),List.copyOf(centers.subList(0,Math.min(centers.size(),days))));
+        return new DefaultPlaces(purposeIds,centerIds);
     }
     // 장소 목록을 거치지 않고 일정을 만들 때도 후보가 부족하면 장소 목록 화면처럼 카카오에서 한 번 더 찾는다(같은 세션 키라 한 번만).
     private void findMorePlacesIfFew(UUID id,long destinationId,Principal principal,HttpSession session) {
