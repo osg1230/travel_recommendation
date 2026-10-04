@@ -30,6 +30,22 @@ public final class ReservationCatalog {
         if (entry != null) return entry;
         return "ROOM".equals(unit)
             ? new Entry(2, "체험용 객실·가격이에요. 실제 객실·요금과 관계없어요.", null)
-            : new Entry(1, "가상 가격이에요. 실제 요금과 관계없어요.", null);
+            : new Entry(1, "체험용 가격이에요. 실제 입장료와 달라요.", null);
+    }
+
+    /**
+     * 보통 입장권을 끊고 들어가는 관광시설의 체험용 1인 가격. 카카오 세부 분류(subtype)에 들어 있는 말로 정한다.
+     * 해변·산책로·사찰·거리처럼 그냥 둘러보는 곳과 유료·무료가 섞인 문화유적은 대상이 아니라 null을 돌려준다.
+     * 실제 입장료를 조회한 값이 아니다.
+     */
+    public static java.math.BigDecimal ticketPrice(String subtype) {
+        if (subtype == null) return null;
+        int won = subtype.contains("아쿠아리움") || subtype.contains("동물원") ? 25_000
+            : subtype.contains("테마파크") ? 30_000
+            : subtype.contains("케이블카") ? 15_000
+            : subtype.contains("수목원") || subtype.contains("식물원") || subtype.contains("체험학습장") || subtype.contains("관광농원") ? 10_000
+            : subtype.contains("박물관") || subtype.contains("전시관") || subtype.contains("고궁") ? 5_000
+            : 0;
+        return won == 0 ? null : java.math.BigDecimal.valueOf(won);
     }
 }

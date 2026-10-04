@@ -32,9 +32,9 @@
             <input type="hidden" name="itineraryId" th:if="${itineraryId != null}" th:value="${itineraryId}">
             <div class="field">
                 <label for="date">다른 날짜로 보기</label>
-                <input id="date" name="date" type="date" th:min="${stock.room() ? null : '2026-10-01'}" th:max="${stock.room() ? null : '2026-12-31'}"
+                <input id="date" name="date" type="date"
                        th:value="${#temporals.format(stock.usageStart, 'yyyy-MM-dd')}" aria-describedby="date-help">
-                <p id="date-help" class="help" th:text="${stock.room() ? '숙소는 내일부터 1년 안의 날짜로 예약할 수 있어요.' : '예약 수량은 2026-10-01~2026-12-31에만 있어요.'}"></p>
+                <p id="date-help" class="help">내일부터 1년 안의 날짜로 예약할 수 있어요.</p>
             </div>
             <div class="form-actions"><button type="submit" class="button-quiet">이 날짜로 보기</button></div>
         </form>

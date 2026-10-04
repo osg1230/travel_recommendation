@@ -103,7 +103,7 @@
     </section>
 
     <!--/* 예약은 체험용 선택 기능이라, 예약할 수 있는 장소가 있는 일정에서만 보여 준다.
-         (숙소는 모든 숙박 항목, 관광시설은 수량이 있는 2곳의 2026-10-01~12-31. SQL 013·016) */-->
+         (숙소는 모든 숙박 항목, 관광은 박물관·아쿠아리움·테마파크처럼 입장권을 끊는 분류의 시설. SQL 013·016) */-->
     <section class="condition-section" th:unless="${bookables.isEmpty()}" aria-labelledby="reserve-title">
         <h2 id="reserve-title">예약 (체험)</h2>
         <p class="help">예약·결제 과정을 체험하는 기능이에요. 실제 시설에 예약이 전달되지 않고 실제 돈이 오가지 않아요.</p>

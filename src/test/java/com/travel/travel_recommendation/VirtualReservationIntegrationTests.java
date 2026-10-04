@@ -325,6 +325,43 @@ class VirtualReservationIntegrationTests {
         assertThat(service.detail(id,owner.getLoginId()).summary().roomTypeName()).isEqualTo("스위트룸");
     }
 
+    @Test void ticketedAttractionsGetStockButPlacesToJustWalkAroundDoNot() {
+        var owner=member();
+        var date=LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(30+RANDOM.nextInt(300));
+        long aquarium=attraction("테스트 아쿠아리움","문화,예술 > 문화시설 > 아쿠아리움");
+        long beach=attraction("테스트 해수욕장","여행 > 관광,명소 > 해수욕장,해변");
+        long itinerary=jdbc.queryForObject("""
+            INSERT INTO dbo.itineraries(user_id, destination_place_id, title, start_date, end_date, transportation, conditions_snapshot_json)
+            OUTPUT inserted.itinerary_id VALUES (?,?,N'관광시설 예약 테스트',?,?,'CAR','{}')""",Long.class,owner.getId(),hotel,date,date);
+        jdbc.update("""
+            INSERT INTO dbo.itinerary_items(itinerary_id, day_no, sequence_no, item_type, place_id, start_at, end_at, activity)
+            VALUES (?,1,1,'VISIT',?,?,?,N'관람'), (?,1,2,'VISIT',?,?,?,N'산책')""",
+            itinerary,aquarium,date.atTime(10,0),date.atTime(11,30),itinerary,beach,date.atTime(13,0),date.atTime(14,30));
+        var bookable=service.bookable(itinerary,owner.getLoginId());
+        stockIds.addAll(jdbc.queryForList("SELECT stock_id FROM dbo.reservation_stock WHERE place_id IN (?,?)",Long.class,aquarium,beach));
+        // 아쿠아리움만 대상이고 분류별 체험가(25,000원)·하루 100명으로 만들어진다. 해변에는 수량을 만들지 않는다.
+        assertThat(bookable).singleElement().satisfies(b->{
+            assertThat(b.itemPlaceId()).isEqualTo(aquarium);
+            assertThat(b.stock().room()).isFalse();
+            assertThat(b.stock().unitPrice()).isEqualByComparingTo("25000");
+            assertThat(b.stock().remaining()).isEqualTo(100);
+        });
+        service.bookable(itinerary,owner.getLoginId());
+        assertThat(count("SELECT COUNT(*) FROM dbo.reservation_stock WHERE place_id=?",aquarium)).isEqualTo(1);
+        assertThat(count("SELECT COUNT(*) FROM dbo.reservation_stock WHERE place_id=?",beach)).isZero();
+        long id=service.reserve(owner.getLoginId(),bookable.get(0).stock().stockId(),itinerary,3,3,UUID.randomUUID());
+        assertThat(service.detail(id,owner.getLoginId()).summary().amount()).isEqualByComparingTo("75000");
+    }
+
+    private long attraction(String name, String subtype) {
+        long id=jdbc.queryForObject("""
+            INSERT INTO dbo.places(place_type, source_provider, source_place_id, place_name, region, address, subtype, verified_at)
+            OUTPUT inserted.place_id VALUES ('ATTRACTION','KAKAO',?,?,N'강원특별자치도 강릉시',?,?,SYSUTCDATETIME())""",
+            Long.class,"test_"+UUID.randomUUID(),name,"강원특별자치도 강릉시 시험로 "+RANDOM.nextInt(100_000),subtype);
+        placeIds.add(id);
+        return id;
+    }
+
     private long kakaoPlace(String name, String address) {
         long id=jdbc.queryForObject("""
             INSERT INTO dbo.places(place_type, source_provider, source_place_id, place_name, region, address, verified_at)

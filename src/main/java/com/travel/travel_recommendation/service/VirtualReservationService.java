@@ -45,6 +45,8 @@ public class VirtualReservationService {
     private static final int ROOMS_PER_TYPE = 3;
     private static final BigDecimal DEFAULT_ROOM_PRICE = new BigDecimal("100000");
     private static final int MAX_ADVANCE_DAYS = 365;
+    /** 서버가 만드는 관광시설 입장 수량: 하루 100명. 가격은 분류별 체험가(ReservationCatalog.ticketPrice). */
+    private static final int TICKETS_PER_DAY = 100;
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final String STOCK_SQL = """
         SELECT s.stock_id, s.place_id, p.place_name, p.place_type, p.address, p.source_place_id, s.usage_start_at, s.usage_end_at,
@@ -79,6 +81,7 @@ public class VirtualReservationService {
      * 장소 유형과 공백을 뺀 주소가 같고 이름이 한쪽에 포함되면 같은 장소로 본다.
      * 카카오는 시·도를 줄여 쓰므로('경상북도' → '경북') 주소는 맨 앞 시·도 이름을 빼고 비교한다.
      * 숙소는 모두 예약할 수 있게, 수량이 없는 숙박 항목(체크아웃하는 마지막 날 제외)은 그 날짜의 객실 수량을 만들어 둔다.
+     * 관광 항목은 입장권을 끊는 분류의 시설만 같은 방식으로 입장 수량을 만든다.
      * 숙소는 객실 종류가 여러 개라 대표로 스탠다드 더블 한 행만 돌려주고, 종류는 예약 신청 화면에서 고른다.
      */
     @Transactional(timeout=10)
@@ -100,6 +103,18 @@ public class VirtualReservationService {
         for(var stay:stays) {
             boolean matched=found.stream().anyMatch(r->r[0].equals(stay[0]) && r[3].equals(stay[1]));
             if(!matched) created|=ensureRooms((Long)stay[1],(LocalDate)stay[2],referencePrices.get((Long)stay[1]));
+        }
+        // 입장권을 끊는 관광시설(박물관·아쿠아리움·테마파크 등)도 수량이 없으면 그 날짜 분을 만든다.
+        var visits=jdbc.query("""
+            SELECT DISTINCT i.day_no, i.place_id, CAST(i.start_at AS DATE)
+            FROM dbo.itinerary_items i
+            JOIN dbo.itineraries t ON t.itinerary_id=i.itinerary_id AND t.user_id=?
+            JOIN dbo.places p ON p.place_id=i.place_id AND p.place_type='ATTRACTION'
+            WHERE i.itinerary_id=? AND i.item_type='VISIT'""",
+            (rs,n)->new Object[]{rs.getInt(1),rs.getLong(2),rs.getDate(3).toLocalDate()},userId,itineraryId);
+        for(var visit:visits) {
+            boolean matched=found.stream().anyMatch(r->r[0].equals(visit[0]) && r[3].equals(visit[1]));
+            if(!matched) created|=ensureTickets((Long)visit[1],(LocalDate)visit[2]);
         }
         var rows=created?matchingStock(userId,itineraryId):found;
         var result=new ArrayList<Bookable>();
@@ -143,8 +158,7 @@ public class VirtualReservationService {
      * 지난 날짜·1년 넘게 남은 날짜·숙소가 아닌 장소에는 만들지 않는다.
      */
     private boolean ensureRooms(Long placeId, LocalDate date, Integer referenceWon) {
-        LocalDate today=LocalDate.now(KST);
-        if(!date.isAfter(today) || date.isAfter(today.plusDays(MAX_ADVANCE_DAYS))) return false;
+        if(!withinBookingWindow(date)) return false;
         if(jdbc.queryForObject("SELECT COUNT(*) FROM dbo.places WHERE place_id=? AND place_type='ACCOMMODATION' AND is_active=1",
                 Integer.class,placeId)==0) return false;
         // 범위 잠금(HOLDLOCK)으로 같은 숙소·날짜의 객실을 동시에 두 번 만들지 않게 한다.
@@ -170,6 +184,35 @@ public class VirtualReservationService {
         return created;
     }
 
+    /**
+     * 입장권을 끊는 관광시설의 그 날짜 입장 수량이 없으면 만든다(하루 이용 09:00~18:00). 만들었으면 true.
+     * 대상인지와 가격은 장소 세부 분류로 정하고, 그 장소에 이미 수량이 있으면 그 가격을 이어 쓴다.
+     */
+    private boolean ensureTickets(Long placeId, LocalDate date) {
+        if(!withinBookingWindow(date)) return false;
+        var subtypes=jdbc.query("SELECT subtype FROM dbo.places WHERE place_id=? AND place_type='ATTRACTION' AND is_active=1",
+            (rs,n)->rs.getString(1),placeId);
+        BigDecimal categoryPrice=subtypes.isEmpty()?null:ReservationCatalog.ticketPrice(subtypes.get(0));
+        if(categoryPrice==null) return false;
+        if(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM dbo.reservation_stock WITH (UPDLOCK, HOLDLOCK)
+                WHERE place_id=? AND quantity_unit='PERSON' AND CAST(usage_start_at AS DATE)=?""",Integer.class,placeId,date)>0) return false;
+        BigDecimal price=jdbc.query("""
+            SELECT TOP 1 unit_price FROM dbo.reservation_stock WHERE place_id=? AND quantity_unit='PERSON' ORDER BY stock_id DESC""",
+            (rs,n)->rs.getBigDecimal(1),placeId).stream().findFirst().orElse(categoryPrice);
+        jdbc.update("""
+            INSERT INTO dbo.reservation_stock(place_id, usage_start_at, usage_end_at, total_quantity, remaining_quantity,
+                   unit_price, quantity_unit) VALUES (?,?,?,?,?,?,'PERSON')""",
+            placeId,date.atTime(9,0),date.atTime(18,0),TICKETS_PER_DAY,TICKETS_PER_DAY,price);
+        return true;
+    }
+
+    /** 서버가 수량을 만들어 주는 날짜 범위: 내일부터 1년 안. */
+    private static boolean withinBookingWindow(LocalDate date) {
+        LocalDate today=LocalDate.now(KST);
+        return date.isAfter(today) && !date.isAfter(today.plusDays(MAX_ADVANCE_DAYS));
+    }
+
     /** 숙소의 그 날짜 객실 종류별 수량(예약 신청 화면의 선택지). 없는 종류는 만든 뒤 객실 종류 순서로 돌려준다. */
     @Transactional(timeout=10)
     public List<Stock> rooms(Long placeId, LocalDate date) {
@@ -180,10 +223,10 @@ public class VirtualReservationService {
         return list;
     }
 
-    /** 같은 장소의 다른 날짜 수량. 숙소는 같은 객실 종류를 찾고(그 날짜 객실이 없으면 만든다), 관광시설은 그 날짜 수량을 찾는다. */
+    /** 같은 장소의 다른 날짜 수량. 그 날짜 수량이 없으면 만든 뒤 찾는다. 숙소는 같은 객실 종류를 찾는다. */
     @Transactional(timeout=10)
     public Optional<Stock> sameOn(Stock current, LocalDate date) {
-        if(!current.room()) return stockOn(current.placeId(),date);
+        if(!current.room()) { ensureTickets(current.placeId(),date); return stockOn(current.placeId(),date); }
         var rooms=rooms(current.placeId(),date);
         return rooms.stream().filter(s->Objects.equals(s.roomType(),current.roomType())).findFirst().or(()->rooms.stream().findFirst());
     }

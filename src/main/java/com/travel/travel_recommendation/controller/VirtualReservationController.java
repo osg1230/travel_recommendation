@@ -43,9 +43,8 @@ public class VirtualReservationController {
         var service=service();
         var stock=service.stockForBooking(stockId,principal.getName());
         if(date!=null && !date.equals(stock.usageStart().toLocalDate())) {
-            boolean room=stock.room();
             var other=service.sameOn(stock,date).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,
-                date+"에는 이 장소의 예약 수량이 없어요. "+(room?"내일부터 1년 안의 날짜를 골라 주세요.":"2026-10-01~2026-12-31 사이 날짜를 골라 주세요.")));
+                date+"에는 이 장소의 예약 수량이 없어요. 내일부터 1년 안의 다른 날짜를 골라 주세요."));
             stock=service.stockForBooking(other.stockId(),principal.getName());
         }
         model.addAttribute("stock",stock);

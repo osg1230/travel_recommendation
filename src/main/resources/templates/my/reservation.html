@@ -57,7 +57,7 @@
             <div class="field-grid">
                 <div class="field">
                     <label for="date">이용 날짜</label>
-                    <input id="date" name="date" type="date" th:min="${st.room() ? null : '2026-10-01'}" th:max="${st.room() ? null : '2026-12-31'}" th:value="${#temporals.format(s.usageStart, 'yyyy-MM-dd')}">
+                    <input id="date" name="date" type="date" th:value="${#temporals.format(s.usageStart, 'yyyy-MM-dd')}">
                 </div>
                 <div class="field" th:if="${st.room()}">
                     <label for="quantity">객실 수</label>
