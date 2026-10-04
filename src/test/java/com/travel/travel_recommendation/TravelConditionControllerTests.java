@@ -98,6 +98,11 @@ class TravelConditionControllerTests {
                 .andExpect(model().attributeHasFieldErrors("travelForm", "endDate"));
         mvc.perform(post("/travel/conditions").with(csrf()).param("startDate", "2026-10-01").param("endDate", "2026-10-03").param("durationDays", "2"))
                 .andExpect(model().attributeHasFieldErrors("travelForm", "durationDays"));
+        // 출발일과 여행 일수만 입력하면 마지막 날은 서버가 계산해 채운다.
+        MockHttpSession session = new MockHttpSession();
+        mvc.perform(post("/travel/conditions").session(session).with(csrf()).param("startDate", "2026-10-01").param("durationDays", "3"))
+                .andExpect(redirectedUrl("/travel/conditions/check"));
+        assertThat(((TravelConditionForm) session.getAttribute("travelConditionDraft")).getEndDate()).isEqualTo("2026-10-03");
     }
 
     @Test

@@ -96,6 +96,11 @@ public class ConditionReviewService {
                     .map(org.springframework.validation.FieldError::getField).distinct().toList());
             throw invalid();
         }
+        // 조건 보완 화면은 마지막 날을 묻지 않고 출발일과 일수만 보여 준다. AI가 날짜만 찾았다면 일수를 날짜로 채워 둔다(검증을 통과한 날짜라 바로 계산한다).
+        if (form.getDurationDays().isEmpty() && !form.getStartDate().isEmpty() && !form.getEndDate().isEmpty()) {
+            form.setDurationDays(String.valueOf(ChronoUnit.DAYS.between(
+                    LocalDate.parse(form.getStartDate()), LocalDate.parse(form.getEndDate())) + 1));
+        }
         return new Analysis(form, summary);
     }
 

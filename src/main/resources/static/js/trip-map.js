@@ -78,7 +78,7 @@
     }
 
     // 일정 지도: 일차별 색으로 번호를 붙이고 방문 순서대로 직선을 잇는다. 선은 순서 표시이며 실제 이동 경로가 아니다.
-    // 지도 번호를 누르면 아래 일정 항목으로 가고, 일정 항목의 '위 지도에서 보기'를 누르면 지도가 그 장소로 간다.
+    // 지도 번호를 누르면 아래 일정 항목으로 가고, 일정 항목의 '지도에서 보기'를 누르면 지도가 그 장소로 간다.
     function drawDays(map, place, fitAll) {
         const maps = window.kakao.maps;
         const days = [];   // 일차별 { number, marks: [{ at, overlay }], line }
@@ -112,7 +112,7 @@
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'map-jump';
-            button.textContent = '위 지도에서 보기';
+            button.textContent = '지도에서 보기';
             button.addEventListener('click', () => focusStop(key));
             links.prepend(button);
         }
@@ -124,7 +124,8 @@
             map.panTo(stop.at);
             document.querySelectorAll('.map-badge-active').forEach((el) => el.classList.remove('map-badge-active'));
             stop.element.classList.add('map-badge-active');
-            box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            // 지도가 이미 화면에 보이면(넓은 화면의 고정 지도) 화면을 움직이지 않는다.
+            box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
     }
 
