@@ -105,6 +105,8 @@ public class OpenAiRecommendationClient {
             if(response.statusCode()==429) {
                 // 분당·일일 한도 중 무엇에 걸렸는지 알 수 있게 응답 앞부분만 남긴다. 오류 본문에는 인증키가 없다.
                 log.warn("추천 API 요청 제한(429) request-id={} body={}",response.headers().firstValue("x-request-id").orElse(""),snippet(response.body()));
+                if(OpenAiQuota.exhausted(response.body()))
+                    throw failure("AI_QUOTA","AI 이용 한도를 모두 써서 지금은 여행지 추천을 만들 수 없어요. 한도가 채워진 뒤 다시 이용해 주세요.");
                 throw failure("AI_RATE_LIMIT","추천 API 사용량이 제한됐어요. 잠시 후 다시 시도해 주세요.");
             }
             if(response.statusCode()==401 || response.statusCode()==403)

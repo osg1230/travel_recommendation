@@ -83,6 +83,11 @@ class OpenAiItineraryClientTests {
         assertCode("AI_NOT_CONFIGURED",()->client("",Duration.ofSeconds(2)).assist(conditions(),plan(),null));
         assertThat(calls.get()).isZero();
         status.set(429); assertCode("AI_RATE_LIMIT",()->client("secret-key",Duration.ofSeconds(2)).assist(conditions(),plan(),null));
+        // 같은 429라도 크레딧 소진(insufficient_quota)은 기다려도 풀리지 않아 다른 코드로 알린다.
+        String ok=response.get();
+        response.set("{\"error\":{\"type\":\"insufficient_quota\",\"code\":\"credit_balance_exhausted\"}}");
+        assertCode("AI_QUOTA",()->client("secret-key",Duration.ofSeconds(2)).assist(conditions(),plan(),null));
+        response.set(ok);
         status.set(401); assertCode("AI_AUTH",()->client("secret-key",Duration.ofSeconds(2)).assist(conditions(),plan(),null));
         status.set(503); assertCode("AI_UNAVAILABLE",()->client("secret-key",Duration.ofSeconds(2)).assist(conditions(),plan(),null));
         status.set(200); delay.set(400);

@@ -72,7 +72,9 @@ public class OpenAiPurposeClient {
                 .header("Authorization", "Bearer " + properties.apiKey()).header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8)).build();
             var response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if (response.statusCode() == 429) throw failure("AI_RATE_LIMIT", "목적 시설 검색 사용량이 제한됐어요.");
+            if (response.statusCode() == 429) throw OpenAiQuota.exhausted(response.body())
+                ? failure("AI_QUOTA", "AI 이용 한도를 모두 써서 목적 시설을 검색할 수 없어요.")
+                : failure("AI_RATE_LIMIT", "목적 시설 검색 사용량이 제한됐어요.");
             if (response.statusCode() == 401 || response.statusCode() == 403) throw failure("AI_AUTH", "목적 시설 검색 연결 설정을 확인해야 해요.");
             if (response.statusCode() != 200 || response.body().length() > 20000) throw failure("AI_UNAVAILABLE", "목적 시설 검색 서비스에 연결하지 못했어요.");
             return read(mapper.readTree(response.body()));

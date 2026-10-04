@@ -69,7 +69,9 @@ public class OpenAiItineraryClient {
                 .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body),StandardCharsets.UTF_8)).build();
             // 실패 시 자동 유료 재시도는 하지 않는다. 재요청 횟수는 호출한 쪽에서 제한한다.
             var response=http.send(request,HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if(response.statusCode()==429) throw failure("AI_RATE_LIMIT","일정 보조 사용량이 제한됐어요.");
+            if(response.statusCode()==429) throw OpenAiQuota.exhausted(response.body())
+                ? failure("AI_QUOTA","AI 이용 한도를 모두 써서 일정 보조 안내를 만들 수 없어요.")
+                : failure("AI_RATE_LIMIT","일정 보조 사용량이 제한됐어요.");
             if(response.statusCode()==401 || response.statusCode()==403) throw failure("AI_AUTH","일정 보조 연결 설정을 확인해야 해요.");
             if(response.statusCode()!=200) throw failure("AI_UNAVAILABLE","일정 보조 서비스에 연결하지 못했어요.");
             if(response.body().length()>64000) throw invalid("응답 길이가 제한을 넘었어요.");
