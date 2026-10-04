@@ -23,6 +23,7 @@ public class RecommendationJobWorker {
     private final FestivalPlaceService festivalPlaces;
     private final PlacePhotoService photos;
     private final NearbyRestaurantService restaurants;
+    private final PlacePickService placePicks;
     private volatile boolean ready;
 
     @EventListener(ApplicationReadyEvent.class)
@@ -55,6 +56,8 @@ public class RecommendationJobWorker {
             catch(RuntimeException e) { recommendations.fail(work,"RECOMMENDATION_FAILED","추천 결과를 저장하지 못했어요. 잠시 후 다시 시도해 주세요."); }
         }
         for(UUID id:itineraries.queued()) {
+            // 관광지 후보를 AI가 갈 만한 순서로 정하면 그 순서로 다시 고른다. 실패해도 서버 규칙으로 고른 관광지로 일정을 만든다.
+            try { placePicks.enrich(id); } catch(RuntimeException e) { log.warn("AI 관광지 순서 정하기를 건너뜀 job={} ({})",id,e.toString()); }
             // 고른 관광지·숙소 주변의 음식점을 먼저 찾아 요청에 더한다. 실패해도 기존 음식점 후보로 일정을 만든다.
             try { restaurants.enrich(id); } catch(RuntimeException e) { log.warn("주변 음식점 찾기를 건너뜀 job={} ({})",id,e.toString()); }
             var work=itineraries.claim(id);

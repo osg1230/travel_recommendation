@@ -143,4 +143,33 @@ class TripConstraintsTests {
         assertThatThrownBy(() -> TripConstraints.select(pool(4), 1, NINE, SIX, 90, new Constraints(List.of(), null, false, "HALF", List.of()))).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> TripConstraints.select(pool(4), 1, NINE, SIX, 90, new Constraints(List.of(), null, false, "TOTAL", List.of("TAX")))).isInstanceOf(IllegalArgumentException.class);
     }
+
+    // AI 순서: 중심 장소 → AI가 고른 순서 → AI가 뺄 곳. 같은 종류가 두 번 이어진 뒤에는 다른 종류를 먼저 두고, 후보에 없는 ID는 무시한다.
+    @Test void aiPicksOrderPlacesAndOnlyBreakLongRunsOfOneKind() {
+        var pool = List.of(kind(1, "해변A", "여행 > 관광,명소 > 해수욕장,해변"), kind(2, "해변B", "여행 > 관광,명소 > 해수욕장,해변"),
+            kind(3, "해변C", "여행 > 관광,명소 > 해수욕장,해변"), kind(4, "박물관", "문화,예술 > 문화시설 > 박물관"),
+            kind(5, "동네절", "문화,예술 > 종교 > 불교 > 절,사찰"), kind(6, "공원", "여행 > 관광,명소 > 도시근린공원"));
+        assertThat(ids(TripConstraints.byPicks(pool, List.of(4L), List.of(1L, 2L, 3L, 99L, 6L), List.of(5L)))).containsExactly(4L, 1L, 2L, 6L, 3L, 5L);
+        // AI가 언급하지 않은 곳(6)은 고른 곳 뒤, 뺄 곳 앞에 둔다.
+        assertThat(ids(TripConstraints.byPicks(pool, List.of(), List.of(4L, 1L), List.of(5L)))).containsExactly(4L, 1L, 2L, 6L, 3L, 5L);
+        // 분류가 '관광,명소'로만 된 곳은 종류를 알 수 없어 이어져도 순서를 바꾸지 않는다.
+        var plain = List.of(kind(1, "가", "여행 > 관광,명소"), kind(2, "나", "여행 > 관광,명소"), kind(3, "다", "여행 > 관광,명소"), kind(4, "라", "여행 > 관광,명소 > 호수"));
+        assertThat(ids(TripConstraints.limitKindRuns(plain))).containsExactly(1L, 2L, 3L, 4L);
+    }
+
+    // AI 순서로 고를 때는 앞쪽(낮에 갈 만한 곳)을 저녁 관광 몫으로 떼지 않고, AI가 뺄 곳은 예비·저녁 관광으로 쓰지 않는다.
+    @Test void aiOrderKeepsTopPicksForDaytime() {
+        var ordered = new ArrayList<PlaceCandidate>();
+        for (long id = 1; id <= 10; id++)
+            ordered.add(kind(id, "장소" + id, id == 1 || id >= 8 ? "여행 > 관광,명소 > 전망대" : "여행 > 관광,명소 > 문화유적"));
+        // 2일·09:00~18:00·체류 90분이면 낮 관광지는 6곳이다.
+        var ai = ItineraryJobService.arrange(ordered, Set.of(10L), true, true, 2, NINE, SIX, 90, null);
+        assertThat(ids(ai.selected())).containsExactly(1L, 2L, 3L, 4L, 5L, 6L);
+        assertThat(ids(ai.evening())).containsExactly(8L, 9L);
+        assertThat(ids(ai.reserve())).containsExactly(7L);
+        // 서버 규칙 순서일 때는 지금처럼 앞에서부터 저녁 관광 몫을 뗀다.
+        var rule = ItineraryJobService.arrange(ordered, Set.of(), false, true, 2, NINE, SIX, 90, null);
+        assertThat(ids(rule.evening())).containsExactly(1L, 8L, 9L);
+        assertThat(ids(rule.selected())).containsExactly(2L, 3L, 4L, 5L, 6L, 7L);
+    }
 }

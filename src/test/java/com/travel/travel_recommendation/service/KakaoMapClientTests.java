@@ -197,7 +197,7 @@ class KakaoMapClientTests {
         assertThat(path.get()).startsWith("/v2/local/search/category.json?category_group_code=FD6&x=128.9&y=37.77&radius=3000&sort=accuracy");
         assertThatThrownBy(()->client("key").searchRestaurantsNear(200,37.77,"강원특별자치도 강릉시",3000,3)).isInstanceOf(RecommendationException.class);
     }
-    // 사찰·성당은 "○○ 명소" 검색에 나오지 않아 따로 찾는다. 사찰은 앞 2곳만, 성당은 부속 시설과 다른 분류를 뺀다.
+    // 사찰·성당은 "○○ 명소" 검색에 나오지 않아 따로 찾는다. 사찰은 앞 5곳까지, 성당은 부속 시설과 다른 분류를 뺀다(관광지로 볼지는 장소 수집에서 정한다).
     @Test void religiousSearchKeepsTemplesAndCathedralsOnly() {
         String[][] temples={{"501","불국사"},{"502","석굴암"},{"503","골굴사"}};
         var items=new java.util.ArrayList<java.util.Map<String,String>>();
@@ -206,7 +206,7 @@ class KakaoMapClientTests {
         var parking=searchItem("504","경북 경주시 진현동 2"); parking.put("category_name","교통,수송 > 교통시설 > 주차장"); items.add(0,parking);
         body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",items)));
         assertThat(client("key").searchTemples("경상북도 경주시")).extracting(com.travel.travel_recommendation.dto.KakaoPlace::name)
-            .containsExactly("불국사","석굴암");
+            .containsExactly("불국사","석굴암","골굴사");
         assertThat(java.net.URLDecoder.decode(path.get(),StandardCharsets.UTF_8)).contains("query=경주 사찰");
 
         var church=searchItem("601","전북특별자치도 전주시 완산구 전동 1"); church.put("place_name","전동성당");

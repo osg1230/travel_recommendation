@@ -20,6 +20,7 @@ public class PlaceDiscoveryService {
     private final PlaceRepository places;
     private final KakaoMapClient maps;
     private final TourApiClient tour;
+    private final tools.jackson.databind.ObjectMapper mapper;
     private final PlatformTransactionManager transactions;
 
     public int refresh(UUID jobId,long destinationId,String login,byte[] hash) {
@@ -27,9 +28,15 @@ public class PlaceDiscoveryService {
         String region=before.destination().region();
         List<KakaoPlace> found=new ArrayList<>();
         // 외부 조회는 DB 잠금 밖에서 한다. 세 종류 조회가 끝나야 한 번에 저장한다.
-        for(String type:List.of("ATTRACTION","RESTAURANT","ACCOMMODATION")) found.addAll(maps.searchPlaces(region,type));
-        found.addAll(maps.searchTemples(region));
-        found.addAll(touristCathedrals(maps.searchCathedrals(region)));
+        // 관광지는 검색 결과에서 몇 번째였는지(0부터)를 함께 기억한다. 후보 수를 줄일 때 이름순 대신 이 순서를 쓴다.
+        Map<String,Integer> ranks=new HashMap<>();
+        for(String type:List.of("ATTRACTION","RESTAURANT","ACCOMMODATION")) {
+            var list=maps.searchPlaces(region,type);
+            if("ATTRACTION".equals(type)) rank(list,ranks);
+            found.addAll(list);
+        }
+        var temples=touristTemples(maps.searchTemples(region)); rank(temples,ranks); found.addAll(temples);
+        var cathedrals=touristCathedrals(maps.searchCathedrals(region)); rank(cathedrals,ranks); found.addAll(cathedrals);
         var transaction=new TransactionTemplate(transactions); transaction.setTimeout(10);
         return transaction.execute(status->{
             // 같은 지역의 동시 수집을 직렬화하고, 조회 중 만료·권한 변경도 다시 검사한다.
@@ -40,11 +47,15 @@ public class PlaceDiscoveryService {
             for(var data:found) {
                 if(!region.equals(data.region()) || !ids.add(data.sourceId())) continue;
                 var existing=places.findBySourceProviderAndSourcePlaceId("KAKAO",data.sourceId());
+                Place place;
                 if(existing.isPresent()) {
-                    var place=existing.get();
+                    place=existing.get();
                     if(!place.isActive() || !place.getRegion().equals(region) || !place.getPlaceType().equals(data.type())) continue;
                     place.refreshKakao(data);
-                } else places.save(Place.fromKakao(data));
+                } else place=places.save(Place.fromKakao(data));
+                Integer rank=ranks.get(data.sourceId());
+                String details=rank==null?null:PlaceRankDetails.write(place,rank,mapper);
+                if(details!=null) place.updateDetails(details);
                 count++;
             }
             places.flush(); return count;
@@ -79,6 +90,34 @@ public class PlaceDiscoveryService {
             places.flush();
             return candidates.candidate(place);
         }));
+    }
+
+    /** 목록에서의 순서(0부터)를 기록한다. 여러 검색에 나온 곳은 먼저 기록한 순서를 둔다. */
+    private static void rank(List<KakaoPlace> list,Map<String,Integer> ranks) {
+        for(int i=0;i<list.size();i++) ranks.putIfAbsent(list.get(i).sourceId(),i);
+    }
+
+    /** 사찰 후보 중 관광지로 받는 수와, 관광공사 관광지와 같은 곳으로 보는 거리(m). 큰 절은 경내가 넓어 성당보다 넉넉히 본다. */
+    static final int MAX_TEMPLES=2, TEMPLE_METERS=1000;
+
+    /**
+     * 카카오 사찰 후보 중 관광공사에 관광지로 등록된 곳만 검색 순서대로 MAX_TEMPLES곳까지 관광지 후보로 쓴다.
+     * "○○ 사찰" 검색은 경주에서는 불국사·석굴암을 주지만 강릉에서는 동네 절이 앞에 나와, 그대로 넣으면 일정에 들어갔다.
+     * 관광공사에서 절 이름으로 찾아 TEMPLE_METERS 안에 있으면 같은 곳으로 본다. 관광공사 키가 없거나 조회에 실패하면 사찰은 넣지 않는다.
+     */
+    private List<KakaoPlace> touristTemples(List<KakaoPlace> temples) {
+        if(temples.isEmpty() || !tour.configured()) return List.of();
+        List<KakaoPlace> listed=new ArrayList<>();
+        for(var temple:temples) {
+            if(listed.size()==MAX_TEMPLES) break;
+            // "대한불교조계종 ○○사"처럼 종단 이름이 붙은 곳은 마지막 단어(절 이름)로 찾는다.
+            String name=temple.name().substring(temple.name().lastIndexOf(' ')+1);
+            try {
+                if(tour.searchFacilities(name).stream().anyMatch(t->meters(temple.longitude(),temple.latitude(),t.longitude(),t.latitude())<=TEMPLE_METERS))
+                    listed.add(temple);
+            } catch(RecommendationException error) { log.warn("관광공사 사찰 조회 실패로 남은 사찰 후보를 넣지 않았어요 ({})",error.getCode()); break; }
+        }
+        return listed;
     }
 
     /**

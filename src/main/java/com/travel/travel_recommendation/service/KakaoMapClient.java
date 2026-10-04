@@ -142,10 +142,11 @@ public class KakaoMapClient {
 
     /**
      * 불국사·전동성당 같은 사찰·성당은 카카오 분류가 '문화,예술 > 종교'라 "○○ 명소" 검색에 나오지 않아 따로 찾는다.
-     * 사찰은 "○○ 사찰" 검색의 정확도 앞 2곳만 쓴다(예: 경주 → 불국사·석굴암).
+     * 사찰은 "○○ 사찰" 검색의 정확도 앞 5곳을 후보로 돌려준다(예: 경주 → 불국사·석굴암 …). 동네 절도 섞여 나오므로
+     * 관광지로 볼지는 성당처럼 호출하는 쪽({@link PlaceDiscoveryService})에서 관광공사 등록 여부로 판단한다.
      */
     public List<KakaoPlace> searchTemples(String region) {
-        return searchReligious(region,"사찰","문화,예술 > 종교 > 불교 > 절,사찰",2);
+        return searchReligious(region,"사찰","문화,예술 > 종교 > 불교 > 절,사찰",5);
     }
 
     /**

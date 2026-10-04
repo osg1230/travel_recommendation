@@ -91,6 +91,8 @@ public class PlaceCandidateService {
             .sorted(Comparator.comparing((Place p)->!purposeIds.contains(p.getId()) && !festivalIds.contains(p.getId()))
                 .thenComparing((Place p)->ThemePlaces.matched(p.getName(),p.getSubtype(),themes).isEmpty())
                 .thenComparing((Place p)->!"KAKAO".equals(p.getSourceProvider()))
+                // 카카오 검색 결과에 먼저 나온 곳부터 둔다. 이름순으로 자르면 뒤쪽 글자로 시작하는 곳(정동진 등)이 빠진다.
+                .thenComparingInt((Place p)->PlaceRankDetails.read(p,mapper))
                 .thenComparing(Place::getName).thenComparing(Place::getId)).toList();
         var distinct=new ArrayList<Place>(); Set<String> seen=new HashSet<>();
         for(var place:candidates) {
