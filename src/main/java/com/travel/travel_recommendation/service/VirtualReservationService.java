@@ -79,7 +79,7 @@ public class VirtualReservationService {
     public List<Bookable> bookable(Long itineraryId, String loginId) {
         Long userId=member(loginId);
         var rows=jdbc.query("""
-            SELECT DISTINCT i.day_no, i.item_type, s.stock_id
+            SELECT DISTINCT i.day_no, i.item_type, s.stock_id, i.place_id
             FROM dbo.itinerary_items i
             JOIN dbo.itineraries t ON t.itinerary_id=i.itinerary_id AND t.user_id=?
             JOIN dbo.places ip ON ip.place_id=i.place_id
@@ -93,7 +93,7 @@ public class VirtualReservationService {
                        AND (CHARINDEX(REPLACE(ip.place_name,' ',''),REPLACE(sp.place_name,' ',''))>0
                             OR CHARINDEX(REPLACE(sp.place_name,' ',''),REPLACE(ip.place_name,' ',''))>0)))
             ORDER BY i.day_no, s.stock_id""",
-            (rs,n)->new Object[]{rs.getInt(1),rs.getString(2),rs.getLong(3)},userId,itineraryId);
+            (rs,n)->new Object[]{rs.getInt(1),rs.getString(2),rs.getLong(3),rs.getLong(4)},userId,itineraryId);
         var result=new ArrayList<Bookable>();
         for(var r:rows) {
             var stock=stock((Long)r[2]).orElseThrow();
@@ -101,7 +101,7 @@ public class VirtualReservationService {
                 SELECT TOP 1 reservation_id FROM dbo.virtual_reservations
                 WHERE user_id=? AND itinerary_id=? AND stock_id=? AND status<>'CANCELED' ORDER BY reservation_id DESC""",
                 (rs,n)->rs.getLong(1),userId,itineraryId,stock.stockId()).stream().findFirst().orElse(null);
-            result.add(new Bookable((Integer)r[0],"STAY".equals(r[1])?"숙박":"관광",stock,active));
+            result.add(new Bookable((Integer)r[0],(Long)r[3],"STAY".equals(r[1])?"숙박":"관광",stock,active));
         }
         return result;
     }

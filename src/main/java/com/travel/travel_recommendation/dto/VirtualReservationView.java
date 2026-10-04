@@ -16,8 +16,8 @@ public final class VirtualReservationView {
         public String unitName() { return room() ? "객실" : "명"; }
     }
 
-    /** 저장 일정의 항목 중 같은 날짜에 가상 수량이 있는 장소. */
-    public record Bookable(int dayNo, String itemTypeName, Stock stock, Long activeReservationId) {}
+    /** 저장 일정의 항목 중 같은 날짜에 가상 수량이 있는 장소. itemPlaceId는 일정표에서 그 항목을 찾는 데 쓴다. */
+    public record Bookable(int dayNo, Long itemPlaceId, String itemTypeName, Stock stock, Long activeReservationId) {}
 
     public record Summary(Long id, String placeName, LocalDateTime usageStart, LocalDateTime usageEnd, int quantity,
                           int partySize, String unit, BigDecimal amount, String status, String paymentStatus,

@@ -50,6 +50,14 @@
             </th:block>
             <!--/* 일정 초안 화면과 같은 짧은 링크 이름을 쓴다. 길찾기 링크가 있는 이동 구간은 길찾기만 보여 준다. */-->
             <div class="place-links" th:with="routeLink=${route.links.get(day.number + '-' + st.index)}">
+                <!--/* 같은 날짜에 예약 수량이 있는 숙소·관광시설은 일정표에서 바로 예약(체험)으로 갈 수 있게 버튼을 둔다. */-->
+                <th:block th:if="${item.placeId != null and (item.type == 'VISIT' or item.type == 'STAY')}"
+                          th:with="b=${bookableByItem.get(day.number + '-' + item.placeId)}">
+                    <a class="button button-small" th:if="${b != null and b.activeReservationId == null}"
+                       th:href="@{/my/reservations/new(stockId=${b.stock.stockId},itineraryId=${itinerary.summary.id})}">예약하기</a>
+                    <a class="button button-small button-quiet" th:if="${b != null and b.activeReservationId != null}"
+                       th:href="@{/my/reservations/{rid}(rid=${b.activeReservationId})}">내 예약 보기</a>
+                </th:block>
                 <a th:if="${!#strings.isEmpty(item.mapUrl) and (item.type != 'TRANSIT' or routeLink == null)}" th:href="${item.mapUrl}" target="_blank" rel="noopener noreferrer">위치 보기<span class="visually-hidden"> (새 창)</span></a>
                 <a th:if="${item.placeId != null and (item.type == 'VISIT' or item.type == 'MEAL' or item.type == 'STAY')}"
                    th:href="@{/my/ratings/{placeId}(placeId=${item.placeId},returnTo=${'/my/itineraries/' + itinerary.summary.id})}">이 장소 평가하기</a>

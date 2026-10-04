@@ -81,11 +81,15 @@ public class SavedItineraryController {
         model.addAttribute("photoByPlace",photoByPlace);
         // 같은 날짜에 가상 수량이 있는 숙소·관광시설은 가상 예약으로 이어 준다(SFR-13-01).
         var reservation=reservations.getIfAvailable();
-        java.util.List<?> bookables=java.util.List.of();
+        java.util.List<com.travel.travel_recommendation.dto.VirtualReservationView.Bookable> bookables=java.util.List.of();
         // SQL 013을 적용하지 않은 PC에서도 일정 상세는 그대로 보여 준다.
         try { if(reservation!=null) bookables=reservation.bookable(id,login(principal)); }
         catch(org.springframework.dao.DataAccessException missingTables) { bookables=java.util.List.of(); }
         model.addAttribute("bookables",bookables);
+        // 일정표의 장소 옆에 예약 버튼을 붙일 수 있게 '일차-장소 ID'로 찾는 표를 함께 넘긴다.
+        var bookableByItem=new java.util.HashMap<String,Object>();
+        for(var b:bookables) bookableByItem.putIfAbsent(b.dayNo()+"-"+b.itemPlaceId(),b);
+        model.addAttribute("bookableByItem",bookableByItem);
         return "my/itinerary";
     }
 
