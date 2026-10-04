@@ -43,11 +43,14 @@ public class VirtualReservationController {
         var service=service();
         var stock=service.stockForBooking(stockId,principal.getName());
         if(date!=null && !date.equals(stock.usageStart().toLocalDate())) {
-            var other=service.stockOn(stock.placeId(),date).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,
-                date+"에는 이 장소의 예약 수량이 없어요. 2026-10-01~2026-12-31 사이 날짜를 골라 주세요."));
+            boolean room=stock.room();
+            var other=service.sameOn(stock,date).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,
+                date+"에는 이 장소의 예약 수량이 없어요. "+(room?"내일부터 1년 안의 날짜를 골라 주세요.":"2026-10-01~2026-12-31 사이 날짜를 골라 주세요.")));
             stock=service.stockForBooking(other.stockId(),principal.getName());
         }
         model.addAttribute("stock",stock);
+        // 숙소는 객실 종류를 고를 수 있게 그 날짜의 객실 목록을 함께 보여 준다.
+        model.addAttribute("rooms",stock.room()?service.rooms(stock.placeId(),stock.usageStart().toLocalDate()):java.util.List.of());
         model.addAttribute("itineraryId",itineraryId);
         model.addAttribute("requestKey",UUID.randomUUID());
         model.addAttribute("maxRooms",VirtualReservationService.MAX_ROOMS);
@@ -94,7 +97,7 @@ public class VirtualReservationController {
         var service=service();
         var current=service.detail(id,principal.getName());
         if(current.stock()==null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"예약한 수량 구간을 찾지 못했어요.");
-        var target=date==null?current.stock():service.stockOn(current.stock().placeId(),date).orElseThrow(()->
+        var target=date==null?current.stock():service.sameOn(current.stock(),date).orElseThrow(()->
             new ResponseStatusException(HttpStatus.NOT_FOUND,date+"에는 이 장소의 예약 수량이 없어요."));
         int people=partySize==null?0:partySize;
         int units=quantity==null?people:quantity;

@@ -11,7 +11,8 @@ public final class VirtualReservationView {
     /** 예약 가능 수량 한 구간. 이용 시각은 KST 현지 시각이다. */
     public record Stock(Long stockId, Long placeId, String placeName, String placeType, String address,
                         LocalDateTime usageStart, LocalDateTime usageEnd, int total, int remaining,
-                        BigDecimal unitPrice, String unit, int maxPerUnit, String priceNote, String priceSourceUrl) {
+                        BigDecimal unitPrice, String unit, int maxPerUnit, String priceNote, String priceSourceUrl,
+                        String roomType, String roomTypeName) {
         public boolean room() { return "ROOM".equals(unit); }
         public String unitName() { return room() ? "객실" : "명"; }
     }
@@ -21,7 +22,7 @@ public final class VirtualReservationView {
 
     public record Summary(Long id, String placeName, LocalDateTime usageStart, LocalDateTime usageEnd, int quantity,
                           int partySize, String unit, BigDecimal amount, String status, String paymentStatus,
-                          LocalDateTime createdAt) {
+                          LocalDateTime createdAt, String roomTypeName) {
         public String statusName() { return VirtualReservationView.statusName(status); }
         public String paymentStatusName() { return paymentStatus == null ? "결제 전" : VirtualReservationView.paymentName(paymentStatus); }
     }

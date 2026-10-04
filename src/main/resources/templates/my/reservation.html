@@ -24,7 +24,7 @@
                 th:text="${s.statusName()}"></span></td></tr>
             <tr><th scope="row">결제</th><td th:text="${s.paymentStatusName()}"></td></tr>
             <tr><th scope="row">이용 일시</th><td th:text="${#temporals.format(s.usageStart, 'yyyy-MM-dd HH:mm') + ' ~ ' + #temporals.format(s.usageEnd, 'yyyy-MM-dd HH:mm')}"></td></tr>
-            <tr th:if="${s.unit == 'ROOM'}"><th scope="row">객실</th><td th:text="${s.quantity + '실'}"></td></tr>
+            <tr th:if="${s.unit == 'ROOM'}"><th scope="row">객실</th><td th:text="${(s.roomTypeName != null ? s.roomTypeName + ' · ' : '') + s.quantity + '실'}"></td></tr>
             <tr><th scope="row">인원</th><td th:text="${s.partySize + '명'}"></td></tr>
             <tr><th scope="row">금액</th><td th:text="${#numbers.formatInteger(s.amount, 1, 'COMMA') + '원'}"></td></tr>
             <tr><th scope="row">신청 시각</th><td th:text="${@timeText.dateTime(s.createdAt)}"></td></tr>
@@ -51,12 +51,13 @@
     <section class="condition-section" th:if="${reservation.changeable() and reservation.stock != null}" aria-labelledby="change-title"
              th:with="st=${reservation.stock}">
         <h2 id="change-title">예약 변경</h2>
-        <p class="help">결제 전에만 날짜·인원을 바꿀 수 있어요. 결제한 뒤에는 취소(환불) 후 새로 예약해 주세요.</p>
+        <p class="help" th:text="${'결제 전에만 날짜·인원을 바꿀 수 있어요. 결제한 뒤에는 취소(환불) 후 새로 예약해 주세요.'
+            + (st.room() ? ' 객실 종류를 바꾸려면 예약을 취소하고 새로 예약해 주세요.' : '')}"></p>
         <form th:action="@{/my/reservations/{id}/change(id=${s.id})}" method="post">
             <div class="field-grid">
                 <div class="field">
                     <label for="date">이용 날짜</label>
-                    <input id="date" name="date" type="date" min="2026-10-01" max="2026-12-31" th:value="${#temporals.format(s.usageStart, 'yyyy-MM-dd')}">
+                    <input id="date" name="date" type="date" th:min="${st.room() ? null : '2026-10-01'}" th:max="${st.room() ? null : '2026-12-31'}" th:value="${#temporals.format(s.usageStart, 'yyyy-MM-dd')}">
                 </div>
                 <div class="field" th:if="${st.room()}">
                     <label for="quantity">객실 수</label>
