@@ -37,5 +37,11 @@ class ExpiringCache<K, V> {
         return value;
     }
 
+    /** 보관 중이고 만료되지 않은 값만 돌려준다. 없으면 null이며 새로 불러오지 않는다. */
+    V peek(K key) {
+        var entry = entries.get(key);
+        return entry != null && clock.get().isBefore(entry.expiresAt()) ? entry.value() : null;
+    }
+
     void clear() { entries.clear(); }
 }

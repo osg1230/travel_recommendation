@@ -32,6 +32,7 @@ public class ItineraryController {
     private final ObjectProvider<PlacePhotoService> photos;
     private final ObjectProvider<HomeTripService> homeTrips;
     private final ObjectProvider<ProfileService> profiles;
+    private final ObjectProvider<KakaoMapClient> mapClients;
     private final tools.jackson.databind.ObjectMapper mapper;
     private record Submission(UUID parent,long destination,String login,String token,UUID job) {}
     private static final String SESSION_KEY="itinerarySubmission";
@@ -260,9 +261,13 @@ public class ItineraryController {
         if(job.result()!=null) {
             model.addAttribute("report",ItineraryConditionReport.evaluate(job.input(),job.result()));
             // 일차별 방문 순서와 구간별 길찾기 링크(SFR-11-02·03).
+            // 자동차 일정은 이동시간을 조회할 때 받아 둔 도로 경로로 지도 선을 그린다. 경로가 없는 구간은 화면에서 직선으로 잇는다.
+            boolean car=job.result().transport()==KakaoMapClient.Transport.CAR;
+            var mapClient=mapClients.getIfAvailable();
+            TripMap.PathFinder roads=car && mapClient!=null ? mapClient::roadPath : null;
             var route=TripMap.route(job.result().days().stream().map(d->new TripMap.Day(d.number(),
                 d.items().stream().map(i->new TripMap.Stop(i.type(),i.name(),i.mapUrl())).toList())).toList(),
-                job.result().transport()==KakaoMapClient.Transport.CAR);
+                car,roads);
             model.addAttribute("route",route); model.addAttribute("mapJson",mapper.writeValueAsString(route));
             // 지역 대표 음식 안내(SFR-17-01). 공식 출처로 확인한 지역만 보여 준다.
             model.addAttribute("foods",RegionalFoods.of(job.result().destination()).orElse(null));
