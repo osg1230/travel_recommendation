@@ -186,8 +186,9 @@ public class ItineraryJobService {
         if(current.conditions().purposeSearch()!=null)
             current.conditions().purposeSearch().placesIn(destinationId).forEach(p->keepInOrder.add(p.placeId()));
         // 경주처럼 대표 분류가 문화·역사인 여행지는 취향을 고르지 않아도 문화유산을 먼저 고르고 사찰·성당도 뒤로 보내지 않는다.
+        var destinationPlace=this.places.findById(destinationId).orElse(null);
         var orderThemes=ThemePlaces.withHeritageDestination(current.conditions().themeNames(),
-            this.places.findById(destinationId).map(Place::getSubtype).orElse(null));
+            destinationPlace==null?null:destinationPlace.getName(),destinationPlace==null?null:destinationPlace.getSubtype());
         // 마지막으로 대릉원 안의 천마총처럼 종류가 같고 아주 가까운 곳은 한 곳만 남긴다.
         var ordered=TripConstraints.withoutSameSpot(ThemePlaces.religiousLast(TripConstraints.aroundCenters(places.attractions(),
             constraints==null?List.of():constraints.centerPlaceIds(),orderThemes),
