@@ -178,8 +178,16 @@ public class ItineraryJobService {
         List<PlaceCandidate> selected;
         // 일정의 중심 장소가 있으면 맨 앞에 두고 그 주변부터, 없으면 가운데에서 가까운 곳부터 고른다.
         // 같은 종류(해수욕장 등)는 돌아가며 고르고, 고른 여행 취향에 맞는 곳은 그중에서도 먼저 고른다.
-        var ordered=TripConstraints.aroundCenters(places.attractions(),
-            constraints==null?List.of():constraints.centerPlaceIds(),current.conditions().themeNames());
+        // 사찰·성당은 사용자가 원한 경우(문화·역사 취향, 목적에 절·성당)가 아니면 한 곳만 제자리에 두고 뒤로 보낸다.
+        // 사용자가 고른 필수·중심 장소와 목적 시설·축제 장소는 옮기지 않는다.
+        Set<Long> keepInOrder=new HashSet<>();
+        if(constraints!=null) { keepInOrder.addAll(constraints.requiredPlaceIds()); keepInOrder.addAll(constraints.centerPlaceIds()); }
+        if(festival!=null) keepInOrder.add(festival.placeId());
+        if(current.conditions().purposeSearch()!=null)
+            current.conditions().purposeSearch().placesIn(destinationId).forEach(p->keepInOrder.add(p.placeId()));
+        var ordered=ThemePlaces.religiousLast(TripConstraints.aroundCenters(places.attractions(),
+            constraints==null?List.of():constraints.centerPlaceIds(),current.conditions().themeNames()),
+            current.conditions().themeNames(),current.conditions().travelPurpose(),keepInOrder);
         // 숙박 여행이면 저녁 관광에 어울리는 곳(야경·산책·야시장 등)을 먼저 저녁 몫으로 떼어 두고 나머지로 낮 관광지를 고른다.
         // 필수·중심 장소는 낮 일정에 넣어야 하므로 떼어 두지 않는다.
         List<PlaceCandidate> evening=List.of();

@@ -41,4 +41,26 @@ class ThemePlacesTests {
         assertThat(ThemePlaces.themeFirst(ordered, List.of("맛집"))).isSameAs(ordered);
         assertThat(ThemePlaces.themeFirst(ordered, List.of())).isSameAs(ordered);
     }
+
+    // 원하지 않았으면 사찰·성당은 맨 앞 한 곳만 제자리에 두고 나머지를 뒤로 보낸다.
+    @Test void religiousLastKeepsOneAndMovesTheRestBack() {
+        var temple1 = place("불국사", "문화,예술 > 종교 > 불교 > 절,사찰");
+        var temple2 = place("석굴암", "문화,예술 > 종교 > 불교 > 절,사찰");
+        var church = place("성건성당", "문화,예술 > 종교 > 천주교 > 성당");
+        var tomb = place("대릉원", "여행 > 관광,명소 > 문화유적 > 릉,묘,총");
+        var pond = place("동궁과월지", "여행 > 관광,명소");
+        var ordered = List.of(temple1, temple2, tomb, church, pond);
+        assertThat(ThemePlaces.religiousLast(ordered, List.of("바다"), "", List.of()))
+            .containsExactly(temple1, tomb, pond, temple2, church);
+        // 목적 시설·축제 장소로 확인한 곳은 옮기지 않고, 한 곳 남기는 수에도 세지 않는다.
+        assertThat(ThemePlaces.religiousLast(ordered, List.of(), null, List.of(church.placeId())))
+            .containsExactly(temple1, tomb, church, pond, temple2);
+        // 문화·역사 취향이거나 목적에 절·사찰·성당을 적었으면 순서를 바꾸지 않는다.
+        assertThat(ThemePlaces.religiousLast(ordered, List.of("문화·역사"), "", List.of())).isSameAs(ordered);
+        assertThat(ThemePlaces.religiousLast(ordered, List.of(), "절에 가서 쉬기", List.of())).isSameAs(ordered);
+        assertThat(ThemePlaces.religiousLast(ordered, List.of(), "성당 구경", List.of())).isSameAs(ordered);
+        // '계절'·'친절'의 '절'은 사찰로 보지 않는다.
+        assertThat(ThemePlaces.wantsReligiousSites(List.of(), "계절 꽃 구경, 친절한 숙소")).isFalse();
+        assertThat(ThemePlaces.wantsReligiousSites(List.of(), "조용한 절 산책")).isTrue();
+    }
 }
