@@ -40,7 +40,9 @@ class KeywordIntegrationTests {
         mvc.perform(get("/travel/conditions/check").session(session)).andExpect(status().isOk())
                 .andExpect(content().string(containsString(selected.name())));
         mvc.perform(get("/travel/conditions").session(session)).andExpect(status().isOk())
-                .andExpect(content().string(containsString("value=\"" + selected.id() + "\" selected=\"selected\"")));
+                // 지역은 선택 목록이 아니라 칩(라디오)이라 고른 값의 라디오가 checked로 다시 그려지는지 본다.
+                .andExpect(content().string(org.hamcrest.Matchers.matchesRegex(
+                        "(?s).*<input type=\"radio\"[^>]*value=\"" + selected.id() + "\"[^>]*checked=\"checked\".*")));
     }
 
     @Test void readsKoreanNamesJsonAndDatabaseOrder() {
