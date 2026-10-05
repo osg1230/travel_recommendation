@@ -4,9 +4,9 @@
 
 장소 목록 → 하루 시간을 정하고 일정 초안 만들기 → 작업 상태 → **일정 초안과 AI 준비 안내 확인**.
 
-별도 화면이나 버튼을 추가하지 않았다. 기존 일정 작업(`ai_jobs.job_type=ITINERARY`)의 생성 단계에서 이어서 처리한다. SQL Server 프로필과 001~007 SQL, `KAKAO_REST_API_KEY`, `OPENAI_API_KEY`가 필요하다. 추가 SQL·테이블 변경은 없다. 새 작업 상태도 추가하지 않았다.
+별도 화면이나 버튼을 추가하지 않았다. 기존 일정 작업(`ai_jobs.job_type=ITINERARY`)의 생성 단계에서 이어서 처리한다. SQL Server 프로필과 001~007 SQL, `KAKAO_REST_API_KEY`, `OPEN_AI_API`가 필요하다. 추가 SQL·테이블 변경은 없다. 새 작업 상태도 추가하지 않았다.
 
-`OPENAI_API_KEY`가 없으면 GPT를 호출하지 않고 기존과 동일한 일정 초안만 표시한다. 일정 한 건당 GPT 사용량이 최대 3회 발생한다.
+`OPEN_AI_API`가 없으면 GPT를 호출하지 않고 기존과 동일한 일정 초안만 표시한다. 일정 한 건당 GPT 사용량이 최대 3회 발생한다.
 
 ## 보조 범위
 

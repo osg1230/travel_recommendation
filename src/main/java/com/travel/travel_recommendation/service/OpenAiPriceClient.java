@@ -47,8 +47,8 @@ public class OpenAiPriceClient {
             // 장소 이름·주소만 보낸다. 사용자 원문·계정 정보는 보내지 않는다.
             String question = place.address() + "에 있는 " + (lodging ? "숙소" : "음식점") + " '" + place.name() + "'의 "
                 + (lodging ? "1박 객실 요금" : "대표 메뉴 1인분 가격") + "을 찾아 주세요.";
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("model", properties.model()); body.put("store", false); body.put("max_output_tokens", 800);
+            Map<String, Object> body = properties.requestBase();
+            body.put("max_output_tokens", 800);
             // 실제로 검색에 쓴 페이지 목록을 함께 받아 AI가 적은 출처가 그 안에 있는지 확인한다.
             body.put("include", List.of("web_search_call.action.sources"));
             body.put("tools", List.of(Map.of("type", "web_search", "user_location", Map.of("type", "approximate", "country", "KR"))));

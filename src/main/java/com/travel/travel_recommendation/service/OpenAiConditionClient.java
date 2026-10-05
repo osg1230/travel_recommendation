@@ -58,10 +58,10 @@ public class OpenAiConditionClient {
             }
             Map<String, Object> input = Map.of("todayKst", LocalDate.now(ZoneId.of("Asia/Seoul")).toString(),
                     "choices", promptChoices, "travelText", text);
-            Map<String, Object> body = Map.of("model", properties.model(), "store", false,
+            Map<String, Object> body = properties.requestBase(); body.putAll(Map.of(
                     "instructions", instructions, "input", mapper.writeValueAsString(input),
                     "max_output_tokens", 1800, "text", Map.of("format", Map.of(
-                            "type", "json_schema", "name", "travel_conditions", "strict", true, "schema", responseSchema(choices))));
+                            "type", "json_schema", "name", "travel_conditions", "strict", true, "schema", responseSchema(choices)))));
             HttpRequest request = HttpRequest.newBuilder(endpoint).timeout(timeout)
                     .header("Authorization", "Bearer " + properties.apiKey())
                     .header("Content-Type", "application/json")
