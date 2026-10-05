@@ -7,7 +7,7 @@
 </head>
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
-<main class="travel" th:with="s=${reservation.summary}">
+<main class="travel my-page" th:with="s=${reservation.summary}">
     <nav th:replace="~{fragments/layout :: myNav('reservations')}"></nav>
     <a class="back-link" th:href="@{/my/reservations}">← 가상 예약 목록</a>
     <p class="eyebrow" th:text="${'내 여행 · 가상 예약번호 ' + s.id}"></p>

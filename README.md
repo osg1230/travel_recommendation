@@ -200,7 +200,7 @@ sqlcmd -S .\SQLEXPRESS -E -d travel_recommendation -i docs/database/sql/003_seed
 
 카카오 지도 연동용 서버 키는 `KAKAO_REST_API_KEY` 사용자 환경변수로 준비합니다. [카카오 API 설정 안내](docs/ai/카카오_API_설정.md)를 참고하세요. 장소 화면에서 하루 시간을 정하면 좌표와 자동차·대중교통 이동시간을 반영한 일정 초안을 만들 수 있습니다.
 
-OpenAI Responses API와 `gpt-6-luna`를 기본으로 사용합니다. `OPEN_AI_API` 환경변수에 API 키를 서버 실행 환경에 설정합니다(없으면 `OPENAI_API_KEY`를 읽습니다). 실제 키를 소스·문서·대화에 붙여 넣지 않습니다. 모델은 `OPENAI_MODEL`, 추론 깊이는 `OPENAI_REASONING_EFFORT`(기본 `none`, gpt-4.1처럼 추론이 없는 모델을 쓰면 빈 값)로 바꿀 수 있습니다.
+OpenAI Responses API와 `gpt-6-luna`를 기본으로 사용합니다. API 키는 서버 실행 환경의 환경변수 `OPENAI_API_KEY`, `OPEN_AI_API`, `Portfolio_java_API` 중 앞에서부터 처음 설정된 값을 씁니다(하나만 있으면 됩니다). 실제 키를 소스·문서·대화에 붙여 넣지 않습니다. 모델은 `OPENAI_MODEL`, 추론 깊이는 `OPENAI_REASONING_EFFORT`(기본 `none`, gpt-4.1처럼 추론이 없는 모델을 쓰면 빈 값)로 바꿀 수 있습니다.
 
 홈 → 여행 조건 입력 → 문장으로 적기 → 입력 내용 확인 → 문장 분석하기 → 조건 보완 → 이 조건으로 확정하기 순서입니다. 문장 분석 버튼은 실제 유료 API를 호출합니다. 키워드 방식은 API를 호출하지 않고 보완·확정할 수 있습니다. API 키가 없거나 호출에 실패하면 원문을 유지하고 재시도 안내를 표시합니다.
 

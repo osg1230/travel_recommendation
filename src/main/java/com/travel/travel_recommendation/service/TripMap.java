@@ -14,7 +14,13 @@ public final class TripMap {
 
     /** item은 그날 일정 목록에서의 순번이다. 화면에서 지도 번호와 일정 항목을 서로 찾아가는 데 쓴다. */
     public record Point(int order, int item, String name, String type, double lat, double lng) {}
-    public record DayRoute(int number, List<Point> stops) {}
+    /**
+     * legs는 이웃한 두 방문지 사이의 실제 도로 경로([위도, 경도] 목록)다. legs[n]은 stops[n]에서 stops[n+1]까지이고,
+     * 경로를 모르는 구간은 빈 목록이라 화면에서 직선으로 잇는다.
+     */
+    public record DayRoute(int number, List<Point> stops, List<List<double[]>> legs) {}
+    /** 두 좌표 사이의 도로 경로를 찾는다. 모르면 빈 목록을 돌려준다. */
+    public interface PathFinder { List<double[]> between(double fromLat, double fromLng, double toLat, double toLng); }
     /** 일정 지도: 일차별 방문 순서와 이동 구간별 길찾기 링크(키: "일차-항목순번"). */
     public record Route(String mode, List<DayRoute> days, Map<String, String> links, int missing) {}
     public record Pin(String name, String type, double lat, double lng) {}
@@ -27,12 +33,15 @@ public final class TripMap {
 
     private static final String MAP_LINK = "https://map.kakao.com/link/map/";
 
-    public static Route route(List<Day> days, boolean car) {
+    public static Route route(List<Day> days, boolean car) { return route(days, car, null); }
+
+    /** paths가 있으면 방문지 사이를 실제 도로 경로로 채운다. 없으면(null) 모든 구간을 직선으로 둔다. */
+    public static Route route(List<Day> days, boolean car, PathFinder paths) {
         String mode = car ? "car" : "traffic";
         var result = new ArrayList<DayRoute>(); var links = new LinkedHashMap<String, String>();
         Coordinate previous = null; String previousName = null; int missing = 0;
         for (var day : days) {
-            var stops = new ArrayList<Point>();
+            var stops = new ArrayList<Point>(); var legs = new ArrayList<List<double[]>>();
             for (int i = 0; i < day.items().size(); i++) {
                 var item = day.items().get(i);
                 var at = coordinate(item.mapUrl());
@@ -52,9 +61,13 @@ public final class TripMap {
                 // 자유시간 뒤 같은 식당에서 식사하는 경우처럼 같은 위치가 연속되면 한 번만 표시한다.
                 if (!stops.isEmpty() && stops.getLast().lat() == at.lat() && stops.getLast().lng() == at.lng()
                         && stops.getLast().name().equals(item.name())) continue;
+                if (!stops.isEmpty()) {
+                    var from = stops.getLast();
+                    legs.add(paths == null ? List.of() : paths.between(from.lat(), from.lng(), at.lat(), at.lng()));
+                }
                 stops.add(new Point(stops.size() + 1, i, item.name(), item.type(), at.lat(), at.lng()));
             }
-            result.add(new DayRoute(day.number(), List.copyOf(stops)));
+            result.add(new DayRoute(day.number(), List.copyOf(stops), List.copyOf(legs)));
         }
         return new Route(mode, List.copyOf(result), Collections.unmodifiableMap(links), missing);
     }

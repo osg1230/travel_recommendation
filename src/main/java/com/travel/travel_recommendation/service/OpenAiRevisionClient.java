@@ -172,7 +172,9 @@ public class OpenAiRevisionClient {
                 .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body),StandardCharsets.UTF_8)).build();
             // 실패 시 자동 유료 재시도는 하지 않는다. 형식 오류 재요청 횟수는 호출한 쪽에서 제한한다.
             var response=http.send(httpRequest,HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if(response.statusCode()==429) throw failure("AI_RATE_LIMIT","AI 수정 요청 사용량이 제한됐어요. 잠시 후 다시 시도해 주세요.");
+            if(response.statusCode()==429) throw OpenAiQuota.exhausted(response.body())
+                ? failure("AI_QUOTA","AI 이용 한도를 모두 써서 지금은 AI 수정안을 만들 수 없어요. 일정의 '다른 곳으로 바꾸기'와 'AI 없이 시간만 바꾸기'는 그대로 쓸 수 있어요.")
+                : failure("AI_RATE_LIMIT","AI 수정 요청 사용량이 제한됐어요. 잠시 후 다시 시도해 주세요.");
             if(response.statusCode()==401 || response.statusCode()==403) throw failure("AI_AUTH","AI 수정 요청 연결 설정을 확인해야 해요.");
             if(response.statusCode()!=200) throw failure("AI_UNAVAILABLE","AI 수정 요청 서비스에 연결하지 못했어요.");
             if(response.body().length()>64000) throw invalid("응답 길이가 제한을 넘었어요.");

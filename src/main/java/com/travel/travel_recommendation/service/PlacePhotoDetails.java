@@ -14,8 +14,11 @@ public final class PlacePhotoDetails {
     static final Duration FOUND_REUSE = Duration.ofDays(30), NOT_FOUND_REUSE = Duration.ofDays(7);
     private static final String KEY = "tourApiPhoto";
     private PlacePhotoDetails() {}
-    /** url이 비어 있으면 찾지 못한 기록이다. copyright는 관광공사 저작권 유형(Type1·Type3)이다. */
-    public record Photo(String url, String copyright, Instant checkedAt) {
+    /**
+     * url이 비어 있으면 찾지 못한 기록이다. copyright는 관광공사 저작권 유형(Type1·Type3)이다.
+     * title은 사진에 찍힌 관광지 이름이다. 여행지(도시) 대표 사진처럼 그 지역 관광지 사진을 빌려 쓸 때 화면에 함께 적는다.
+     */
+    public record Photo(String url, String copyright, Instant checkedAt, String title) {
         public boolean found() { return url != null && !url.isBlank(); }
     }
     public record Snapshot(String name, String address, Photo photo) {}

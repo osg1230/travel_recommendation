@@ -68,7 +68,10 @@ public class OpenAiConditionClient {
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8)).build();
             // 유료 호출은 한 번만 수행한다. 자동 재시도 대신 사용자가 오류 안내 후 다시 요청한다.
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if (response.statusCode() == 429) throw new ConditionAnalysisException("문장 분석 사용량이 제한되었어요. 잠시 후 다시 시도해 주세요.");
+            // 429는 요청 제한과 크레딧 소진 두 경우다. 크레딧 소진은 기다려도 풀리지 않아 조건 고르기를 안내한다.
+            if (response.statusCode() == 429) throw new ConditionAnalysisException(OpenAiQuota.exhausted(response.body())
+                    ? "AI 이용 한도를 모두 써서 지금은 문장을 분석할 수 없어요. '조건 고르기'로 입력해 주세요."
+                    : "문장 분석 사용량이 제한되었어요. 잠시 후 다시 시도해 주세요.");
             if (response.statusCode() == 401 || response.statusCode() == 403)
                 throw new ConditionAnalysisException("문장 분석 연결 설정을 확인해야 해요. 나중에 다시 이용해 주세요.");
             if (response.statusCode() < 200 || response.statusCode() >= 300)

@@ -106,13 +106,24 @@ public final class ItineraryPlan {
      * 필수·선호 조건 구분(SFR-02-07). 필수 장소는 반드시 넣고, 하루 방문 수는 required이면 반드시 지키고
      * 아니면 가능한 경우에만 반영한다. 예산 기준·포함 비용은 가격 자료가 없어 확인 필요 표시에만 쓴다.
      */
-    /** centerPlaceIds는 날마다 일정의 중심으로 삼을 관광지(느슨한 조건, 1일차부터 차례로)다. 이전 작업 JSON에는 없다. */
+    /**
+     * centerPlaceIds는 날마다 일정의 중심으로 삼을 관광지(느슨한 조건, 1일차부터 차례로)다. 이전 작업 JSON에는 없다.
+     * festival은 필수 장소 중 여행 기간에 축제가 열리는 곳의 안내 정보다. 축제를 넣지 않은 일정과 이전 작업 JSON에는 없다.
+     */
     public record Constraints(List<Long> requiredPlaceIds, Integer dailyVisits, boolean dailyVisitsRequired,
-                              String budgetBasis, List<String> budgetIncludes, String stayTier, List<Long> centerPlaceIds) {
+                              String budgetBasis, List<String> budgetIncludes, String stayTier, List<Long> centerPlaceIds,
+                              FestivalVisit festival) {
         public Constraints {
             requiredPlaceIds = requiredPlaceIds == null ? List.of() : List.copyOf(requiredPlaceIds);
             budgetIncludes = budgetIncludes == null ? List.of() : List.copyOf(budgetIncludes);
             centerPlaceIds = centerPlaceIds == null ? List.of() : List.copyOf(centerPlaceIds);
+        }
+        public Constraints(List<Long> requiredPlaceIds, Integer dailyVisits, boolean dailyVisitsRequired,
+                           String budgetBasis, List<String> budgetIncludes, String stayTier, List<Long> centerPlaceIds) {
+            this(requiredPlaceIds, dailyVisits, dailyVisitsRequired, budgetBasis, budgetIncludes, stayTier, centerPlaceIds, null);
+        }
+        public Constraints withFestival(FestivalVisit visit) {
+            return new Constraints(requiredPlaceIds, dailyVisits, dailyVisitsRequired, budgetBasis, budgetIncludes, stayTier, centerPlaceIds, visit);
         }
         public Constraints(List<Long> requiredPlaceIds, Integer dailyVisits, boolean dailyVisitsRequired,
                            String budgetBasis, List<String> budgetIncludes, String stayTier) {
@@ -124,6 +135,8 @@ public final class ItineraryPlan {
             this(requiredPlaceIds, dailyVisits, dailyVisitsRequired, budgetBasis, budgetIncludes, null);
         }
     }
+    /** 여행 기간에 열리는 축제를 일정에 넣을 때의 정보. placeId는 축제가 열리는 관광지, day는 축제를 볼 수 있는 첫 여행 날(1부터)이다. */
+    public record FestivalVisit(Long placeId, int day, String title, String period) {}
     /**
      * 수정 요청으로 정한 식당·숙소 선택. avoidRestaurants는 쓰지 않을 식당, preferRestaurants는 가까우면 먼저 쓸 식당,
      * stayPlaceId는 고정할 숙소다. 모두 확인된 후보(places) 안의 장소만 쓴다.
@@ -167,7 +180,11 @@ public final class ItineraryPlan {
     }
     public record Day(int number, LocalDate date, List<Item> items) {}
     /** AI가 작성한 보조 안내. 서버가 만든 시각·장소·순서를 바꾸지 않으며 검증 완료를 뜻하지 않는다. */
-    public record Assist(String summary, List<DayAdvice> days, Instant createdAt) {}
+    /** placeReasons는 장소 ID → AI가 쓴 "왜 가 볼 만한지" 한 문장이다. 일정 항목의 '고른 이유'에 반영하며 이전 JSON에는 없다. */
+    public record Assist(String summary, List<DayAdvice> days, Instant createdAt, java.util.Map<Long, String> placeReasons) {
+        public Assist { placeReasons = placeReasons == null ? java.util.Map.of() : java.util.Map.copyOf(placeReasons); }
+        public Assist(String summary, List<DayAdvice> days, Instant createdAt) { this(summary, days, createdAt, null); }
+    }
     public record DayAdvice(int number, String advice) {}
     /**
      * 주변 지역 추천 결과(SFR-07). decision은 추천 여부 판단이고 regions는 기준 시간 안의 지역만 담는다.
@@ -245,6 +262,7 @@ public final class ItineraryPlan {
             this(destination, days, transport, createdAt, assist, nearby, lodging, null, null);
         }
         public Result withAssist(Assist assist) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
+        public Result withDays(List<Day> days) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
         public Result withNearby(Nearby nearby) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
         public Result withLodging(Lodging lodging) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
         public Result withSkipped(List<PlaceRef> skipped) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }

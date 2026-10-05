@@ -5,7 +5,9 @@
     if (!bar) return;
     const sections = document.querySelectorAll('[data-day-section]');
     const buttons = bar.querySelectorAll('[data-day]');
+    // 버튼 줄 바로 위에 두는 스크롤 기준점. 일정 초안의 격자 배치에서 칸을 차지하지 않게 CSS에서 이름으로 다룬다.
     const anchor = document.createElement('div');
+    anchor.className = 'day-tabs-anchor';
     bar.before(anchor);
 
     function select(day, scroll) {

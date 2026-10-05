@@ -26,11 +26,13 @@ public class ItineraryController {
     private final ObjectProvider<ItineraryJobService> services;
     private final ObjectProvider<SavedItineraryService> savedItineraries;
     private final ObjectProvider<BusGuideService> busGuides;
+    private final ObjectProvider<FlightGuideService> flightGuides;
     private final ObjectProvider<PlaceCandidateService> candidates;
     private final ObjectProvider<PlaceDiscoveryService> discoveries;
     private final ObjectProvider<PlacePhotoService> photos;
     private final ObjectProvider<HomeTripService> homeTrips;
     private final ObjectProvider<ProfileService> profiles;
+    private final ObjectProvider<KakaoMapClient> mapClients;
     private final tools.jackson.databind.ObjectMapper mapper;
     private record Submission(UUID parent,long destination,String login,String token,UUID job) {}
     private static final String SESSION_KEY="itinerarySubmission";
@@ -68,7 +70,11 @@ public class ItineraryController {
         model.addAttribute("options",options);
         var pool=service().attractionPool(id,destinationId,login(principal),hash(session));
         model.addAttribute("pool",pool);
-        var defaults=defaultPlaces(id,destinationId,principal,session,pool);
+        // 추천 조건에 날짜·일수가 이미 있을 때만 축제 장소를 미리 골라 둔다. 화면에서 체크를 풀 수 있다.
+        var festival=service().festivalVisit(id,destinationId,login(principal),hash(session),
+            options.conditions().startDate(),options.conditions().durationDays());
+        var defaults=defaultPlaces(id,destinationId,principal,session,pool,festival,options.conditions().durationDays());
+        model.addAttribute("festivalVisit",festival!=null && defaults.purposeIds().contains(festival.placeId())?festival:null);
         var purposeIds=defaults.purposeIds();
         var centerIds=defaults.centerIds();
         model.addAttribute("purposePlaceIds",purposeIds);
@@ -158,6 +164,13 @@ public class ItineraryController {
                 previous.transport(),previous.error(),HomeValues.startingFrom(homeArea));
         model.addAttribute("values",previous!=null?previous:new TripInfoInput(id,null,null,null,null,null,HomeValues.startingFrom(homeArea)));
         model.addAttribute("askTransport",options.conditions().keywordNames("TRANSPORTATION").isEmpty());
+        // 출발일이 미정이면 이 여행지의 축제 기간에 맞춘 날짜를 미리 넣어 제안한다(진행 중이면 오늘). 사용자가 바꿀 수 있다.
+        var firstFestival=options.conditions().startDate()==null?service().firstFestival(id,destinationId,login(principal),hash(session)):null;
+        if(firstFestival!=null) {
+            var today=LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+            model.addAttribute("festival",firstFestival);
+            model.addAttribute("festivalDate",firstFestival.startDate().isBefore(today)?today:firstFestival.startDate());
+        }
         return "travel/trip-info";
     }
 
@@ -219,7 +232,9 @@ public class ItineraryController {
                 return seeOther(base+"/trip-info");
             }
             var pool=service().attractionPool(id,destinationId,login(principal),hash(session));
-            var defaults=defaultPlaces(id,destinationId,principal,session,pool);
+            // 여행 기간에 축제가 열리면 사용자가 고르지 않아도 축제 장소를 일정에 넣는다.
+            var defaults=defaultPlaces(id,destinationId,principal,session,pool,
+                service().festivalVisit(id,destinationId,login(principal),hash(session),date,days),days);
             var constraints=new ItineraryPlan.Constraints(defaults.purposeIds(),null,false,null,List.of(),null,defaults.centerIds());
             Integer newDays=c.durationDays()==null?days:null;
             Boolean newStay=c.accommodationNeeded()==null?stay:null;
@@ -246,9 +261,13 @@ public class ItineraryController {
         if(job.result()!=null) {
             model.addAttribute("report",ItineraryConditionReport.evaluate(job.input(),job.result()));
             // 일차별 방문 순서와 구간별 길찾기 링크(SFR-11-02·03).
+            // 자동차 일정은 이동시간을 조회할 때 받아 둔 도로 경로로 지도 선을 그린다. 경로가 없는 구간은 화면에서 직선으로 잇는다.
+            boolean car=job.result().transport()==KakaoMapClient.Transport.CAR;
+            var mapClient=mapClients.getIfAvailable();
+            TripMap.PathFinder roads=car && mapClient!=null ? mapClient::roadPath : null;
             var route=TripMap.route(job.result().days().stream().map(d->new TripMap.Day(d.number(),
                 d.items().stream().map(i->new TripMap.Stop(i.type(),i.name(),i.mapUrl())).toList())).toList(),
-                job.result().transport()==KakaoMapClient.Transport.CAR);
+                car,roads);
             model.addAttribute("route",route); model.addAttribute("mapJson",mapper.writeValueAsString(route));
             // 지역 대표 음식 안내(SFR-17-01). 공식 출처로 확인한 지역만 보여 준다.
             model.addAttribute("foods",RegionalFoods.of(job.result().destination()).orElse(null));
@@ -292,6 +311,43 @@ public class ItineraryController {
         return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create("/travel/recommendations/itineraries/"+job))
             .cacheControl(CacheControl.noStore()).build();
     }
+    /**
+     * 직접 수정 화면(SFR-08-04). 왼쪽에 기본 정보(이동수단·시간), 오른쪽에 일차별 장소 목록을 보여 주고
+     * 장소 빼기·바꾸기·더하기, 식당·숙소 바꾸기를 고르면 수정안을 만든다. AI 수정 요청도 같은 화면 아래에 둔다.
+     */
+    @GetMapping("/itineraries/{id}/edit")
+    String edit(@PathVariable UUID id,Principal principal,HttpSession session,HttpServletResponse response,Model model) {
+        response.setHeader("Cache-Control","no-store");
+        var options=service().editOptions(id,login(principal),hash(session));
+        model.addAttribute("jobId",id);
+        model.addAttribute("options",options);
+        model.addAttribute("photoByPlace",photosOf(options.result().days().stream().flatMap(d->d.items().stream())
+            .filter(i->"VISIT".equals(i.type()) && i.placeId()!=null).map(ItineraryPlan.Item::placeId).toList()));
+        return "travel/itinerary-edit";
+    }
+
+    /** 직접 수정 화면에서 고른 변경으로 새 수정안 작업을 만든다. 원래 초안은 그대로 두고, 만들지 못한 이유는 수정 화면에 보여 준다. */
+    @PostMapping("/itineraries/{id}/direct-revisions")
+    String reviseDirect(@PathVariable UUID id,@RequestParam(required=false) List<Long> remove,@RequestParam(required=false) List<Long> add,
+            @RequestParam(required=false) Long avoidRestaurant,@RequestParam(required=false) Long stay,
+            @RequestParam(required=false) KakaoMapClient.Transport transport,@RequestParam(required=false) LocalTime start,
+            @RequestParam(required=false) LocalTime end,@RequestParam(required=false) Integer visitMinutes,Principal principal,HttpSession session,
+            org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
+        try {
+            UUID job=service().reviseDirect(id,login(principal),hash(session),
+                new ItineraryJobService.DirectChange(remove,add,avoidRestaurant,stay,transport,start,end,visitMinutes));
+            return "redirect:/travel/recommendations/itineraries/"+job;
+        } catch(ResponseStatusException e) {
+            if(e.getStatusCode().value()==404) throw e;
+            redirect.addFlashAttribute("editError",e.getReason()+" 원래 일정은 그대로예요.");
+        } catch(RecommendationException e) {
+            redirect.addFlashAttribute("editError",e.getMessage()+" 원래 일정은 그대로예요.");
+        } catch(TripConstraints.ConflictException conflict) {
+            // 하루 방문 수처럼 반드시 지키기로 한 조건과 맞지 않는 변경이다.
+            redirect.addFlashAttribute("editError",conflict.conflicts().get(0).reason()+" 원래 일정은 그대로예요.");
+        }
+        return "redirect:/travel/recommendations/itineraries/"+id+"/edit";
+    }
     private static final String AI_COOLDOWN_KEY="itineraryAiRevisionNext";
     /** 초안마다 "후보에 없다"고 되물은 장소 이름. 같은 장소를 다시 요청하면 되묻지 않고 비슷한 곳으로 바꾼다. */
     private static final String AI_ASKED_KEY="itineraryAiAskedPlaces";
@@ -326,9 +382,11 @@ public class ItineraryController {
      * 되묻는 질문이나 실패 사유는 원래 초안 화면에 그대로 보여 주고, 원래 초안은 바꾸지 않는다.
      */
     @PostMapping("/itineraries/{id}/ai-revisions")
-    String aiRevise(@PathVariable UUID id,@RequestParam(defaultValue="") String request,Principal principal,HttpSession session,
+    String aiRevise(@PathVariable UUID id,@RequestParam(defaultValue="") String request,@RequestParam(defaultValue="false") boolean fromEdit,
+                    Principal principal,HttpSession session,
                     org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
-        String back="redirect:/travel/recommendations/itineraries/"+id+"#revise-title";
+        // 직접 수정 화면에서 보낸 요청은 되묻는 말이나 오류를 그 화면에 보여 준다.
+        String back="redirect:/travel/recommendations/itineraries/"+id+(fromEdit?"/edit#ai-title":"#revise-title");
         redirect.addFlashAttribute("aiRequest",request.length()>300?request.substring(0,300):request);
         // 유료 호출이므로 같은 세션에서 연달아 누르지 않도록 20초 간격을 둔다.
         synchronized(session) {
@@ -392,6 +450,31 @@ public class ItineraryController {
             redirect.addFlashAttribute("busGuide",guides.guide(id,login(principal),hash(session),to,from,longitude,latitude));
         } catch(RecommendationException e) {
             redirect.addFlashAttribute("busError",e.getMessage());
+        }
+        return back;
+    }
+
+    private static final String FLIGHT_COOLDOWN_KEY="itineraryFlightGuideNext";
+    /** 요청 시 비행기 안내(제주처럼 바다를 건너는 여행). 버스 안내와 같이 저장하지 않고 다음 화면에 한 번만 보여 준다. */
+    @PostMapping("/itineraries/{id}/flight-guide")
+    String flightGuide(@PathVariable UUID id,@RequestParam(defaultValue="") String from,Principal principal,HttpSession session,
+                       org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
+        String back="redirect:/travel/recommendations/itineraries/"+id+"#flight-title";
+        redirect.addFlashAttribute("flightFrom",from.matches("NAA[A-Z]{4}")?from:"");
+        synchronized(session) {
+            var next=session.getAttribute(FLIGHT_COOLDOWN_KEY) instanceof java.time.Instant at?at:null;
+            if(next!=null && next.isAfter(java.time.Instant.now())) {
+                redirect.addFlashAttribute("flightError","방금 조회했어요. 10초 후에 다시 찾아 주세요.");
+                return back;
+            }
+            session.setAttribute(FLIGHT_COOLDOWN_KEY,java.time.Instant.now().plusSeconds(10));
+        }
+        var guides=flightGuides.getIfAvailable();
+        if(guides==null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"비행기 안내는 DB 연결 후 이용할 수 있어요.");
+        try {
+            redirect.addFlashAttribute("flightGuide",guides.guide(id,login(principal),hash(session),from));
+        } catch(RecommendationException e) {
+            redirect.addFlashAttribute("flightError",e.getMessage());
         }
         return back;
     }
@@ -469,13 +552,22 @@ public class ItineraryController {
     private record DefaultPlaces(List<Long> purposeIds,List<Long> centerIds) {}
     // 여행 목적 시설 중 첫 곳만 필수 방문 장소로 미리 골라 둔다. 여러 곳을 모두 필수로 두면 먼 시설까지 억지로 넣게 된다.
     // 중심 장소와 같은 종류(예: 서원)인 목적 시설은 중심 장소가 목적을 채우므로 고르지 않는다. 입력 화면에서는 사용자가 바꿀 수 있다.
-    private DefaultPlaces defaultPlaces(UUID id,long destinationId,Principal principal,HttpSession session,List<PlaceCandidate> pool) {
+    // 여행 기간에 열리는 축제 장소(festival)가 있으면 필수 방문 장소에 더하고, 축제를 볼 수 있는 날의 중심 장소로 둔다.
+    private DefaultPlaces defaultPlaces(UUID id,long destinationId,Principal principal,HttpSession session,List<PlaceCandidate> pool,
+                                        ItineraryPlan.FestivalVisit festival,Integer days) {
         var centerIds=service().defaultCenterPlaceIds(id,destinationId,login(principal),hash(session));
         var poolIds=pool.stream().map(p->p.placeId()).toList();
         var purposeIds=CenterPlaces.notCoveredByCenters(pool,
             service().purposePlaceIds(id,destinationId,login(principal),hash(session)).stream().filter(poolIds::contains).toList(),centerIds)
             .stream().limit(1).toList();
-        return new DefaultPlaces(purposeIds,centerIds);
+        if(festival==null || days==null || !poolIds.contains(festival.placeId())) return new DefaultPlaces(purposeIds,centerIds);
+        var required=new ArrayList<>(purposeIds);
+        if(!required.contains(festival.placeId())) required.add(festival.placeId());
+        // 중심 장소는 1일차부터 차례로 쓰인다. 축제 날 자리에 축제 장소를 끼워 넣고, 여행 일수를 넘는 뒤쪽은 뺀다.
+        var centers=new ArrayList<>(centerIds);
+        centers.remove(festival.placeId());
+        if(festival.day()-1<=centers.size()) centers.add(festival.day()-1,festival.placeId());
+        return new DefaultPlaces(List.copyOf(required),List.copyOf(centers.subList(0,Math.min(centers.size(),days))));
     }
     // 장소 목록을 거치지 않고 일정을 만들 때도 후보가 부족하면 장소 목록 화면처럼 카카오에서 한 번 더 찾는다(같은 세션 키라 한 번만).
     private void findMorePlacesIfFew(UUID id,long destinationId,Principal principal,HttpSession session) {

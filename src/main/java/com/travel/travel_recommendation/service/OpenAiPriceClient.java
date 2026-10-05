@@ -67,7 +67,9 @@ public class OpenAiPriceClient {
                 .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8)).build();
             // 유료 호출이라 자동 재시도는 하지 않는다.
             var response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if (response.statusCode() == 429) throw failure("AI_RATE_LIMIT", "가격 검색 사용량이 제한됐어요. 잠시 후 다시 시도해 주세요.");
+            if (response.statusCode() == 429) throw OpenAiQuota.exhausted(response.body())
+                ? failure("AI_QUOTA", "AI 이용 한도를 모두 써서 지금은 가격을 검색할 수 없어요.")
+                : failure("AI_RATE_LIMIT", "가격 검색 사용량이 제한됐어요. 잠시 후 다시 시도해 주세요.");
             if (response.statusCode() == 401 || response.statusCode() == 403) throw failure("AI_AUTH", "가격 검색 연결 설정을 확인해야 해요.");
             if (response.statusCode() != 200) throw failure("AI_UNAVAILABLE", "가격 검색 서비스에 연결하지 못했어요.");
             if (response.body().length() > 200_000) return notFound(place, kind);

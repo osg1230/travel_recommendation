@@ -29,3 +29,6 @@ docs/presentations/
 
 # Eclipse 빌드 출력물
 bin/
+
+# 주간 보고서 (학교 제출용, 로컬에서만 관리)
+docs/weekly-reports/

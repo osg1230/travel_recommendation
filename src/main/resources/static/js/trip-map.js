@@ -52,7 +52,12 @@
 
         if (Array.isArray(data.days)) {
             drawDays(map, place, fit);
-            tell(count ? '번호는 일차-방문 순서예요. 번호를 누르면 일정 항목으로 가요. 선은 방문 순서를 이은 것이며 실제 이동 경로가 아니에요.' : '지도에 표시할 좌표가 있는 장소가 없어요.');
+            // 도로 경로를 받은 구간이 하나라도 있으면 선의 의미가 달라지므로 안내 문장을 바꾼다.
+            const hasRoads = data.days.some((day) => (day.legs || []).some((leg) => leg.length > 0));
+            const lineNote = hasRoads
+                ? '선은 조회한 자동차 추천 경로를 따라 그렸고, 경로를 받지 못한 구간은 직선으로 이었어요. 실제 주행 경로는 달라질 수 있어요.'
+                : '선은 방문 순서를 이은 것이며 실제 이동 경로가 아니에요.';
+            tell(count ? '번호는 일차-방문 순서예요. 번호를 누르면 일정 항목으로 가요. ' + lineNote : '지도에 표시할 좌표가 있는 장소가 없어요.');
             return;
         }
 
@@ -77,8 +82,8 @@
         }));
     }
 
-    // 일정 지도: 일차별 색으로 번호를 붙이고 방문 순서대로 직선을 잇는다. 선은 순서 표시이며 실제 이동 경로가 아니다.
-    // 지도 번호를 누르면 아래 일정 항목으로 가고, 일정 항목의 '위 지도에서 보기'를 누르면 지도가 그 장소로 간다.
+    // 일정 지도: 일차별 색으로 번호를 붙이고 방문 순서대로 선을 잇는다. 자동차 일정 초안은 서버가 준 도로 경로를 따라 그리고, 그 밖에는 직선이다.
+    // 지도 번호를 누르면 아래 일정 항목으로 가고, 일정 항목의 '지도에서 보기'를 누르면 지도가 그 장소로 간다.
     function drawDays(map, place, fitAll) {
         const maps = window.kakao.maps;
         const days = [];   // 일차별 { number, marks: [{ at, overlay }], line }
@@ -98,8 +103,15 @@
                 }
                 return mark;
             });
+            // 구간마다 서버가 준 도로 경로(legs)가 있으면 그 좌표를 따라 그리고, 없으면 두 장소를 직선으로 잇는다.
+            const path = [];
+            marks.forEach((mark, i) => {
+                path.push(mark.at);
+                const leg = (day.legs || [])[i];
+                if (leg && i < marks.length - 1) leg.forEach(([lat, lng]) => path.push(new maps.LatLng(lat, lng)));
+            });
             const line = marks.length > 1
-                ? new maps.Polyline({ map, path: marks.map((mark) => mark.at), strokeWeight: 4, strokeColor: color, strokeOpacity: 0.75, strokeStyle: 'solid' })
+                ? new maps.Polyline({ map, path, strokeWeight: 4, strokeColor: color, strokeOpacity: 0.75, strokeStyle: 'solid' })
                 : null;
             days.push({ number: day.number, marks, line });
         });
@@ -112,7 +124,7 @@
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'map-jump';
-            button.textContent = '위 지도에서 보기';
+            button.textContent = '지도에서 보기';
             button.addEventListener('click', () => focusStop(key));
             links.prepend(button);
         }
@@ -124,7 +136,8 @@
             map.panTo(stop.at);
             document.querySelectorAll('.map-badge-active').forEach((el) => el.classList.remove('map-badge-active'));
             stop.element.classList.add('map-badge-active');
-            box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            // 지도가 이미 화면에 보이면(넓은 화면의 고정 지도) 화면을 움직이지 않는다.
+            box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
     }
 

@@ -150,6 +150,20 @@ public class SavedItineraryService {
         return itineraries.findByUserIdOrderByStartDateDescIdDesc(member(loginId)).stream().map(this::summary).toList();
     }
 
+    /** 목록 카드에 더 보여 줄 정보: 이동수단 이름과, 대표 사진 후보가 되는 관광지 ID(방문 순서). */
+    public record ListExtra(String transportName, List<Long> visitPlaceIds) {}
+
+    @Transactional(readOnly=true,timeout=10)
+    public Map<Long,ListExtra> listExtras(String loginId) {
+        var extras=new HashMap<Long,ListExtra>();
+        for(var itinerary:itineraries.findByUserIdOrderByStartDateDescIdDesc(member(loginId))) {
+            var visitIds=items.findByItineraryIdOrderByDayNoAscSequenceNoAsc(itinerary.getId()).stream()
+                .filter(item->"VISIT".equals(item.getItemType()) && item.getPlaceId()!=null).map(ItineraryItem::getPlaceId).toList();
+            extras.put(itinerary.getId(),new ListExtra(transportName(itinerary.getTransportation()),visitIds));
+        }
+        return extras;
+    }
+
     @Transactional(readOnly=true,timeout=10)
     public SavedItinerary.Detail detail(Long id, String loginId) {
         var itinerary=owned(id,loginId);

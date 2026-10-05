@@ -24,7 +24,9 @@ public class ItineraryAssistant {
             // 일정 작업 전체에 시간 제한이 있으므로 남은 시간이 없으면 재요청하지 않는다.
             if(Instant.now().isAfter(deadline)) break;
             try {
-                return plan.withAssist(client.assist(input.conditions(),plan,previousFailure));
+                var assist=client.assist(input.conditions(),plan,previousFailure);
+                // AI가 쓴 장소별 이유를 일정 항목의 '고른 이유'에 반영한다. 시각·장소·순서는 바꾸지 않는다.
+                return PlaceReasons.apply(plan,assist.placeReasons()).withAssist(assist);
             } catch(RecommendationException error) {
                 // 형식 문제만 다시 묻는다. 설정·인증·한도·연결 문제는 다시 불러도 같은 결과다.
                 if(!"AI_INVALID_RESPONSE".equals(error.getCode())) return plan;

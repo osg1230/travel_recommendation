@@ -41,13 +41,39 @@ class PlacePhotoServiceTests {
             new TourApiClient.SearchPlace("4", "12", "불국사", "경상북도 경주시 다른로 1", 129.3, 35.8, "x", "Type1"))).isFalse();
     }
 
+    // 여행지(도시) 대표 사진은 그 도시 주소의 관광지 사진만 쓴다. 지역명은 "전남광주통합특별시 여수시"처럼 시·도와 시·군이 함께 적혀 있다.
+    @Test void destinationPhotoUsesAttractionInsideThatCity() {
+        var yeosu = new com.travel.travel_recommendation.dto.DestinationCandidate(1L, "여수", "전남광주통합특별시 여수시", "", "", LocalDateTime.now());
+        var jeju = new com.travel.travel_recommendation.dto.DestinationCandidate(2L, "제주", "제주특별자치도", "", "", LocalDateTime.now());
+        assertThat(PlacePhotoService.cityToken(yeosu)).isEqualTo("여수");
+        assertThat(PlacePhotoService.cityToken(jeju)).isEqualTo("제주");
+        // 관광공사 주소는 옛 시·도 이름(전라남도)을 쓰기도 하므로 시·군(여수시)만 본다. 하남시 여수동처럼 글자만 같은 곳은 거른다.
+        var odongdo = new TourApiClient.SearchPlace("1", "12", "여수 오동도", "전라남도 여수시 수정동 산1-11", 127.76, 34.74, "x", "Type1");
+        var elsewhere = new TourApiClient.SearchPlace("2", "12", "여수동 근린공원", "경기도 하남시 여수동 1", 127.2, 37.5, "x", "Type1");
+        assertThat(PlacePhotoService.inRegion(yeosu, odongdo)).isTrue();
+        assertThat(PlacePhotoService.inRegion(yeosu, elsewhere)).isFalse();
+        // 시·도 하나가 여행지인 제주는 주소의 시·도가 "제주"로 시작하면 된다.
+        assertThat(PlacePhotoService.inRegion(jeju, new TourApiClient.SearchPlace("3", "12", "성산일출봉", "제주특별자치도 서귀포시 성산읍 일출로 284-12", 126.94, 33.46, "x", "Type1"))).isTrue();
+        assertThat(PlacePhotoService.inRegion(jeju, new TourApiClient.SearchPlace("4", "12", "제주 테마파크", "경기도 용인시 처인구 1", 127.2, 37.2, "x", "Type1"))).isFalse();
+        // 중심 장소 이름은 관광공사 제목(지역명 접두·괄호 설명 제외)과 같아야 한다.
+        assertThat(PlacePhotoService.sameName("오동도", "여수", odongdo)).isTrue();
+        assertThat(PlacePhotoService.sameName("오동도", "여수", elsewhere)).isFalse();
+        // 중심 장소가 없을 때는 그 시·군의 자연 관광지 중 해변·산·호수 같은 경치 제목을 먼저 고른다.
+        assertThat(PlacePhotoService.scenic(new TourApiClient.SearchPlace("5", "12", "강릉 경포해변", "", 0, 0, "x", "Type1"))).isTrue();
+        assertThat(PlacePhotoService.scenic(new TourApiClient.SearchPlace("6", "12", "강릉 3·1운동 기념공원", "", 0, 0, "x", "Type1"))).isFalse();
+        assertThat(PlacePhotoService.scenic(new TourApiClient.SearchPlace("7", "12", "오대산 소금강계곡", "", 0, 0, "x", "Type1"))).isTrue();
+        // 쓸 수 있는 사진에는 어느 관광지 사진인지 이름을 함께 남긴다.
+        assertThat(PlacePhotoService.usable(new TourApiClient.SearchPlace("1", "12", "여수 오동도", "", 127.76, 34.74,
+            "https://tong.visitkorea.or.kr/a.jpg", "Type1")).title()).isEqualTo("여수 오동도");
+    }
+
     @Test void storedPhotoKeepsOtherDetailsAndExpiresOrFollowsPlaceChanges() {
         var mapper = new JsonMapper();
         var place = mock(Place.class);
         when(place.getName()).thenReturn("오죽헌"); when(place.getAddress()).thenReturn("강릉시 율곡로3139번길 24");
         when(place.getDetailsJson()).thenReturn("{\"referencePrice\":{\"x\":1}}");
         var now = Instant.parse("2026-09-24T00:00:00Z");
-        String json = PlacePhotoDetails.write(place, new PlacePhotoDetails.Photo("https://tong.visitkorea.or.kr/a.jpg", "Type1", now), mapper);
+        String json = PlacePhotoDetails.write(place, new PlacePhotoDetails.Photo("https://tong.visitkorea.or.kr/a.jpg", "Type1", now, "오죽헌"), mapper);
         assertThat(json).contains("referencePrice").contains("tourApiPhoto");
 
         when(place.getDetailsJson()).thenReturn(json);

@@ -45,17 +45,25 @@ public class TravelConditionValidator {
         }
         LocalDate start = parseDate("startDate", form.getStartDate(), errors);
         LocalDate end = parseDate("endDate", form.getEndDate(), errors);
-        if (form.getStartDate().isEmpty() != form.getEndDate().isEmpty()) {
-            errors.rejectValue("endDate", "incomplete", "출발일과 마지막 날을 함께 입력해 주세요.");
-        }
         Integer days = null;
         if (!form.getDurationDays().isEmpty()) {
             try {
                 days = Integer.valueOf(form.getDurationDays());
                 if (days < 1 || days > 32767) throw new NumberFormatException();
             } catch (NumberFormatException ex) {
+                days = null;
                 errors.rejectValue("durationDays", "invalid", "여행 일수는 1~32,767 사이의 정수로 입력해 주세요.");
             }
+        }
+        // 마지막 날을 비워 두면 출발일과 여행 일수로 계산해 채운다. 사용자는 출발일과 일수만 고르면 된다.
+        if (start != null && form.getEndDate().isEmpty() && days != null) {
+            end = start.plusDays(days - 1);
+            form.setEndDate(end.toString());
+        }
+        if (form.getStartDate().isEmpty() != form.getEndDate().isEmpty()) {
+            errors.rejectValue("endDate", "incomplete", form.getStartDate().isEmpty()
+                    ? "마지막 날을 정했다면 출발일도 입력해 주세요."
+                    : "출발일을 정했다면 여행 일수도 알려 주세요.");
         }
         if (start != null && end != null) {
             long dateDays = ChronoUnit.DAYS.between(start, end) + 1;

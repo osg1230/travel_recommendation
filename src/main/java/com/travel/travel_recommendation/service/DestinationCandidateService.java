@@ -48,15 +48,23 @@ public class DestinationCandidateService {
     /** 추천 조건 그대로 후보를 고른다. 후보 준비와 추천 저장 직전 재확인이 같은 기준을 쓰도록 이 메서드를 쓴다. */
     @Transactional(readOnly=true, timeout=10)
     public List<DestinationCandidate> find(com.travel.travel_recommendation.dto.ConfirmedTravelConditions c) {
-        return find(c.region(),c.themeNames(),c.purposeDestinationIds(),c.purposeThemes());
+        return find(c.region(),c.themeNames(),c.purposeDestinationIds(),c.purposeThemes(),c.excludedRegions());
     }
 
     /** purposeThemes는 목적과 가까운 여행지 분류(예: 갯벌 체험 → 바다)로, 사용자가 고른 취향 다음으로 순서를 정한다. */
     @Transactional(readOnly=true, timeout=10)
     public List<DestinationCandidate> find(String region,List<String> themes,List<Long> purposeDestinationIds,List<String> purposeThemes) {
+        return find(region,themes,purposeDestinationIds,purposeThemes,List.of());
+    }
+
+    /** excludedRegions는 사용자가 가지 않겠다고 한 지역 이름("부산", "강원" 등)이다. 지역 조건과 같은 방식으로 맞는 여행지를 후보에서 뺀다. */
+    @Transactional(readOnly=true, timeout=10)
+    public List<DestinationCandidate> find(String region,List<String> themes,List<Long> purposeDestinationIds,List<String> purposeThemes,
+                                           List<String> excludedRegions) {
         String query=region==null?"":region.replaceAll("\\s+","");
         // 지역을 억지로 넓히거나 부분 문자열로 추측하지 않는다. 지원하지 않는 상세 지역은 보완을 요청한다.
-        var matched=usablePlaces().stream().filter(p -> query.isEmpty() || matches(p,query)).toList();
+        var matched=usablePlaces().stream().filter(p -> query.isEmpty() || matches(p,query))
+            .filter(p -> excludedRegions.stream().noneMatch(name -> matches(p,name.replaceAll("\\s+","")))).toList();
         return pick(matched,themes,query.isEmpty(),purposeDestinationIds,purposeThemes).stream().map(DestinationCandidateService::candidate).toList();
     }
 
@@ -91,6 +99,14 @@ public class DestinationCandidateService {
         ranked.sort(Comparator.comparingInt((Place p)->purposeDestinationIds.contains(p.getId())?0:1)
             .thenComparingInt(p->-themeScore(p,themes)).thenComparingInt(p->-themeScore(p,purposeThemes)).thenComparing(Place::getId));
         List<Place> chosen=new ArrayList<>(); Set<String> provinces=new HashSet<>();
+        // 목적과 가까운 분류가 여러 개면(예: AI가 제안한 방향이 자연·바다·문화·역사) 분류마다 한 곳씩 먼저 골라
+        // 후보가 한 종류의 여행지로만 채워지지 않게 한다.
+        if(purposeThemes.size()>1)
+            for(String theme:purposeThemes) for(var place:ranked) {
+                if(chosen.size()==MAX_CANDIDATES || chosen.contains(place) || themeScore(place,List.of(theme))==0) continue;
+                if(nationwide && !provinces.add(province(place))) continue;
+                chosen.add(place); break;
+            }
         if(nationwide)
             for(var place:ranked) if(chosen.size()<MAX_CANDIDATES && provinces.add(province(place))) chosen.add(place);
         for(var place:ranked) if(chosen.size()<MAX_CANDIDATES && !chosen.contains(place)) chosen.add(place);
