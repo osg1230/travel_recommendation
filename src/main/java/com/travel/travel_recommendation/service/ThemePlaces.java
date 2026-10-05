@@ -48,11 +48,24 @@ public final class ThemePlaces {
         return !matched(place.name(), place.subtype(), themes).isEmpty();
     }
 
+    /**
+     * 여행지의 대표 분류가 문화·역사이면(예: 경주 "문화·역사,자연", 공주 "문화·역사") 관광지 순서를 정할 때 쓰는 취향에 문화·역사를 더한다.
+     * 역사 도시에서는 사용자가 취향을 따로 고르지 않아도 문화유산을 다른 지역보다 먼저 고르기 위해서다.
+     * 사용자가 고른 취향 뒤에 붙여 사용자의 취향이 먼저 반영되게 하고, 대표 분류(맨 앞)가 아니면 더하지 않는다.
+     */
+    public static List<String> withHeritageDestination(List<String> themes, String destinationSubtype) {
+        var chosen = themes == null ? List.<String>of() : themes;
+        String lead = destinationSubtype == null ? "" : destinationSubtype.split(",")[0].strip();
+        if (!"문화·역사".equals(lead) || chosen.contains("문화·역사")) return chosen;
+        var result = new ArrayList<>(chosen); result.add("문화·역사");
+        return List.copyOf(result);
+    }
+
     // 여행 목적에 절·사찰·성당을 직접 적었는지 본다. '절'은 '계절'·'친절' 같은 말과 섞이지 않게 앞뒤 글자를 확인한다.
     private static final java.util.regex.Pattern RELIGIOUS_PURPOSE = java.util.regex.Pattern.compile(
         "사찰|성당|템플스테이|성지순례|불교|천주교|(?<![가-힣])절(에서|에|을|이|도|과|로|은)?(?![가-힣])");
 
-    /** 사용자가 종교 시설 방문을 원했는지: 문화·역사 취향을 골랐거나 목적에 절·사찰·성당을 적은 경우다. */
+    /** 종교 시설을 뒤로 보내지 않을 경우: 문화·역사 취향(역사 도시라 더한 것 포함)이거나 목적에 절·사찰·성당을 적은 경우다. */
     public static boolean wantsReligiousSites(List<String> themes, String purpose) {
         return (themes != null && themes.contains("문화·역사")) || (purpose != null && RELIGIOUS_PURPOSE.matcher(purpose).find());
     }

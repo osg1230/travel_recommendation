@@ -185,9 +185,12 @@ public class ItineraryJobService {
         if(festival!=null) keepInOrder.add(festival.placeId());
         if(current.conditions().purposeSearch()!=null)
             current.conditions().purposeSearch().placesIn(destinationId).forEach(p->keepInOrder.add(p.placeId()));
+        // 경주처럼 대표 분류가 문화·역사인 여행지는 취향을 고르지 않아도 문화유산을 먼저 고르고 사찰·성당도 뒤로 보내지 않는다.
+        var orderThemes=ThemePlaces.withHeritageDestination(current.conditions().themeNames(),
+            this.places.findById(destinationId).map(Place::getSubtype).orElse(null));
         var ordered=ThemePlaces.religiousLast(TripConstraints.aroundCenters(places.attractions(),
-            constraints==null?List.of():constraints.centerPlaceIds(),current.conditions().themeNames()),
-            current.conditions().themeNames(),current.conditions().travelPurpose(),keepInOrder);
+            constraints==null?List.of():constraints.centerPlaceIds(),orderThemes),
+            orderThemes,current.conditions().travelPurpose(),keepInOrder);
         // 숙박 여행이면 저녁 관광에 어울리는 곳(야경·산책·야시장 등)을 먼저 저녁 몫으로 떼어 두고 나머지로 낮 관광지를 고른다.
         // 필수·중심 장소는 낮 일정에 넣어야 하므로 떼어 두지 않는다.
         List<PlaceCandidate> evening=List.of();

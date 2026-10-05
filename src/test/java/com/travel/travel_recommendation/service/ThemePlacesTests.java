@@ -42,6 +42,16 @@ class ThemePlacesTests {
         assertThat(ThemePlaces.themeFirst(ordered, List.of())).isSameAs(ordered);
     }
 
+    // 대표 분류(맨 앞)가 문화·역사인 여행지만 문화·역사를 더하고, 사용자가 고른 취향 뒤에 붙인다.
+    @Test void heritageDestinationAddsCultureThemeAfterChosenThemes() {
+        assertThat(ThemePlaces.withHeritageDestination(List.of("휴식", "맛집"), "문화·역사,자연")).containsExactly("휴식", "맛집", "문화·역사");
+        assertThat(ThemePlaces.withHeritageDestination(List.of(), "문화·역사")).containsExactly("문화·역사");
+        assertThat(ThemePlaces.withHeritageDestination(List.of("문화·역사"), "문화·역사,맛집")).containsExactly("문화·역사");
+        // 부산("바다,맛집,문화·역사")처럼 대표 분류가 아니거나 분류가 없으면 그대로 둔다.
+        assertThat(ThemePlaces.withHeritageDestination(List.of("휴식"), "바다,맛집,문화·역사")).containsExactly("휴식");
+        assertThat(ThemePlaces.withHeritageDestination(List.of("휴식"), null)).containsExactly("휴식");
+    }
+
     // 원하지 않았으면 사찰·성당은 맨 앞 한 곳만 제자리에 두고 나머지를 뒤로 보낸다.
     @Test void religiousLastKeepsOneAndMovesTheRestBack() {
         var temple1 = place("불국사", "문화,예술 > 종교 > 불교 > 절,사찰");
