@@ -48,15 +48,19 @@ public final class ThemePlaces {
         return !matched(place.name(), place.subtype(), themes).isEmpty();
     }
 
+    /** 분류 맨 앞이 문화·역사여도 문화유산을 먼저 고르지 않을 여행지 이름. */
+    private static final Set<String> NOT_HERITAGE_CITIES = Set.of("대전");
+
     /**
      * 여행지의 대표 분류가 문화·역사이면(예: 경주 "문화·역사,자연", 공주 "문화·역사") 관광지 순서를 정할 때 쓰는 취향에 문화·역사를 더한다.
      * 역사 도시에서는 사용자가 취향을 따로 고르지 않아도 문화유산을 다른 지역보다 먼저 고르기 위해서다.
      * 사용자가 고른 취향 뒤에 붙여 사용자의 취향이 먼저 반영되게 하고, 대표 분류(맨 앞)가 아니면 더하지 않는다.
+     * 대전은 분류 맨 앞이 문화·역사지만 과학 전시 위주라 역사 도시로 보지 않는다(NOT_HERITAGE_CITIES).
      */
-    public static List<String> withHeritageDestination(List<String> themes, String destinationSubtype) {
+    public static List<String> withHeritageDestination(List<String> themes, String destinationName, String destinationSubtype) {
         var chosen = themes == null ? List.<String>of() : themes;
         String lead = destinationSubtype == null ? "" : destinationSubtype.split(",")[0].strip();
-        if (!"문화·역사".equals(lead) || chosen.contains("문화·역사")) return chosen;
+        if (!"문화·역사".equals(lead) || chosen.contains("문화·역사") || NOT_HERITAGE_CITIES.contains(destinationName)) return chosen;
         var result = new ArrayList<>(chosen); result.add("문화·역사");
         return List.copyOf(result);
     }

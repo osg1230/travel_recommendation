@@ -86,7 +86,7 @@ public class PlaceCandidateService {
             : conditions.purposeSearch().placesIn(destinationId).stream().map(p -> p.placeId()).toList();
         // 고른 여행 취향(예: 문화·역사)에 맞는 관광지는 목적 시설 다음으로 둔다. 관광지 후보 수는 여행 일수로 정해져(TripConstraints.candidateLimit) 뒤쪽은 잘리기 때문이다.
         // 경주처럼 대표 분류가 문화·역사인 여행지는 취향을 고르지 않아도 문화유산이 잘리지 않게 한다.
-        var themes = ThemePlaces.withHeritageDestination(conditions.themeNames(), current.getSubtype());
+        var themes = ThemePlaces.withHeritageDestination(conditions.themeNames(), current.getName(), current.getSubtype());
         var candidates = places.findLocalPlaces(current.getRegion()).stream()
             .filter(place -> usable(place, current.getRegion()))
             .sorted(Comparator.comparing((Place p)->!purposeIds.contains(p.getId()) && !festivalIds.contains(p.getId()))
