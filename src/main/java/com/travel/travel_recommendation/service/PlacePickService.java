@@ -3,6 +3,7 @@ package com.travel.travel_recommendation.service;
 import com.travel.travel_recommendation.dto.PlaceCandidate;
 import com.travel.travel_recommendation.dto.ItineraryPlan.Input;
 import com.travel.travel_recommendation.repository.AiJobRepository;
+import com.travel.travel_recommendation.repository.PlaceRepository;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
@@ -23,6 +24,7 @@ import tools.jackson.databind.ObjectMapper;
 public class PlacePickService {
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(PlacePickService.class);
     private final AiJobRepository jobs;
+    private final PlaceRepository places;
     private final OpenAiPlacePickClient client;
     private final ItineraryGenerator generator;
     private final ObjectMapper mapper;

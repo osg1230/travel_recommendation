@@ -41,4 +41,38 @@ class ThemePlacesTests {
         assertThat(ThemePlaces.themeFirst(ordered, List.of("맛집"))).isSameAs(ordered);
         assertThat(ThemePlaces.themeFirst(ordered, List.of())).isSameAs(ordered);
     }
+
+    // 대표 분류(맨 앞)가 문화·역사인 여행지만 문화·역사를 더하고, 사용자가 고른 취향 뒤에 붙인다.
+    @Test void heritageDestinationAddsCultureThemeAfterChosenThemes() {
+        assertThat(ThemePlaces.withHeritageDestination(List.of("휴식", "맛집"), "경주", "문화·역사,자연")).containsExactly("휴식", "맛집", "문화·역사");
+        assertThat(ThemePlaces.withHeritageDestination(List.of(), "공주", "문화·역사")).containsExactly("문화·역사");
+        assertThat(ThemePlaces.withHeritageDestination(List.of("문화·역사"), "전주", "문화·역사,맛집")).containsExactly("문화·역사");
+        // 부산("바다,맛집,문화·역사")처럼 대표 분류가 아니거나 분류가 없으면 그대로 둔다.
+        assertThat(ThemePlaces.withHeritageDestination(List.of("휴식"), "부산", "바다,맛집,문화·역사")).containsExactly("휴식");
+        assertThat(ThemePlaces.withHeritageDestination(List.of("휴식"), "강릉", null)).containsExactly("휴식");
+        // 대전은 분류 맨 앞이 문화·역사지만 과학 전시 위주라 더하지 않는다.
+        assertThat(ThemePlaces.withHeritageDestination(List.of("휴식"), "대전", "문화·역사,자연,체험·액티비티")).containsExactly("휴식");
+    }
+
+    // 원하지 않았으면 사찰·성당은 맨 앞 한 곳만 제자리에 두고 나머지를 뒤로 보낸다.
+    @Test void religiousLastKeepsOneAndMovesTheRestBack() {
+        var temple1 = place("불국사", "문화,예술 > 종교 > 불교 > 절,사찰");
+        var temple2 = place("석굴암", "문화,예술 > 종교 > 불교 > 절,사찰");
+        var church = place("성건성당", "문화,예술 > 종교 > 천주교 > 성당");
+        var tomb = place("대릉원", "여행 > 관광,명소 > 문화유적 > 릉,묘,총");
+        var pond = place("동궁과월지", "여행 > 관광,명소");
+        var ordered = List.of(temple1, temple2, tomb, church, pond);
+        assertThat(ThemePlaces.religiousLast(ordered, List.of("바다"), "", List.of()))
+            .containsExactly(temple1, tomb, pond, temple2, church);
+        // 목적 시설·축제 장소로 확인한 곳은 옮기지 않고, 한 곳 남기는 수에도 세지 않는다.
+        assertThat(ThemePlaces.religiousLast(ordered, List.of(), null, List.of(church.placeId())))
+            .containsExactly(temple1, tomb, church, pond, temple2);
+        // 문화·역사 취향이거나 목적에 절·사찰·성당을 적었으면 순서를 바꾸지 않는다.
+        assertThat(ThemePlaces.religiousLast(ordered, List.of("문화·역사"), "", List.of())).isSameAs(ordered);
+        assertThat(ThemePlaces.religiousLast(ordered, List.of(), "절에 가서 쉬기", List.of())).isSameAs(ordered);
+        assertThat(ThemePlaces.religiousLast(ordered, List.of(), "성당 구경", List.of())).isSameAs(ordered);
+        // '계절'·'친절'의 '절'은 사찰로 보지 않는다.
+        assertThat(ThemePlaces.wantsReligiousSites(List.of(), "계절 꽃 구경, 친절한 숙소")).isFalse();
+        assertThat(ThemePlaces.wantsReligiousSites(List.of(), "조용한 절 산책")).isTrue();
+    }
 }

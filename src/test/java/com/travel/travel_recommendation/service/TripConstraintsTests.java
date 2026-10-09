@@ -131,6 +131,24 @@ class TripConstraintsTests {
         return new PlaceCandidate(id, name, "경상남도 거제시 " + id, subtype, "", "https://place.map.kakao.com/" + id, "",
             LocalDateTime.of(2026, 9, 22, 0, 0));
     }
+    // 경주 실제 좌표(카카오 2026-10-05). 천마총은 대릉원 안(약 250m)이라 한 곳만 남기고, 먼 문무대왕릉과 넓은 분류는 그대로 둔다.
+    @Test void sameKindPlacesWithinWalkingDistanceCountAsOneSpot() {
+        var daereungwon = located(1, "대릉원", "여행 > 관광,명소 > 문화유적 > 릉,묘,총", 35.838191, 129.213334);
+        var cheonmachong = located(2, "천마총", "여행 > 관광,명소 > 문화유적 > 릉,묘,총", 35.838457, 129.210559);
+        var munmu = located(3, "경주문무대왕릉", "여행 > 관광,명소 > 문화유적 > 릉,묘,총", 35.738262, 129.486877);
+        var woljeong = located(4, "월정교", "여행 > 관광,명소 > 문화유적", 35.829300, 129.218121);
+        var cheomseongdae = located(5, "첨성대", "여행 > 관광,명소 > 문화유적", 35.829400, 129.218200);
+        var ordered = List.of(daereungwon, woljeong, cheonmachong, munmu, cheomseongdae);
+        assertThat(TripConstraints.withoutSameSpot(ordered, List.of()))
+            .containsExactly(daereungwon, woljeong, munmu, cheomseongdae);
+        // 사용자가 필수로 고른 곳은 가까워도 빼지 않는다.
+        assertThat(TripConstraints.withoutSameSpot(ordered, List.of(2L))).containsExactlyElementsOf(ordered);
+    }
+    private static PlaceCandidate located(long id, String name, String subtype, double lat, double lon) {
+        return new PlaceCandidate(id, name, "경북 경주시 " + id, subtype, "", "https://place.map.kakao.com/" + id, "",
+            LocalDateTime.of(2026, 10, 5, 0, 0), lon, lat, "KAKAO", null);
+    }
+
     private static PlaceCandidate located(long id, String name, double lat, double lon) {
         return new PlaceCandidate(id, name, "전남광주통합특별시 여수시 " + id, "관광", "", "https://place.map.kakao.com/" + id, "",
             LocalDateTime.of(2026, 9, 22, 0, 0), lon, lat, "KAKAO", null);

@@ -39,7 +39,7 @@ class OpenAiPlacePickClientTests {
     }
     @AfterEach void stop() { server.stop(0); }
     private OpenAiPlacePickClient client(String key,Duration timeout) {
-        return new OpenAiPlacePickClient(new OpenAiProperties(key,"gpt-4.1-mini"),mapper,
+        return new OpenAiPlacePickClient(new OpenAiProperties(key,"gpt-4.1-mini","none"),mapper,
             URI.create("http://127.0.0.1:"+server.getAddress().getPort()+"/responses"),timeout);
     }
     private void output(String json) {

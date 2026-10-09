@@ -30,4 +30,16 @@ class OpenAiLiveTests {
         assertThat(form.getEndDate()).isEmpty();
         assertThat(form.getAccommodationNeeded()).isEqualTo("true");
     }
+
+    // '친구 둘이서'는 말하는 사람을 포함해 2명, '친구 둘과'는 말하는 사람을 더해 3명이다.
+    @Test void countsPartySizeIncludingTheSpeaker() {
+        assertThat(partySizeOf("10월 24일부터 1박 2일로 친구 둘이서 강릉 가서 바다 보고 카페 가고 싶어요, 자차로 가요")).isEqualTo("2");
+        assertThat(partySizeOf("친구 둘과 부산으로 1박 2일 여행 가고 싶어요")).isEqualTo("3");
+    }
+
+    private String partySizeOf(String text) {
+        TravelConditionForm draft = new TravelConditionForm();
+        draft.setOriginalText(text);
+        return service.analyze(draft, options.getChoices()).form().getPartySize();
+    }
 }

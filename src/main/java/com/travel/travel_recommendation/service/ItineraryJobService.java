@@ -178,9 +178,22 @@ public class ItineraryJobService {
         // 일정의 중심 장소가 있으면 맨 앞에 두고 그 주변부터, 없으면 가운데에서 가까운 곳부터 고른다.
         // 같은 종류(해수욕장 등)는 돌아가며 고르고, 고른 여행 취향에 맞는 곳은 그중에서도 먼저 고른다.
         // 여기서 고른 것은 조건 충돌을 바로 알리기 위한 기본 선택이다. 작업이 시작되기 전에 AI가 순서를 정하면 그 순서로 다시 고른다(PlacePickService).
-        var pool=places.attractions();
-        var ordered=TripConstraints.aroundCenters(pool,
-            constraints==null?List.of():constraints.centerPlaceIds(),current.conditions().themeNames());
+        // 사찰·성당은 사용자가 원한 경우(문화·역사 취향, 목적에 절·성당)가 아니면 한 곳만 제자리에 두고 뒤로 보낸다.
+        // 사용자가 고른 필수·중심 장소와 목적 시설·축제 장소는 옮기지 않는다.
+        Set<Long> keepInOrder=new HashSet<>();
+        if(constraints!=null) { keepInOrder.addAll(constraints.requiredPlaceIds()); keepInOrder.addAll(constraints.centerPlaceIds()); }
+        if(festival!=null) keepInOrder.add(festival.placeId());
+        if(current.conditions().purposeSearch()!=null)
+            current.conditions().purposeSearch().placesIn(destinationId).forEach(p->keepInOrder.add(p.placeId()));
+        // 경주처럼 대표 분류가 문화·역사인 여행지는 취향을 고르지 않아도 문화유산을 먼저 고르고 사찰·성당도 뒤로 보내지 않는다.
+        var destinationPlace=this.places.findById(destinationId).orElse(null);
+        var orderThemes=ThemePlaces.withHeritageDestination(current.conditions().themeNames(),
+            destinationPlace==null?null:destinationPlace.getName(),destinationPlace==null?null:destinationPlace.getSubtype());
+        // 대릉원 안의 천마총처럼 종류가 같고 아주 가까운 곳은 후보에서부터 한 곳만 남긴다. AI가 순서를 정할 때도 이 후보(pool)를 쓴다.
+        var pool=TripConstraints.withoutSameSpot(places.attractions(),keepInOrder);
+        var ordered=ThemePlaces.religiousLast(TripConstraints.aroundCenters(pool,
+            constraints==null?List.of():constraints.centerPlaceIds(),orderThemes),
+            orderThemes,current.conditions().travelPurpose(),keepInOrder);
         Arranged arranged;
         try {
             arranged=arrange(ordered,Set.of(),false,places.accommodationNeeded(),days,start,end,visitMinutes,constraints);

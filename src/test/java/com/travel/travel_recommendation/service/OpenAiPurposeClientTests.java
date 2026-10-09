@@ -28,7 +28,7 @@ class OpenAiPurposeClientTests {
     }
     @AfterEach void stop() { server.stop(0); }
     private OpenAiPurposeClient client(String key) {
-        return new OpenAiPurposeClient(new OpenAiProperties(key, "gpt-4.1-mini"), mapper,
+        return new OpenAiPurposeClient(new OpenAiProperties(key, "gpt-6-luna", "none"), mapper,
             URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/responses"), Duration.ofSeconds(5));
     }
     private void answer(List<String> keywords) { answer(keywords, List.of()); }
