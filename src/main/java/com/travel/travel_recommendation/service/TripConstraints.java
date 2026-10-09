@@ -105,6 +105,35 @@ public final class TripConstraints {
         return List.copyOf(mixed);
     }
 
+    /** 같은 종류의 관광지가 이 거리 안에 있으면 한 곳으로 본다. 예) 대릉원과 그 안의 천마총(약 250m). */
+    static final int SAME_SPOT_METERS = 300;
+
+    /**
+     * 종류가 같고 아주 가까운 관광지는 앞에 있는 한 곳만 남긴다. 대릉원 안의 천마총처럼 한 장소의 안쪽 시설이 따로 등록되어
+     * 같은 곳을 두 번 방문하는 일정을 막기 위해서다. 주소가 달라 주소로는 거를 수 없어 종류와 직선거리로 판단한다.
+     * 카카오의 단계별 분류("여행 > 관광,명소 > 문화유적 > 릉,묘,총")가 있는 곳만 보고, 마지막 단계가 '관광,명소'·'문화유적'처럼
+     * 넓으면 서로 다른 곳일 수 있어 묶지 않는다. keepIds(필수·중심 장소 등)는 빼지 않는다.
+     */
+    public static List<PlaceCandidate> withoutSameSpot(List<PlaceCandidate> ordered, Collection<Long> keepIds) {
+        var result = new ArrayList<PlaceCandidate>();
+        for (var place : ordered) {
+            String kind = kind(place);
+            boolean specific = place.subtype() != null && place.subtype().contains(">")
+                && !kind.isEmpty() && !kind.equals("관광,명소") && !kind.equals("문화유적");
+            boolean duplicate = specific && !keepIds.contains(place.placeId()) && result.stream()
+                .anyMatch(kept -> kind.equals(kind(kept)) && meters(kept, place) <= SAME_SPOT_METERS);
+            if (!duplicate) result.add(place);
+        }
+        return List.copyOf(result);
+    }
+
+    /** 두 장소 사이의 대략적인 직선거리(m). 좌표가 없으면 아주 먼 것으로 본다. */
+    private static double meters(PlaceCandidate a, PlaceCandidate b) {
+        if (a.latitude() == null || a.longitude() == null || b.latitude() == null || b.longitude() == null) return Double.MAX_VALUE;
+        double east = (a.longitude() - b.longitude()) * Math.cos(Math.toRadians(a.latitude())), north = a.latitude() - b.latitude();
+        return Math.sqrt(east * east + north * north) * 111_000;
+    }
+
     private static double median(List<Double> values) {
         var sorted = values.stream().sorted().toList();
         int mid = sorted.size() / 2;

@@ -43,7 +43,7 @@ class OpenAiConditionClientTests {
     }
     @AfterEach void stopServer() { server.stop(0); }
     private OpenAiConditionClient client(String key, Duration timeout) throws Exception {
-        return new OpenAiConditionClient(new OpenAiProperties(key, "gpt-4.1-mini"), mapper,
+        return new OpenAiConditionClient(new OpenAiProperties(key, "gpt-6-luna", "none"), mapper,
                 URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/responses"), timeout);
     }
 
@@ -53,6 +53,7 @@ class OpenAiConditionClientTests {
         assertThat(result.get("isTravel").booleanValue()).isTrue();
         var body = mapper.readTree(request.get());
         assertThat(body.path("store").booleanValue()).isFalse();
+        assertThat(body.path("reasoning").path("effort").asText()).isEqualTo("none");
         assertThat(body.path("text").path("format").path("strict").booleanValue()).isTrue();
         assertThat(body.path("text").path("format").path("type").asText()).isEqualTo("json_schema");
         assertThat(body.path("text").path("format").path("schema").path("properties").path("season")
@@ -64,7 +65,7 @@ class OpenAiConditionClientTests {
         // 지시문의 예시 대상(예: 특정 동물)이 다른 입력의 여행 목적으로 새어 나오지 않도록 구체적 대상을 쓰지 않는다.
         assertThat(body.path("instructions").asText()).doesNotContain("상어").contains("원문에 없는 대상·활동은 만들어 넣지 않는다");
         assertThat(calls.get()).isEqualTo(1);
-        assertThat(new OpenAiProperties("test-key", "gpt-4.1-mini").toString()).doesNotContain("test-key");
+        assertThat(new OpenAiProperties("test-key", "gpt-6-luna", "none").toString()).doesNotContain("test-key");
     }
     @Test void missingKeyDoesNotSendRequest() throws Exception {
         var client = client("", Duration.ofSeconds(2));

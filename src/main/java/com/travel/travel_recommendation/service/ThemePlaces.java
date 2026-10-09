@@ -48,6 +48,51 @@ public final class ThemePlaces {
         return !matched(place.name(), place.subtype(), themes).isEmpty();
     }
 
+    /** 분류 맨 앞이 문화·역사여도 문화유산을 먼저 고르지 않을 여행지 이름. */
+    private static final Set<String> NOT_HERITAGE_CITIES = Set.of("대전");
+
+    /**
+     * 여행지의 대표 분류가 문화·역사이면(예: 경주 "문화·역사,자연", 공주 "문화·역사") 관광지 순서를 정할 때 쓰는 취향에 문화·역사를 더한다.
+     * 역사 도시에서는 사용자가 취향을 따로 고르지 않아도 문화유산을 다른 지역보다 먼저 고르기 위해서다.
+     * 사용자가 고른 취향 뒤에 붙여 사용자의 취향이 먼저 반영되게 하고, 대표 분류(맨 앞)가 아니면 더하지 않는다.
+     * 대전은 분류 맨 앞이 문화·역사지만 과학 전시 위주라 역사 도시로 보지 않는다(NOT_HERITAGE_CITIES).
+     */
+    public static List<String> withHeritageDestination(List<String> themes, String destinationName, String destinationSubtype) {
+        var chosen = themes == null ? List.<String>of() : themes;
+        String lead = destinationSubtype == null ? "" : destinationSubtype.split(",")[0].strip();
+        if (!"문화·역사".equals(lead) || chosen.contains("문화·역사") || NOT_HERITAGE_CITIES.contains(destinationName)) return chosen;
+        var result = new ArrayList<>(chosen); result.add("문화·역사");
+        return List.copyOf(result);
+    }
+
+    // 여행 목적에 절·사찰·성당을 직접 적었는지 본다. '절'은 '계절'·'친절' 같은 말과 섞이지 않게 앞뒤 글자를 확인한다.
+    private static final java.util.regex.Pattern RELIGIOUS_PURPOSE = java.util.regex.Pattern.compile(
+        "사찰|성당|템플스테이|성지순례|불교|천주교|(?<![가-힣])절(에서|에|을|이|도|과|로|은)?(?![가-힣])");
+
+    /** 종교 시설을 뒤로 보내지 않을 경우: 문화·역사 취향(역사 도시라 더한 것 포함)이거나 목적에 절·사찰·성당을 적은 경우다. */
+    public static boolean wantsReligiousSites(List<String> themes, String purpose) {
+        return (themes != null && themes.contains("문화·역사")) || (purpose != null && RELIGIOUS_PURPOSE.matcher(purpose).find());
+    }
+
+    /**
+     * 사용자가 원하지 않았는데 사찰·성당이 일정에 여러 곳 들어가지 않게 한다. 종교 시설은 맨 앞의 한 곳만 제자리에 두고
+     * (예: 경주의 불국사) 나머지는 맨 뒤로 보낸다. 일정은 앞에서부터 하루 방문 수만큼 고르므로 뒤로 간 곳은 보통 빠진다.
+     * 사용자가 원했으면(wantsReligiousSites) 순서를 바꾸지 않고, keepIds(목적 시설·축제 장소)는 옮기지 않는다.
+     */
+    public static List<PlaceCandidate> religiousLast(List<PlaceCandidate> ordered, List<String> themes, String purpose, Collection<Long> keepIds) {
+        if (wantsReligiousSites(themes, purpose)) return ordered;
+        var front = new ArrayList<PlaceCandidate>(); var back = new ArrayList<PlaceCandidate>();
+        boolean keptOne = false;
+        for (var place : ordered) {
+            if (!place.religiousSite() || keepIds.contains(place.placeId())) front.add(place);
+            else if (!keptOne) { front.add(place); keptOne = true; }
+            else back.add(place);
+        }
+        if (back.isEmpty()) return ordered;
+        front.addAll(back);
+        return List.copyOf(front);
+    }
+
     /**
      * 취향에 맞는 관광지를 앞으로 옮긴다. 여러 취향을 골랐으면 취향마다 돌아가며 한 곳씩 앞에 두어, 후보가 많은
      * 취향(예: 공원이 많은 휴식)이 앞자리를 모두 차지하지 않게 한다. 같은 취향 안의 순서(가까운 순 등)는 그대로 둔다.
