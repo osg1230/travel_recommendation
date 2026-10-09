@@ -5,6 +5,7 @@ import com.travel.travel_recommendation.entity.User;
 import com.travel.travel_recommendation.repository.UserRepository;
 import com.travel.travel_recommendation.service.*;
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -113,6 +114,22 @@ class VirtualReservationIntegrationTests {
         assertThat(remaining(stock)).isEqualTo(2);
     }
 
+    // 이용 시각은 변환 대상이 아니다. 현재 한국 시각을 기준으로 지난 예약만 막아야 한다.
+    @Test void reservationCutoffUsesKoreanTimeWithoutShiftingUsageTimes() {
+        var owner=member();
+        var now=KoreaTime.now().withNano(0);
+        long past=stockAt(now.minusMinutes(1),2);
+        long future=stockAt(now.plusHours(1),2);
+        assertThatThrownBy(()->service.reserve(owner.getLoginId(),past,null,1,1,UUID.randomUUID()))
+            .satisfies(e->assertThat(statusOf(e)).isEqualTo(HttpStatus.BAD_REQUEST));
+        long id=service.reserve(owner.getLoginId(),future,null,1,1,UUID.randomUUID());
+        assertThat(reservationStatus(id)).isEqualTo("PENDING");
+        assertThat(jdbc.queryForObject("SELECT usage_start_at FROM dbo.reservation_stock WHERE stock_id=?",LocalDateTime.class,future))
+            .isEqualTo(now.plusHours(1));
+        assertThat(jdbc.queryForObject("SELECT usage_end_at FROM dbo.reservation_stock WHERE stock_id=?",LocalDateTime.class,future))
+            .isEqualTo(now.plusHours(22));
+    }
+
     @Test void twoConcurrentRequestsForTheLastUnitProduceOneReservation() throws Exception {
         long stock=stock(1);
         var members=List.of(member(),member());
@@ -195,6 +212,7 @@ class VirtualReservationIntegrationTests {
 
     @Test void refundRestoresStockOnceAndBlocksASecondRefund() {
         var owner=member(); long stock=stock(2);
+        var before=KoreaTime.now().minusSeconds(2);
         long id=service.reserve(owner.getLoginId(),stock,null,1,1,UUID.randomUUID());
         service.pay(owner.getLoginId(),id,UUID.randomUUID(),false);
         assertThat(service.cancel(owner.getLoginId(),id)).isEqualTo(CancelOutcome.REFUNDED);
@@ -202,6 +220,16 @@ class VirtualReservationIntegrationTests {
         assertThat(remaining(stock)).isEqualTo(2);
         assertThat(reservationStatus(id)).isEqualTo("CANCELED");
         assertThat(jdbc.queryForObject("SELECT status FROM dbo.virtual_payments WHERE reservation_id=?",String.class,id)).isEqualTo("REFUNDED");
+        // 예약·결제·환불의 SQL 저장 시각도 자바의 한국 시각과 같아야 한다.
+        var after=KoreaTime.now().plusSeconds(2);
+        var reservationTimes=jdbc.queryForMap("SELECT created_at, updated_at, canceled_at FROM dbo.virtual_reservations WHERE reservation_id=?",id);
+        var paymentTimes=jdbc.queryForMap("SELECT created_at, processed_at, refunded_at FROM dbo.virtual_payments WHERE reservation_id=?",id);
+        for(var timestamps:List.of(reservationTimes,paymentTimes)) {
+            for(var timestamp:timestamps.values()) {
+                assertThat(timestamp).isInstanceOf(Timestamp.class);
+                assertThat(((Timestamp)timestamp).toLocalDateTime()).isBetween(before,after);
+            }
+        }
         assertThat(count("SELECT COUNT(*) FROM dbo.reservation_logs WHERE reservation_id=? AND event_type='CANCEL'",id)).isEqualTo(1);
         assertThat(count("SELECT COUNT(*) FROM dbo.operation_logs WHERE target_type='RESERVATION' AND target_id=? AND outcome='FAILED'",id)).isEqualTo(1);
         // 취소된 예약은 다시 결제하거나 바꿀 수 없다.

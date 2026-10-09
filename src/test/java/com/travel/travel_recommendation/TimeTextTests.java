@@ -17,6 +17,13 @@ class TimeTextTests {
         assertThat(time.dateTime(null)).isEmpty();
     }
 
+    // 한국 자정 전후에 날짜가 밀리거나 이미 변환된 저장값에 9시간을 다시 더하지 않는지 확인한다.
+    @Test void keepsKoreanDatesAcrossMidnightAndYearEnd() {
+        assertThat(time.seconds(Instant.parse("2026-12-31T14:59:59Z"))).isEqualTo("2026-12-31 23:59:59");
+        assertThat(time.seconds(Instant.parse("2026-12-31T15:00:00Z"))).isEqualTo("2027-01-01 00:00:00");
+        assertThat(time.seconds(LocalDateTime.of(2027, 1, 1, 0, 0))).isEqualTo("2027-01-01 00:00:00");
+    }
+
     // 여행 날짜는 "10월 15일(목)"처럼 월·일·요일로 보여 준다.
     @Test void showsTripDayWithWeekday() {
         assertThat(time.day(LocalDate.of(2026, 10, 15))).isEqualTo("10월 15일(목)");
