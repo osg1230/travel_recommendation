@@ -1,12 +1,15 @@
 # DB 테이블 정의서 정리본
 
-> 버전 1.8 · 2026-09-20 · 1~7절의 회원·키워드·추천 요청·후보·AI 작업·장소를 구현했다. 배포 SQL은 sql/001~007이다. 1.8은 기존 places의 외부 장소 캐시 적용이며 스키마 변경은 없다. 나머지 테이블은 설계 단계이다. 기존 Word 검토용 파일은 1.1 이전 상태이며 이후 변경을 포함하지 않는다.
+> 현재 기준: 2026-10-09 · GitHub main 072bd5a · 가상 예약·결제를 포함한 18개 테이블을 구현 범위로 다룬다. 배포 SQL은 sql/001~016이다. 객실 유형 SQL 016은 별도 예약 브랜치의 기존 변경을 가져왔다. 기존 Word 파일은 과거 문서이며 현재 기준은 이 Markdown과 아래 실DB 확인 기록이다.
 
-### 기준 문서 표기 안내 (2026-09-20)
+### 현재 구현 및 실DB 확인
 
-- 아래 본문 머리말의 `기준 문서`는 요구분석서 3.0 표기다. 현재 요구사항 기준은 `창프2_요구분석서 3.1_통합최종본.docx`와 [3.1 통합 변경 내역](../requirements/2026-09-16_요구분석서_3.1_통합_변경내역.md)이므로, 본문의 3.0 표기는 작성 당시 기준으로 읽는다.
-- 이번 확인 범위는 좁다. 7절 places만 컬럼 단위로 대조해 정의서의 18개 컬럼과 `Place` Entity의 `@Column`이 이름·길이·정밀도까지 일치함을 확인했다. 나머지 1~6절(users·keyword_categories·keywords·recommendation_requests·recommendation_candidates·ai_jobs)은 테이블명과 Entity 존재만 확인했고 컬럼 단위 대조는 하지 않았다.
-- 8~9절(itineraries·itinerary_items)과 10절(favorites), 14절(operation_logs)은 2026-09-20에 정의서대로 생성하고 Entity를 만들었다. 아래 1.9·1.10·1.11 적용 메모를 참고한다. 11~13절과 15~18절(place_ratings·rating_tags·place_rating_tags와 R3 확장 4개)은 설계 단계이며 Entity가 없다. 3.1에서 추가된 요구사항이 이 테이블들의 컬럼에 주는 영향은 아직 대조하지 않았다.
+- 요구사항 기준은 요구분석서 3.1과 통합 변경 내역, AGENTS.md이다. 관리자는 회원 관리만 수행한다.
+- SQL Server 2019(15.0.2000.5), 이 PC의 travel_recommendation DB에 Windows 인증으로 읽기 전용 접속했다. dbo 테이블 18개, 외래키 25개를 확인했다. 비활성화 또는 미검증 상태인 FK·CHECK는 0개다.
+- 기존 정의서 190개 컬럼은 실제 DB와 이름·자료형·길이·정밀도·소수 자릿수·NULL 허용 여부가 일치했다. 실제 DB에 추가된 reservation_stock.room_type(VARCHAR(20), NULL 허용, 값이 있는 행 293개)은 사용자가 Claude와 구현한 가상 객실 기능이다. origin/feature/rename-reservation-payment-labels의 a491c3e 커밋에서 SQL 016과 구현을 확인하고 정의서·ERD에 반영했다. 해당 기능 코드는 main에 아직 병합되지 않았으므로 현재 main 코드와 실DB의 적용 범위는 다르다.
+- 14개 테이블은 JPA Entity로, 예약·결제 관련 4개 테이블은 VirtualReservationService의 JDBC로 접근한다. Entity가 없다는 이유로 미구현으로 분류하지 않는다.
+- PK/FK·인덱스·DEFAULT·CHECK 정의 전체의 배포 SQL 대조와 기능·동시성 테스트는 이번에 수행하지 않았다. 따라서 DB 전체 검증 완료로 보지 않는다. DB 데이터와 스키마는 변경하지 않았다.
+- 아래 적용 메모는 날짜별 구현 이력이다. 당시의 미구현·이후 작업 설명은 현재 상태로 해석하지 않는다.
 
 ### 1.9 적용 메모: 내 일정 저장 (2026-09-20)
 
@@ -76,13 +79,13 @@ AI 기반 국내 여행 일정 추천 서비스
 
 버전 1.0  |  작성일 2026년 9월 8일  |  SQL Server 기준
 
-본 문서는 여행 추천부터 일정 저장·평가·운영까지 핵심 14개 테이블과 가상 예약·결제용 R3 선택 확장 4개 테이블을 정의한다. 요청 조건은 recommendation_requests에 통합하며 ai_jobs와 place_rating_tags를 유지한다.
+본 문서는 여행 추천·일정 저장·평가·운영·가상 예약·결제를 위한 18개 테이블을 정의한다. 요청 조건은 recommendation_requests에 통합하며 ai_jobs와 place_rating_tags를 유지한다.
 
 기준 문서  창프2_요구분석서 3.0_관리자범위축소_최종본.docx  |  요구분석서 수정일 2026년 8월 19일
 
 적용 범위와 표기
 
-관리자는 키워드 카테고리·키워드와 회원 상태를 관리한다. 장소·숙소·음식점 직접 CRUD 및 타인 평가 관리는 제공하지 않는다. 가상 예약·결제는 R1·R2 핵심·주요 기능 구현 및 테스트가 완료된 뒤 개발 일정에 여유가 있을 경우 구현하는 R3 선택 확장 기능이다.
+관리자는 회원 상태를 관리한다. 관리자 키워드·장소·숙소·음식점 CRUD 및 타인 평가 관리는 제공하지 않는다. 가상 예약·결제는 구현된 정식 기능이며 실제 시설 예약이나 실제 금전 결제는 수행하지 않는다.
 
 NULL의 N은 필수, Y는 허용을 뜻한다. PK·FK·UNIQUE의 -는 해당 제약 없음이다. U1·U2·P1·UF1은 각 테이블 내부의 제약 그룹이며 여러 열에 같은 코드가 있으면 복합 제약이다. PK는 별도 UNIQUE 표시 없이 유일성을 포함한다.
 
@@ -107,11 +110,11 @@ JSON은 ISJSON(컬럼)=1을 뜻한다. 필수 속성·스키마·값 범위는 �
 | 11 | place_ratings | 장소 별점 평가 | DAR-08 / R2 |
 | 12 | rating_tags | 평가 태그 사전 | DAR-08 / R2 |
 | 13 | place_rating_tags | 평가 태그 연결 | DAR-08 / R2 |
-| 14 | operation_logs | 운영 처리 이력 | DAR-13 / R2 및 R3 실패 기록 |
-| 15 | reservation_stock | 가상 예약 가능 수량 | DAR-11 / R3 선택 확장 |
-| 16 | virtual_reservations | 가상 예약 | DAR-11 / R3 선택 확장 |
-| 17 | virtual_payments | 가상 결제 | DAR-12 / R3 선택 확장 |
-| 18 | reservation_logs | 예약 수량 변경 이력 | DAR-11 / R3 선택 확장 |
+| 14 | operation_logs | 운영 처리 이력 | DAR-13 / 회원 관리 및 예약·결제 실패 기록 |
+| 15 | reservation_stock | 가상 예약 가능 수량 | DAR-11 / 가상 예약·결제 |
+| 16 | virtual_reservations | 가상 예약 | DAR-11 / 가상 예약·결제 |
+| 17 | virtual_payments | 가상 결제 | DAR-12 / 가상 예약·결제 |
+| 18 | reservation_logs | 예약 수량 변경 이력 | DAR-11 / 가상 예약·결제 |
 
 1 사용자
 
@@ -539,7 +542,7 @@ P1 복합 PK(rating_id, tag_id), U1(rating_id, slot_no). 슬롯 CHECK와 UNIQUE�
 | --- | --- | --- |
 | operation_logs | 운영 처리 이력 | 회원 상태 변경과 예약·결제 상태 전이 실패를 1년간 기록한다. |
 
-관련 요구사항 및 구현 범위  DAR-13 / R2 및 R3 실패 기록
+관련 요구사항 및 구현 범위  DAR-13 / 회원 관리 및 예약·결제 실패 기록
 
 | 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -562,7 +565,7 @@ P1 복합 PK(rating_id, tag_id), U1(rating_id, slot_no). 슬롯 CHECK와 UNIQUE�
 
 성공한 회원 상태 변경은 원 변경과 같은 트랜잭션에 기록한다. 실패 로그는 본 트랜잭션 롤백 이후 별도 트랜잭션으로 기록한다. 시스템 실패는 actor_user_id NULL을 허용한다.
 
-관리자에게 R3 상태 변경 권한을 추가하지 않는다. R3 운영 화면은 필요한 최소 정보 조회만 제공한다.
+관리자에게 예약·결제 상태 변경 권한을 부여하지 않으며 별도 예약·결제 운영 화면도 제공하지 않는다.
 
 15 가상 예약 가능 수량
 
@@ -570,7 +573,7 @@ P1 복합 PK(rating_id, tag_id), U1(rating_id, slot_no). 슬롯 CHECK와 UNIQUE�
 | --- | --- | --- |
 | reservation_stock | 가상 예약 가능 수량 | 숙소·유료 관광시설의 이용 구간별 가상 수량을 관리한다. |
 
-관련 요구사항 및 구현 범위  DAR-11 / R3 선택 확장
+관련 요구사항 및 구현 범위  DAR-11 / 가상 예약·결제
 
 | 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -582,6 +585,7 @@ P1 복합 PK(rating_id, tag_id), U1(rating_id, slot_no). 슬롯 CHECK와 UNIQUE�
 | remaining_quantity | INT | N | - | - | - | - | 0 이상 total_quantity 이하 | - |
 | unit_price | DECIMAL(12,2) | N | - | - | - | - | >= 0 | 가상 단위 가격 KRW |
 | quantity_unit | VARCHAR(10) | N | - | - | - | - | ROOM, PERSON | 숙소 객실 또는 시설 인원 |
+| room_type | VARCHAR(20) | Y | - | - | U1 | - | NULL 또는 ROOM이면서 SINGLE, STANDARD_DOUBLE, STANDARD_TWIN, DELUXE_DOUBLE, FAMILY, SUITE | 가상 객실 종류(SQL 016). 시설은 NULL |
 | is_active | BIT | N | - | - | - | 1 | - | - |
 | created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
 | updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
@@ -589,9 +593,9 @@ P1 복합 PK(rating_id, tag_id), U1(rating_id, slot_no). 슬롯 CHECK와 UNIQUE�
 
 제약과 처리 규칙
 
-U1(place_id, usage_start_at, usage_end_at). CHECK usage_end_at > usage_start_at. 대상 유형·유료 시설 여부는 시스템 데이터로 검증한다.
+U1(place_id, usage_start_at, usage_end_at, room_type). CHECK usage_end_at > usage_start_at. 대상 유형·유료 시설 여부는 시스템 데이터로 검증한다.
 
-시스템 시드로 수량을 설정하며 관리자 직접 장소 CRUD 또는 실제 재고 연동을 제공하지 않는다. 하나의 숙소 재고 행은 고정 숙박 패키지 구간으로 정의하고 같은 객실 풀의 겹치는 구간을 생성하지 않는다.
+관광시설 수량은 시스템 시드로 설정한다. 객실 기능 브랜치는 숙소·날짜별 가상 객실 수량을 필요할 때 생성하며 실제 호텔 재고를 연동하지 않는다. 하나의 숙소 재고 행은 객실 종류별 1박 구간이고 같은 객실 종류의 구간이 겹치지 않게 관리한다. 관리자 직접 장소 CRUD는 제공하지 않는다.
 
 16 가상 예약
 
@@ -599,7 +603,7 @@ U1(place_id, usage_start_at, usage_end_at). CHECK usage_end_at > usage_start_at.
 | --- | --- | --- |
 | virtual_reservations | 가상 예약 | 회원의 가상 예약과 수량 점유 상태를 저장한다. |
 
-관련 요구사항 및 구현 범위  DAR-11 / R3 선택 확장
+관련 요구사항 및 구현 범위  DAR-11 / 가상 예약·결제
 
 | 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -633,7 +637,7 @@ PENDING은 이미 수량을 점유한다. 결제가 없으면 생성 트랜잭�
 | --- | --- | --- |
 | virtual_payments | 가상 결제 | 멱등 요청 단위의 가상 결제 성공·실패·환불 상태를 보관한다. |
 
-관련 요구사항 및 구현 범위  DAR-12 / R3 선택 확장
+관련 요구사항 및 구현 범위  DAR-12 / 가상 예약·결제
 
 | 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -662,7 +666,7 @@ CHECK: READY이면 processed_at NULL, 그 외는 필수. REFUNDED일 때만 refu
 | --- | --- | --- |
 | reservation_logs | 예약 수량 변경 이력 | 커밋된 예약 생성·변경·취소와 재고 증감을 함께 기록한다. |
 
-관련 요구사항 및 구현 범위  DAR-11 / R3 선택 확장
+관련 요구사항 및 구현 범위  DAR-11 / 가상 예약·결제
 
 | 컬럼명 | 자료형 | NULL | PK | FK | UNIQUE | DEFAULT | CHECK | 설명 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -737,7 +741,7 @@ FK는 기본 ON DELETE NO ACTION / ON UPDATE NO ACTION으로 생성한다. 대�
 
 소유권과 권한
 
-개인 데이터 API는 모든 조회·수정·삭제마다 로그인 사용자와 소유자를 비교한다. jobId만으로 권한을 부여하지 않으며 비회원은 임시 토큰 해시도 확인한다. 관리자는 일반 회원으로서 자신의 데이터에만 접근하고 별도 운영 권한은 키워드·회원 상태 관리 및 필요한 R3 운영 조회로 한정한다. 세션·로그아웃 처리는 Spring 세션 저장소에서 수행하며 별도 세션 테이블은 본 업무 스키마에 포함하지 않는다.
+개인 데이터 API는 모든 조회·수정·삭제마다 로그인 사용자와 소유자를 비교한다. jobId만으로 권한을 부여하지 않으며 비회원은 임시 토큰 해시도 확인한다. 관리자는 일반 회원으로서 자신의 데이터에만 접근하고 별도 운영 권한은 회원 상태 관리로 한정한다. 세션·로그아웃 처리는 Spring 세션 저장소에서 수행하며 별도 세션 테이블은 본 업무 스키마에 포함하지 않는다.
 
 시간과 금액
 
@@ -763,7 +767,7 @@ AI 시간 제한과 비회원 데이터
 
 users의 비식별 PK 행은 로그 참조용으로 유지하며 개인정보를 남기지 않는다. operation_logs는 1년 보존 후 삭제한다. 로그의 reason에는 최소한의 사유 코드·설명만 저장한다. API 인증키·비밀번호 원문·금융정보는 어떤 JSON이나 로그에도 저장하지 않는다.
 
-R3 트랜잭션과 상태 전이
+가상 예약·결제 트랜잭션과 상태 전이
 
 예약 생성은 remaining_quantity >= 요청 수량 조건을 포함한 UPDATE로 수량을 차감한다. 영향 행이 1일 때만 예약과 수량 로그를 생성하고 함께 커밋한다. 0이면 매진 처리한다. 같은 request_key 충돌로 실패한 차감도 롤백한 뒤 기존 예약을 반환한다.
 
@@ -779,4 +783,4 @@ R3 트랜잭션과 상태 전이
 
 PK·UNIQUE 외에 모든 FK에 조회용 인덱스를 검토한다. 주요 인덱스는 recommendation_requests(user_id, created_at DESC), itineraries(user_id, updated_at DESC), ai_jobs(status, created_at), ai_jobs(expires_at), ai_jobs(user_id, created_at), place_ratings(place_id) INCLUDE(score), place_rating_tags(tag_id, rating_id), operation_logs(created_at), virtual_reservations(user_id, created_at), reservation_logs(reservation_id, created_at)이다.
 
-회원 간 접근 차단, 비회원 jobId 유출 시 접근 차단, AI 재시작·최대 3회·시간 제한, 후보 3~5개 검증, 즐겨찾기 음식점 차단, 0~3 태그 허용 및 4번째 태그 차단, 동일 장소 평가 갱신, 이력 삭제 후 일정 유지, 탈퇴와 로그 보존을 확인한다. R3 도입 시 20개 병렬 요청에서 초과 예약·중복 성공 결제·부분 저장 0건을 검증한다.
+회원 간 접근 차단, 비회원 jobId 유출 시 접근 차단, AI 재시작·최대 3회·시간 제한, 후보 3~5개 검증, 즐겨찾기 음식점 차단, 0~3 태그 허용 및 4번째 태그 차단, 동일 장소 평가 갱신, 이력 삭제 후 일정 유지, 탈퇴와 로그 보존을 확인한다. 가상 예약·결제 검증 시 20개 병렬 요청에서 초과 예약·중복 성공 결제·부분 저장 0건을 검증한다.

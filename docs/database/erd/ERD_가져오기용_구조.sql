@@ -12,6 +12,7 @@ CREATE TABLE [users] (
     [status] VARCHAR(20) NOT NULL,
     [created_at] DATETIME2(3) NOT NULL,
     [updated_at] DATETIME2(3) NOT NULL,
+    [home_area] NVARCHAR(60) NULL,
     [withdrawn_at] DATETIME2(3) NULL,
     CONSTRAINT [PK_users] PRIMARY KEY ([user_id])
 );
@@ -207,6 +208,7 @@ CREATE TABLE [reservation_stock] (
     [total_quantity] INT NOT NULL,
     [remaining_quantity] INT NOT NULL,
     [unit_price] DECIMAL(12,2) NOT NULL,
+    [room_type] VARCHAR(20) NULL,
     [quantity_unit] VARCHAR(10) NOT NULL,
     [is_active] BIT NOT NULL,
     [created_at] DATETIME2(3) NOT NULL,

@@ -15,6 +15,7 @@ erDiagram
         VARCHAR_20_ status
         DATETIME2_3_ created_at
         DATETIME2_3_ updated_at
+        NVARCHAR_60_ home_area
         DATETIME2_3_ withdrawn_at
     }
     keyword_categories {
@@ -182,6 +183,7 @@ erDiagram
         INT total_quantity
         INT remaining_quantity
         DECIMAL_12_2_ unit_price
+        VARCHAR_20_ room_type
         VARCHAR_10_ quantity_unit
         BIT is_active
         DATETIME2_3_ created_at
