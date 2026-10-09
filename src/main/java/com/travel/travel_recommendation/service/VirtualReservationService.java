@@ -359,7 +359,7 @@ public class VirtualReservationService {
             BigDecimal amount=target.unitPrice().multiply(BigDecimal.valueOf(quantity));
             jdbc.update("""
                 UPDATE dbo.virtual_reservations SET stock_id=?, quantity=?, party_size=?, expected_amount=?,
-                       booking_snapshot_json=?, updated_at=SYSUTCDATETIME() WHERE reservation_id=?""",
+                       booking_snapshot_json=?, updated_at=SYSDATETIME() WHERE reservation_id=?""",
                 target.stockId(),quantity,partySize,amount,snapshot(target),r.id());
             return null;
         }));
@@ -385,13 +385,13 @@ public class VirtualReservationService {
 
     private CancelOutcome cancelLocked(Row r, String reason) {
         int refunded=jdbc.update("""
-            UPDATE dbo.virtual_payments SET status='REFUNDED', refunded_at=SYSUTCDATETIME()
+            UPDATE dbo.virtual_payments SET status='REFUNDED', refunded_at=SYSDATETIME()
             WHERE reservation_id=? AND status='SUCCESS'""",r.id());
         jdbc.update("""
-            UPDATE dbo.virtual_payments SET status='FAILED', failure_code='RESERVATION_CANCELED', processed_at=SYSUTCDATETIME()
+            UPDATE dbo.virtual_payments SET status='FAILED', failure_code='RESERVATION_CANCELED', processed_at=SYSDATETIME()
             WHERE reservation_id=? AND status='READY'""",r.id());
         int canceled=jdbc.update("""
-            UPDATE dbo.virtual_reservations SET status='CANCELED', canceled_at=SYSUTCDATETIME(), updated_at=SYSUTCDATETIME()
+            UPDATE dbo.virtual_reservations SET status='CANCELED', canceled_at=SYSDATETIME(), updated_at=SYSDATETIME()
             WHERE reservation_id=? AND status IN ('PENDING','CONFIRMED')""",r.id());
         if(canceled!=1) throw new IllegalStateException("Reservation state changed while locked");
         var change=giveBack(r.stockId(),r.quantity());
@@ -434,12 +434,12 @@ public class VirtualReservationService {
             r.id(),key.toString(),hash(r.id(),r.amount()),r.amount());
         var outcome=gateway.charge(r.id(),r.amount(),simulateDecline);
         if(outcome.approved()) {
-            jdbc.update("UPDATE dbo.virtual_payments SET status='SUCCESS', processed_at=SYSUTCDATETIME() WHERE payment_id=? AND status='READY'",paymentId);
-            if(jdbc.update("UPDATE dbo.virtual_reservations SET status='CONFIRMED', updated_at=SYSUTCDATETIME() WHERE reservation_id=? AND status='PENDING'",r.id())!=1)
+            jdbc.update("UPDATE dbo.virtual_payments SET status='SUCCESS', processed_at=SYSDATETIME() WHERE payment_id=? AND status='READY'",paymentId);
+            if(jdbc.update("UPDATE dbo.virtual_reservations SET status='CONFIRMED', updated_at=SYSDATETIME() WHERE reservation_id=? AND status='PENDING'",r.id())!=1)
                 throw new IllegalStateException("Reservation state changed while locked");
             return new PaymentResult(paymentId,"SUCCESS",false);
         }
-        jdbc.update("UPDATE dbo.virtual_payments SET status='FAILED', failure_code=?, processed_at=SYSUTCDATETIME() WHERE payment_id=? AND status='READY'",
+        jdbc.update("UPDATE dbo.virtual_payments SET status='FAILED', failure_code=?, processed_at=SYSDATETIME() WHERE payment_id=? AND status='READY'",
             outcome.failureCode()==null?VirtualPaymentGateway.DECLINED:outcome.failureCode(),paymentId);
         return new PaymentResult(paymentId,"FAILED",false);
     }
@@ -465,7 +465,7 @@ public class VirtualReservationService {
 
     /** 일정 삭제 전에 호출한다. 예약은 남기고 일정 연결만 끊는다(정의서 '삭제와 참조 유지'). */
     public void detachItinerary(Long itineraryId) {
-        jdbc.update("UPDATE dbo.virtual_reservations SET itinerary_id=NULL, updated_at=SYSUTCDATETIME() WHERE itinerary_id=?",itineraryId);
+        jdbc.update("UPDATE dbo.virtual_reservations SET itinerary_id=NULL, updated_at=SYSDATETIME() WHERE itinerary_id=?",itineraryId);
     }
 
     /** 탈퇴 트랜잭션 안에서 호출한다. 점유 중 수량을 취소 절차로 한 번 복구한 뒤 로그·결제·예약을 지운다. */
@@ -485,7 +485,7 @@ public class VirtualReservationService {
     /** 조건부 차감. 영향 행이 없으면 매진 또는 수량 부족이다(SFR-16-01). */
     private Change take(Long stockId, int quantity) {
         var rows=jdbc.query("""
-            UPDATE dbo.reservation_stock SET remaining_quantity=remaining_quantity-?, updated_at=SYSUTCDATETIME()
+            UPDATE dbo.reservation_stock SET remaining_quantity=remaining_quantity-?, updated_at=SYSDATETIME()
             OUTPUT deleted.remaining_quantity, inserted.remaining_quantity
             WHERE stock_id=? AND is_active=1 AND remaining_quantity>=?""",
             (rs,n)->new Change(rs.getInt(1),rs.getInt(2)),quantity,stockId,quantity);
@@ -498,7 +498,7 @@ public class VirtualReservationService {
 
     private Change giveBack(Long stockId, int quantity) {
         var rows=jdbc.query("""
-            UPDATE dbo.reservation_stock SET remaining_quantity=remaining_quantity+?, updated_at=SYSUTCDATETIME()
+            UPDATE dbo.reservation_stock SET remaining_quantity=remaining_quantity+?, updated_at=SYSDATETIME()
             OUTPUT deleted.remaining_quantity, inserted.remaining_quantity
             WHERE stock_id=? AND remaining_quantity+?<=total_quantity""",
             (rs,n)->new Change(rs.getInt(1),rs.getInt(2)),quantity,stockId,quantity);

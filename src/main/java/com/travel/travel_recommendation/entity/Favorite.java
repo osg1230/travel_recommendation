@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation.entity;
 
+import com.travel.travel_recommendation.service.KoreaTime;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.*;
@@ -16,6 +17,6 @@ public class Favorite {
     @Column(name="created_at", nullable=false, columnDefinition="datetime2(3)") private LocalDateTime createdAt;
 
     public Favorite(Long userId, Long placeId) {
-        this.userId=userId; this.placeId=placeId; createdAt=LocalDateTime.now(ZoneOffset.UTC);
+        this.userId=userId; this.placeId=placeId; createdAt=KoreaTime.now();
     }
 }

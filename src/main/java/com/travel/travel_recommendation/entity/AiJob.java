@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation.entity;
 
+import com.travel.travel_recommendation.service.KoreaTime;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Nationalized;
@@ -35,10 +36,10 @@ public class AiJob {
     public AiJob(Long userId, byte[] guestHash, Long requestId, String input, LocalDateTime expiresAt) {
         id=UUID.randomUUID(); this.userId=userId; guestTokenHash=guestHash==null?null:guestHash.clone();
         this.requestId=requestId; requestJson=input; this.expiresAt=expiresAt;
-        jobType="RECOMMENDATION"; status="QUEUED"; createdAt=LocalDateTime.now(ZoneOffset.UTC);
+        jobType="RECOMMENDATION"; status="QUEUED"; createdAt=KoreaTime.now();
         message="확정 조건으로 여행지 후보를 조회할 준비를 하고 있어요.";
     }
-    public void searching() { status="SEARCHING_CANDIDATES"; startedAt=LocalDateTime.now(ZoneOffset.UTC); }
+    public void searching() { status="SEARCHING_CANDIDATES"; startedAt=KoreaTime.now(); }
     public static AiJob itinerary(AiJob parent, String input) {
         var job=new AiJob(parent.userId,parent.guestTokenHash,parent.requestId,input,parent.expiresAt);
         job.jobType="ITINERARY";
@@ -60,7 +61,7 @@ public class AiJob {
         return job;
     }
     public void generatingSchedule() {
-        status="GENERATING_SCHEDULE"; startedAt=LocalDateTime.now(ZoneOffset.UTC); attemptCount++;
+        status="GENERATING_SCHEDULE"; startedAt=KoreaTime.now(); attemptCount++;
         message="장소 좌표와 이동시간을 확인하고 날짜별로 배치하고 있어요.";
     }
     public void validatingSchedule() { status="VALIDATING_SCHEDULE"; message="시간 충돌과 방문 순서를 검사하고 있어요."; }
@@ -93,7 +94,7 @@ public class AiJob {
     }
     public void queueRecommendation() {
         status="RECOMMENDATION_QUEUED"; errorCode=null; completedAt=null;
-        startedAt=LocalDateTime.now(ZoneOffset.UTC);
+        startedAt=KoreaTime.now();
         message="여행지 추천 요청을 접수했어요.";
     }
     public void ranking() {
@@ -102,15 +103,15 @@ public class AiJob {
     }
     public void completeRecommendation(String json) {
         status="COMPLETED"; resultJson=json; errorCode=null;
-        completedAt=LocalDateTime.now(ZoneOffset.UTC); message="여행지 추천이 준비됐어요.";
+        completedAt=KoreaTime.now(); message="여행지 추천이 준비됐어요.";
     }
     public void failRecommendation(String code, String safeMessage) {
         // 재시도에는 같은 후보를 사용한다. 실패한 AI 원문은 저장하지 않는다.
         status="FAILED"; errorCode=code; message=safeMessage;
-        completedAt=LocalDateTime.now(ZoneOffset.UTC);
+        completedAt=KoreaTime.now();
     }
     public void fail(String code, String safeMessage) {
         status="FAILED"; errorCode=code; message=safeMessage; resultJson=null;
-        completedAt=LocalDateTime.now(ZoneOffset.UTC);
+        completedAt=KoreaTime.now();
     }
 }

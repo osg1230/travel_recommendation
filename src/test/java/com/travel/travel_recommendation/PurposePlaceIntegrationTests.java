@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation;
 
+import com.travel.travel_recommendation.service.KoreaTime;
 import com.travel.travel_recommendation.dto.*;
 import com.travel.travel_recommendation.repository.*;
 import com.travel.travel_recommendation.service.*;
@@ -45,7 +46,7 @@ class PurposePlaceIntegrationTests {
         when(ai.terms("상어 관람")).thenReturn(new OpenAiPurposeClient.Terms(List.of("아쿠아리움"),List.of("바다")));
         when(maps.searchNationwide(eq("아쿠아리움"),anyList())).thenReturn(List.of(new KakaoPlace(SOURCE,"ATTRACTION","테스트 아쿠아리움 여수",
             YEOSU,YEOSU+" 오동도로 61-11","여행 > 관광명소 > 아쿠아리움",127.765,34.745,"https://place.map.kakao.com/"+SOURCE,
-            LocalDateTime.now(ZoneOffset.UTC).withNano(0))));
+            KoreaTime.now().withNano(0))));
     }
     private UUID request(String purpose) {
         var conditions=new ConfirmedTravelConditions("TEXT","상어 보고 싶어","",null,null,null,null,null,null,null,List.of(),"").withPurpose(purpose);
@@ -108,7 +109,7 @@ class PurposePlaceIntegrationTests {
             new TourApiClient.SearchPlace("2002","12","보령 갯벌체험장","충청남도 보령시 해안로 607-5",126.52,36.33)));
         when(maps.findNear(eq("여수 갯벌 노을마을"),anyDouble(),anyDouble(),eq(YEOSU))).thenReturn(Optional.of(new KakaoPlace(TIDAL,
             "ATTRACTION","여수갯벌노을마을",YEOSU,YEOSU+" 소라면 사곡리 1223","여행 > 체험여행 > 정보화,체험마을",127.568,34.790,
-            "https://place.map.kakao.com/"+TIDAL,LocalDateTime.now(ZoneOffset.UTC).withNano(0))));
+            "https://place.map.kakao.com/"+TIDAL,KoreaTime.now().withNano(0))));
         when(maps.searchNationwide(eq("갯벌 체험장"),anyList())).thenReturn(List.of());
         var first=request("갯벌 체험");
         purposes.enrich(first);

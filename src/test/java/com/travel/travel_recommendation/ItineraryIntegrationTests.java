@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation;
 
+import com.travel.travel_recommendation.service.KoreaTime;
 import com.travel.travel_recommendation.dto.*;
 import com.travel.travel_recommendation.repository.*;
 import com.travel.travel_recommendation.service.*;
@@ -227,7 +228,7 @@ class ItineraryIntegrationTests {
         // 시스템 관광지에는 좌표가 없어 주변을 찾을 지점이 없으므로, 이 테스트에서만 좌표를 넣는다.
         jdbc.update("UPDATE dbo.places SET latitude=37.7, longitude=128.9 WHERE place_type='ATTRACTION' AND region=?",region);
         em.flush(); em.clear();
-        var checked=LocalDateTime.now(ZoneOffset.UTC).withNano(0);
+        var checked=KoreaTime.now().withNano(0);
         var nearby=new KakaoPlace("990000001","RESTAURANT","주변테스트식당",region,region+" 테스트로 1","음식점 > 한식 > 국수",
             128.901,37.701,"https://place.map.kakao.com/990000001",checked);
         when(maps.searchRestaurantsNear(anyDouble(),anyDouble(),eq(region),anyInt(),anyInt())).thenReturn(List.of(nearby));
@@ -427,7 +428,7 @@ class ItineraryIntegrationTests {
         mvc.perform(get(resultUrl(id)).session(new MockHttpSession())).andExpect(status().isNotFound())
             .andExpect(content().string(containsString("30분 넘게 아무 동작이 없어 세션이 끝났을 수 있어요")));
         mvc.perform(get(resultUrl(parent)).session(session)).andExpect(status().isNotFound());
-        em.flush(); jdbc.update("UPDATE dbo.ai_jobs SET expires_at=DATEADD(hour,-1,SYSUTCDATETIME()) WHERE job_id=?",id.toString()); em.clear();
+        em.flush(); jdbc.update("UPDATE dbo.ai_jobs SET expires_at=DATEADD(hour,-1,SYSDATETIME()) WHERE job_id=?",id.toString()); em.clear();
         mvc.perform(get(resultUrl(id)).session(session)).andExpect(status().isNotFound());
     }
     @Test void changedPlaceCannotComplete() {
@@ -438,7 +439,7 @@ class ItineraryIntegrationTests {
     }
     @Test void lateResultCannotComplete() {
         var id=create(); var work=schedules.claim(id); var result=schedules.generate(work);
-        em.flush(); jdbc.update("UPDATE dbo.ai_jobs SET started_at=DATEADD(minute,-3,SYSUTCDATETIME()) WHERE job_id=?",id.toString()); em.clear();
+        em.flush(); jdbc.update("UPDATE dbo.ai_jobs SET started_at=DATEADD(minute,-3,SYSDATETIME()) WHERE job_id=?",id.toString()); em.clear();
         schedules.complete(work,result);
         assertThat(schedules.view(id,null,hash).status()).isEqualTo("FAILED");
         assertThat(schedules.view(id,null,hash).result()).isNull();

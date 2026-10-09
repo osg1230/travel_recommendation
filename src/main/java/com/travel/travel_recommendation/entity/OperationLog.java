@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation.entity;
 
+import com.travel.travel_recommendation.service.KoreaTime;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Nationalized;
@@ -34,7 +35,7 @@ public class OperationLog {
         log.actionCode="MEMBER_STATUS_CHANGE";
         log.beforeStatus=before.name(); log.afterStatus=after.name();
         log.reason=reason; log.outcome="SUCCESS";
-        log.createdAt=LocalDateTime.now(ZoneOffset.UTC);
+        log.createdAt=KoreaTime.now();
         return log;
     }
 }

@@ -13,8 +13,8 @@ CREATE TABLE dbo.keyword_categories (
     category_name NVARCHAR(50) NOT NULL CONSTRAINT UQ_keyword_categories_name UNIQUE,
     sort_order INT NOT NULL CONSTRAINT DF_keyword_categories_sort DEFAULT 0,
     is_active BIT NOT NULL CONSTRAINT DF_keyword_categories_active DEFAULT 1,
-    created_at DATETIME2(3) NOT NULL CONSTRAINT DF_keyword_categories_created DEFAULT SYSUTCDATETIME(),
-    updated_at DATETIME2(3) NOT NULL CONSTRAINT DF_keyword_categories_updated DEFAULT SYSUTCDATETIME(),
+    created_at DATETIME2(3) NOT NULL CONSTRAINT DF_keyword_categories_created DEFAULT SYSDATETIME(),
+    updated_at DATETIME2(3) NOT NULL CONSTRAINT DF_keyword_categories_updated DEFAULT SYSDATETIME(),
     CONSTRAINT CK_keyword_categories_sort CHECK (sort_order >= 0)
 );
 CREATE TABLE dbo.keywords (
@@ -25,8 +25,8 @@ CREATE TABLE dbo.keywords (
     value_json NVARCHAR(MAX) NOT NULL,
     sort_order INT NOT NULL CONSTRAINT DF_keywords_sort DEFAULT 0,
     is_active BIT NOT NULL CONSTRAINT DF_keywords_active DEFAULT 1,
-    created_at DATETIME2(3) NOT NULL CONSTRAINT DF_keywords_created DEFAULT SYSUTCDATETIME(),
-    updated_at DATETIME2(3) NOT NULL CONSTRAINT DF_keywords_updated DEFAULT SYSUTCDATETIME(),
+    created_at DATETIME2(3) NOT NULL CONSTRAINT DF_keywords_created DEFAULT SYSDATETIME(),
+    updated_at DATETIME2(3) NOT NULL CONSTRAINT DF_keywords_updated DEFAULT SYSDATETIME(),
     CONSTRAINT UQ_keywords_code UNIQUE (category_id, keyword_code),
     CONSTRAINT UQ_keywords_name UNIQUE (category_id, keyword_name),
     CONSTRAINT CK_keywords_json CHECK (ISJSON(value_json) = 1),

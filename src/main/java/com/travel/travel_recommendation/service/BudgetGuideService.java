@@ -24,7 +24,7 @@ public class BudgetGuideService {
     @Transactional(readOnly=true,timeout=10)
     public DestinationTiers tiers(String destination,String region) {
         Map<StayTier,List<String>> grouped=new EnumMap<>(StayTier.class);
-        var cacheLimit=java.time.LocalDateTime.now(java.time.ZoneOffset.UTC).minusHours(24);
+        var cacheLimit=KoreaTime.now().minusHours(24);
         for(var place:places.findLocalPlaces(region)) {
             if(!"ACCOMMODATION".equals(place.getPlaceType())) continue;
             // 장소 목록과 같이 카카오 후보는 조회 후 24시간 안의 것만 쓴다.

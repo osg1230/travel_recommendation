@@ -16,14 +16,21 @@ public final class ItineraryPlan {
      * 둘 다 이전 작업 JSON에는 없으므로 없으면 저녁 관광·집 이동 없이 만든다.
      */
     /** choices는 수정 요청으로 정한 식당·숙소 선택이다(처음 만든 초안과 이전 작업 JSON에는 없다). */
+    /** picking은 관광지를 고르기 전 후보와 AI가 순서를 정했는지 여부다(이전 작업 JSON에는 없다). */
     public record Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
                         LocalTime start, LocalTime end, Transport transport, int visitMinutes, Revision revision,
                         Constraints constraints, List<PlaceCandidate> reserve, List<PlaceCandidate> evening, HomeTrip home,
-                        Choices choices) {
+                        Choices choices, Picking picking) {
         public Input {
             reserve = reserve == null ? List.of() : List.copyOf(reserve);
             evening = evening == null ? List.of() : List.copyOf(evening);
             choices = choices == null ? Choices.NONE : choices;
+        }
+        public Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
+                     LocalTime start, LocalTime end, Transport transport, int visitMinutes, Revision revision,
+                     Constraints constraints, List<PlaceCandidate> reserve, List<PlaceCandidate> evening, HomeTrip home,
+                     Choices choices) {
+            this(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, choices, null);
         }
         public Input(UUID recommendationId, PlaceCandidateView places, ConfirmedTravelConditions conditions,
                      LocalTime start, LocalTime end, Transport transport, int visitMinutes, Revision revision,
@@ -56,17 +63,29 @@ public final class ItineraryPlan {
             return List.copyOf(all);
         }
         public Input withPlaces(PlaceCandidateView places) {
-            return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, choices);
+            return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, choices, picking);
         }
         public Input withEvening(List<PlaceCandidate> evening) {
-            return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, choices);
+            return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, choices, picking);
         }
         public Input withHome(HomeTrip home) {
-            return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, choices);
+            return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, choices, picking);
         }
         public Input withChoices(Choices choices) {
-            return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, choices);
+            return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, choices, picking);
         }
+        public Input withPicking(Picking picking) {
+            return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, choices, picking);
+        }
+        /** AI가 정한 순서로 다시 고른 관광지·예비 관광지·저녁 관광 후보로 바꾼다. 고르기 전 후보는 더 쓰지 않으므로 비운다. */
+        public Input withPicked(List<PlaceCandidate> attractions, List<PlaceCandidate> reserve, List<PlaceCandidate> evening) {
+            var view = new PlaceCandidateView(places.jobId(), places.destination(), places.durationDays(), places.accommodationNeeded(),
+                attractions, places.accommodations(), places.restaurants());
+            return new Input(recommendationId, view, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, choices,
+                new Picking(List.of(), true));
+        }
+        /** AI가 정한 순서로 관광지를 골랐는지. */
+        public boolean pickedByAi() { return picking != null && picking.byAi(); }
         private int dayCount() { return conditions == null || conditions.durationDays() == null ? 1 : conditions.durationDays(); }
         /** n일차 관광을 시작하는 시각. 집 출발을 정했으면 첫날은 집에서 출발해 여행지에 도착한 시각이다. */
         public LocalTime dayStart(int day) { return home != null && day == 1 ? home.arrivalAtDestination() : start; }
@@ -100,6 +119,15 @@ public final class ItineraryPlan {
         public LocalTime leaveDestination() {
             int at = arriveBy.toSecondOfDay() / 60 - returnMinutes - SPARE_MINUTES;
             return LocalTime.ofSecondOfDay(Math.max(0, at / 10 * 10) * 60L);
+        }
+    }
+    /**
+     * 관광지를 고르는 과정의 기록. pool은 일정 작업을 만들 때의 관광지 후보 전체로, 작업이 시작되기 전에 AI가 순서를 정해
+     * 다시 고를 때 쓴다(다시 고른 뒤에는 비운다). byAi는 지금 고른 관광지가 AI가 정한 순서를 따른 것인지다.
+     */
+    public record Picking(List<PlaceCandidate> pool, boolean byAi) {
+        public Picking {
+            pool = pool == null ? List.of() : List.copyOf(pool);
         }
     }
     /**

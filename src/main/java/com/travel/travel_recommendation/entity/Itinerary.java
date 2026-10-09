@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation.entity;
 
+import com.travel.travel_recommendation.service.KoreaTime;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Nationalized;
@@ -31,13 +32,13 @@ public class Itinerary {
         this.userId=userId; this.requestId=requestId; this.destinationPlaceId=destinationPlaceId;
         this.title=title; this.startDate=startDate; this.endDate=endDate;
         this.transportation=transportation; this.conditionsSnapshotJson=conditionsSnapshotJson;
-        createdAt=updatedAt=LocalDateTime.now(ZoneOffset.UTC);
+        createdAt=updatedAt=KoreaTime.now();
     }
     /** 사용자가 적용한 수정안으로 기간·이동수단·조건 스냅샷을 바꾼다. 제목은 유지한다. */
     public void applyRevision(Long requestId, LocalDate startDate, LocalDate endDate, String transportation, String conditionsSnapshotJson) {
         this.requestId=requestId; this.startDate=startDate; this.endDate=endDate;
         this.transportation=transportation; this.conditionsSnapshotJson=conditionsSnapshotJson;
-        updatedAt=LocalDateTime.now(ZoneOffset.UTC);
+        updatedAt=KoreaTime.now();
     }
     /** 같은 내용으로 다시 만든 수정용 초안을 연결한다. 일정 내용은 그대로라 버전(updatedAt)은 바꾸지 않는다. */
     public void relinkDraft(String conditionsSnapshotJson) {
@@ -45,6 +46,6 @@ public class Itinerary {
     }
     /** 제목만 바꾼다. 시각·장소·순서는 수정안 적용(applyRevision)으로만 바꾼다. */
     public void rename(String title) {
-        this.title=title; updatedAt=LocalDateTime.now(ZoneOffset.UTC);
+        this.title=title; updatedAt=KoreaTime.now();
     }
 }

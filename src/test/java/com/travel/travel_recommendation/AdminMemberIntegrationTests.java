@@ -93,7 +93,7 @@ class AdminMemberIntegrationTests {
         assertThatThrownBy(()->members.changeStatus(member.getId(),"WITHDRAWN","탈퇴 처리",admin.getLoginId()))
             .isInstanceOf(org.springframework.web.server.ResponseStatusException.class).hasMessageContaining("정상과 이용 제한");
         // 탈퇴 상태는 withdrawn_at이 있어야 한다는 DB 제약에 맞춰 만든다.
-        jdbc.update("UPDATE dbo.users SET status='WITHDRAWN', withdrawn_at=SYSUTCDATETIME() WHERE user_id=?",member.getId());
+        jdbc.update("UPDATE dbo.users SET status='WITHDRAWN', withdrawn_at=SYSDATETIME() WHERE user_id=?",member.getId());
         em.clear();
         assertThatThrownBy(()->members.changeStatus(member.getId(),"ACTIVE","복구",admin.getLoginId()))
             .isInstanceOf(org.springframework.web.server.ResponseStatusException.class).hasMessageContaining("탈퇴한 회원");

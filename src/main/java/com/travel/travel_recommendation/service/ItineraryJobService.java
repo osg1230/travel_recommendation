@@ -175,9 +175,9 @@ public class ItineraryJobService {
         if(start==null || end==null || (constraints!=null && !end.isAfter(start)))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"하루 시작·종료 시간을 확인해 주세요.");
         // 하루 시간·체류시간으로 추정한 수만큼 관광지를 고른다. 실제로 다 들어가는지는 일정 생성 때 이동시간으로 다시 확인한다.
-        List<PlaceCandidate> selected;
         // 일정의 중심 장소가 있으면 맨 앞에 두고 그 주변부터, 없으면 가운데에서 가까운 곳부터 고른다.
         // 같은 종류(해수욕장 등)는 돌아가며 고르고, 고른 여행 취향에 맞는 곳은 그중에서도 먼저 고른다.
+        // 여기서 고른 것은 조건 충돌을 바로 알리기 위한 기본 선택이다. 작업이 시작되기 전에 AI가 순서를 정하면 그 순서로 다시 고른다(PlacePickService).
         // 사찰·성당은 사용자가 원한 경우(문화·역사 취향, 목적에 절·성당)가 아니면 한 곳만 제자리에 두고 뒤로 보낸다.
         // 사용자가 고른 필수·중심 장소와 목적 시설·축제 장소는 옮기지 않는다.
         Set<Long> keepInOrder=new HashSet<>();
@@ -189,32 +189,21 @@ public class ItineraryJobService {
         var destinationPlace=this.places.findById(destinationId).orElse(null);
         var orderThemes=ThemePlaces.withHeritageDestination(current.conditions().themeNames(),
             destinationPlace==null?null:destinationPlace.getName(),destinationPlace==null?null:destinationPlace.getSubtype());
-        // 마지막으로 대릉원 안의 천마총처럼 종류가 같고 아주 가까운 곳은 한 곳만 남긴다.
-        var ordered=TripConstraints.withoutSameSpot(ThemePlaces.religiousLast(TripConstraints.aroundCenters(places.attractions(),
+        // 대릉원 안의 천마총처럼 종류가 같고 아주 가까운 곳은 후보에서부터 한 곳만 남긴다. AI가 순서를 정할 때도 이 후보(pool)를 쓴다.
+        var pool=TripConstraints.withoutSameSpot(places.attractions(),keepInOrder);
+        var ordered=ThemePlaces.religiousLast(TripConstraints.aroundCenters(pool,
             constraints==null?List.of():constraints.centerPlaceIds(),orderThemes),
-            orderThemes,current.conditions().travelPurpose(),keepInOrder),keepInOrder);
-        // 숙박 여행이면 저녁 관광에 어울리는 곳(야경·산책·야시장 등)을 먼저 저녁 몫으로 떼어 두고 나머지로 낮 관광지를 고른다.
-        // 필수·중심 장소는 낮 일정에 넣어야 하므로 떼어 두지 않는다.
-        List<PlaceCandidate> evening=List.of();
-        if(places.accommodationNeeded() && start!=null && end!=null && end.isAfter(start)) {
-            Set<Long> keepForDay=new HashSet<>();
-            if(constraints!=null) { keepForDay.addAll(constraints.requiredPlaceIds()); keepForDay.addAll(constraints.centerPlaceIds()); }
-            int daily=constraints!=null && constraints.dailyVisits()!=null?constraints.dailyVisits()
-                :TripConstraints.estimatedDailyCapacity(start,end,visitMinutes);
-            evening=TripConstraints.eveningPlaces(ordered,keepForDay,TripConstraints.eveningShare(ordered.size(),days,daily));
-        }
-        final var eveningPool=evening;
-        var daytimeOrder=ordered.stream().filter(p->!eveningPool.contains(p)).toList();
+            orderThemes,current.conditions().travelPurpose(),keepInOrder);
+        Arranged arranged;
         try {
-            selected=TripConstraints.select(daytimeOrder,days,start,end,visitMinutes,constraints);
+            arranged=arrange(ordered,Set.of(),false,places.accommodationNeeded(),days,start,end,visitMinutes,constraints);
         } catch(IllegalArgumentException invalid) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"화면에 있는 장소와 값으로 조건을 다시 골라 주세요.");
         }
         places=new PlaceCandidateView(places.jobId(),places.destination(),places.durationDays(),places.accommodationNeeded(),
-            selected,places.accommodations(),places.restaurants());
-        // 예비 관광지는 저녁 몫을 뺀 후보에서 고른다. 저녁에 들른 곳이 낮 관광지로 다시 쓰이지 않게 한다.
-        var reserve=reserve(daytimeOrder,selected);
-        var input=new Input(parentId,places,current.conditions(),start,end,transport,visitMinutes,null,constraints,reserve,evening,home);
+            arranged.selected(),places.accommodations(),places.restaurants());
+        var input=new Input(parentId,places,current.conditions(),start,end,transport,visitMinutes,null,constraints,arranged.reserve(),arranged.evening(),home)
+            .withPicking(new Picking(pool,false));
         try {
             generator.checkInput(input);
         } catch(RecommendationException error) {
@@ -225,6 +214,37 @@ public class ItineraryJobService {
         }
         var parent=access.owned(parentId,login,hash,"RECOMMENDATION");
         return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();
+    }
+
+    /** 일정에 넣을 관광지(selected), 예비 관광지(reserve), 저녁 관광 후보(evening). */
+    public record Arranged(List<PlaceCandidate> selected,List<PlaceCandidate> reserve,List<PlaceCandidate> evening) {}
+
+    /**
+     * 줄 세운 관광지 후보(ordered)에서 저녁 관광 몫을 떼고 낮 관광지와 예비 관광지를 고른다.
+     * skips는 AI가 뺄 곳으로 적은 곳이다(ordered의 맨 뒤). 저녁 관광·예비 관광지로는 쓰지 않고 낮 관광지가 모자랄 때만 쓰인다.
+     * aiOrdered면 앞쪽은 낮에 갈 만한 곳이므로, 낮 관광지 수만큼 건너뛴 뒤쪽에서 저녁 관광 후보를 고른다.
+     * @throws IllegalArgumentException 화면에 없는 장소·범위를 벗어난 값
+     * @throws TripConstraints.ConflictException 필수 조건끼리 또는 시간·후보 수와 모순될 때
+     */
+    public static Arranged arrange(List<PlaceCandidate> ordered,Set<Long> skips,boolean aiOrdered,boolean stay,int days,
+                                   LocalTime start,LocalTime end,int visitMinutes,Constraints constraints) {
+        // 숙박 여행이면 저녁 관광에 어울리는 곳(야경·산책·야시장 등)을 먼저 저녁 몫으로 떼어 두고 나머지로 낮 관광지를 고른다.
+        // 필수·중심 장소는 낮 일정에 넣어야 하므로 떼어 두지 않는다.
+        List<PlaceCandidate> evening=List.of();
+        if(stay && start!=null && end!=null && end.isAfter(start)) {
+            Set<Long> keepForDay=new HashSet<>();
+            if(constraints!=null) { keepForDay.addAll(constraints.requiredPlaceIds()); keepForDay.addAll(constraints.centerPlaceIds()); }
+            int daily=constraints!=null && constraints.dailyVisits()!=null?constraints.dailyVisits()
+                :TripConstraints.estimatedDailyCapacity(start,end,visitMinutes);
+            var eveningSource=!aiOrdered?ordered:ordered.stream().skip(Math.min(TripConstraints.MAX_TOTAL,(long)days*daily))
+                .filter(p->!skips.contains(p.placeId())).toList();
+            evening=TripConstraints.eveningPlaces(eveningSource,keepForDay,TripConstraints.eveningShare(ordered.size(),days,daily));
+        }
+        final var eveningPool=evening;
+        var daytimeOrder=ordered.stream().filter(p->!eveningPool.contains(p)).toList();
+        var selected=TripConstraints.select(daytimeOrder,days,start,end,visitMinutes,constraints);
+        // 예비 관광지는 저녁 몫을 뺀 후보에서 고른다. 저녁에 들른 곳이 낮 관광지로 다시 쓰이지 않게 한다.
+        return new Arranged(selected,reserve(daytimeOrder.stream().filter(p->!skips.contains(p.placeId())).toList(),selected),evening);
     }
 
     /** 예비 관광지 수. 섬처럼 갈 수 없어 빠진 곳을 채울 만큼만 둔다. */
@@ -357,7 +377,9 @@ public class ItineraryJobService {
         var evening=original.evening().stream().filter(p->!attractions.contains(p) && !spareLeft.contains(p)).toList();
         var input=new Input(original.recommendationId(),places,original.conditions(),start,end,
             changes.transport()==null?original.transport():changes.transport(),visitMinutes,revision,
-            original.constraints(),List.copyOf(spareLeft),evening,changes.home()==null?original.home():changes.home(),choices);
+            original.constraints(),List.copyOf(spareLeft),evening,changes.home()==null?original.home():changes.home(),choices)
+            // 수정안도 원본 초안이 AI 순서로 고른 것인지 이어받는다(방문 이유 문구에 쓴다).
+            .withPicking(original.pickedByAi()?new Picking(List.of(),true):null);
         generator.checkInput(input);
         var parent=access.owned(original.recommendationId(),login,hash,"RECOMMENDATION");
         return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();
@@ -703,7 +725,7 @@ public class ItineraryJobService {
     private java.util.Optional<PlaceCandidate> extraCandidate(Long id,PlaceCandidateView pool) {
         return places.findById(id).filter(Place::isActive).filter(p->"ATTRACTION".equals(p.getPlaceType()))
             .filter(p->pool.destination().region().equals(p.getRegion()))
-            .filter(p->p.getVerifiedAt()!=null && p.getVerifiedAt().isAfter(java.time.LocalDateTime.now(ZoneOffset.UTC).minusHours(24)))
+            .filter(p->p.getVerifiedAt()!=null && p.getVerifiedAt().isAfter(KoreaTime.now().minusHours(24)))
             .map(candidates::candidate);
     }
     /**
@@ -815,5 +837,5 @@ public class ItineraryJobService {
         }
         return null;
     }
-    private LocalDateTime now() { return LocalDateTime.now(ZoneOffset.UTC); }
+    private LocalDateTime now() { return KoreaTime.now(); }
 }

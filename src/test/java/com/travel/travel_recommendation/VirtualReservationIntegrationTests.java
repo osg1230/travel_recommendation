@@ -356,7 +356,7 @@ class VirtualReservationIntegrationTests {
     private long attraction(String name, String subtype) {
         long id=jdbc.queryForObject("""
             INSERT INTO dbo.places(place_type, source_provider, source_place_id, place_name, region, address, subtype, verified_at)
-            OUTPUT inserted.place_id VALUES ('ATTRACTION','KAKAO',?,?,N'강원특별자치도 강릉시',?,?,SYSUTCDATETIME())""",
+            OUTPUT inserted.place_id VALUES ('ATTRACTION','KAKAO',?,?,N'강원특별자치도 강릉시',?,?,SYSDATETIME())""",
             Long.class,"test_"+UUID.randomUUID(),name,"강원특별자치도 강릉시 시험로 "+RANDOM.nextInt(100_000),subtype);
         placeIds.add(id);
         return id;
@@ -365,7 +365,7 @@ class VirtualReservationIntegrationTests {
     private long kakaoPlace(String name, String address) {
         long id=jdbc.queryForObject("""
             INSERT INTO dbo.places(place_type, source_provider, source_place_id, place_name, region, address, verified_at)
-            OUTPUT inserted.place_id VALUES ('ACCOMMODATION','KAKAO',?,?,N'강원특별자치도 강릉시',?,SYSUTCDATETIME())""",
+            OUTPUT inserted.place_id VALUES ('ACCOMMODATION','KAKAO',?,?,N'강원특별자치도 강릉시',?,SYSDATETIME())""",
             Long.class,"test_"+UUID.randomUUID(),name,address);
         placeIds.add(id);
         return id;

@@ -25,6 +25,11 @@ public class ItineraryGenerator {
     private static final LocalTime LUNCH_FROM=LocalTime.of(11,0), LUNCH_UNTIL=LocalTime.of(13,30);
     /** 남는 시간을 예비 관광지로 채울 때도 수정안의 교체 후보로 남겨 둘 예비 관광지 수. */
     private static final int SPARE_KEPT=2;
+    /**
+     * 남는 시간을 채우는 예비 관광지는 직전 방문지에서 이 직선거리(km) 안에 있는 곳만 넣는다(자동차로 대략 20분).
+     * 시간이 남았다는 이유만으로 먼 곳까지 다녀오게 하지 않고, 가까운 곳이 없으면 그 시간은 비워 둔다.
+     */
+    private static final double SPARE_MAX_KM=10.0;
     /** 하루에 시간이 모자라 넣지 못한 관광지가 이만큼 나오면 그날은 마친다(이동시간 조회를 무한히 늘리지 않게). */
     private static final int MAX_MISSES=3;
     /**
@@ -134,7 +139,8 @@ public class ItineraryGenerator {
                 if(spare) {
                     // 예비 관광지는 수정안에서 바꿔 넣을 후보로도 쓰이므로 SPARE_KEPT곳은 남겨 둔다.
                     var located=locatedReserve(reserve,locations,addresses,deadline);
-                    pool=located.stream().filter(p->!skipToday.contains(p.placeId())).toList();
+                    pool=located.stream().filter(p->!skipToday.contains(p.placeId())
+                        && (anchor==null || kilometers(locations.get(anchor.placeId()),locations.get(p.placeId()))<=SPARE_MAX_KM)).toList();
                     if(located.size()<=SPARE_KEPT || pool.isEmpty()) break;
                 } else {
                     // 오늘 고를 수 있는 곳: 다른 날의 중심 장소는 빼고, 가장 가까운 중심 장소가 오늘인 곳을 먼저 본다.
@@ -254,7 +260,8 @@ public class ItineraryGenerator {
         if(avoidedKind!=null) reasons.add("바로 앞 방문지와 같은 종류("+avoidedKind.replace(",","·")+")가 이어지지 않게 골랐어요.");
         if(spare) reasons.add("하루 시간이 남아 더 넣은 곳이에요.");
         // 취향을 골랐는데 어느 기준에도 해당하지 않으면, 취향에 맞는 후보가 모자라 다른 종류로 채운 곳이다(TripConstraints.aroundCenters 순서).
-        else if(reasons.isEmpty() && avoidedKind==null && !ThemePlaces.placeThemes(conditions.themeNames()).isEmpty())
+        // AI가 순서를 정한 일정에서는 분류 글자와 상관없이 갈 만한 곳으로 고른 것이라 이 안내를 붙이지 않는다.
+        else if(reasons.isEmpty() && avoidedKind==null && !input.pickedByAi() && !ThemePlaces.placeThemes(conditions.themeNames()).isEmpty())
             reasons.add("고른 취향에 맞는 관광지 후보가 모자라 이 지역의 다른 종류 관광지로 채운 곳이에요.");
         return "관광·관람"+(place.subtypeLabel().isEmpty()?"":" · "+place.subtypeLabel())
             +(reasons.isEmpty()?"":"\n고른 이유: "+String.join(" ",reasons))
@@ -509,9 +516,9 @@ public class ItineraryGenerator {
     // 카카오 후보는 조회해 둔 좌표를, 그 밖에는 도로명 주소로 좌표를 찾는다. 같은 건물 주소는 한 번만 조회한다.
     private KakaoMapClient.Location locate(PlaceCandidate place,Map<String,KakaoMapClient.Location> addresses) {
         if("KAKAO".equals(place.sourceProvider()) && place.longitude()!=null && place.latitude()!=null) {
-            if(place.verifiedAt()==null || place.verifiedAt().isBefore(LocalDateTime.now(ZoneOffset.UTC).minusHours(24)))
+            if(place.verifiedAt()==null || place.verifiedAt().isBefore(KoreaTime.now().minusHours(24)))
                 throw failure("PLACE_STALE","장소 조회 결과가 오래됐어요. 장소 목록에서 다시 조회해 주세요.");
-            return new KakaoMapClient.Location(place.address(),place.longitude(),place.latitude(),place.verifiedAt().toInstant(ZoneOffset.UTC));
+            return new KakaoMapClient.Location(place.address(),place.longitude(),place.latitude(),place.verifiedAt().atZone(KoreaTime.ZONE).toInstant());
         }
         var matcher=ROAD.matcher(place.address());
         if(!matcher.matches()) throw failure("ADDRESS_REQUIRED","장소의 도로명 주소를 확인해야 해요.");

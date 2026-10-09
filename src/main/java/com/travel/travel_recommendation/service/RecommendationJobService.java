@@ -165,6 +165,6 @@ public class RecommendationJobService {
         }).toList());
         return mapper.writeValueAsString(json);
     }
-    private LocalDateTime now() { return LocalDateTime.now(ZoneOffset.UTC); }
+    private LocalDateTime now() { return KoreaTime.now(); }
     private ResponseStatusException notFound() { return new ResponseStatusException(HttpStatus.NOT_FOUND,"요청을 찾을 수 없거나 만료됐어요."); }
 }

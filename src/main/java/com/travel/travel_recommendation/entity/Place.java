@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation.entity;
 
+import com.travel.travel_recommendation.service.KoreaTime;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Nationalized;
@@ -13,7 +14,7 @@ import java.time.LocalDateTime;
 public class Place {
     public void updateDetails(String detailsJson) {
         this.detailsJson = detailsJson;
-        this.updatedAt = LocalDateTime.now(java.time.ZoneOffset.UTC);
+        this.updatedAt = KoreaTime.now();
     }
     public static Place fromKakao(com.travel.travel_recommendation.dto.KakaoPlace data) {
         var place=new Place(); place.sourceProvider="KAKAO"; place.sourcePlaceId=data.sourceId();

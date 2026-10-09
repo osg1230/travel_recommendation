@@ -1,12 +1,13 @@
 package com.travel.travel_recommendation.controller;
 
+import com.travel.travel_recommendation.service.KoreaTime;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import org.springframework.stereotype.Component;
 
 /**
- * 화면에 보이는 저장·조회 시각을 한국 시간으로 바꾼다. DB와 서버는 시각을 UTC로 다루므로 표시할 때만 바꾼다.
- * 템플릿에서 @timeText.dateTime(값)처럼 부른다. Instant와 UTC 기준 LocalDateTime을 모두 받는다.
+ * 화면에 보이는 저장·조회 시각을 한국 시간 문자열로 만든다. DB의 시각은 한국 시각(KoreaTime)으로 저장되어 있고, Instant는 한국 시간대로 바꿔 보여 준다.
+ * 템플릿에서 @timeText.dateTime(값)처럼 부른다. Instant와 한국 시각 LocalDateTime을 모두 받는다.
  */
 @Component("timeText")
 public class TimeText {
@@ -24,7 +25,7 @@ public class TimeText {
 
     private static String format(Object utc, String pattern) {
         Instant instant = utc instanceof Instant value ? value
-            : utc instanceof LocalDateTime value ? value.toInstant(ZoneOffset.UTC) : null;
+            : utc instanceof LocalDateTime value ? value.atZone(KoreaTime.ZONE).toInstant() : null;
         return instant == null ? "" : DateTimeFormatter.ofPattern(pattern).withZone(KOREA).format(instant);
     }
 }

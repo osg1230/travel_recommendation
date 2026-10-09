@@ -20,8 +20,8 @@ CREATE TABLE dbo.reservation_stock (
  unit_price DECIMAL(12,2) NOT NULL CONSTRAINT CK_reservation_stock_price CHECK (unit_price >= 0),
  quantity_unit VARCHAR(10) NOT NULL CONSTRAINT CK_reservation_stock_unit CHECK (quantity_unit IN ('ROOM','PERSON')),
  is_active BIT NOT NULL DEFAULT 1,
- created_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
- updated_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+ created_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
+ updated_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
  row_version ROWVERSION NOT NULL,
  CONSTRAINT UQ_reservation_stock_slot UNIQUE(place_id, usage_start_at, usage_end_at),
  CONSTRAINT CK_reservation_stock_remaining CHECK (remaining_quantity >= 0 AND remaining_quantity <= total_quantity),
@@ -42,8 +42,8 @@ CREATE TABLE dbo.virtual_reservations (
     CONSTRAINT CK_virtual_reservations_status CHECK (status IN ('PENDING','CONFIRMED','CANCELED')),
  payment_required BIT NOT NULL DEFAULT 1,
  booking_snapshot_json NVARCHAR(MAX) NOT NULL CONSTRAINT CK_virtual_reservations_snapshot CHECK (ISJSON(booking_snapshot_json) = 1),
- created_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
- updated_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+ created_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
+ updated_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
  canceled_at DATETIME2(3) NULL,
  row_version ROWVERSION NOT NULL,
  CONSTRAINT CK_virtual_reservations_canceled CHECK ((status = 'CANCELED' AND canceled_at IS NOT NULL) OR (status <> 'CANCELED' AND canceled_at IS NULL))
@@ -62,7 +62,7 @@ CREATE TABLE dbo.virtual_payments (
  status VARCHAR(12) NOT NULL DEFAULT 'READY'
     CONSTRAINT CK_virtual_payments_status CHECK (status IN ('READY','SUCCESS','FAILED','REFUNDED')),
  failure_code VARCHAR(60) NULL,
- created_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+ created_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
  processed_at DATETIME2(3) NULL,
  refunded_at DATETIME2(3) NULL,
  CONSTRAINT CK_virtual_payments_processed CHECK ((status = 'READY' AND processed_at IS NULL) OR (status <> 'READY' AND processed_at IS NOT NULL)),
@@ -86,7 +86,7 @@ CREATE TABLE dbo.reservation_logs (
  before_status VARCHAR(12) NULL,
  after_status VARCHAR(12) NOT NULL CONSTRAINT CK_reservation_logs_after_status CHECK (after_status IN ('PENDING','CONFIRMED','CANCELED')),
  reason NVARCHAR(500) NOT NULL,
- created_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+ created_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
  CONSTRAINT CK_reservation_logs_math CHECK (after_quantity = before_quantity + delta_quantity),
  CONSTRAINT CK_reservation_logs_before_status CHECK (before_status IS NULL OR before_status IN ('PENDING','CONFIRMED','CANCELED'))
 );

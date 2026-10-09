@@ -72,7 +72,7 @@ class UserRepositoryIntegrationTests {
     void withdrawnMembersDoNotReserveNickname() {
         User first = users.saveAndFlush(newUser("탈퇴_" + UUID.randomUUID()));
         String nickname = first.getNickname();
-        entityManager.createNativeQuery("UPDATE dbo.users SET status='WITHDRAWN', withdrawn_at=SYSUTCDATETIME() WHERE user_id=:id")
+        entityManager.createNativeQuery("UPDATE dbo.users SET status='WITHDRAWN', withdrawn_at=SYSDATETIME() WHERE user_id=:id")
                 .setParameter("id", first.getId()).executeUpdate();
         entityManager.clear();
         assertThat(users.existsByNicknameAndStatusNot(nickname, UserStatus.WITHDRAWN)).isFalse();

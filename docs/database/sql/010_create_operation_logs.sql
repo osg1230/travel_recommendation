@@ -16,7 +16,7 @@ CREATE TABLE dbo.operation_logs (
  reason NVARCHAR(1000) NOT NULL,
  outcome VARCHAR(10) NOT NULL CHECK(outcome IN ('SUCCESS','FAILED')),
  correlation_id UNIQUEIDENTIFIER NULL,
- created_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME()
+ created_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME()
 );
 CREATE INDEX IX_operation_logs_target ON dbo.operation_logs(target_type, target_id, created_at DESC);
 COMMIT;

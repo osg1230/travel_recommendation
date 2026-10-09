@@ -10,7 +10,7 @@ CREATE TABLE dbo.recommendation_candidates (
  rank_no TINYINT NOT NULL CHECK(rank_no BETWEEN 1 AND 5),
  recommendation_reason NVARCHAR(2000) NOT NULL,
  place_snapshot_json NVARCHAR(MAX) NOT NULL CHECK(ISJSON(place_snapshot_json)=1),
- created_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+ created_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
  UNIQUE(request_id,rank_no), UNIQUE(request_id,place_id)
 );
 CREATE INDEX IX_candidates_place ON dbo.recommendation_candidates(place_id);

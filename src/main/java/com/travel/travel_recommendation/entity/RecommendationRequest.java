@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation.entity;
 
+import com.travel.travel_recommendation.service.KoreaTime;
 import com.travel.travel_recommendation.dto.ConfirmedTravelConditions;
 import jakarta.persistence.*;
 import lombok.*;
@@ -34,6 +35,6 @@ public class RecommendationRequest {
         durationDays=c.durationDays()==null?null:c.durationDays().shortValue();
         budget=c.budget(); accommodationNeeded=c.accommodationNeeded();
         interpretationSummary=c.interpretationSummary();
-        createdAt=updatedAt=LocalDateTime.now(ZoneOffset.UTC);
+        createdAt=updatedAt=KoreaTime.now();
     }
 }

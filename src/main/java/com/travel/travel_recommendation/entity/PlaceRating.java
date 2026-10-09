@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation.entity;
 
+import com.travel.travel_recommendation.service.KoreaTime;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.*;
@@ -19,8 +20,8 @@ public class PlaceRating {
 
     public PlaceRating(Long userId, Long placeId, int score) {
         this.userId=userId; this.placeId=placeId; this.score=(short)score;
-        createdAt=updatedAt=LocalDateTime.now(ZoneOffset.UTC);
+        createdAt=updatedAt=KoreaTime.now();
     }
     /** 같은 장소를 다시 평가하면 새 행 대신 별점만 바꾼다. 태그는 서비스에서 교체한다. */
-    public void rescore(int score) { this.score=(short)score; updatedAt=LocalDateTime.now(ZoneOffset.UTC); }
+    public void rescore(int score) { this.score=(short)score; updatedAt=KoreaTime.now(); }
 }

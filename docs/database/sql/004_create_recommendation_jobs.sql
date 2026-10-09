@@ -15,8 +15,8 @@ CREATE TABLE dbo.recommendation_requests (
  duration_days SMALLINT NULL CHECK(duration_days>0),
  budget DECIMAL(12,2) NULL CHECK(budget>=0), accommodation_needed BIT NULL,
  interpretation_summary NVARCHAR(1000) NULL,
- created_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
- updated_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+ created_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
+ updated_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
  CHECK((start_date IS NULL AND end_date IS NULL) OR
        (start_date IS NOT NULL AND end_date IS NOT NULL AND end_date>=start_date
         AND duration_days IS NOT NULL AND duration_days=DATEDIFF(day,start_date,end_date)+1)),
@@ -36,7 +36,7 @@ CREATE TABLE dbo.ai_jobs (
  result_json NVARCHAR(MAX) NULL CHECK(ISJSON(result_json)=1),
  validation_errors_json NVARCHAR(MAX) NULL CHECK(ISJSON(validation_errors_json)=1),
  error_code VARCHAR(60) NULL, message NVARCHAR(1000) NULL,
- created_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(), started_at DATETIME2(3) NULL,
+ created_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(), started_at DATETIME2(3) NULL,
  completed_at DATETIME2(3) NULL, expires_at DATETIME2(3) NOT NULL, row_version ROWVERSION NOT NULL,
  CHECK((user_id IS NOT NULL AND guest_token_hash IS NULL) OR (user_id IS NULL AND guest_token_hash IS NOT NULL)),
  CHECK(user_id IS NOT NULL OR request_id IS NULL),
@@ -61,7 +61,7 @@ CREATE TABLE dbo.places (
  details_json NVARCHAR(MAX) NULL CHECK(ISJSON(details_json)=1),
  source_url NVARCHAR(1000) NULL, map_url NVARCHAR(1000) NULL,
  is_active BIT NOT NULL DEFAULT 1, verified_at DATETIME2(3) NOT NULL,
- created_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(), updated_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+ created_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(), updated_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
  UNIQUE(source_provider,source_place_id),
  CHECK((latitude IS NULL AND longitude IS NULL) OR (latitude IS NOT NULL AND longitude IS NOT NULL))
 );

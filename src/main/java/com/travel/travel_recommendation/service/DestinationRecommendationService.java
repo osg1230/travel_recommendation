@@ -102,7 +102,7 @@ public class DestinationRecommendationService {
         return job!=null && "RANKING_CANDIDATES".equals(job.getStatus()) && job.getAttemptCount()==work.attempt();
     }
     private boolean validOwnerAndTime(AiJob job) {
-        LocalDateTime now=LocalDateTime.now(ZoneOffset.UTC);
+        LocalDateTime now=KoreaTime.now();
         if(!job.getExpiresAt().isAfter(now) || job.getStartedAt()==null || job.getStartedAt().isBefore(now.minusSeconds(60))) {
             job.failRecommendation("RECOMMENDATION_TIMEOUT","추천 처리 시간이 초과되거나 요청이 만료됐어요. 다시 시도해 주세요.");return false;
         }

@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation;
 
+import com.travel.travel_recommendation.service.KoreaTime;
 import com.travel.travel_recommendation.dto.*;
 import com.travel.travel_recommendation.entity.*;
 import com.travel.travel_recommendation.repository.*;
@@ -89,7 +90,7 @@ class RecommendationHistoryIntegrationTests {
         var older=completed(owner,"오래된 요청");
         var pending=recommendations.create(conditions("처리 중 요청"),owner.getLoginId(),null);
         em.flush();
-        jdbcCreatedAt(requestId(older),LocalDateTime.now(ZoneOffset.UTC).minusDays(1));
+        jdbcCreatedAt(requestId(older),KoreaTime.now().minusDays(1));
         var list=history.list(owner.getLoginId());
         assertThat(list).extracting(RecommendationHistory.Summary::id).containsExactly(requestId(pending),requestId(older));
         assertThat(list.get(0).status()).isEqualTo("PENDING");
@@ -115,7 +116,7 @@ class RecommendationHistoryIntegrationTests {
         assertThatThrownBy(()->history.detail(requestId(job),other.getLoginId()))
             .isInstanceOf(ResponseStatusException.class).hasMessageContaining("찾을 수 없어요");
         // 추천 결과 화면 보관 기간이 지나면 이력은 보이되 결과 화면 링크는 주지 않는다.
-        jobs.findById(job).orElseThrow(); em.createNativeQuery("UPDATE dbo.ai_jobs SET expires_at=DATEADD(hour,-1,SYSUTCDATETIME()) WHERE job_id=?")
+        jobs.findById(job).orElseThrow(); em.createNativeQuery("UPDATE dbo.ai_jobs SET expires_at=DATEADD(hour,-1,SYSDATETIME()) WHERE job_id=?")
             .setParameter(1,job.toString()).executeUpdate(); em.clear();
         assertThat(history.detail(requestId(job),owner.getLoginId()).resultJobId()).isNull();
     }

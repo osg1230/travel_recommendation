@@ -60,7 +60,7 @@ class ItineraryRevisionIntegrationTests {
         String[][] extra={{"하슬라 테스트 정원","1001"},{"해변 테스트 공원","1002"},{"허브 테스트 실내 체험관","1003"}};
         for(var place:extra) jdbc.update("""
             INSERT INTO dbo.places(place_type,source_provider,source_place_id,place_name,region,address,subtype,description,source_url,verified_at)
-            VALUES('ATTRACTION','SYSTEM',?,?,N'강원특별자치도 강릉시',?,N'테스트',N'테스트 관광지',N'https://www.gn.go.kr/',DATEADD(day,-1,SYSUTCDATETIME()))""",
+            VALUES('ATTRACTION','SYSTEM',?,?,N'강원특별자치도 강릉시',?,N'테스트',N'테스트 관광지',N'https://www.gn.go.kr/',DATEADD(day,-1,SYSDATETIME()))""",
             "TEST_REVISION_"+place[1],place[0],"강원특별자치도 강릉시 경포로 "+place[1]);
         session=new MockHttpSession(); String token=UUID.randomUUID().toString();
         session.setAttribute("recommendationGuestToken",token);
@@ -175,12 +175,12 @@ class ItineraryRevisionIntegrationTests {
         jdbc.update("""
             INSERT INTO dbo.places(place_type,source_provider,source_place_id,place_name,region,address,subtype,description,source_url,verified_at)
             VALUES('ACCOMMODATION','SYSTEM','TEST_REVISION_STAY',N'테스트 바다 호텔',N'강원특별자치도 강릉시',N'강원특별자치도 강릉시 경포로 1100',
-                   N'호텔',N'테스트 숙소',N'https://www.gn.go.kr/',DATEADD(day,-1,SYSUTCDATETIME()))""");
+                   N'호텔',N'테스트 숙소',N'https://www.gn.go.kr/',DATEADD(day,-1,SYSDATETIME()))""");
         // 식당도 한 곳뿐이면 빼 달라고 해도 다른 곳이 없어 그대로 쓰므로 식당을 하나 더 넣는다.
         jdbc.update("""
             INSERT INTO dbo.places(place_type,source_provider,source_place_id,place_name,region,address,subtype,description,source_url,verified_at)
             VALUES('RESTAURANT','SYSTEM','TEST_REVISION_MEAL',N'테스트 순두부집',N'강원특별자치도 강릉시',N'강원특별자치도 강릉시 경포로 1200',
-                   N'한식',N'테스트 식당',N'https://www.gn.go.kr/',DATEADD(day,-1,SYSUTCDATETIME()))""");
+                   N'한식',N'테스트 식당',N'https://www.gn.go.kr/',DATEADD(day,-1,SYSDATETIME()))""");
         var original=completedDraft();
         var view=schedules.view(original,null,hash);
         long herb=spareId("허브 테스트 실내 체험관");

@@ -105,6 +105,44 @@ public final class TripConstraints {
         return List.copyOf(mixed);
     }
 
+    /** AI가 정한 순서에서 같은 종류가 이 수를 넘겨 이어지면 다른 종류를 먼저 둔다. */
+    static final int MAX_KIND_RUN = 2;
+
+    /**
+     * AI가 정한 순서로 관광지를 줄 세운다. 중심 장소를 맨 앞에, AI가 갈 만하다고 적은 순서(picks)를 그다음에,
+     * AI가 언급하지 않은 곳을 그 뒤에, AI가 뺄 곳(skips)으로 적은 곳을 맨 뒤에 둔다.
+     * 뺄 곳도 목록에는 남겨 두어, 갈 만한 곳이 모자랄 때만 쓰이게 한다. 후보에 없는 ID는 무시한다.
+     * 종류를 돌아가며 섞지 않고(mixKinds), 같은 종류가 MAX_KIND_RUN번을 넘겨 이어질 때만 순서를 조정한다.
+     */
+    public static List<PlaceCandidate> byPicks(List<PlaceCandidate> pool, List<Long> centerIds, List<Long> picks, List<Long> skips) {
+        var result = new ArrayList<PlaceCandidate>();
+        for (Long id : centerIds) pool.stream().filter(p -> p.placeId().equals(id) && !result.contains(p)).findFirst().ifPresent(result::add);
+        var wanted = new ArrayList<PlaceCandidate>();
+        for (Long id : picks)
+            pool.stream().filter(p -> p.placeId().equals(id) && !result.contains(p) && !wanted.contains(p)).findFirst().ifPresent(wanted::add);
+        pool.stream().filter(p -> !result.contains(p) && !wanted.contains(p) && !skips.contains(p.placeId())).forEach(wanted::add);
+        result.addAll(limitKindRuns(wanted));
+        pool.stream().filter(p -> !result.contains(p)).forEach(result::add);
+        return List.copyOf(result);
+    }
+
+    /**
+     * 같은 종류가 MAX_KIND_RUN번 이어졌으면 뒤에서 다른 종류인 곳을 먼저 당겨 온다. 그 밖의 순서는 그대로 둔다.
+     * 예) 해변A·해변B·해변C·박물관·해변D → 해변A·해변B·박물관·해변C·해변D
+     * 분류가 없거나 '관광,명소'로만 된 곳은 종류를 알 수 없어 이어진 것으로 세지 않는다.
+     */
+    static List<PlaceCandidate> limitKindRuns(List<PlaceCandidate> ordered) {
+        var waiting = new ArrayList<>(ordered);
+        var result = new ArrayList<PlaceCandidate>();
+        while (!waiting.isEmpty()) {
+            String run = repeatedKind(result);
+            var next = waiting.stream().filter(p -> run == null || !run.equals(kind(p))).findFirst().orElse(waiting.getFirst());
+            waiting.remove(next);
+            result.add(next);
+        }
+        return List.copyOf(result);
+    }
+
     /** 같은 종류의 관광지가 이 거리 안에 있으면 한 곳으로 본다. 예) 대릉원과 그 안의 천마총(약 250m). */
     static final int SAME_SPOT_METERS = 300;
 
@@ -125,6 +163,15 @@ public final class TripConstraints {
             if (!duplicate) result.add(place);
         }
         return List.copyOf(result);
+    }
+
+    /** 목록의 마지막 MAX_KIND_RUN곳이 모두 같은 종류면 그 종류, 아니면 null. */
+    private static String repeatedKind(List<PlaceCandidate> placed) {
+        if (placed.size() < MAX_KIND_RUN) return null;
+        String kind = kind(placed.getLast());
+        if (kind.isEmpty() || kind.equals("관광,명소")) return null;
+        for (int i = placed.size() - MAX_KIND_RUN; i < placed.size(); i++) if (!kind.equals(kind(placed.get(i)))) return null;
+        return kind;
     }
 
     /** 두 장소 사이의 대략적인 직선거리(m). 좌표가 없으면 아주 먼 것으로 본다. */

@@ -122,7 +122,7 @@ class LoginIntegrationTests {
         mvc.perform(post("/login").servletPath("/login").with(csrf()).param("loginId", "missing_" + UUID.randomUUID().toString().replace("-", ""))
                 .param("password", "Travel123!")).andExpect(redirectedUrl("/login?error")).andExpect(unauthenticated());
         for (String state : new String[]{"RESTRICTED", "WITHDRAWN"}) {
-            em.createNativeQuery("UPDATE dbo.users SET status=:state, withdrawn_at=CASE WHEN :state='WITHDRAWN' THEN SYSUTCDATETIME() ELSE NULL END WHERE user_id=:id")
+            em.createNativeQuery("UPDATE dbo.users SET status=:state, withdrawn_at=CASE WHEN :state='WITHDRAWN' THEN SYSDATETIME() ELSE NULL END WHERE user_id=:id")
                     .setParameter("state", state).setParameter("id", user.getId()).executeUpdate();
             em.clear();
             mvc.perform(post("/login").servletPath("/login").with(csrf()).param("loginId", user.getLoginId())

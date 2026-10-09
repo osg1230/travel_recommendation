@@ -112,5 +112,5 @@ public class RecommendationHistoryService {
         return users.findByLoginId(loginId).filter(u->u.getStatus()==UserStatus.ACTIVE)
             .map(User::getId).orElseThrow(()->new AccessDeniedException("Account unavailable"));
     }
-    private static LocalDateTime now() { return LocalDateTime.now(ZoneOffset.UTC); }
+    private static LocalDateTime now() { return KoreaTime.now(); }
 }

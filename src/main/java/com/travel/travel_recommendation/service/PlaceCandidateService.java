@@ -92,6 +92,8 @@ public class PlaceCandidateService {
             .sorted(Comparator.comparing((Place p)->!purposeIds.contains(p.getId()) && !festivalIds.contains(p.getId()))
                 .thenComparing((Place p)->ThemePlaces.matched(p.getName(),p.getSubtype(),themes).isEmpty())
                 .thenComparing((Place p)->!"KAKAO".equals(p.getSourceProvider()))
+                // 카카오 검색 결과에 먼저 나온 곳부터 둔다. 이름순으로 자르면 뒤쪽 글자로 시작하는 곳(정동진 등)이 빠진다.
+                .thenComparingInt((Place p)->PlaceRankDetails.read(p,mapper))
                 .thenComparing(Place::getName).thenComparing(Place::getId)).toList();
         var distinct=new ArrayList<Place>(); Set<String> seen=new HashSet<>();
         for(var place:candidates) {
@@ -109,16 +111,16 @@ public class PlaceCandidateService {
         return place.isActive() && region.equals(place.getRegion())
             && place.getName() != null && !place.getName().isBlank()
             && place.getAddress() != null && !place.getAddress().isBlank()
-            && place.getVerifiedAt() != null && !place.getVerifiedAt().isAfter(LocalDateTime.now(ZoneOffset.UTC))
+            && place.getVerifiedAt() != null && !place.getVerifiedAt().isAfter(KoreaTime.now())
             && ("KAKAO".equals(place.getSourceProvider()) ? usableKakao(place) : safeSource(place.getSourceUrl()));
     }
 
     private boolean usableKakao(Place place) {
-        if(!place.getVerifiedAt().isAfter(LocalDateTime.now(ZoneOffset.UTC).minusHours(24))
+        if(!place.getVerifiedAt().isAfter(KoreaTime.now().minusHours(24))
             || place.getLongitude()==null || place.getLatitude()==null
             || !place.getSourcePlaceId().matches("[1-9][0-9]{0,19}")
             || !("https://place.map.kakao.com/"+place.getSourcePlaceId()).equals(place.getSourceUrl())) return false;
-        try { new KakaoMapClient.Location(place.getAddress(),place.getLongitude().doubleValue(),place.getLatitude().doubleValue(),place.getVerifiedAt().toInstant(ZoneOffset.UTC)); return true; }
+        try { new KakaoMapClient.Location(place.getAddress(),place.getLongitude().doubleValue(),place.getLatitude().doubleValue(),place.getVerifiedAt().atZone(KoreaTime.ZONE).toInstant()); return true; }
         catch(IllegalArgumentException error) { return false; }
     }
 
