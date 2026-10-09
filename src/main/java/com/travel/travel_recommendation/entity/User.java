@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation.entity;
 
+import com.travel.travel_recommendation.service.KoreaTime;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -83,7 +84,7 @@ public class User {
     /** 회원 본인 탈퇴. 정의서 CHECK에 맞춰 상태와 탈퇴 시각을 함께 바꾸고 닉네임은 공통 익명 이름으로 바꾼다. */
     public void withdraw(String anonymousNickname, String unusablePasswordHash) {
         this.status = UserStatus.WITHDRAWN;
-        this.withdrawnAt = LocalDateTime.now(ZoneOffset.UTC);
+        this.withdrawnAt = KoreaTime.now();
         this.nickname = anonymousNickname;
         this.passwordHash = unusablePasswordHash;
         // 출발지는 개인 데이터라 탈퇴하면 남기지 않는다.
@@ -92,14 +93,14 @@ public class User {
 
     @PrePersist
     private void recordCreationTime() {
-        // DB 기본값과 동일하게 UTC로 저장한다. 화면 표시는 이후 KST로 변환한다.
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        // DB 기본값(SYSDATETIME)과 같은 기준인 한국 시각으로 저장한다.
+        LocalDateTime now = KoreaTime.now();
         createdAt = now;
         updatedAt = now;
     }
 
     @PreUpdate
     private void recordUpdateTime() {
-        updatedAt = LocalDateTime.now(ZoneOffset.UTC);
+        updatedAt = KoreaTime.now();
     }
 }

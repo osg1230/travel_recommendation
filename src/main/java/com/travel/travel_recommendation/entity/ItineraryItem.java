@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation.entity;
 
+import com.travel.travel_recommendation.service.KoreaTime;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Nationalized;
@@ -33,6 +34,6 @@ public class ItineraryItem {
         this.itineraryId=itineraryId; this.dayNo=(short)dayNo; this.sequenceNo=(short)sequenceNo;
         this.itemType=itemType; this.placeId=placeId; this.startAt=startAt; this.endAt=endAt;
         this.activity=activity; this.travelMinutes=travelMinutes; this.placeSnapshotJson=placeSnapshotJson;
-        createdAt=updatedAt=LocalDateTime.now(ZoneOffset.UTC);
+        createdAt=updatedAt=KoreaTime.now();
     }
 }

@@ -152,7 +152,7 @@ class PlaceCandidateIntegrationTests {
         long destinationId = destination(id, null);
         jdbc.update("UPDATE dbo.places SET is_active=0 WHERE place_id=?", destinationId); em.clear();
         mvc.perform(get(url(id, destinationId)).session(session)).andExpect(status().isConflict());
-        jdbc.update("UPDATE dbo.ai_jobs SET expires_at=DATEADD(hour,-1,SYSUTCDATETIME()) WHERE job_id=?", id); em.clear();
+        jdbc.update("UPDATE dbo.ai_jobs SET expires_at=DATEADD(hour,-1,SYSDATETIME()) WHERE job_id=?", id); em.clear();
         mvc.perform(get(url(id, destinationId)).session(session)).andExpect(status().isNotFound());
     }
 
@@ -162,7 +162,7 @@ class PlaceCandidateIntegrationTests {
         jdbc.update("UPDATE dbo.places SET source_url='https://www.visitbusan.net.evil.example/' WHERE source_place_id='R1_BS_HAEUNDAE'");
         jdbc.update("UPDATE dbo.places SET is_active=0 WHERE source_place_id='R1_BS_GAMCHEON'");
         jdbc.update("UPDATE dbo.places SET address=NULL WHERE source_place_id='R1_BS_SHILLA_STAY'");
-        jdbc.update("UPDATE dbo.places SET verified_at=DATEADD(day,1,SYSUTCDATETIME()) WHERE source_place_id='R1_BS_AMSO_GALBI'");
+        jdbc.update("UPDATE dbo.places SET verified_at=DATEADD(day,1,SYSDATETIME()) WHERE source_place_id='R1_BS_AMSO_GALBI'");
         em.clear();
         var result = service.find(id, destinationId, null, hash());
         assertThat(result.attractions()).isEmpty();

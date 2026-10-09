@@ -13,8 +13,8 @@ CREATE TABLE dbo.itineraries (
  end_date DATE NOT NULL,
  transportation VARCHAR(20) NOT NULL CHECK(transportation IN ('CAR','TRANSIT','WALK','MIXED','ANY')),
  conditions_snapshot_json NVARCHAR(MAX) NOT NULL CHECK(ISJSON(conditions_snapshot_json)=1),
- created_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
- updated_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+ created_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
+ updated_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
  row_version ROWVERSION NOT NULL,
  CONSTRAINT CK_itineraries_dates CHECK(end_date >= start_date)
 );
@@ -33,8 +33,8 @@ CREATE TABLE dbo.itinerary_items (
  place_snapshot_json NVARCHAR(MAX) NULL CHECK(place_snapshot_json IS NULL OR ISJSON(place_snapshot_json)=1),
  transport_json NVARCHAR(MAX) NULL CHECK(transport_json IS NULL OR ISJSON(transport_json)=1),
  food_guide_json NVARCHAR(MAX) NULL CHECK(food_guide_json IS NULL OR ISJSON(food_guide_json)=1),
- created_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
- updated_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+ created_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
+ updated_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
  CONSTRAINT CK_itinerary_items_time CHECK(end_at > start_at),
  CONSTRAINT UQ_itinerary_items_order UNIQUE(itinerary_id, day_no, sequence_no)
 );

@@ -11,8 +11,8 @@ CREATE TABLE dbo.place_ratings (
  user_id BIGINT NOT NULL REFERENCES dbo.users(user_id),
  place_id BIGINT NOT NULL REFERENCES dbo.places(place_id),
  score TINYINT NOT NULL CONSTRAINT CK_place_ratings_score CHECK (score BETWEEN 1 AND 5),
- created_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
- updated_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+ created_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
+ updated_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
  CONSTRAINT UQ_place_ratings_user_place UNIQUE(user_id, place_id)
 );
 CREATE INDEX IX_place_ratings_place ON dbo.place_ratings(place_id);
@@ -24,8 +24,8 @@ CREATE TABLE dbo.rating_tags (
  tag_name NVARCHAR(80) NOT NULL CONSTRAINT UQ_rating_tags_name UNIQUE,
  sort_order INT NOT NULL DEFAULT 0 CONSTRAINT CK_rating_tags_sort CHECK (sort_order >= 0),
  is_active BIT NOT NULL DEFAULT 1,
- created_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
- updated_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME()
+ created_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
+ updated_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME()
 );
 
 -- 평가별 최대 3개. 슬롯 CHECK와 (rating_id, slot_no) UNIQUE로 3행 제한, 복합 PK로 중복 태그를 막는다.

@@ -725,7 +725,7 @@ public class ItineraryJobService {
     private java.util.Optional<PlaceCandidate> extraCandidate(Long id,PlaceCandidateView pool) {
         return places.findById(id).filter(Place::isActive).filter(p->"ATTRACTION".equals(p.getPlaceType()))
             .filter(p->pool.destination().region().equals(p.getRegion()))
-            .filter(p->p.getVerifiedAt()!=null && p.getVerifiedAt().isAfter(java.time.LocalDateTime.now(ZoneOffset.UTC).minusHours(24)))
+            .filter(p->p.getVerifiedAt()!=null && p.getVerifiedAt().isAfter(KoreaTime.now().minusHours(24)))
             .map(candidates::candidate);
     }
     /**
@@ -837,5 +837,5 @@ public class ItineraryJobService {
         }
         return null;
     }
-    private LocalDateTime now() { return LocalDateTime.now(ZoneOffset.UTC); }
+    private LocalDateTime now() { return KoreaTime.now(); }
 }

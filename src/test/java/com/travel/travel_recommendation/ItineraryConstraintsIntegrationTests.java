@@ -59,7 +59,7 @@ class ItineraryConstraintsIntegrationTests {
         String[][] extra={{"하슬라 테스트 정원","2001"},{"해변 테스트 공원","2002"},{"허브 테스트 실내 체험관","2003"}};
         for(var place:extra) jdbc.update("""
             INSERT INTO dbo.places(place_type,source_provider,source_place_id,place_name,region,address,subtype,description,source_url,verified_at)
-            VALUES('ATTRACTION','SYSTEM',?,?,N'강원특별자치도 강릉시',?,N'테스트',N'테스트 관광지',N'https://www.gn.go.kr/',DATEADD(day,-1,SYSUTCDATETIME()))""",
+            VALUES('ATTRACTION','SYSTEM',?,?,N'강원특별자치도 강릉시',?,N'테스트',N'테스트 관광지',N'https://www.gn.go.kr/',DATEADD(day,-1,SYSDATETIME()))""",
             "TEST_CONSTRAINT_"+place[1],place[0],"강원특별자치도 강릉시 경포로 "+place[1]);
         session=new MockHttpSession(); String token=UUID.randomUUID().toString();
         session.setAttribute("recommendationGuestToken",token);

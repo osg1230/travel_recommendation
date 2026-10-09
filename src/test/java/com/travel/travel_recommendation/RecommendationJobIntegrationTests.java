@@ -158,7 +158,7 @@ class RecommendationJobIntegrationTests {
     }
     @Test void expiredGuestsAreDeniedThenDeletedButMemberRequestsRemain() {
         UUID id=service.create(conditions(""),null,new byte[32]);
-        jdbc.update("UPDATE dbo.ai_jobs SET expires_at=DATEADD(hour,-1,SYSUTCDATETIME()) WHERE job_id=?",id.toString());
+        jdbc.update("UPDATE dbo.ai_jobs SET expires_at=DATEADD(hour,-1,SYSDATETIME()) WHERE job_id=?",id.toString());
         // JDBC로 변경한 값을 다시 읽도록 영속성 컨텍스트를 비운다.
         entityManager.clear();
         assertThatThrownBy(()->service.view(id,null,new byte[32])).isInstanceOf(ResponseStatusException.class);
@@ -172,7 +172,7 @@ class RecommendationJobIntegrationTests {
         entityManager.clear();service.recover();entityManager.clear();
         assertThat(jobs.findById(id).orElseThrow().getErrorCode()).isEqualTo("SERVER_RESTART");
         UUID waiting=service.create(conditions("강릉"),null,new byte[32]);
-        jdbc.update("UPDATE dbo.ai_jobs SET created_at=DATEADD(minute,-2,SYSUTCDATETIME()) WHERE job_id=?",waiting.toString());
+        jdbc.update("UPDATE dbo.ai_jobs SET created_at=DATEADD(minute,-2,SYSDATETIME()) WHERE job_id=?",waiting.toString());
         entityManager.clear();service.prepare(waiting);
         assertThat(jobs.findById(waiting).orElseThrow().getErrorCode()).isEqualTo("TIMEOUT");
     }

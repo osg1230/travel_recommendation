@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation;
 
+import com.travel.travel_recommendation.service.KoreaTime;
 import com.travel.travel_recommendation.dto.*;
 import com.travel.travel_recommendation.repository.*;
 import com.travel.travel_recommendation.service.*;
@@ -69,7 +70,7 @@ class PlaceDiscoveryIntegrationTests {
     }
     private KakaoPlace data(int id,String type,String address) {
         String source="900000000000000"+id;
-        return new KakaoPlace(source,type,"조회 장소 "+id,region,address,"관광",128.87+id*.0001,37.77,"https://place.map.kakao.com/"+source,LocalDateTime.now(ZoneOffset.UTC).withNano(0));
+        return new KakaoPlace(source,type,"조회 장소 "+id,region,address,"관광",128.87+id*.0001,37.77,"https://place.map.kakao.com/"+source,KoreaTime.now().withNano(0));
     }
     private String url() { return "/travel/recommendations/"+parent+"/destinations/"+destination+"/places"; }
     @Test void refreshAddsUpdatesWithoutChangingSystemAndCreatesThreeDaySchedule() throws Exception {
@@ -129,7 +130,7 @@ class PlaceDiscoveryIntegrationTests {
     }
     @Test void expiredExternalCacheIsHiddenAndInactivePlacesStayInactive() {
         discovery.refresh(parent,destination,null,hash); em.flush();
-        jdbc.update("UPDATE dbo.places SET verified_at=DATEADD(hour,-25,SYSUTCDATETIME()) WHERE source_provider='KAKAO' AND source_place_id=?","9000000000000001");
+        jdbc.update("UPDATE dbo.places SET verified_at=DATEADD(hour,-25,SYSDATETIME()) WHERE source_provider='KAKAO' AND source_place_id=?","9000000000000001");
         jdbc.update("UPDATE dbo.places SET is_active=0 WHERE source_provider='KAKAO' AND source_place_id=?","9000000000000002"); em.clear();
         assertThat(candidates.find(parent,destination,null,hash).attractions().stream().filter(p->"KAKAO".equals(p.sourceProvider()))).hasSize(6);
         discovery.refresh(parent,destination,null,hash); em.flush();
@@ -138,13 +139,13 @@ class PlaceDiscoveryIntegrationTests {
     // 사찰·성당은 관광공사 관광지와 가까운 곳만 받는다(사찰 1km, 성당 300m). 관광공사 조회가 실패하면 그 종류만 빼고 계속한다.
     @Test void religiousPlacesAreAddedAndOnlyTouristCathedralsKept() {
         var temple=new KakaoPlace("9100000000000001","ATTRACTION","테스트사",region,"강원 강릉시 사찰로 1","문화,예술 > 종교 > 불교 > 절,사찰",
-            128.80,37.70,"https://place.map.kakao.com/9100000000000001",LocalDateTime.now(ZoneOffset.UTC).withNano(0));
+            128.80,37.70,"https://place.map.kakao.com/9100000000000001",KoreaTime.now().withNano(0));
         var listed=new KakaoPlace("9100000000000002","ATTRACTION","임당동성당",region,"강원 강릉시 성당로 1","문화,예술 > 종교 > 천주교 > 성당",
-            128.90,37.75,"https://place.map.kakao.com/9100000000000002",LocalDateTime.now(ZoneOffset.UTC).withNano(0));
+            128.90,37.75,"https://place.map.kakao.com/9100000000000002",KoreaTime.now().withNano(0));
         var parish=new KakaoPlace("9100000000000003","ATTRACTION","동네성당",region,"강원 강릉시 성당로 2","문화,예술 > 종교 > 천주교 > 성당",
-            128.95,37.80,"https://place.map.kakao.com/9100000000000003",LocalDateTime.now(ZoneOffset.UTC).withNano(0));
+            128.95,37.80,"https://place.map.kakao.com/9100000000000003",KoreaTime.now().withNano(0));
         var localTemple=new KakaoPlace("9100000000000004","ATTRACTION","대한불교조계종 동네사",region,"강원 강릉시 사찰로 2","문화,예술 > 종교 > 불교 > 절,사찰",
-            128.70,37.60,"https://place.map.kakao.com/9100000000000004",LocalDateTime.now(ZoneOffset.UTC).withNano(0));
+            128.70,37.60,"https://place.map.kakao.com/9100000000000004",KoreaTime.now().withNano(0));
         when(maps.searchTemples(region)).thenReturn(List.of(temple,localTemple));
         when(maps.searchCathedrals(region)).thenReturn(List.of(listed,parish));
         when(tour.configured()).thenReturn(true);

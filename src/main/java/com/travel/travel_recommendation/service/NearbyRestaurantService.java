@@ -91,7 +91,7 @@ public class NearbyRestaurantService {
         var input=task.input();
         var restaurants=new ArrayList<>(input.places().restaurants());
         Set<Long> ids=new HashSet<>(); restaurants.forEach(r->ids.add(r.placeId()));
-        var dayAgo=LocalDateTime.now(ZoneOffset.UTC).minusHours(24);
+        var dayAgo=KoreaTime.now().minusHours(24);
         for(var data:found) {
             var existing=places.findBySourceProviderAndSourcePlaceId("KAKAO",data.sourceId());
             Place place;

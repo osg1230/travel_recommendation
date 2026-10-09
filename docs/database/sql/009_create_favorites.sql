@@ -7,7 +7,7 @@ CREATE TABLE dbo.favorites (
  favorite_id BIGINT IDENTITY PRIMARY KEY,
  user_id BIGINT NOT NULL REFERENCES dbo.users(user_id),
  place_id BIGINT NOT NULL REFERENCES dbo.places(place_id),
- created_at DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+ created_at DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
  CONSTRAINT UQ_favorites_user_place UNIQUE(user_id, place_id)
 );
 CREATE INDEX IX_favorites_place ON dbo.favorites(place_id);

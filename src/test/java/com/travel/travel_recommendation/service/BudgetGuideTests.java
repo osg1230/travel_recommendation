@@ -38,7 +38,7 @@ class BudgetGuideTests {
 
     @Test void groupsOnlyUsableAccommodationsByTier() {
         var repository=mock(PlaceRepository.class);
-        var now=LocalDateTime.now(ZoneOffset.UTC);
+        var now=KoreaTime.now();
         // 목 객체는 when(...) 밖에서 먼저 만든다(스텁 안에서 만들면 Mockito가 오류를 낸다).
         var local=List.of(
             place("ACCOMMODATION","씨마크 호텔","호텔","SYSTEM",now.minusDays(10)),

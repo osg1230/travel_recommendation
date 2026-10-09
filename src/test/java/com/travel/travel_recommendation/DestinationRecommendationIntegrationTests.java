@@ -132,7 +132,7 @@ class DestinationRecommendationIntegrationTests {
     @Test void expiredAndSlowResponsesCannotComplete() {
         UUID id=prepared("강릉",null);service.enqueue(id,null,guestHash,0);var work=service.claim(id);
         em.flush();
-        jdbc.update("UPDATE dbo.ai_jobs SET expires_at=DATEADD(hour,-1,SYSUTCDATETIME()) WHERE job_id=?",id.toString());
+        jdbc.update("UPDATE dbo.ai_jobs SET expires_at=DATEADD(hour,-1,SYSDATETIME()) WHERE job_id=?",id.toString());
         em.clear();service.complete(work,ranked(work));
         assertThat(jobRepository.findById(id).orElseThrow().getErrorCode()).isEqualTo("RECOMMENDATION_TIMEOUT");
     }

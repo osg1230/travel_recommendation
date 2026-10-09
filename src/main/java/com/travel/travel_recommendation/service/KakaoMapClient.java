@@ -251,7 +251,7 @@ public class KakaoMapClient {
                     || url.getUserInfo()!=null || url.getPort()!=-1 || !url.getPath().equals("/"+id)
                     || url.getQuery()!=null || url.getFragment()!=null || !ids.add(id)) continue;
                 result.add(new KakaoPlace(id,type,name,region,address,category,location.longitude(),location.latitude(),
-                    "https://place.map.kakao.com/"+id,LocalDateTime.now(ZoneOffset.UTC).withNano(0)));
+                    "https://place.map.kakao.com/"+id,KoreaTime.now().withNano(0)));
                 if(result.size()==limit) break;
             } catch(IllegalArgumentException ignored) {
                 // 한 항목의 잘못된 주소·좌표로 다른 검증 가능한 후보까지 잃지 않는다.

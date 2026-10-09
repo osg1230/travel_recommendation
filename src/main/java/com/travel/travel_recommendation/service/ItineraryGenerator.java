@@ -516,9 +516,9 @@ public class ItineraryGenerator {
     // 카카오 후보는 조회해 둔 좌표를, 그 밖에는 도로명 주소로 좌표를 찾는다. 같은 건물 주소는 한 번만 조회한다.
     private KakaoMapClient.Location locate(PlaceCandidate place,Map<String,KakaoMapClient.Location> addresses) {
         if("KAKAO".equals(place.sourceProvider()) && place.longitude()!=null && place.latitude()!=null) {
-            if(place.verifiedAt()==null || place.verifiedAt().isBefore(LocalDateTime.now(ZoneOffset.UTC).minusHours(24)))
+            if(place.verifiedAt()==null || place.verifiedAt().isBefore(KoreaTime.now().minusHours(24)))
                 throw failure("PLACE_STALE","장소 조회 결과가 오래됐어요. 장소 목록에서 다시 조회해 주세요.");
-            return new KakaoMapClient.Location(place.address(),place.longitude(),place.latitude(),place.verifiedAt().toInstant(ZoneOffset.UTC));
+            return new KakaoMapClient.Location(place.address(),place.longitude(),place.latitude(),place.verifiedAt().atZone(KoreaTime.ZONE).toInstant());
         }
         var matcher=ROAD.matcher(place.address());
         if(!matcher.matches()) throw failure("ADDRESS_REQUIRED","장소의 도로명 주소를 확인해야 해요.");

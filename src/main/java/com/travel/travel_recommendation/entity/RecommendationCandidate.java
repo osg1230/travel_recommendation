@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation.entity;
 
+import com.travel.travel_recommendation.service.KoreaTime;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Nationalized;
@@ -19,6 +20,6 @@ public class RecommendationCandidate {
     @Column(name="created_at", nullable=false, columnDefinition="datetime2(3)") private LocalDateTime createdAt;
     public RecommendationCandidate(Long requestId, Long placeId, int rank, String reason, String snapshot) {
         this.requestId=requestId; this.placeId=placeId; this.rank=(short)rank;
-        this.reason=reason; this.snapshot=snapshot; createdAt=LocalDateTime.now(ZoneOffset.UTC);
+        this.reason=reason; this.snapshot=snapshot; createdAt=KoreaTime.now();
     }
 }

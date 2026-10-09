@@ -11,6 +11,6 @@ final class ExternalPlaceCache {
     private ExternalPlaceCache() {}
 
     static void expireExisting(JdbcTemplate jdbc) {
-        jdbc.update("UPDATE dbo.places SET verified_at=DATEADD(DAY,-2,SYSUTCDATETIME()) WHERE source_provider='KAKAO'");
+        jdbc.update("UPDATE dbo.places SET verified_at=DATEADD(DAY,-2,SYSDATETIME()) WHERE source_provider='KAKAO'");
     }
 }

@@ -63,6 +63,12 @@
 - 숙소 객실 행은 시드로 넣지 않고 서버가 필요할 때 만든다(객실 종류마다 하루 3실, 내일부터 1년 안). 기준가·배수는 코드(`RoomType`, `VirtualReservationService.ensureRooms`)에 있고 [기능 문서](../ai/가상_예약_결제.md)에 적었다. 카카오로 찾은 숙소도 `places` 행이 남아 있어 그대로 참조한다.
 - 영향: 다른 PC의 DB에도 016을 적용해야 한다(적용하지 않으면 예약 화면과 저장 일정의 예약 버튼이 동작하지 않는다. 저장 일정 상세 자체는 열린다). 다른 테이블·관계 변경은 없다. ERD의 컬럼 목록에는 아직 반영하지 않았다.
 
+### 1.15 적용 메모: 저장 시각 기준을 한국 시각으로 변경 (2026-10-10)
+
+- [017 SQL](sql/017_convert_timestamps_to_kst.sql)로 생성·수정·처리 시각의 DEFAULT를 SYSUTCDATETIME()에서 SYSDATETIME()으로 바꾸고, 이미 UTC로 저장된 datetime2 값에 9시간을 더했다. 이용 시각(itinerary_items.start_at/end_at, reservation_stock.usage_start_at/usage_end_at)은 처음부터 한국 시각이라 바꾸지 않았다. JSON 안의 절대 시각(Instant)도 그대로다.
+- 이유: 국내에서만 쓰는 서비스라 저장 값과 화면 값을 같은 한국 시각으로 두어 이해하기 쉽게 하기 위해서다(사용자 결정). 자바는 KoreaTime.now()로 시각을 만들고, 예약 SQL의 SYSUTCDATETIME()도 SYSDATETIME()으로 바꿨다. 화면 변환(TimeText)은 한국 시각 LocalDateTime을 그대로 보여 준다.
+- 영향: 다른 PC의 DB에도 017을 적용해야 한다(백업 후 실행, 두 번 실행하면 중단된다). 테이블·컬럼·관계 변경은 없고 DEFAULT 정의와 기존 값만 바뀐다. 배포 SQL 001~013의 DEFAULT도 SYSDATETIME()으로 고쳐 새 DB는 처음부터 한국 시각이다.
+
 ### 1.8 적용 메모: 외부 장소 캐시
 
 - 기존 places의 source_provider=KAKAO, source_place_id와 복합 유일 키를 사용한다. 이름·주소·유형·지역·위경도·출처/지도 URL·verified_at·updated_at을 저장/갱신하며 새 컬럼·관계·SQL은 없다.
@@ -96,7 +102,7 @@ AI 기반 국내 여행 일정 추천 서비스
 
 NULL의 N은 필수, Y는 허용을 뜻한다. PK·FK·UNIQUE의 -는 해당 제약 없음이다. U1·U2·P1·UF1은 각 테이블 내부의 제약 그룹이며 여러 열에 같은 코드가 있으면 복합 제약이다. PK는 별도 UNIQUE 표시 없이 유일성을 포함한다.
 
-UTC_NOW는 SYSUTCDATETIME()이다. DEFAULT는 INSERT 시만 적용되므로 updated_at은 서비스가 갱신한다. IDENTITY 및 ROWVERSION은 DEFAULT가 아닌 SQL Server 생성 속성이다. CHECK의 열거값은 해당 열 IN (...)으로 구현하며 NULL 허용 열은 값이 존재할 때 검사한다.
+KST_NOW는 SYSDATETIME()(서버 현지 시각 = 한국 시각)이다. 2026-10-10 SQL 017로 UTC 저장(SYSUTCDATETIME)에서 한국 시각 저장으로 바꿨다. DEFAULT는 INSERT 시만 적용되므로 updated_at은 서비스가 갱신한다. IDENTITY 및 ROWVERSION은 DEFAULT가 아닌 SQL Server 생성 속성이다. CHECK의 열거값은 해당 열 IN (...)으로 구현하며 NULL 허용 열은 값이 존재할 때 검사한다.
 
 JSON은 ISJSON(컬럼)=1을 뜻한다. 필수 속성·스키마·값 범위는 서버 검증기로 검사한다. FK 대상은 테이블.컬럼으로 표시했다. 교차 테이블 조건·상태 전이·권한은 CHECK만으로 보장되지 않으므로 명시된 트랜잭션·서비스·트리거를 함께 구현한다.
 
@@ -139,8 +145,8 @@ JSON은 ISJSON(컬럼)=1을 뜻한다. 필수 속성·스키마·값 범위는 �
 | nickname | NVARCHAR(50) | N | - | - | UF1 | - | - | 탈퇴하지 않은 회원끼리 중복 금지 |
 | role | VARCHAR(20) | N | - | - | - | 'MEMBER' | MEMBER, ADMIN | - |
 | status | VARCHAR(20) | N | - | - | - | 'ACTIVE' | ACTIVE, RESTRICTED, WITHDRAWN | - |
-| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
-| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+| created_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 최종 수정 시각 |
 | withdrawn_at | DATETIME2(3) | Y | - | - | - | - | - | 처리 시각 |
 | home_area | NVARCHAR(60) | Y | - | - | - | - | - | 주로 출발하는 곳(선택, 자유 입력). 일정 입력 출발지 기본값, 탈퇴 시 NULL (2026-09-29, SQL 015) |
 
@@ -150,7 +156,7 @@ U1(login_id). 로그인 아이디는 앞뒤 공백을 제거한 뒤 저장하고
 
 UF1(nickname)은 `WHERE status <> 'WITHDRAWN'` 필터 UNIQUE 인덱스다. ACTIVE와 RESTRICTED 회원은 닉네임 중복을 허용하지 않는다. 탈퇴 회원은 공통 익명 닉네임을 사용할 수 있다. 이는 요구분석서의 닉네임 중복 거부와 기존 탈퇴 익명화 정책을 함께 만족시키는 구현 기준이다. 아이디와 닉네임은 앞뒤 공백을 제거하고 DB의 동일한 collation으로 조회·중복 검사를 수행한다. 대소문자 비교는 실제 DB collation을 따른다.
 
-회원 테이블 배포 SQL: [001_create_users.sql](sql/001_create_users.sql). 기존 테이블이 있으면 중단하며 DROP이나 자동 재생성을 하지 않는다. Entity는 `User`, enum은 `UserRole`과 `UserStatus`, Repository는 `UserRepository`다. 생성·수정 시각은 JPA 콜백에서 UTC로 기록하고 원시 SQL 삽입에는 DB 기본값이 적용된다. 자동 스키마 변경 설정은 계속 none으로 유지한다.
+회원 테이블 배포 SQL: [001_create_users.sql](sql/001_create_users.sql). 기존 테이블이 있으면 중단하며 DROP이나 자동 재생성을 하지 않는다. Entity는 `User`, enum은 `UserRole`과 `UserStatus`, Repository는 `UserRepository`다. 생성·수정 시각은 JPA 콜백에서 한국 시각(`KoreaTime`)으로 기록하고 원시 SQL 삽입에는 DB 기본값이 적용된다. 자동 스키마 변경 설정은 계속 none으로 유지한다.
 
 CHECK: (status = WITHDRAWN AND withdrawn_at IS NOT NULL) OR (status <> WITHDRAWN AND withdrawn_at IS NULL). 문자열 값은 SQL에서 작은따옴표로 감싼다.
 
@@ -171,8 +177,8 @@ CHECK: (status = WITHDRAWN AND withdrawn_at IS NOT NULL) OR (status <> WITHDRAWN
 | category_name | NVARCHAR(50) | N | - | - | U2 | - | - | - |
 | sort_order | INT | N | - | - | - | 0 | >= 0 | - |
 | is_active | BIT | N | - | - | - | 1 | - | - |
-| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
-| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+| created_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 최종 수정 시각 |
 
 제약과 처리 규칙
 
@@ -197,8 +203,8 @@ U1(category_code), U2(category_name). 관리자만 추가·수정·삭제·비�
 | value_json | NVARCHAR(MAX) | N | - | - | - | - | JSON | 조건 해석 값과 단위 |
 | sort_order | INT | N | - | - | - | 0 | >= 0 | - |
 | is_active | BIT | N | - | - | - | 1 | - | - |
-| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
-| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+| created_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 최종 수정 시각 |
 
 제약과 처리 규칙
 
@@ -238,8 +244,8 @@ U1(category_id, keyword_code), U2(category_id, keyword_name). 동일 카테고�
 | budget | DECIMAL(12,2) | Y | - | - | - | - | >= 0 | 원화 총 예산 상한 |
 | accommodation_needed | BIT | Y | - | - | - | - | - | NULL 미확정, 0 불필요, 1 필요 |
 | interpretation_summary | NVARCHAR(1000) | Y | - | - | - | - | - | 조건 해석 및 보완 근거 |
-| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
-| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+| created_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 최종 수정 시각 |
 
 제약과 처리 규칙
 
@@ -265,7 +271,7 @@ conditions_json 필수 구조: schema_version, season, companion, theme[], trans
 | rank_no | TINYINT | N | - | - | U1 | - | BETWEEN 1 AND 5 | - |
 | recommendation_reason | NVARCHAR(2000) | N | - | - | - | - | - | - |
 | place_snapshot_json | NVARCHAR(MAX) | N | - | - | - | - | JSON | 추천 당시 이름·지역·설명·출처 |
-| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+| created_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 생성 시각 |
 
 제약과 처리 규칙
 
@@ -295,7 +301,7 @@ place_id는 DESTINATION 유형만 허용하며 서비스 또는 트리거에서 
 | validation_errors_json | NVARCHAR(MAX) | Y | - | - | - | - | JSON | 오류 코드·충돌 구간·수정 안내 |
 | error_code | VARCHAR(60) | Y | - | - | - | - | - | - |
 | message | NVARCHAR(1000) | Y | - | - | - | - | - | 안전한 사용자 안내 |
-| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+| created_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 생성 시각 |
 | started_at | DATETIME2(3) | Y | - | - | - | - | - | 작업 실행 시작 시각 |
 | completed_at | DATETIME2(3) | Y | - | - | - | - | - | 작업 완료 또는 실패 시각 |
 | expires_at | DATETIME2(3) | N | - | - | - | - | - | 임시 작업 입력과 결과의 보존 만료 시각 |
@@ -365,8 +371,8 @@ attempt_count는 최초 AI 생성 포함 최대 3회이며 재생성은 최대 2
 | map_url | NVARCHAR(1000) | Y | - | - | - | - | - | - |
 | is_active | BIT | N | - | - | - | 1 | - | - |
 | verified_at | DATETIME2(3) | N | - | - | - | - | - | 출처에서 장소 정보를 마지막으로 확인한 시각 |
-| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
-| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+| created_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 최종 수정 시각 |
 
 제약과 처리 규칙
 
@@ -409,8 +415,8 @@ details_json의 foods[]는 음식명·분류·설명·출처를 보관한다. �
 | end_date | DATE | N | - | - | - | - | - | - |
 | transportation | VARCHAR(20) | N | - | - | - | - | CAR, TRANSIT, WALK, MIXED, ANY | - |
 | conditions_snapshot_json | NVARCHAR(MAX) | N | - | - | - | - | JSON | 저장 당시 조건과 지역 요약 |
-| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
-| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+| created_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 최종 수정 시각 |
 | row_version | ROWVERSION | N | - | - | - | - | - | 수정 충돌 검출 |
 
 제약과 처리 규칙
@@ -442,8 +448,8 @@ CHECK end_date >= start_date. destination_place_id의 유형은 DESTINATION으�
 | place_snapshot_json | NVARCHAR(MAX) | Y | - | - | - | - | JSON | 장소명·위치·추천 근거 |
 | transport_json | NVARCHAR(MAX) | Y | - | - | - | - | JSON | 이동수단·출발 및 도착 터미널·출도착 시각·소요 시간·출처·조회 기준일·참고 정보 여부 |
 | food_guide_json | NVARCHAR(MAX) | Y | - | - | - | - | JSON | 음식명·분류·설명·지도 검색 링크 |
-| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
-| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+| created_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 최종 수정 시각 |
 
 제약과 처리 규칙
 
@@ -466,7 +472,7 @@ VISIT·STAY는 place_id 필수이다. MEAL은 실제 음식점이 확인되면 p
 | favorite_id | BIGINT | N | Y | - | - | - | - | IDENTITY(1,1) 자동 증가 |
 | user_id | BIGINT | N | - | users.user_id | U1 | - | - | 참조 식별자 |
 | place_id | BIGINT | N | - | places.place_id | U1 | - | - | 참조 식별자 |
-| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+| created_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 생성 시각 |
 
 제약과 처리 규칙
 
@@ -488,8 +494,8 @@ U1(user_id, place_id)로 중복 등록을 차단한다.
 | user_id | BIGINT | N | - | users.user_id | U1 | - | - | 참조 식별자 |
 | place_id | BIGINT | N | - | places.place_id | U1 | - | - | 참조 식별자 |
 | score | TINYINT | N | - | - | - | - | BETWEEN 1 AND 5 | - |
-| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
-| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+| created_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 최종 수정 시각 |
 
 제약과 처리 규칙
 
@@ -514,8 +520,8 @@ U1(user_id, place_id). 기존 평가가 있으면 새 행 대신 갱신한다. �
 | tag_name | NVARCHAR(80) | N | - | - | U2 | - | - | - |
 | sort_order | INT | N | - | - | - | 0 | >= 0 | - |
 | is_active | BIT | N | - | - | - | 1 | - | - |
-| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
-| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+| created_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 최종 수정 시각 |
 
 제약과 처리 규칙
 
@@ -564,7 +570,7 @@ P1 복합 PK(rating_id, tag_id), U1(rating_id, slot_no). 슬롯 CHECK와 UNIQUE�
 | reason | NVARCHAR(1000) | N | - | - | - | - | - | - |
 | outcome | VARCHAR(10) | N | - | - | - | - | SUCCESS, FAILED | - |
 | correlation_id | UNIQUEIDENTIFIER | Y | - | - | - | - | - | 실패 요청 추적 ID |
-| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+| created_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 생성 시각 |
 
 제약과 처리 규칙
 
@@ -594,8 +600,8 @@ P1 복합 PK(rating_id, tag_id), U1(rating_id, slot_no). 슬롯 CHECK와 UNIQUE�
 | quantity_unit | VARCHAR(10) | N | - | - | - | - | ROOM, PERSON | 숙소 객실 또는 시설 인원 |
 | room_type | VARCHAR(20) | Y | - | - | U1 | - | SINGLE, STANDARD_DOUBLE, STANDARD_TWIN, DELUXE_DOUBLE, FAMILY, SUITE (ROOM일 때만) | 체험용 객실 종류. 시설(PERSON)은 NULL (2026-10-05 추가, SQL 016) |
 | is_active | BIT | N | - | - | - | 1 | - | - |
-| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
-| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+| created_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 최종 수정 시각 |
 | row_version | ROWVERSION | N | - | - | - | - | - | - |
 
 제약과 처리 규칙
@@ -625,8 +631,8 @@ U1(place_id, usage_start_at, usage_end_at, room_type). CHECK usage_end_at > usag
 | status | VARCHAR(12) | N | - | - | - | 'PENDING' | PENDING, CONFIRMED, CANCELED | - |
 | payment_required | BIT | N | - | - | - | 1 | - | - |
 | booking_snapshot_json | NVARCHAR(MAX) | N | - | - | - | - | JSON | 장소·이용일시·단위가격 스냅샷 |
-| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
-| updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
+| created_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 생성 시각 |
+| updated_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 최종 수정 시각 |
 | canceled_at | DATETIME2(3) | Y | - | - | - | - | - | 가상 예약 취소 시각 |
 | row_version | ROWVERSION | N | - | - | - | - | - | - |
 
@@ -655,7 +661,7 @@ PENDING은 이미 수량을 점유한다. 결제가 없으면 생성 트랜잭�
 | amount | DECIMAL(12,2) | N | - | - | - | - | >= 0 | - |
 | status | VARCHAR(12) | N | - | - | - | 'READY' | READY, SUCCESS, FAILED, REFUNDED | - |
 | failure_code | VARCHAR(60) | Y | - | - | - | - | - | - |
-| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+| created_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 생성 시각 |
 | processed_at | DATETIME2(3) | Y | - | - | - | - | - | 결제 성공 또는 실패 처리 시각 |
 | refunded_at | DATETIME2(3) | Y | - | - | - | - | - | 가상 환불 처리 시각 |
 
@@ -688,7 +694,7 @@ CHECK: READY이면 processed_at NULL, 그 외는 필수. REFUNDED일 때만 refu
 | before_status | VARCHAR(12) | Y | - | - | - | - | - | - |
 | after_status | VARCHAR(12) | N | - | - | - | - | PENDING, CONFIRMED, CANCELED | - |
 | reason | NVARCHAR(500) | N | - | - | - | - | - | - |
-| created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
+| created_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 생성 시각 |
 
 제약과 처리 규칙
 
@@ -752,7 +758,7 @@ FK는 기본 ON DELETE NO ACTION / ON UPDATE NO ACTION으로 생성한다. 대�
 
 시간과 금액
 
-생성·수정·작업 처리 시각은 UTC로 저장하고 화면에서 KST로 변환한다. 여행·예약 이용 시각은 국내 서비스의 KST 현지 시각으로 고정한다. 모든 금액은 KRW DECIMAL이며 FLOAT를 사용하지 않는다. ROWVERSION은 동시 수정 검출용 값이며 일시로 해석하지 않는다.
+생성·수정·작업 처리 시각은 한국 시각(KST)으로 저장하고 화면에도 그대로 보여 준다(2026-10-10부터. 그 전에는 UTC로 저장하고 화면에서 바꿨다). 여행·예약 이용 시각도 KST 현지 시각이다. JSON 안의 조회 시각(checkedAt 등)은 시간대가 붙은 절대 시각이라 그대로 둔다. 모든 금액은 KRW DECIMAL이며 FLOAT를 사용하지 않는다. ROWVERSION은 동시 수정 검출용 값이며 일시로 해석하지 않는다.
 
 AI 작업 실행과 상태 전이
 
