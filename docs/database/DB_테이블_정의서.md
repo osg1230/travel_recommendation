@@ -1,6 +1,6 @@
 # DB 테이블 정의서 정리본
 
-> 현재 기준: 2026-10-09 · GitHub main 072bd5a · 가상 예약·결제를 포함한 18개 테이블을 구현 범위로 다룬다. 배포 SQL은 sql/001~016이다. 객실 유형 SQL 016은 별도 예약 브랜치의 기존 변경을 가져왔다. 기존 Word 파일은 과거 문서이며 현재 기준은 이 Markdown과 아래 실DB 확인 기록이다.
+> 현재 기준: 2026-10-09 · GitHub main(2026-10-09 객실 브랜치 병합 포함) · 가상 예약·결제를 포함한 18개 테이블을 구현 범위로 다룬다. 배포 SQL은 sql/001~016이다. 객실 유형 SQL 016과 객실 기능 코드는 2026-10-09 main에 병합했다. 기존 Word 파일은 과거 문서이며 현재 기준은 이 Markdown과 아래 실DB 확인 기록이다.
 
 ### 현재 구현 및 실DB 확인
 
@@ -55,6 +55,13 @@
 - [015 SQL](sql/015_add_user_home_area.sql)로 `users.home_area NVARCHAR(60) NULL`을 추가했다. 이유: 일정을 만들 때마다 출발지를 적거나 휴대폰 위치 권한을 허용하지 않아도 되게, 회원이 가입·내 정보에서 적은 '주로 출발하는 곳'을 일정 입력 출발지 기본값으로 쓴다. 화면에서 고친 값은 그 일정에만 쓰고 이 컬럼은 바꾸지 않는다.
 - 선택 입력이고 자유 형식(예: 서울 송파구, 대전역, 도로명 주소)이다. 카카오 길찾기 출발지 조회에만 쓰며 GPT 요청·로그에 넣지 않는다. 탈퇴하면 NULL로 지운다. 기존 회원은 NULL이며 일정 입력은 예전처럼 빈 칸으로 시작한다.
 - 영향: 다른 PC의 DB에도 015를 적용해야 한다(적용하지 않으면 `ddl-auto=validate` 테스트와 실행이 컬럼 없음으로 실패한다). 다른 테이블·관계 변경은 없다.
+
+### 1.15 적용 메모: 숙소 객실 종류 (2026-10-05)
+
+- [016 SQL](sql/016_add_reservation_room_type.sql)로 `reservation_stock.room_type VARCHAR(20) NULL`을 추가하고 U1을 (place_id, usage_start_at, usage_end_at, room_type)으로 바꿨다. 이유: 예약 대상이 시드 숙소 3곳뿐이라 대부분의 일정에서 예약을 체험할 수 없어, 숙소는 모두 예약할 수 있게 하고 객실 종류(싱글·스탠다드 더블·스탠다드 트윈·디럭스 더블·패밀리·스위트)별로 수량을 둔다. 실제 호텔 객실·요금을 가져온 것이 아니라 이름만 쓰는 체험용 값이다.
+- 기존 데이터: 숙소 수량 276행은 `STANDARD_DOUBLE`로 채웠고(가격·수량 그대로), 관광시설 184행은 NULL이다. 예약·결제·이력 행은 바꾸지 않았다.
+- 숙소 객실 행은 시드로 넣지 않고 서버가 필요할 때 만든다(객실 종류마다 하루 3실, 내일부터 1년 안). 기준가·배수는 코드(`RoomType`, `VirtualReservationService.ensureRooms`)에 있고 [기능 문서](../ai/가상_예약_결제.md)에 적었다. 카카오로 찾은 숙소도 `places` 행이 남아 있어 그대로 참조한다.
+- 영향: 다른 PC의 DB에도 016을 적용해야 한다(적용하지 않으면 예약 화면과 저장 일정의 예약 버튼이 동작하지 않는다. 저장 일정 상세 자체는 열린다). 다른 테이블·관계 변경은 없다. ERD의 컬럼 목록에는 아직 반영하지 않았다.
 
 ### 1.8 적용 메모: 외부 장소 캐시
 
@@ -585,7 +592,7 @@ P1 복합 PK(rating_id, tag_id), U1(rating_id, slot_no). 슬롯 CHECK와 UNIQUE�
 | remaining_quantity | INT | N | - | - | - | - | 0 이상 total_quantity 이하 | - |
 | unit_price | DECIMAL(12,2) | N | - | - | - | - | >= 0 | 가상 단위 가격 KRW |
 | quantity_unit | VARCHAR(10) | N | - | - | - | - | ROOM, PERSON | 숙소 객실 또는 시설 인원 |
-| room_type | VARCHAR(20) | Y | - | - | U1 | - | NULL 또는 ROOM이면서 SINGLE, STANDARD_DOUBLE, STANDARD_TWIN, DELUXE_DOUBLE, FAMILY, SUITE | 가상 객실 종류(SQL 016). 시설은 NULL |
+| room_type | VARCHAR(20) | Y | - | - | U1 | - | SINGLE, STANDARD_DOUBLE, STANDARD_TWIN, DELUXE_DOUBLE, FAMILY, SUITE (ROOM일 때만) | 체험용 객실 종류. 시설(PERSON)은 NULL (2026-10-05 추가, SQL 016) |
 | is_active | BIT | N | - | - | - | 1 | - | - |
 | created_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 생성 시각 |
 | updated_at | DATETIME2(3) | N | - | - | - | UTC_NOW | - | 최종 수정 시각 |
@@ -595,7 +602,7 @@ P1 복합 PK(rating_id, tag_id), U1(rating_id, slot_no). 슬롯 CHECK와 UNIQUE�
 
 U1(place_id, usage_start_at, usage_end_at, room_type). CHECK usage_end_at > usage_start_at. 대상 유형·유료 시설 여부는 시스템 데이터로 검증한다.
 
-관광시설 수량은 시스템 시드로 설정한다. 객실 기능 브랜치는 숙소·날짜별 가상 객실 수량을 필요할 때 생성하며 실제 호텔 재고를 연동하지 않는다. 하나의 숙소 재고 행은 객실 종류별 1박 구간이고 같은 객실 종류의 구간이 겹치지 않게 관리한다. 관리자 직접 장소 CRUD는 제공하지 않는다.
+시드 수량(숙소 3곳·관광시설 2곳) 외에, 회원이 저장 일정이나 예약 화면을 열 때 서버가 그 숙소·날짜의 객실 종류별 행과 입장권을 끊는 분류의 관광시설 행을 만든다(2026-10-05, 1.15절·[기능 문서](../ai/가상_예약_결제.md)). 관리자 직접 장소 CRUD 또는 실제 재고 연동은 제공하지 않는다. 하나의 숙소 재고 행은 객실 종류 하나의 고정 숙박 패키지 구간(1박)으로 정의하고 같은 객실 종류의 겹치는 구간을 생성하지 않는다.
 
 16 가상 예약
 
