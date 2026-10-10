@@ -4,6 +4,12 @@
 
 작업 시작 시 이 요약과 Git 상태를 확인한다. 기능별 상세 구현·검증 기록은 [2026-09-22 정리 전 원문](progress-history/2026-09-22-before-cleanup.md)에 있으며, 과거 결정·검증 근거가 필요할 때 해당 부분만 읽는다.
 
+## 2026-10-11 전체 회귀 테스트 (마무리 작업 4번)
+
+- 실행(데스크탑, `main` `cc3d0ee`, SQL Server Windows 인증, `RUN_SQLSERVER_TESTS=true`, 외부 API 실호출 끔, 미리보기 앱은 내리고 실행): `clean verify` 7분 3초, **481개 실행, 실패 1, 오류 0, 건너뜀 11**(외부 API 실호출 테스트 9개 클래스: OpenAI 4·카카오·TAGO·TourAPI·사진·일정).
+- 실패 1건은 `ItineraryIntegrationTests.priceLookupAttachesQuotesWithoutChangingScheduleAndReusesThem`으로, 2026-10-10 예상 경비 기능(PR #89)에서 초안 화면의 "참고 합계" 문구가 "예상 경비 (추정)" 절로 바뀌었는데 테스트가 옛 문구를 찾고 있었다. 화면 동작은 정상이라 테스트 기대 문구만 고쳤고(`test/full-regression`), 같은 클래스 16개를 DB로 다시 돌려 통과를 확인했다. 그 밖의 실패는 없다.
+- 오늘 병합한 PR #90~#95(반려동물·AI 웹 검색, 요구분석서 DOCX·추적표 문서, 조건 고르기·취향 찾기 보완, 그림, 화면 수정, 정적 파일 해시 이름)가 모두 포함된 상태의 결과다.
+
 ## 2026-10-11 조건 고르기·취향 찾기 화면 어색한 부분 수정 (사용자 화면 캡처 피드백)
 
 - 조건 요약 줄이 좁은 상자 안에서 세 줄로 깨져 보였다. 원인은 새로 쓴 클래스 이름 `condition-summary`가 조건 확인·추천 이력 화면의 2단 격자(dl) 클래스와 같았던 것. `chosen-conditions`로 바꿨고, 빈 상태 문구를 "아직 고른 조건이 없어요. 그대로 추천받아도 돼요."로 줄였다.
