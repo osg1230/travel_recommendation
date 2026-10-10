@@ -83,7 +83,7 @@ public class TravelConditionReviewController {
         try {
             // 유료 분석을 기다리는 동안 다른 탭의 입력·로그아웃을 막지 않는다.
             var analysis = "TEXT".equals(source.getInputMode()) ? service.analyze(source, choices)
-                : new ConditionReviewService.Analysis(service.fromKeywords(source), "");
+                : new ConditionReviewService.Analysis(service.fromKeywords(source, choices), "");
             synchronized(session) {
                 if(draft(session) != source || !inputToken.equals(session.getAttribute("travelInputToken"))) return stale(flash);
                 analysis.form().setRevision(UUID.randomUUID().toString());

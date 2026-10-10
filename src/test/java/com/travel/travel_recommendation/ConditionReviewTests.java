@@ -230,4 +230,17 @@ class ConditionReviewTests {
         assertThat(session.getAttribute("travelConditionReview")).isNull();
         verify(client, times(1)).analyze(anyString(), anyMap());
     }
+
+    /** 조건 고르기(키워드)에서는 출발일이 있을 때만 그 달의 계절을 채우고, 직접 고른 계절은 바꾸지 않는다. */
+    @Test void keywordInputFillsSeasonFromStartDateOnly() {
+        var choices = java.util.Map.of("season", java.util.List.of(new TravelKeyword(7L, "SEASON", "가을", null)));
+        var draft = new TravelConditionForm();
+        draft.setStartDate("2026-10-15");
+        assertThat(service.fromKeywords(draft, choices).getSeason()).isEqualTo("7");
+        draft.setStartDate("");
+        assertThat(service.fromKeywords(draft, choices).getSeason()).isEmpty();
+        draft.setStartDate("2026-10-15");
+        draft.setSeason("3");
+        assertThat(service.fromKeywords(draft, choices).getSeason()).isEqualTo("3");
+    }
 }

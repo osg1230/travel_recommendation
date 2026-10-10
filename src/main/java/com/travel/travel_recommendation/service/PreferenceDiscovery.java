@@ -82,7 +82,7 @@ public final class PreferenceDiscovery {
             option("B", "뜨끈한 국물 요리 맛집 찾아가기", List.of("FOOD"), "MUST_EAT"))),
 
         // 그 밖의 이어지는 질문
-        new Question("VIEW_SPOT", "그 풍경은 어디에서 보고 싶나요?", List.of(
+        new Question("VIEW_SPOT", "멋진 풍경을 본다면 어디가 좋아요?", List.of(
             option("A", "해 뜨는 바닷가", List.of("SEA"), "SEA_TIME"),
             option("B", "구름 걸린 산 정상", List.of("NATURE", "ACTIVITY"), "MOUNTAIN"))),
         new Question("MUST_EAT", "여행지에서 꼭 먹어 보고 싶은 건?", List.of(
@@ -94,7 +94,7 @@ public final class PreferenceDiscovery {
         new Question("SECOND_MORNING", "여행 둘째 날 아침은?", List.of(
             option("A", "늦잠 자고 느지막이 브런치 먹기", List.of("REST", "FOOD"), "AFTERNOON"),
             option("B", "일출 보러 일찍 나가기", List.of("NATURE", "SEA"), "VIEW_SPOT"))),
-        new Question("LOCAL_LIFE", "그 동네 분위기를 느끼려면?", List.of(
+        new Question("LOCAL_LIFE", "여행지의 동네 분위기를 느끼려면?", List.of(
             option("A", "오일장이나 전통시장 구경하기", List.of("FOOD", "CULTURE"), "SOUVENIR"),
             option("B", "동네 작은 책방이나 공방 찾아가기", List.of("CULTURE", "REST"), "AFTERNOON"))),
         new Question("OLD_STREET", "옛 정취를 느낀다면?", List.of(
