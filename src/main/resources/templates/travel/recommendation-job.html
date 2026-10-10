@@ -62,6 +62,8 @@
             <!--/* AI가 여러 여행 방향을 제안한 경우 이 여행지에 고른 방향을 먼저 보여 준다. */-->
             <p class="card-region" th:if="${item.direction != null}" th:text="${'이런 여행으로 추천 · ' + item.direction}"></p>
             <p th:text="${item.reason}"></p>
+            <!--/* AI가 추천 이유와 함께 꼽은 장소를 돌아보는 순서대로 한 줄로 보여 준다. 실제 후보인지는 장소 목록·일정 초안에서 맞춰 본다. */-->
+            <p class="card-course" th:if="${!item.centerPlaces.isEmpty()}" th:text="${'대표 코스 · ' + #strings.listJoin(item.centerPlaces, ' → ')}"></p>
             <p class="help" th:if="${conditions != null and conditions.includeNearby != null and conditions.includeNearby
                     and !T(com.travel.travel_recommendation.service.NearbyRegionService).supports(item.destination.name)}"
                th:text="${'주변 지역 포함을 골랐지만 이 여행지는 주변 지역 추천을 아직 지원하지 않아요(지원: '
@@ -129,6 +131,6 @@
     <!--/* 카드마다 반복하던 출처·AI 안내를 화면 끝에 한 번만 적는다. */-->
     <div class="guide-note" th:if="${!job.pending and (!job.candidates.isEmpty() or job.status == 'COMPLETED')}">
         <p>여행지 소개는 공식 관광 사이트에서 확인해 저장한 정보이며 실시간 조회가 아니에요.</p>
-        <p th:if="${job.status == 'COMPLETED'}">추천 이유는 입력한 조건과 지역 소개를 바탕으로 AI가 썼어요. 목적에 맞는 곳은 이름·주소만 확인했으니 운영·체험 내용과 비용은 방문 전 공식 정보에서 확인해 주세요.</p>
+        <p th:if="${job.status == 'COMPLETED'}">추천 이유와 대표 코스는 입력한 조건과 지역 소개를 바탕으로 AI가 썼어요. 대표 코스는 AI가 꼽은 순서라 실제 장소와 동선은 장소 목록·일정 초안에서 확인해요. 목적에 맞는 곳은 이름·주소만 확인했으니 운영·체험 내용과 비용은 방문 전 공식 정보에서 확인해 주세요.</p>
     </div>
 </main><script defer th:src="@{/js/recommendation-job.js}"></script></body></html>

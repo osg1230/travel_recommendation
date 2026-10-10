@@ -164,8 +164,6 @@ public class ItineraryJobService {
             current.start(),current.end(),current.transport(),current.visitMinutes());
         var fixed=confirmedTransport(current.conditions());
         if(fixed!=null && fixed!=transport) throw new ResponseStatusException(HttpStatus.CONFLICT,"확정한 이동수단과 달라요. 여행 조건에서 먼저 수정해 주세요.");
-        if(constraints!=null && constraints.budgetBasis()!=null && current.conditions().budget()==null)
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"예산을 정하지 않아 예산 기준은 고를 수 없어요.");
         // 숙소 예산대는 예산을 정하지 않았고 숙소가 필요한 여행에서만 고른다(SFR-03-03).
         if(constraints!=null && constraints.stayTier()!=null && (current.conditions().budget()!=null || !current.places().accommodationNeeded()))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"숙소 예산대는 예산을 정하지 않은 숙박 여행에서만 고를 수 있어요.");

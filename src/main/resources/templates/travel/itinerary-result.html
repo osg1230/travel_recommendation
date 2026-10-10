@@ -177,6 +177,28 @@
 </section>
 
 
+<!--/* 항목별 예상 경비. 찾은 참고 가격이 있으면 그 값을, 없으면 서버 기준 범위를 써서 전체 인원 합계로 보여 준다. 실제 요금이 아니라고 함께 알린다. */-->
+<section class="condition-section" th:if="${costEstimate != null}" aria-labelledby="cost-title">
+<h2 id="cost-title">예상 경비 (추정)</h2>
+<p><strong th:text="${'합계 약 ' + #numbers.formatInteger(costEstimate.totalMin(), 1, 'COMMA') + '~' + #numbers.formatInteger(costEstimate.totalMax(), 1, 'COMMA') + '원'}"></strong>
+<span th:text="${' · ' + costEstimate.partySize + '명 전체(' + costEstimate.partyBasis + ') · 1인 약 ' + #numbers.formatInteger(costEstimate.perPersonMin(), 1, 'COMMA') + '~' + #numbers.formatInteger(costEstimate.perPersonMax(), 1, 'COMMA') + '원'}"></span></p>
+<p th:text="${'권장 계획 예산: 약 ' + #numbers.formatInteger(costEstimate.planningWon(), 1, 'COMMA') + '원 (추정 범위의 중간값을 만 원 단위로 올린 값)'}"></p>
+<p class="notice" th:if="${costEstimate.budgetNote != null}" th:text="${costEstimate.budgetNote}"></p>
+<table class="report-table">
+<caption class="visually-hidden">항목별 예상 경비</caption>
+<thead><tr><th scope="col">항목</th><th scope="col">예상 범위</th><th scope="col">계산 근거</th></tr></thead>
+<tbody>
+<tr th:each="line : ${costEstimate.lines}">
+<th scope="row" th:text="${line.name}"></th>
+<td th:text="${#numbers.formatInteger(line.min, 1, 'COMMA') + '~' + #numbers.formatInteger(line.max, 1, 'COMMA') + '원'}"></td>
+<td class="help" th:text="${line.basis}"></td>
+</tr>
+</tbody>
+</table>
+<p class="help" th:each="reason : ${costEstimate.excluded}" th:text="${reason}"></p>
+<p class="help">실제 요금이 아닌 추정이에요. 숙소·음식점은 아래에서 참고 가격을 찾으면 그 값으로 다시 계산하고, 나머지 항목은 일반적인 기준 범위로 어림해요. 날짜·객실·메뉴·할인에 따라 실제 비용은 달라져요.</p>
+</section>
+
 <!--/* 일정 뒤의 참고 정보(가격·대표 음식·주변 지역·버스)는 제목만 보이게 접어 둔다. 조회 결과나 오류가 있으면 펼쳐서 보여 준다. */-->
 
 <section class="condition-section" th:if="${job.result != null}" aria-labelledby="prices-title">
@@ -198,14 +220,7 @@
 </th:block>
 <p class="help" th:unless="${quote.found()}">믿을 만한 가격 출처를 찾지 못했어요. 장소 출처에서 직접 확인해 주세요.</p>
 </article>
-<th:block th:if="${costEstimate != null and costEstimate.totalMin() != null}">
-<p><strong th:text="${'참고 합계 약 ' + #numbers.formatInteger(costEstimate.totalMin(), 0, 'COMMA') + '~' + #numbers.formatInteger(costEstimate.totalMax(), 0, 'COMMA') + '원'}"></strong></p>
-<ul>
-<li th:if="${costEstimate.lodgingMin != null}" th:text="${'숙박: 객실 1개 × ' + costEstimate.nights + '박 = ' + #numbers.formatInteger(costEstimate.lodgingMin, 0, 'COMMA') + '~' + #numbers.formatInteger(costEstimate.lodgingMax, 0, 'COMMA') + '원'}"></li>
-<li th:if="${costEstimate.mealMin != null}" th:text="${'식사: 가격을 찾은 ' + costEstimate.pricedMeals + '끼(전체 ' + costEstimate.meals + '끼) × ' + costEstimate.partySize + '명(' + costEstimate.partyBasis + ') = ' + #numbers.formatInteger(costEstimate.mealMin, 0, 'COMMA') + '~' + #numbers.formatInteger(costEstimate.mealMax, 0, 'COMMA') + '원'}"></li>
-</ul>
-</th:block>
-<p class="help">실제 가격은 날짜·객실·메뉴·인원에 따라 달라요. 가격을 찾지 못한 곳, 교통비·입장료는 합계에 없어요.</p>
+<p class="help">실제 가격은 날짜·객실·메뉴·인원에 따라 달라요. 찾은 가격은 위 예상 경비의 숙박·식비에 반영돼요.</p>
 <form method="post" th:action="@{/travel/recommendations/itineraries/{id}/prices(id=${job.id})}"><button type="submit">참고 가격 다시 찾기</button></form>
 </th:block>
 </details>
