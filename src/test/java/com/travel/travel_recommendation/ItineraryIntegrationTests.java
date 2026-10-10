@@ -287,7 +287,9 @@ class ItineraryIntegrationTests {
         assertThat(after.prices().quotes().getFirst().kind()).isEqualTo(OpenAiPriceClient.LODGING);
         int calls=after.prices().quotes().size();
         mvc.perform(get(resultUrl(id)).session(session)).andExpect(status().isOk())
-            .andExpect(content().string(containsString("참고 합계 약")))
+            // 2026-10-10부터 참고 합계 대신 항목별 예상 경비 절에 찾은 가격을 반영한다.
+            .andExpect(content().string(containsString("예상 경비 (추정)")))
+            .andExpect(content().string(containsString("찾은 가격은 위 예상 경비의 숙박·식비에 반영돼요")))
             .andExpect(content().string(containsString("출처 페이지에서 상호·가격 확인")))
             .andExpect(content().string(containsString("AI 검색 결과, 출처에서 직접 확인 필요")))
             .andDo(response->{
