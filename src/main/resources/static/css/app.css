@@ -304,9 +304,9 @@ tbody tr:last-child td { border-bottom: 0; }
    휴대폰에서는 버튼 막대가 화면을 너무 많이 가려서 고정하지 않고 폼 끝에 둔다. */
 .condition-submit { align-items: center; }
 .condition-submit .help { margin: 0; }
-/* 고른 조건 요약: 버튼 줄 위에 한 줄로 둔다. */
-.condition-summary { flex-basis: 100%; margin: 0; font-size: 14px; color: var(--text-muted); line-height: 1.5; }
-.condition-summary strong { color: var(--text); font-weight: 600; }
+/* 고른 조건 요약: 버튼 줄 위에 한 줄로 둔다. (.condition-summary는 일정 초안 요약 카드가 쓰므로 다른 이름을 쓴다.) */
+.chosen-conditions { flex-basis: 100%; width: 100%; margin: 0; font-size: 14px; color: var(--text-muted); line-height: 1.5; }
+.chosen-conditions strong { color: var(--text); font-weight: 600; }
 @media (min-width: 601px) {
     .condition-submit {
         position: sticky; bottom: 0; z-index: 5;
@@ -388,9 +388,17 @@ summary:has(.details-title):hover .details-title { color: var(--brand-strong); }
 .status-needs_check { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); }
 .status-not_applicable { background: var(--surface-muted); color: var(--text-muted); border-color: var(--line); }
 
-/* 취향 탐색: 화면을 반으로 나눠 두 장면(그림 + 문구) 중 하나를 누른다. 좁은 화면에서도 좌우 반씩 둔다. 상관없음·건너뛰기는 작게 둔다. */
-.discover-question { border: 1px solid transparent; }
-.discover-question legend { font-weight: 700; font-size: 19px; padding: 0 4px; }
+/* 취향 탐색: 화면을 반으로 나눠 두 장면(그림 + 문구) 중 하나를 누른다. 좁은 화면에서도 좌우 반씩 둔다.
+   질문 제목은 카드 여백에 맞춰 두고, 상관없음·건너뛰기는 다른 화면의 선택 버튼과 같은 모양으로 둔다. */
+.discover-question { border: 0; min-width: 0; }
+/* legend는 기본적으로 테두리 선 위에 놓이므로 float로 카드 안의 제목처럼 보이게 한다. */
+.discover-question legend { float: left; width: 100%; font-weight: 700; font-size: 19px; padding: 0; margin: 0 0 12px; }
+.discover-options { clear: both; }
+.discover-extra label { position: relative; padding: 8px 16px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); cursor: pointer; font-weight: 600; color: var(--text); }
+.discover-extra label:hover { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-strong); }
+.discover-extra label:has(input:checked) { border-color: var(--brand); background: var(--brand); color: #fff; }
+.discover-extra label:has(input:focus-visible) { outline: 3px solid var(--brand); outline-offset: 2px; }
+.discover-extra input { position: absolute; width: 1px; height: 1px; min-height: 0; opacity: 0; }
 .discover-options { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; }
 .discover-option { position: relative; display: flex; flex-direction: column; overflow: hidden; border: 2px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); cursor: pointer; font-weight: 600; }
 .discover-option:hover { border-color: var(--brand); }
@@ -399,7 +407,7 @@ summary:has(.details-title):hover .details-title { color: var(--brand-strong); }
 .discover-option:has(input:checked)::after { content: "✓ 선택"; position: absolute; top: 10px; right: 10px; padding: 3px 10px; border-radius: 999px; background: var(--brand); color: #fff; font-size: 13px; }
 .discover-image { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--surface-muted); }
 .discover-scene { padding: 14px 16px 16px; line-height: 1.45; }
-.discover-extra { display: flex; justify-content: center; gap: 18px; margin-top: 12px; font-size: 14px; color: var(--text-muted); }
+.discover-extra { display: flex; justify-content: center; gap: 10px; margin-top: 14px; font-size: 14px; }
 .discover-extra label { display: flex; align-items: center; gap: 6px; font-weight: 400; }
 .discover-history { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 8px; }
 .discover-history li { line-height: 1.5; }

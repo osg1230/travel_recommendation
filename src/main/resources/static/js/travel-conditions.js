@@ -117,7 +117,7 @@ function updateSummary() {
     ].filter(Boolean);
     summary.replaceChildren();
     if (parts.length === 0) {
-        summary.append('아직 고른 조건이 없어요. 아무것도 고르지 않아도 추천을 받을 수 있어요.');
+        summary.append('아직 고른 조건이 없어요. 그대로 추천받아도 돼요.');
         return;
     }
     const label = document.createElement('strong');
