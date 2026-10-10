@@ -288,6 +288,14 @@ public class ItineraryController {
             var petByPlace=new java.util.HashMap<Long,ItineraryPlan.PetCheck>();
             if(job.result().pets()!=null) job.result().pets().forEach(p->petByPlace.put(p.placeId(),p));
             model.addAttribute("petByPlace",job.result().pets()==null?null:petByPlace);
+            // 확인 필요 항목 AI 검색: 아직 안 찾았으면 질문 수(버튼 표시용), 찾았으면 장소별 답과 조회 시각.
+            var verifications=job.result().verifications();
+            model.addAttribute("verifyQuestions",verifications==null?VerificationQuestions.of(job.input(),job.result()).size():0);
+            var answersByPlace=new java.util.HashMap<Long,List<ItineraryPlan.CheckAnswer>>();
+            if(verifications!=null) verifications.answers().forEach(a->answersByPlace.computeIfAbsent(a.placeId(),k->new java.util.ArrayList<>()).add(a));
+            model.addAttribute("answersByPlace",answersByPlace);
+            model.addAttribute("verificationsCheckedAt",verifications==null?null:java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                .format(verifications.checkedAt().atZone(java.time.ZoneId.of("Asia/Seoul"))));
             // 조회 시각은 한국 시간으로 보여 준다.
             model.addAttribute("pricesCheckedAt",job.result().prices()==null?null:java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
                 .format(job.result().prices().checkedAt().atZone(java.time.ZoneId.of("Asia/Seoul"))));
@@ -356,6 +364,31 @@ public class ItineraryController {
     /** 초안마다 "후보에 없다"고 되물은 장소 이름. 같은 장소를 다시 요청하면 되묻지 않고 비슷한 곳으로 바꾼다. */
     private static final String AI_ASKED_KEY="itineraryAiAskedPlaces";
     private static final String PRICE_COOLDOWN_KEY="itineraryPriceLookupNext";
+    private static final String VERIFY_COOLDOWN_KEY="itineraryVerifyNext";
+
+    /** 초안의 확인 필요 항목(반려동물 동반·여행 목적 활동)을 AI 웹 검색으로 찾는다. 유료 호출이라 버튼을 누를 때만 하고 세션마다 30초 간격을 둔다. */
+    @PostMapping("/itineraries/{id}/verify")
+    String verify(@PathVariable UUID id,Principal principal,HttpSession session,
+                  org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
+        String back="redirect:/travel/recommendations/itineraries/"+id+"#verify-title";
+        synchronized(session) {
+            var next=session.getAttribute(VERIFY_COOLDOWN_KEY) instanceof java.time.Instant at?at:null;
+            if(next!=null && next.isAfter(java.time.Instant.now())) {
+                redirect.addFlashAttribute("verifyError","방금 AI 확인 검색을 했어요. 잠시 후 다시 시도해 주세요.");
+                return back;
+            }
+            session.setAttribute(VERIFY_COOLDOWN_KEY,java.time.Instant.now().plusSeconds(30));
+        }
+        try {
+            service().lookupVerifications(id,login(principal),hash(session));
+        } catch(RecommendationException e) {
+            redirect.addFlashAttribute("verifyError",e.getMessage()+" 일정 초안은 그대로예요.");
+        } catch(ResponseStatusException e) {
+            if(e.getStatusCode().value()==404) throw e;
+            redirect.addFlashAttribute("verifyError",e.getReason());
+        }
+        return back;
+    }
 
     /** 초안의 숙소·음식점 참고 가격을 AI 웹 검색으로 찾는다. 유료 호출이라 버튼을 누를 때만 하고, 세션마다 30초 간격을 둔다. */
     @PostMapping("/itineraries/{id}/prices")

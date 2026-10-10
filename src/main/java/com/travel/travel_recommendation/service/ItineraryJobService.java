@@ -36,6 +36,9 @@ public class ItineraryJobService {
     private final org.springframework.beans.factory.ObjectProvider<PlaceDiscoveryService> discoveries;
     // 반려동물 동반 정보는 SQL Server 프로필에서만 조회한다(장소 상세정보 보관).
     private final org.springframework.beans.factory.ObjectProvider<PlacePetService> pets;
+    // 확인 필요 항목 AI 웹 검색. 설정(travel.verification.auto)에 따라 초안을 만들 때 자동으로 돌리거나 버튼으로만 찾는다.
+    private final OpenAiVerificationClient verificationClient;
+    private final com.travel.travel_recommendation.config.VerificationProperties verification;
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(ItineraryJobService.class);
     public record Work(UUID id,Input input) {}
 
@@ -721,6 +724,95 @@ public class ItineraryJobService {
         jobs.flush();
     }
 
+    /** 같은 초안을 다시 눌러도 이 시간 안에는 이전 AI 확인 결과를 쓴다. */
+    static final Duration VERIFICATION_REUSE=Duration.ofHours(24);
+    /** stored는 이 장소에 저장해 둔 재사용 가능한 답이다. 있으면 다시 검색하지 않는다. */
+    public record CheckTarget(CheckQuestion question,CheckAnswer stored) {}
+    public record SearchedCheck(Long placeId,String name,CheckAnswer answer) {}
+    public record CheckContext(String resultJson,List<CheckTarget> targets,Verifications cached) {}
+
+    /**
+     * 완성된 초안에서 서버가 확인하지 못한 항목(반려동물 동반·여행 목적 활동)을 AI 웹 검색으로 찾아 결과에 붙인다(버튼).
+     * 참고 가격과 같이 읽기 → 검색 → 저장을 나누고, 이 메서드 자체에는 트랜잭션을 두지 않는다.
+     */
+    public Verifications lookupVerifications(UUID id,String login,byte[] hash) {
+        var context=self().checkContext(id,login,hash);
+        if(context.cached()!=null) return context.cached();
+        if(context.targets().isEmpty()) throw new ResponseStatusException(HttpStatus.CONFLICT,"이 초안에는 AI로 찾아볼 확인 필요 항목이 없어요.");
+        var verifications=search(context.targets(),Instant.now().plusSeconds(90));
+        self().saveVerifications(id,login,hash,context.resultJson(),verifications);
+        return verifications;
+    }
+    /** 초안을 만드는 중(자동 실행 설정)에 찾는다. 결과는 완료 시 결과 JSON에 함께 저장된다. */
+    Verifications verifyNow(Input input,Result draft,Instant deadline) {
+        var questions=VerificationQuestions.of(input,draft);
+        if(questions.isEmpty()) return null;
+        return search(self().checkTargets(questions),deadline);
+    }
+    /** 질문마다 따로 검색한다. 저장해 둔 답이 있는 곳은 건너뛰고, 시간이 모자라면 나머지는 못 찾음으로 둔다. 비용을 낸 결과는 장소에 남긴다. */
+    private Verifications search(List<CheckTarget> targets,Instant deadline) {
+        List<CheckAnswer> answers=new ArrayList<>(); List<SearchedCheck> searched=new ArrayList<>();
+        try {
+            for(var target:targets) {
+                if(target.stored()!=null) { answers.add(target.stored()); continue; }
+                if(Instant.now().isAfter(deadline)) { answers.add(OpenAiVerificationClient.notFound(target.question())); continue; }
+                var answer=verificationClient.lookup(target.question());
+                answers.add(answer); searched.add(new SearchedCheck(target.question().placeId(),target.question().name(),answer));
+            }
+        } finally {
+            if(!searched.isEmpty()) {
+                try { self().storePlaceChecks(searched); }
+                catch(RuntimeException e) { log.warn("AI 확인 결과를 장소에 저장하지 못함 ({})",e.toString()); }
+            }
+        }
+        return new Verifications(answers,Instant.now());
+    }
+    @Transactional(readOnly=true,timeout=10)
+    public CheckContext checkContext(UUID id,String login,byte[] hash) {
+        var job=access.owned(id,login,hash,"ITINERARY");
+        if(!"COMPLETED".equals(job.getStatus()) || job.getResultJson()==null)
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"완성된 일정 초안에서만 AI 확인 검색을 할 수 있어요.");
+        var result=mapper.readValue(job.getResultJson(),Result.class);
+        if(result.verifications()!=null && result.verifications().checkedAt().isAfter(Instant.now().minus(VERIFICATION_REUSE)))
+            return new CheckContext(job.getResultJson(),List.of(),result.verifications());
+        if(!verificationClient.configured())
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"AI 확인 검색은 OpenAI 연결 설정 후 이용할 수 있어요.");
+        var input=mapper.readValue(job.getRequestJson(),Input.class);
+        return new CheckContext(job.getResultJson(),checkTargets(VerificationQuestions.of(input,result)),null);
+    }
+    /** 질문마다 장소에 저장해 둔 같은 질문의 답을 찾아 붙인다. */
+    @Transactional(readOnly=true,timeout=10)
+    public List<CheckTarget> checkTargets(List<CheckQuestion> questions) {
+        Map<Long,Place> saved=new HashMap<>();
+        places.findAllById(questions.stream().map(CheckQuestion::placeId).distinct().toList()).forEach(p->saved.put(p.getId(),p));
+        var now=Instant.now();
+        return questions.stream().map(q->{
+            var place=saved.get(q.placeId());
+            var stored=place!=null && place.getName().equals(q.name())?PlaceCheckDetails.read(place,q.topic(),q.question(),now,mapper):null;
+            return new CheckTarget(q,stored);
+        }).toList();
+    }
+    /** 새로 찾은 답을 장소에 보관한다. 초안을 만든 뒤 장소 이름이 바뀌었으면 보관하지 않는다. */
+    @Transactional(timeout=10)
+    public void storePlaceChecks(List<SearchedCheck> searched) {
+        for(var item:searched) places.lockById(item.placeId()).ifPresent(place->{
+            if(!place.getName().equals(item.name())) return;
+            String json=PlaceCheckDetails.write(place,item.answer(),mapper);
+            if(json!=null) place.updateDetails(json);
+        });
+        places.flush();
+    }
+    /** 검색하는 동안 초안이 바뀌지 않았을 때만 결과를 붙인다. */
+    @Transactional(timeout=10)
+    public void saveVerifications(UUID id,String login,byte[] hash,String expectedResult,Verifications verifications) {
+        access.owned(id,login,hash,"ITINERARY");
+        var job=jobs.lockById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if(!"COMPLETED".equals(job.getStatus()) || !Objects.equals(job.getResultJson(),expectedResult))
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"AI 확인 검색 중에 일정이 바뀌었어요. 다시 시도해 주세요.");
+        job.attachToResult(mapper.writeValueAsString(mapper.readValue(expectedResult,Result.class).withVerifications(verifications)));
+        jobs.flush();
+    }
+
     /** 후보 목록(개수 제한) 밖의 관광지: 이 지역의 사용 중인 관광지이고 24시간 안에 확인한 카카오 장소만 쓴다. */
     private java.util.Optional<PlaceCandidate> extraCandidate(Long id,PlaceCandidateView pool) {
         return places.findById(id).filter(Place::isActive).filter(p->"ATTRACTION".equals(p.getPlaceType()))
@@ -793,6 +885,11 @@ public class ItineraryJobService {
             var petService=pets.getIfAvailable();
             if(petService!=null) try { draft=draft.withPets(petService.lookup(work.input(),draft,Instant.now().plusSeconds(25))); }
             catch(RuntimeException error) { log.warn("반려동물 동반 정보 조회를 건너뜀 job={} ({})",work.id(),error.toString()); }
+        }
+        // 자동 실행 설정이면 확인 필요 항목(반려동물 동반·여행 목적 활동)을 AI 웹 검색으로 찾아 AI 준비 안내에도 넘긴다. 유료라 기본은 버튼이다.
+        if(verification.auto() && verificationClient.configured()) {
+            try { draft=draft.withVerifications(verifyNow(work.input(),draft,Instant.now().plusSeconds(40))); }
+            catch(RuntimeException error) { log.warn("AI 확인 검색을 건너뜀 job={} ({})",work.id(),error.toString()); }
         }
         var plan=assistant.assist(work.input(),draft,deadline);
         // 주변 지역 조회는 최대 수십 초가 걸릴 수 있어 남은 시간이 부족하면 건너뛴다. 실패해도 일정 초안은 그대로다.

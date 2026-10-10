@@ -30,22 +30,32 @@ public class PricePageChecker {
     public boolean confirms(String url, String placeName, String address, Integer minWon, Integer maxWon) {
         String road = roadName(address);
         if (road == null) return false;
+        String text = fetchText(url);
+        return text != null && text.contains(compact(placeName)) && text.contains(road) && pricesIn(text, minWon, maxWon);
+    }
+
+    /** AI 확인 검색용: 페이지 글자에 장소 이름만 있으면 true다. 가격처럼 대조할 숫자가 없어 이름으로만 본다. */
+    public boolean mentions(String url, String placeName) {
+        String text = fetchText(url);
+        return text != null && !compact(placeName).isEmpty() && text.contains(compact(placeName));
+    }
+
+    /** 허용된 공개 https 페이지를 읽어 태그·공백을 뺀 글자로 돌려준다. 열리지 않거나 읽을 수 없으면 null이다('확인하지 못함'). */
+    private String fetchText(String url) {
         try {
             URI uri = URI.create(url);
-            if (!allowed(uri)) return false;
+            if (!allowed(uri)) return null;
             var request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(6))
                 .header("User-Agent", "Mozilla/5.0 (travel-recommendation price check)").GET().build();
             var response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
             try (InputStream body = response.body()) {
-                if (response.statusCode() != 200) return false;
-                String text = pageText(new String(body.readNBytes(MAX_BYTES), StandardCharsets.UTF_8));
-                return text.contains(compact(placeName)) && text.contains(road) && pricesIn(text, minWon, maxWon);
+                if (response.statusCode() != 200) return null;
+                return pageText(new String(body.readNBytes(MAX_BYTES), StandardCharsets.UTF_8));
             }
         } catch (InterruptedException e) {
-            Thread.currentThread().interrupt(); return false;
+            Thread.currentThread().interrupt(); return null;
         } catch (Exception e) {
-            // 열리지 않거나 읽을 수 없는 페이지는 '확인하지 못함'으로 둔다.
-            return false;
+            return null;
         }
     }
 

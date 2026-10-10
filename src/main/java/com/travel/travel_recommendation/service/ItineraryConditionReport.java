@@ -26,7 +26,7 @@ public final class ItineraryConditionReport {
     public static Report evaluate(Input input, Result result) {
         var checks = new ArrayList<>(List.of(period(input, result), required(input, result), attractions(input, result), duplicates(result),
             dailyVisits(input, result), themes(input, result), timeline(input, result), travelTimes(input, result), operating(input, result),
-            pets(input, result), accommodation(input, result), budget(input)));
+            pets(input, result), purpose(input, result), accommodation(input, result), budget(input)));
         if (input.revision() != null) checks.add(2, kept(input, result));
         return new Report(List.copyOf(checks), checks.stream().noneMatch(c -> c.status() == Status.UNMET));
     }
@@ -229,8 +229,36 @@ public final class ItineraryConditionReport {
                 + "). 가능한 동물 크기와 목줄·입마개 같은 필요 사항은 각 장소 안내를 확인해 주세요.");
         String detail = (denied.isEmpty() ? "" : "동반 불가로 안내된 곳: " + String.join(", ", denied) + ". ")
             + (unknown.isEmpty() ? "" : "관광공사에 동반 정보가 없는 곳 " + unknown.size() + "곳(" + String.join(", ", unknown) + ")은 방문 전 확인이 필요해요. ")
-            + (allowed + partial > 0 ? "확인된 곳: " + counts + "." : "");
+            + (allowed + partial > 0 ? "확인된 곳: " + counts + ". " : "")
+            + aiChecks(result, "PET");
         return new Check("반려동물 동반", Status.NEEDS_CHECK, detail.strip());
+    }
+
+    /**
+     * 여행 목적 활동(사용자가 직접 말한 목적, 예: 상어 관람). 서버는 시설 이름·주소만 확인하므로 활동 가능 여부는 늘 확인 필요다.
+     * AI 웹 검색 결과가 있으면 가능·불가·못 찾음 수를 덧붙이되, 검색 결과라 충족으로 올리지 않는다.
+     */
+    private static Check purpose(Input input, Result result) {
+        var c = input.conditions();
+        String purpose = c.travelPurpose() == null ? "" : c.travelPurpose().strip();
+        if (purpose.isEmpty() || c.purposeSuggested())
+            return new Check("여행 목적 활동", Status.NOT_APPLICABLE, "직접 말한 여행 목적 활동이 없어요.");
+        return new Check("여행 목적 활동", Status.NEEDS_CHECK, "'" + purpose + "'을(를) 실제로 할 수 있는지는 각 장소의 관람·체험 내용을 확인하지 않았어요. "
+            + aiChecks(result, "PURPOSE"));
+    }
+
+    /** AI 웹 검색 결과 요약 한 줄(주제별). 결과가 없으면 빈 문자열이다. */
+    private static String aiChecks(Result result, String topic) {
+        if (result.verifications() == null) return "";
+        var answers = result.verifications().answers().stream().filter(a -> topic.equals(a.topic())).toList();
+        if (answers.isEmpty()) return "";
+        long yes = answers.stream().filter(a -> "YES".equals(a.verdict())).count(), no = answers.stream().filter(a -> "NO".equals(a.verdict())).count();
+        long verified = answers.stream().filter(a -> "VERIFIED".equals(a.status())).count();
+        var yesNames = answers.stream().filter(a -> "YES".equals(a.verdict())).map(CheckAnswer::name).toList();
+        var noNames = answers.stream().filter(a -> "NO".equals(a.verdict())).map(CheckAnswer::name).toList();
+        return "AI 웹 검색 " + answers.size() + "곳: 가능 " + yes + "곳" + (yesNames.isEmpty() ? "" : "(" + String.join(", ", yesNames) + ")")
+            + " · 불가 " + no + "곳" + (noNames.isEmpty() ? "" : "(" + String.join(", ", noNames) + ")")
+            + " · 못 찾음 " + (answers.size() - yes - no) + "곳 · 출처 페이지에서 장소 이름을 확인한 답 " + verified + "곳. 검색 결과라 방문 전 출처를 직접 확인해 주세요.";
     }
 
     private static Check accommodation(Input input, Result result) {

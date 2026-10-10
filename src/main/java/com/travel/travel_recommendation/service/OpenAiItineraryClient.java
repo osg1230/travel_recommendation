@@ -64,6 +64,9 @@ public class OpenAiItineraryClient {
                 (동반 가능 구분·가능한 동물·필요 사항·기타)다. petInfo가 있는 장소는 그 내용을 근거로 동반 가능 여부와 준비물(목줄·입마개·배변봉투 등)을
                 일차 안내와 장소별 이유에 반영하고, petInfo가 '정보 없음'으로 시작하는 장소만 동반 가능 여부를 확인하지 못했다고 쓴다.
                 petInfo에 없는 동반 조건을 지어내지 않고, petTravel이 없으면 반려동물 이야기를 하지 않는다.
+                항목의 aiChecks는 서버가 AI 웹 검색으로 찾은 그 장소의 확인 결과(반려동물 동반, 여행 목적 활동 가능 여부)와 근거다.
+                '가능'이면 그 근거를 들어 안내하고, '불가'면 그 장소에서는 안 된다고 알리며, '못 찾음'이면 직접 확인이 필요하다고 쓴다.
+                aiChecks는 웹 검색 결과라 "검색 결과에 따르면"처럼 출처가 검색임을 드러내고 확정된 사실처럼 쓰지 않는다.
                 """,
                 "input",mapper.writeValueAsString(promptInput(conditions,plan,previousFailure)),
                 "text",Map.of("format",Map.of("type","json_schema","name","itinerary_assist","strict",true,
@@ -173,6 +176,12 @@ public class OpenAiItineraryClient {
                 fields.put("type",item.type());fields.put("name",item.name());
                 fields.put("start",item.start().toString());fields.put("end",item.end().toString());
                 if(plan.pets()!=null && petInfo.containsKey(item.placeId())) fields.put("petInfo",petInfo.get(item.placeId()));
+                // 자동 실행 설정으로 초안을 만들 때 찾은 AI 확인 결과(버튼으로 찾은 결과는 안내가 이미 만들어진 뒤라 들어가지 않는다).
+                if(plan.verifications()!=null && item.placeId()!=null) {
+                    var checks=plan.verifications().answers().stream().filter(a->a.placeId().equals(item.placeId()) && !"TRANSIT".equals(item.type()))
+                        .map(a->a.topicLabel()+": "+a.verdictLabel()+(a.answer().isEmpty()?"":" · "+a.answer())).toList();
+                    if(!checks.isEmpty()) fields.put("aiChecks",checks);
+                }
                 return fields;
             }).toList())).toList());
         if(previousFailure!=null) prompt.put("previousFailure",previousFailure);

@@ -162,5 +162,28 @@ class ItineraryConditionReportTests {
         assertThat(check.status()).isEqualTo(Status.NEEDS_CHECK);
         assertThat(check.detail()).contains("동반 불가로 안내된 곳: 장소2","정보가 없는 곳 1곳(장소3)","동반 가능 1곳");
         assertThat(mixed.complete()).isTrue();
+        // AI 웹 검색 결과가 있으면 요약을 덧붙이되 상태는 확인 필요 그대로다.
+        var searched=ItineraryConditionReport.evaluate(input,mixed.checks().isEmpty()?result:result.withPets(List.of(new PetCheck(3L,"장소3",null)))
+            .withVerifications(new Verifications(List.of(new CheckAnswer(3L,"장소3","PET","q","YES","가능해요","https://a.kr/","VERIFIED",Instant.now())),Instant.now())));
+        var withAi=searched.checks().stream().filter(k->k.name().equals("반려동물 동반")).findFirst().orElseThrow();
+        assertThat(withAi.status()).isEqualTo(Status.NEEDS_CHECK);
+        assertThat(withAi.detail()).contains("AI 웹 검색 1곳: 가능 1곳(장소3)","출처 페이지에서 장소 이름을 확인한 답 1곳");
+    }
+    // 직접 말한 여행 목적 활동은 늘 확인 필요이고, AI 검색 결과가 있으면 가능·불가·못 찾음 수를 덧붙인다. 제안한 방향이면 해당 없음이다.
+    @Test void purposeActivityStaysNeedsCheckWithAiSearchSummary() {
+        var base=input(1,LocalDate.of(2026,10,1),null);
+        var result=generator.generate(base);
+        assertThat(status(ItineraryConditionReport.evaluate(base,result),"여행 목적 활동")).isEqualTo(Status.NOT_APPLICABLE);
+        var c=base.conditions();
+        var purpose=new ConfirmedTravelConditions(c.inputMode(),c.originalText(),c.region(),c.startDate(),c.endDate(),c.durationDays(),c.budget(),
+            c.partySize(),c.accommodationNeeded(),c.includeNearby(),c.selectedKeywords(),c.interpretationSummary(),true,"상어 관람");
+        var input=new Input(base.recommendationId(),base.places(),purpose,base.start(),base.end(),base.transport(),base.visitMinutes());
+        var plain=ItineraryConditionReport.evaluate(input,result).checks().stream().filter(k->k.name().equals("여행 목적 활동")).findFirst().orElseThrow();
+        assertThat(plain.status()).isEqualTo(Status.NEEDS_CHECK); assertThat(plain.detail()).contains("'상어 관람'").doesNotContain("AI 웹 검색");
+        var answers=new Verifications(List.of(new CheckAnswer(1L,"장소1","PURPOSE","q","NO","상어 전시는 없어요","https://a.kr/","UNVERIFIED",Instant.now()),
+            new CheckAnswer(2L,"장소2","PURPOSE","q","UNKNOWN","",null,"NOT_FOUND",Instant.now())),Instant.now());
+        var withAi=ItineraryConditionReport.evaluate(input,result.withVerifications(answers)).checks().stream().filter(k->k.name().equals("여행 목적 활동")).findFirst().orElseThrow();
+        assertThat(withAi.status()).isEqualTo(Status.NEEDS_CHECK);
+        assertThat(withAi.detail()).contains("AI 웹 검색 2곳: 가능 0곳 · 불가 1곳(장소1) · 못 찾음 1곳");
     }
 }

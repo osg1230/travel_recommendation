@@ -98,6 +98,11 @@
 <!--/* 반려동물 동반 여행이면 관광공사 동반 정보(또는 정보 없음)를 장소마다 한 줄로 보여 준다. */-->
 <p class="help" th:if="${petByPlace != null and item.type != 'TRANSIT' and item.placeId != null and petByPlace.containsKey(item.placeId)}"
    th:text="${'반려동물 동반: ' + petByPlace.get(item.placeId).describe()}"></p>
+<!--/* AI 웹 검색으로 찾은 확인 결과(반려동물 동반·여행 목적 활동). 검색 결과라 출처 확인 여부를 함께 적는다. */-->
+<th:block th:if="${item.type != 'TRANSIT' and item.placeId != null and answersByPlace.containsKey(item.placeId)}">
+<p class="help" th:each="answer : ${answersByPlace.get(item.placeId)}"
+   th:text="${'AI 확인(' + answer.topicLabel() + '): ' + answer.verdictLabel() + (answer.found() ? ' · ' + answer.answer + (answer.status == 'VERIFIED' ? ' · 출처에서 장소 이름 확인' : ' · 출처 직접 확인 필요') : ' · 믿을 만한 출처를 찾지 못해 직접 확인이 필요해요')}"></p>
+</th:block>
 <th:block th:if="${item.type == 'MEAL' or item.type == 'STAY'}" th:with="quote=${priceByPlace.get(item.placeId)}">
 <p class="help" th:if="${quote != null and quote.found()}"
    th:text="${'참고 가격: ' + quote.priceText + ' (' + quote.basis + ') · ' + (quote.status == 'VERIFIED' ? '출처 페이지에서 상호·가격 확인' : 'AI 검색 결과, 출처에서 직접 확인 필요')}"></p>
@@ -200,6 +205,29 @@
 </table>
 <p class="help" th:each="reason : ${costEstimate.excluded}" th:text="${reason}"></p>
 <p class="help">실제 요금이 아닌 추정이에요. 숙소·음식점은 아래에서 참고 가격을 찾으면 그 값으로 다시 계산하고, 나머지 항목은 일반적인 기준 범위로 어림해요. 날짜·객실·메뉴·할인에 따라 실제 비용은 달라져요.</p>
+</section>
+
+<!--/* 확인 필요 항목 AI 검색: 서버가 확인하지 못한 반려동물 동반·여행 목적 활동을 버튼으로 찾는다(설정에 따라 초안을 만들 때 자동). 결과는 검색 결과라 확정 사실로 쓰지 않는다. */-->
+<section class="condition-section" th:if="${job.result != null and (verifyQuestions > 0 or job.result.verifications != null or verifyError != null)}" aria-labelledby="verify-title">
+<h2 id="verify-title">확인 필요 항목 AI로 찾아보기</h2>
+<p role="alert" th:if="${verifyError != null}" th:text="${verifyError}"></p>
+<th:block th:if="${job.result.verifications == null}">
+<p class="help" th:text="${'반려동물 동반 가능 여부나 여행 목적 활동처럼 서버가 확인하지 못한 항목 ' + verifyQuestions + '개를 장소마다 AI 웹 검색으로 찾아요. 1분 가까이 걸릴 수 있어요.'}"></p>
+<form method="post" th:action="@{/travel/recommendations/itineraries/{id}/verify(id=${job.id})}"><button type="submit" th:text="${'확인 필요 항목 ' + verifyQuestions + '개 AI로 찾아보기'}"></button></form>
+</th:block>
+<th:block th:if="${job.result.verifications != null}">
+<p class="help" th:text="${'AI 웹 검색 조회: ' + verificationsCheckedAt + ' (한국 시간)'}"></p>
+<article class="place-row" th:each="answer : ${job.result.verifications.answers}">
+<h3 th:text="${answer.topicLabel() + ' · ' + answer.name + ' · ' + answer.verdictLabel()}"></h3>
+<th:block th:if="${answer.found()}">
+<p th:text="${answer.answer}"></p>
+<p class="help" th:text="${answer.status == 'VERIFIED' ? '출처 페이지에 장소 이름이 있는 것을 확인했어요. 내용은 직접 확인해 주세요.' : 'AI 검색 결과예요. 출처 페이지 내용은 확인하지 못했으니 직접 확인해 주세요.'}"></p>
+<div class="place-links"><a th:href="${answer.sourceUrl}" target="_blank" rel="noopener noreferrer">출처 보기 (새 창)</a></div>
+</th:block>
+<p class="help" th:unless="${answer.found()}">믿을 만한 출처를 찾지 못했어요. 장소 출처에서 직접 확인해 주세요.</p>
+</article>
+<p class="help">검색 결과는 바뀔 수 있고 AI가 잘못 읽었을 수 있어요. 방문 전에 출처나 공식 안내로 확인해 주세요.</p>
+</th:block>
 </section>
 
 <!--/* 일정 뒤의 참고 정보(가격·대표 음식·주변 지역·버스)는 제목만 보이게 접어 둔다. 조회 결과나 오류가 있으면 펼쳐서 보여 준다. */-->
