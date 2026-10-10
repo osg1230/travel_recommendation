@@ -187,6 +187,8 @@ h2[id] { scroll-margin-top: 84px; }
 .side-day { flex-shrink: 0; font-size: 12px; font-weight: 700; color: var(--brand-strong); }
 .side-links { display: grid; gap: 8px; font-size: 14px; }
 .card-region { margin: 0 0 10px; color: var(--text-muted); font-size: 14px; }
+/* 여행지 카드의 대표 코스 한 줄: 추천 이유 아래에 장소 이름을 화살표로 이어 보여 준다. */
+.card-course { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--brand-strong); }
 /* 목적에 맞는 곳(예: 아쿠아리움)은 추천 근거라 옅은 청록 칸으로 묶어 보여 준다. */
 .purpose-matches { margin: 12px 0; padding: 10px 14px; list-style: none; border-radius: var(--radius-sm); background: var(--brand-soft); font-size: 14px; }
 .purpose-matches li + li { margin-top: 4px; }
