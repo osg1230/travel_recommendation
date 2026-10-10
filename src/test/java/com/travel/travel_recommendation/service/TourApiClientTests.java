@@ -144,4 +144,21 @@ class TourApiClientTests {
         assertThat(result.get(1).image()).isEmpty();
         assertCode("TOUR_INPUT", () -> client("key").searchFestivals("43&x=1", java.time.LocalDate.of(2026, 9, 27)));
     }
+    // 반려동물 동반 정보는 원문 그대로 받고, 등록되지 않은 장소는 비어 있으며, 다른 콘텐츠 ID가 오면 쓰지 않는다.
+    @Test void readsPetTourInfoAndKeepsUnregisteredPlacesEmpty() {
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":1,\"items\":{\"item\":[{\"contentid\":\"129784\","
+            + "\"acmpyTypeCd\":\"전구역 동반가능\",\"acmpyPsblCpam\":\"전 견종 동반 가능\",\"acmpyNeedMtr\":\"목줄 착용\",\"etcAcmpyInfo\":\"배변봉투 지참\"}]}}}}");
+        var info = client("key").findPetInfo("129784").orElseThrow();
+        assertThat(info.allowedArea()).isEqualTo("전구역 동반가능");
+        assertThat(info.animals()).isEqualTo("전 견종 동반 가능");
+        assertThat(info.requirements()).isEqualTo("목줄 착용");
+        assertThat(info.etc()).isEqualTo("배변봉투 지참");
+        assertThat(info.status()).isEqualTo("ALLOWED");
+        assertThat(query.get()).contains("contentId=129784", "numOfRows=1");
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"items\":\"\",\"numOfRows\":0,\"pageNo\":1,\"totalCount\":0}}}");
+        assertThat(client("key").findPetInfo("129784")).isEmpty();
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":1,\"items\":{\"item\":[{\"contentid\":\"999\",\"acmpyTypeCd\":\"전구역 동반가능\"}]}}}}");
+        assertCode("TOUR_RESPONSE", () -> client("key").findPetInfo("129784"));
+        assertCode("TOUR_INPUT", () -> client("key").findPetInfo("abc"));
+    }
 }

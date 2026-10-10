@@ -265,12 +265,64 @@ public final class ItineraryPlan {
         public Prices { quotes = quotes == null ? List.of() : List.copyOf(quotes); }
     }
     /**
+     * 반려동물 동반 여행에서 일정에 들어간 장소(관광·식사·숙소)마다 한국관광공사에서 조회한 동반 정보.
+     * info가 null이면 관광공사에서 그 장소를 찾지 못했거나 시간 안에 조회하지 못한 것이다.
+     */
+    public record PetCheck(Long placeId, String name, PlacePetInfo info) {
+        public String status() { return info == null ? "UNKNOWN" : info.status(); }
+        /** 화면·AI 안내용 한 줄. 원문의 줄바꿈은 공백으로 바꾼다. */
+        public String describe() {
+            if (info == null) return "정보 없음 · 관광공사에서 이 장소를 찾지 못해 방문 전 확인이 필요해요";
+            if (!info.found()) return "정보 없음 · 관광공사에 등록된 장소지만 반려동물 동반 정보가 없어 방문 전 확인이 필요해요";
+            var text = new StringBuilder(info.label());
+            for (String part : List.of(info.animals(), info.requirements(), info.etc()))
+                if (part != null && !part.isBlank()) text.append(" · ").append(part.replaceAll("\\s*\\n\\s*", " ").strip());
+            return text.append(" (한국관광공사)").toString();
+        }
+    }
+    /**
+     * 서버가 확인하지 못한 항목 하나에 대한 질문. topic은 PET(반려동물 동반)·PURPOSE(여행 목적 활동)이고,
+     * question은 AI 웹 검색에 그대로 보내는 한국어 질문이다.
+     */
+    public record CheckQuestion(Long placeId, String name, String topic, String question) {}
+    /**
+     * AI 웹 검색으로 받은 답. verdict는 YES(가능)·NO(불가)·UNKNOWN(못 찾음), status는 VERIFIED(출처 페이지에서 장소 이름을 서버가 확인)·
+     * UNVERIFIED(검색 결과에 있는 출처지만 페이지 내용은 확인하지 못함)·NOT_FOUND(근거 없음). AI 답은 확인된 사실로 표시하지 않는다.
+     */
+    public record CheckAnswer(Long placeId, String name, String topic, String question, String verdict, String answer,
+                              String sourceUrl, String status, Instant checkedAt) {
+        public boolean found() { return !"NOT_FOUND".equals(status); }
+        public String verdictLabel() {
+            return switch (verdict == null ? "" : verdict) { case "YES" -> "가능"; case "NO" -> "불가"; default -> "못 찾음"; };
+        }
+        public String topicLabel() { return "PET".equals(topic) ? "반려동물 동반" : "여행 목적 활동"; }
+        public CheckAnswer checkedAt(Instant at) { return new CheckAnswer(placeId, name, topic, question, verdict, answer, sourceUrl, status, at); }
+    }
+    /** 결과 화면에서 버튼으로(또는 자동 실행 설정으로) 조회한 AI 확인 결과 묶음. checkedAt은 조회 시각이다. */
+    public record Verifications(List<CheckAnswer> answers, Instant checkedAt) {
+        public Verifications { answers = answers == null ? List.of() : List.copyOf(answers); }
+        /** 장소·주제가 같은 답. */
+        public CheckAnswer find(Long placeId, String topic) {
+            return answers.stream().filter(a -> a.placeId().equals(placeId) && a.topic().equals(topic)).findFirst().orElse(null);
+        }
+    }
+    /**
      * skipped는 일정에 쓰려고 골랐지만 하루 시간 안에 넣지 못해 뺀 관광지다. 필수·유지 장소는 여기에 들어가지 않는다.
      * prices는 완성된 초안에 나중에 붙이는 참고 가격이며 일정의 시각·장소를 바꾸지 않는다.
+     * pets는 반려동물 동반 여행에서만 있고(아니면 null), verifications는 AI 웹 검색으로 확인 필요 항목을 찾은 결과다(안 찾았으면 null).
+     * 둘 다 일정의 시각·장소를 바꾸지 않으며 이전 작업 JSON에는 없다.
      */
     public record Result(String destination, List<Day> days, Transport transport, Instant createdAt, Assist assist, Nearby nearby,
-                         Lodging lodging, List<PlaceRef> skipped, Prices prices) {
+                         Lodging lodging, List<PlaceRef> skipped, Prices prices, List<PetCheck> pets, Verifications verifications) {
         public Result { skipped = skipped == null ? List.of() : List.copyOf(skipped); }
+        public Result(String destination, List<Day> days, Transport transport, Instant createdAt, Assist assist, Nearby nearby,
+                      Lodging lodging, List<PlaceRef> skipped, Prices prices, List<PetCheck> pets) {
+            this(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices, pets, null);
+        }
+        public Result(String destination, List<Day> days, Transport transport, Instant createdAt, Assist assist, Nearby nearby,
+                      Lodging lodging, List<PlaceRef> skipped, Prices prices) {
+            this(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices, null, null);
+        }
         /** 화면용: 이동시간을 처음 조회한 시각(한국 시간). 구간마다 적지 않고 일정 위에 한 번만 보여 준다. 저장 JSON에는 들어가지 않는다. */
         public String routesCheckedAtText() {
             return days.stream().flatMap(d -> d.items().stream()).filter(i -> i.checkedAt() != null)
@@ -290,12 +342,14 @@ public final class ItineraryPlan {
                       Lodging lodging) {
             this(destination, days, transport, createdAt, assist, nearby, lodging, null, null);
         }
-        public Result withAssist(Assist assist) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
-        public Result withDays(List<Day> days) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
-        public Result withNearby(Nearby nearby) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
-        public Result withLodging(Lodging lodging) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
-        public Result withSkipped(List<PlaceRef> skipped) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
-        public Result withPrices(Prices prices) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices); }
+        public Result withAssist(Assist assist) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices, pets, verifications); }
+        public Result withDays(List<Day> days) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices, pets, verifications); }
+        public Result withNearby(Nearby nearby) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices, pets, verifications); }
+        public Result withLodging(Lodging lodging) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices, pets, verifications); }
+        public Result withSkipped(List<PlaceRef> skipped) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices, pets, verifications); }
+        public Result withPrices(Prices prices) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices, pets, verifications); }
+        public Result withPets(List<PetCheck> pets) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices, pets, verifications); }
+        public Result withVerifications(Verifications verifications) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices, pets, verifications); }
     }
     public record View(UUID id, String status, String message, boolean pending, Input input, Result result) {}
 }

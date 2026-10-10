@@ -59,6 +59,15 @@ class OpenAiItineraryClientTests {
         // 자연어 원문·해석 요약 같은 개인 입력은 보내지 않는다.
         assertThat(request.get()).contains("오죽헌","강릉","09:00").doesNotContain("private-original-input","private-summary");
     }
+    // 반려동물 동반 여행이면 서버가 조회한 장소별 동반 정보를 함께 보내고, 아니면 반려동물 항목을 보내지 않는다.
+    @Test void sendsPetInfoOnlyForPetTravel() {
+        var info=new com.travel.travel_recommendation.dto.PlacePetInfo("129784","전구역 동반가능","전 견종","목줄 착용","",Instant.now());
+        client("test-key",Duration.ofSeconds(2)).assist(conditions(),plan().withPets(List.of(new PetCheck(10L,"오죽헌",info))),null);
+        // 입력 JSON은 문자열로 감싸여 따옴표가 \"로 들어간다. 지시문에도 같은 낱말이 있어 따옴표까지 맞춰 확인한다.
+        assertThat(request.get()).contains("\\\"petTravel\\\":true","\\\"petInfo\\\":\\\"동반 가능 · 전 견종 · 목줄 착용 (한국관광공사)\\\"");
+        client("test-key",Duration.ofSeconds(2)).assist(conditions(),plan(),null);
+        assertThat(request.get()).doesNotContain("\\\"petTravel\\\"","\\\"petInfo\\\"");
+    }
     @Test void resendsPreviousFailureReasonForSelfCorrection() {
         client("test-key",Duration.ofSeconds(2)).assist(conditions(),plan(),"일차 번호는 일정에 있는 번호를 한 번씩만 사용해야 해요.");
         assertThat(request.get()).contains("previousFailure","한 번씩만");

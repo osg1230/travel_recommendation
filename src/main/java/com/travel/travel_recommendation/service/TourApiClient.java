@@ -2,6 +2,7 @@ package com.travel.travel_recommendation.service;
 
 import com.travel.travel_recommendation.config.TourApiProperties;
 import com.travel.travel_recommendation.dto.PlaceOperatingInfo;
+import com.travel.travel_recommendation.dto.PlacePetInfo;
 import com.travel.travel_recommendation.dto.RegionalFestival;
 import java.io.IOException;
 import java.net.URI;
@@ -69,6 +70,22 @@ public class TourApiClient {
         return Optional.of(new PlaceOperatingInfo(contentId, contentTypeId, text(item, hoursField), text(item, closedField),
             "32".equals(contentTypeId) ? text(item, "checkintime") : "",
             "32".equals(contentTypeId) ? text(item, "checkouttime") : "", Instant.now()));
+    }
+
+    /**
+     * 장소의 반려동물 동반 정보(detailPetTour2). 관광공사에 등록된 장소라도 반려동물 정보가 없으면 비어 있다.
+     * 동반 구분(acmpyTypeCd)·가능한 동물(acmpyPsblCpam)·필요 사항(acmpyNeedMtr)·기타(etcAcmpyInfo) 원문을 그대로 담는다.
+     */
+    public Optional<PlacePetInfo> findPetInfo(String contentId) {
+        if (contentId == null || !contentId.matches("[1-9][0-9]{0,19}")) throw failure("TOUR_INPUT", "관광정보의 장소 ID를 확인해 주세요.");
+        var data = get(endpoint.resolve("detailPetTour2"), 1, "&contentId=" + contentId);
+        var items = data.path("items").path("item");
+        if (data.path("totalCount").asInt() == 0) return Optional.empty();
+        if (data.path("totalCount").asInt() != 1 || items.size() != 1) throw invalid();
+        var item = items.get(0);
+        if (!contentId.equals(item.path("contentid").asText())) throw invalid();
+        return Optional.of(new PlacePetInfo(contentId, text(item, "acmpyTypeCd"), text(item, "acmpyPsblCpam"),
+            text(item, "acmpyNeedMtr"), text(item, "etcAcmpyInfo"), Instant.now()));
     }
 
     /** image·copyright는 사진 검색(searchPhotos) 결과의 대표 사진 주소와 저작권 유형(Type1 등)이다. 그 밖의 검색에서는 빈 문자열이다. */
