@@ -13,7 +13,7 @@
     <a class="back-link" th:href="@{/travel/conditions}">← 조건 입력으로</a>
     <p class="eyebrow" th:text="${'여행 준비 · 취향 탐색 ' + (step + 1) + ' / ' + total}"></p>
     <h1>어느 쪽이 더 끌리나요?</h1>
-    <p class="intro">더 끌리는 쪽 그림을 눌러 주세요. 정답은 없고, 이번 여행에만 쓰여요. 고른 답에 따라 다음 질문이 달라져요.</p>
+    <p class="intro">더 끌리는 쪽 그림을 누르면 바로 다음 질문으로 넘어가요. 정답은 없고, 고른 답은 이번 여행 추천에만 써요.</p>
     <p class="help">어느 쪽도 괜찮으면 '상관없음', 답하기 어려우면 '건너뛰기'를 고르세요. 고르지 않은 쪽을 싫어한다고 보지 않아요.</p>
 
     <form method="post" th:action="@{/travel/conditions/discover}" data-discover-form>

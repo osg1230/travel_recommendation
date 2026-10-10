@@ -78,13 +78,7 @@ public class ConditionReviewService {
         }
         form.setThemes(themeValues);
         // 계절을 말하지 않았으면 여행 시작일(없으면 오늘)의 계절로 채운다. 날짜 계산이라 AI에 맡기지 않는다.
-        if (form.getSeason().isEmpty()) {
-            LocalDate when = form.getStartDate().matches("\\d{4}-\\d{2}-\\d{2}") ? LocalDate.parse(form.getStartDate())
-                    : LocalDate.now(ZoneId.of("Asia/Seoul"));
-            String season = seasonName(when.getMonthValue());
-            choices.getOrDefault("season", List.of()).stream().filter(k -> k.name().equals(season)).findFirst()
-                    .ifPresent(k -> form.setSeason(k.getSelectionValue()));
-        }
+        fillSeasonFromStartDate(form, choices, true);
         if (!result.get("summary").isTextual()) throw invalid();
         String summary = result.get("summary").asText().strip();
         if (summary.length() > 1000) throw invalid();
@@ -133,6 +127,27 @@ public class ConditionReviewService {
         form.setTransportation(draft.getTransportation());
         form.setThemes(List.copyOf(draft.getThemes()));
         return form;
+    }
+
+    /**
+     * 조건 고르기(키워드) 입력으로 추천을 시작할 때 쓴다. 계절을 고르지 않고 출발일만 적었으면 출발일의 계절을 채운다.
+     * 출발일이 없으면 '상관없음'을 그대로 둔다(화면에서 고른 선택을 바꾸지 않는다). 화면의 자동 선택과 같은 기준이다.
+     */
+    public ConditionReviewForm fromKeywords(TravelConditionForm draft, Map<String, List<TravelKeyword>> choices) {
+        ConditionReviewForm form = fromKeywords(draft);
+        fillSeasonFromStartDate(form, choices, false);
+        return form;
+    }
+
+    /** 계절이 비어 있으면 출발일의 계절로 채운다. fallbackToday가 true면 출발일이 없을 때 오늘 기준으로 채운다. */
+    private static void fillSeasonFromStartDate(ConditionReviewForm form, Map<String, List<TravelKeyword>> choices, boolean fallbackToday) {
+        if (!form.getSeason().isEmpty()) return;
+        boolean hasStart = form.getStartDate().matches("\\d{4}-\\d{2}-\\d{2}");
+        if (!hasStart && !fallbackToday) return;
+        LocalDate when = hasStart ? LocalDate.parse(form.getStartDate()) : LocalDate.now(ZoneId.of("Asia/Seoul"));
+        String season = seasonName(when.getMonthValue());
+        choices.getOrDefault("season", List.of()).stream().filter(k -> k.name().equals(season)).findFirst()
+                .ifPresent(k -> form.setSeason(k.getSelectionValue()));
     }
 
     public ConditionReviewForm fromConfirmed(ConfirmedTravelConditions c) {

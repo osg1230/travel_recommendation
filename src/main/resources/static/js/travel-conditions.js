@@ -49,3 +49,85 @@ if (daysInput) {
     markDayButton();
     showEndDate();
 }
+
+// 출발일을 고르면 그 달의 계절을 자동으로 고른다. 3~5월 봄, 6~8월 여름, 9~11월 가을, 12~2월 겨울(서버 ConditionReviewService.seasonName과 같다).
+// 사용자가 계절을 직접 바꾸면 그 뒤로는 자동으로 바꾸지 않는다.
+const seasonInputs = document.querySelectorAll('input[name="season"]');
+const seasonNote = document.querySelector('[data-season-note]');
+let seasonPickedByUser = false;
+function seasonName(month) {
+    if (month >= 3 && month <= 5) return '봄';
+    if (month >= 6 && month <= 8) return '여름';
+    if (month >= 9 && month <= 11) return '가을';
+    return '겨울';
+}
+function labelText(input) {
+    return input.closest('label')?.querySelector('span')?.textContent.trim() ?? '';
+}
+function pickSeasonFromStartDate() {
+    if (!startInput || !seasonNote || seasonInputs.length === 0) return;
+    const start = startInput.value ? new Date(startInput.value + 'T00:00:00') : null;
+    if (!start || Number.isNaN(start.getTime()) || seasonPickedByUser) {
+        seasonNote.hidden = true;
+        return;
+    }
+    const month = start.getMonth() + 1;
+    const wanted = seasonName(month);
+    const target = Array.from(seasonInputs).find(input => labelText(input) === wanted);
+    if (!target) return;
+    target.checked = true;
+    seasonNote.textContent = `출발일이 ${month}월이라 '${wanted}'로 골랐어요. 다른 계절을 원하면 바꿔 주세요.`;
+    seasonNote.hidden = false;
+    updateSummary();
+}
+seasonInputs.forEach(input => input.addEventListener('change', () => {
+    seasonPickedByUser = true;
+    if (seasonNote) seasonNote.hidden = true;
+}));
+startInput?.addEventListener('input', pickSeasonFromStartDate);
+
+// 고른 조건을 버튼 위에 한 줄로 모아 보여 준다. 조건을 바꿀 때마다 다시 만든다.
+const summary = document.querySelector('[data-condition-summary]');
+function checkedLabels(name) {
+    return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`))
+        .map(labelText).filter(text => text && text !== '상관없음');
+}
+function durationText() {
+    const days = Number(daysInput?.value);
+    if (!Number.isInteger(days) || days < 1) return '';
+    return days === 1 ? '당일' : `${days - 1}박 ${days}일`;
+}
+function startText() {
+    const start = startInput?.value ? new Date(startInput.value + 'T00:00:00') : null;
+    if (!start || Number.isNaN(start.getTime())) return '';
+    return `${start.getMonth() + 1}월 ${start.getDate()}일 출발`;
+}
+function budgetText() {
+    const budget = Number(document.getElementById('budget')?.value);
+    return budget > 0 ? `예산 ${Math.round(budget).toLocaleString('ko-KR')}원` : '';
+}
+function updateSummary() {
+    if (!summary) return;
+    const keywordMode = document.querySelector('input[name="inputMode"]:checked')?.value === 'KEYWORD';
+    summary.hidden = !keywordMode;
+    if (!keywordMode) return;
+    const parts = [
+        ...checkedLabels('region'), durationText(), startText(), ...checkedLabels('season'), ...checkedLabels('companion'),
+        checkedLabels('themes').join(', '), ...checkedLabels('transportation'), budgetText()
+    ].filter(Boolean);
+    summary.replaceChildren();
+    if (parts.length === 0) {
+        summary.append('아직 고른 조건이 없어요. 아무것도 고르지 않아도 추천을 받을 수 있어요.');
+        return;
+    }
+    const label = document.createElement('strong');
+    label.textContent = '지금 고른 조건: ';
+    summary.append(label, parts.join(' · '), '. 정하지 않은 조건은 상관없음으로 추천해요.');
+}
+const conditionForm = document.querySelector('[data-analysis-form]');
+if (conditionForm && summary) {
+    conditionForm.addEventListener('input', updateSummary);
+    conditionForm.addEventListener('change', updateSummary);
+    pickSeasonFromStartDate();
+    updateSummary();
+}
