@@ -60,6 +60,10 @@ public class OpenAiItineraryClient {
                 facts는 서버가 그 장소를 넣은 근거다. 축제·필수 방문 안내는 서버가 따로 보여 주므로 되풀이하지 않고,
                 '시간이 남아 넣었다'·'종류가 겹치지 않게 골랐다' 같은 배치 규칙도 이유로 쓰지 않는다.
                 식사는 음식 종류와 앞뒤 일정에 어울리는 점을 쓴다. 장소마다 다른 표현을 쓰고 같은 문장 틀을 되풀이하지 않는다.
+                petTravel이 true면 반려동물과 함께 가는 여행이다. 항목의 petInfo는 서버가 한국관광공사에서 조회한 그 장소의 반려동물 동반 정보
+                (동반 가능 구분·가능한 동물·필요 사항·기타)다. petInfo가 있는 장소는 그 내용을 근거로 동반 가능 여부와 준비물(목줄·입마개·배변봉투 등)을
+                일차 안내와 장소별 이유에 반영하고, petInfo가 '정보 없음'으로 시작하는 장소만 동반 가능 여부를 확인하지 못했다고 쓴다.
+                petInfo에 없는 동반 조건을 지어내지 않고, petTravel이 없으면 반려동물 이야기를 하지 않는다.
                 """,
                 "input",mapper.writeValueAsString(promptInput(conditions,plan,previousFailure)),
                 "text",Map.of("format",Map.of("type","json_schema","name","itinerary_assist","strict",true,
@@ -158,12 +162,19 @@ public class OpenAiItineraryClient {
         prompt.put("accommodationNeeded",c.accommodationNeeded());prompt.put("transport",plan.transport().name());
         for(String category:List.of("SEASON","COMPANION","THEME")) prompt.put(category,c.keywordNames(category));
         prompt.put("travelPurpose",c.travelPurpose()==null?"":c.travelPurpose());prompt.put("purposeSuggested",c.purposeSuggested());
+        // 반려동물 동반 여행이면 장소마다 관광공사 동반 정보를 함께 보낸다(서버가 조회한 값만).
+        Map<Long,String> petInfo=new HashMap<>();
+        if(plan.pets()!=null) { prompt.put("petTravel",true); plan.pets().forEach(p->petInfo.put(p.placeId(),p.describe())); }
         // 원문, 요약, 계정 식별자, 세션 토큰과 DB 키워드 ID는 외부로 전송하지 않는다.
         prompt.put("days",plan.days().stream().map(day->Map.of("number",day.number(),
-            "date",Objects.toString(day.date(),""),"items",day.items().stream().map(item->Map.of(
-                "placeId",item.placeId()==null?0L:item.placeId(),"category",firstLine(item.note()),"facts",facts(item.note()),
-                "type",item.type(),"name",item.name(),
-                "start",item.start().toString(),"end",item.end().toString())).toList())).toList());
+            "date",Objects.toString(day.date(),""),"items",day.items().stream().map(item->{
+                Map<String,Object> fields=new LinkedHashMap<>();
+                fields.put("placeId",item.placeId()==null?0L:item.placeId());fields.put("category",firstLine(item.note()));fields.put("facts",facts(item.note()));
+                fields.put("type",item.type());fields.put("name",item.name());
+                fields.put("start",item.start().toString());fields.put("end",item.end().toString());
+                if(plan.pets()!=null && petInfo.containsKey(item.placeId())) fields.put("petInfo",petInfo.get(item.placeId()));
+                return fields;
+            }).toList())).toList());
         if(previousFailure!=null) prompt.put("previousFailure",previousFailure);
         return prompt;
     }

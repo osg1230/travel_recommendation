@@ -26,7 +26,7 @@ public final class ItineraryConditionReport {
     public static Report evaluate(Input input, Result result) {
         var checks = new ArrayList<>(List.of(period(input, result), required(input, result), attractions(input, result), duplicates(result),
             dailyVisits(input, result), themes(input, result), timeline(input, result), travelTimes(input, result), operating(input, result),
-            accommodation(input, result), budget(input)));
+            pets(input, result), accommodation(input, result), budget(input)));
         if (input.revision() != null) checks.add(2, kept(input, result));
         return new Report(List.copyOf(checks), checks.stream().noneMatch(c -> c.status() == Status.UNMET));
     }
@@ -206,6 +206,31 @@ public final class ItineraryConditionReport {
         if (unknown > 0) return new Check("운영시간·휴무", Status.NEEDS_CHECK,
             "장소 " + (checked + unknown) + "곳 중 " + unknown + "곳은 운영정보가 없거나 자동 판단할 수 없어 방문 전 확인이 필요해요.");
         return new Check("운영시간·휴무", Status.MET, "장소 " + checked + "곳이 안내된 운영시간·정기휴무와 맞아요. 임시 휴무는 확인해 주세요.");
+    }
+
+    /**
+     * 반려동물 동반(여행 목적이나 입력 문장에 반려동물이 있을 때). 한국관광공사 동반 정보가 있는 장소만 판단하고,
+     * 정보가 없거나 동반 불가로 안내된 곳이 있으면 확인 필요로 둔다. 장소를 바꾸라고 강제하지 않으므로 미충족은 쓰지 않는다.
+     */
+    private static Check pets(Input input, Result result) {
+        if (!PetTravel.wanted(input.conditions())) return new Check("반려동물 동반", Status.NOT_APPLICABLE, "반려동물 동반 여행이 아니에요.");
+        if (result.pets() == null) return new Check("반려동물 동반", Status.NEEDS_CHECK,
+            "반려동물 동반 정보를 조회하지 못했어요. 장소마다 방문 전 확인이 필요해요.");
+        int allowed = 0, partial = 0; var denied = new ArrayList<String>(); var unknown = new ArrayList<String>();
+        for (var check : result.pets()) switch (check.status()) {
+            case "ALLOWED" -> allowed++;
+            case "PARTIAL" -> partial++;
+            case "NOT_ALLOWED" -> denied.add(check.name());
+            default -> unknown.add(check.name());
+        }
+        String counts = "동반 가능 " + allowed + "곳" + (partial > 0 ? " · 일부 구역만 가능 " + partial + "곳" : "");
+        if (denied.isEmpty() && unknown.isEmpty())
+            return new Check("반려동물 동반", Status.MET, "장소 " + result.pets().size() + "곳 모두 한국관광공사 반려동물 동반 정보가 있어요(" + counts
+                + "). 가능한 동물 크기와 목줄·입마개 같은 필요 사항은 각 장소 안내를 확인해 주세요.");
+        String detail = (denied.isEmpty() ? "" : "동반 불가로 안내된 곳: " + String.join(", ", denied) + ". ")
+            + (unknown.isEmpty() ? "" : "관광공사에 동반 정보가 없는 곳 " + unknown.size() + "곳(" + String.join(", ", unknown) + ")은 방문 전 확인이 필요해요. ")
+            + (allowed + partial > 0 ? "확인된 곳: " + counts + "." : "");
+        return new Check("반려동물 동반", Status.NEEDS_CHECK, detail.strip());
     }
 
     private static Check accommodation(Input input, Result result) {

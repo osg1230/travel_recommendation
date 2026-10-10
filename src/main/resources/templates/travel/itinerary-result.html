@@ -95,6 +95,9 @@
 <!--/* 숙소 후보는 따로 절을 두지 않고 첫 숙박 항목에 한 줄로 붙인다(관광지 평균 직선거리 순, SFR-05). */-->
 <p class="help" th:if="${item.type == 'STAY' and day.number == 1 and job.result.lodging != null and job.result.lodging.options.size() > 1}"
    th:text="${'다른 숙소 후보: ' + #strings.listJoin(job.result.lodging.options.subList(1, job.result.lodging.options.size()).![name + '(관광지와 평균 약 ' + averageKilometers + 'km)'], ', ') + ' · 요금·예약·체크인 시간은 숙소 출처에서 확인해 주세요.'}"></p>
+<!--/* 반려동물 동반 여행이면 관광공사 동반 정보(또는 정보 없음)를 장소마다 한 줄로 보여 준다. */-->
+<p class="help" th:if="${petByPlace != null and item.type != 'TRANSIT' and item.placeId != null and petByPlace.containsKey(item.placeId)}"
+   th:text="${'반려동물 동반: ' + petByPlace.get(item.placeId).describe()}"></p>
 <th:block th:if="${item.type == 'MEAL' or item.type == 'STAY'}" th:with="quote=${priceByPlace.get(item.placeId)}">
 <p class="help" th:if="${quote != null and quote.found()}"
    th:text="${'참고 가격: ' + quote.priceText + ' (' + quote.basis + ') · ' + (quote.status == 'VERIFIED' ? '출처 페이지에서 상호·가격 확인' : 'AI 검색 결과, 출처에서 직접 확인 필요')}"></p>

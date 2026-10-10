@@ -141,4 +141,26 @@ class ItineraryConditionReportTests {
         assertThat(status(report,"여행 기간")).isEqualTo(Status.UNMET);
         assertThat(report.complete()).isFalse();
     }
+    // 반려동물 동반 여행이 아니면 해당 없음, 동반 여행이면 관광공사 정보가 모두 있고 불가가 없을 때만 충족이다. 미충족은 쓰지 않는다.
+    @Test void petTravelIsMetOnlyWhenEveryPlaceHasAllowedInfo() {
+        var base=input(1,LocalDate.of(2026,10,1),null);
+        var result=generator.generate(base);
+        assertThat(status(ItineraryConditionReport.evaluate(base,result),"반려동물 동반")).isEqualTo(Status.NOT_APPLICABLE);
+        var c=base.conditions();
+        var pet=new ConfirmedTravelConditions(c.inputMode(),"강아지랑 같이 가요",c.region(),c.startDate(),c.endDate(),c.durationDays(),c.budget(),
+            c.partySize(),c.accommodationNeeded(),c.includeNearby(),c.selectedKeywords(),c.interpretationSummary());
+        var input=new Input(base.recommendationId(),base.places(),pet,base.start(),base.end(),base.transport(),base.visitMinutes());
+        assertThat(status(ItineraryConditionReport.evaluate(input,result),"반려동물 동반")).isEqualTo(Status.NEEDS_CHECK);
+        var allowed=new PlacePetInfo("1","전구역 동반가능","전 견종","목줄 착용","",Instant.now());
+        var partial=new PlacePetInfo("2","일부구역 동반가능","소형견","","",Instant.now());
+        var met=ItineraryConditionReport.evaluate(input,result.withPets(List.of(new PetCheck(1L,"장소1",allowed),new PetCheck(2L,"장소2",partial))));
+        assertThat(status(met,"반려동물 동반")).isEqualTo(Status.MET);
+        assertThat(met.checks().stream().filter(k->k.name().equals("반려동물 동반")).findFirst().orElseThrow().detail()).contains("동반 가능 1곳","일부 구역만 가능 1곳");
+        var mixed=ItineraryConditionReport.evaluate(input,result.withPets(List.of(new PetCheck(1L,"장소1",allowed),
+            new PetCheck(2L,"장소2",new PlacePetInfo("2","동반불가","","","",Instant.now())),new PetCheck(3L,"장소3",null))));
+        var check=mixed.checks().stream().filter(k->k.name().equals("반려동물 동반")).findFirst().orElseThrow();
+        assertThat(check.status()).isEqualTo(Status.NEEDS_CHECK);
+        assertThat(check.detail()).contains("동반 불가로 안내된 곳: 장소2","정보가 없는 곳 1곳(장소3)","동반 가능 1곳");
+        assertThat(mixed.complete()).isTrue();
+    }
 }

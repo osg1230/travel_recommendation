@@ -284,6 +284,10 @@ public class ItineraryController {
             if(job.result().prices()!=null) job.result().prices().quotes().forEach(q->priceByPlace.put(q.placeId(),q));
             model.addAttribute("priceByPlace",priceByPlace);
             model.addAttribute("costEstimate",TripCostEstimate.of(job.input(),job.result()));
+            // 반려동물 동반 여행이면 장소마다 관광공사 동반 정보를 일정 항목 옆에 보여 준다. 조회하지 않은 초안은 null이다.
+            var petByPlace=new java.util.HashMap<Long,ItineraryPlan.PetCheck>();
+            if(job.result().pets()!=null) job.result().pets().forEach(p->petByPlace.put(p.placeId(),p));
+            model.addAttribute("petByPlace",job.result().pets()==null?null:petByPlace);
             // 조회 시각은 한국 시간으로 보여 준다.
             model.addAttribute("pricesCheckedAt",job.result().prices()==null?null:java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
                 .format(job.result().prices().checkedAt().atZone(java.time.ZoneId.of("Asia/Seoul"))));

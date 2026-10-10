@@ -34,6 +34,8 @@ public class ItineraryJobService {
     // 둘 다 버스 안내·장소 수집 서비스와 서로를 참조하지 않도록 필요할 때 꺼내 쓴다.
     private final org.springframework.beans.factory.ObjectProvider<HomeTripService> homeTrips;
     private final org.springframework.beans.factory.ObjectProvider<PlaceDiscoveryService> discoveries;
+    // 반려동물 동반 정보는 SQL Server 프로필에서만 조회한다(장소 상세정보 보관).
+    private final org.springframework.beans.factory.ObjectProvider<PlacePetService> pets;
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(ItineraryJobService.class);
     public record Work(UUID id,Input input) {}
 
@@ -785,7 +787,14 @@ public class ItineraryJobService {
     public Result generate(Work work) {
         // 작업 처리 제한은 2분이다. 배치에 쓴 시간을 빼고 남는 동안만 AI 보조를 시도한다.
         var deadline=Instant.now().plusSeconds(100);
-        var plan=assistant.assist(work.input(),generator.generate(work.input()),deadline);
+        var draft=generator.generate(work.input());
+        // 반려동물 동반 여행이면 일정에 들어간 장소의 관광공사 동반 정보를 먼저 찾아 AI 안내와 조건 확인에 쓴다. 실패해도 초안은 그대로다.
+        if(PetTravel.wanted(work.input().conditions())) {
+            var petService=pets.getIfAvailable();
+            if(petService!=null) try { draft=draft.withPets(petService.lookup(work.input(),draft,Instant.now().plusSeconds(25))); }
+            catch(RuntimeException error) { log.warn("반려동물 동반 정보 조회를 건너뜀 job={} ({})",work.id(),error.toString()); }
+        }
+        var plan=assistant.assist(work.input(),draft,deadline);
         // 주변 지역 조회는 최대 수십 초가 걸릴 수 있어 남은 시간이 부족하면 건너뛴다. 실패해도 일정 초안은 그대로다.
         if(Instant.now().isAfter(deadline.minusSeconds(40))) return plan;
         try { return plan.withNearby(nearby.recommend(work.input(),plan)); }
