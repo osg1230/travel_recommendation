@@ -35,7 +35,8 @@
             </div>
         </fieldset>
         <div class="form-actions">
-            <button type="submit" th:text="${step + 1 < total ? '다음 질문' : '내 취향 확인하기'}">다음 질문</button>
+            <!--/* 그림이나 상관없음·건너뛰기를 누르면 스크립트가 바로 제출하므로, 스크립트가 켜져 있으면 이 버튼은 숨긴다(discover-answer.js). */-->
+            <button type="submit" data-next-button th:text="${step + 1 < total ? '다음 질문' : '내 취향 확인하기'}">다음 질문</button>
             <a class="button button-quiet" th:if="${!history.isEmpty() and step + 1 < total}" th:href="@{/travel/conditions/discover/result}">남은 질문 건너뛰고 결과 보기</a>
             <a class="button button-quiet" th:if="${history.isEmpty()}" th:href="@{/travel/conditions}">탐색 없이 조건 입력하기</a>
         </div>

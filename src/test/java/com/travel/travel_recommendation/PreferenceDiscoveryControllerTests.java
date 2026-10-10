@@ -50,7 +50,8 @@ class PreferenceDiscoveryControllerTests {
     @Test void nextQuestionFollowsChosenAnswer() throws Exception {
         var session = startingWithSeason();
         mvc.perform(get("/travel/conditions/discover").session(session))
-            .andExpect(content().string(containsString("/images/discover/season-a.svg")));
+            // 정적 파일 이름에는 내용 해시가 붙는다(season-a-<해시>.svg).
+            .andExpect(content().string(containsString("/images/discover/season-a-")));
         // 비회원도 그림을 받을 수 있다.
         mvc.perform(get("/images/discover/season-a.svg")).andExpect(status().isOk());
         answer(session, 0, "SEASON", "A");
