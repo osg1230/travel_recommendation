@@ -85,20 +85,6 @@
 </details>
 </div>
 
-<!--/* 예산 기준은 조건 확인 결과에 함께 적는 참고값이라 기본값으로 두고 접어 둔다. */-->
-<div class="condition-section" th:if="${options.conditions.budget != null}">
-<details><summary><h2 class="details-title" th:text="${'예산 ' + #numbers.formatInteger(options.conditions.budget, 0, 'COMMA') + '원의 기준 (선택)'}"></h2></summary>
-<fieldset class="theme-choices"><legend>이 예산은</legend>
-<label><input type="radio" name="budgetBasis" value="TOTAL" th:checked="${values.budgetBasis == 'TOTAL'}"> 전체 인원 합계</label>
-<label><input type="radio" name="budgetBasis" value="PER_PERSON" th:checked="${values.budgetBasis == 'PER_PERSON'}"> 1인 기준</label>
-</fieldset>
-<fieldset class="theme-choices"><legend>포함하는 비용</legend>
-<label th:each="item : ${budgetItems}"><input type="checkbox" name="budgetIncludes" th:value="${item.key}" th:checked="${values.budgetIncludes.contains(item.key)}"><span th:text="${item.value}"></span></label>
-</fieldset>
-<p class="help">고른 기준은 일정의 조건 확인 결과에 함께 적어요. 예산 안에 드는지는 방문 전에 직접 확인해 주세요.</p>
-</details>
-</div>
-
 <div class="condition-section" th:if="${options.conditions.budget == null and options.places.accommodationNeeded}">
 <h2>숙소 예산대 (선택)</h2>
 <p class="help">예산을 정하지 않았다면 숙소 유형으로 예산대를 고를 수 있어요. 고른 유형의 숙소 중에서 관광지와 가까운 곳을 먼저 골라요.</p>

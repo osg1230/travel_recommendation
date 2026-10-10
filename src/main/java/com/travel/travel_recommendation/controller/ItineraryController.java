@@ -40,8 +40,8 @@ public class ItineraryController {
     private static final String QUICK_KEY="quickItinerary:";
     /** 일정 입력 화면의 값. 필수 조건 충돌로 돌아갈 때 입력을 잃지 않도록 세션에 잠시 둔다. */
     public record ConstraintInput(UUID parent,LocalTime start,LocalTime end,KakaoMapClient.Transport transport,int visitMinutes,
-                                  List<Long> required,Integer dailyVisits,boolean dailyRequired,String budgetBasis,
-                                  List<String> budgetIncludes,String stayTier,List<TripConstraints.Conflict> conflicts,
+                                  List<Long> required,Integer dailyVisits,boolean dailyRequired,
+                                  String stayTier,List<TripConstraints.Conflict> conflicts,
                                   Integer durationDays,Boolean accommodationNeeded,LocalDate startDate,List<Long> centers,HomeValues home) {}
     /**
      * 집 출발·귀가 입력값(출발지·돌아갈 곳). 다시 보여 줄 때 쓰며 '내 위치로 찾기' 좌표는 담지 않는다(위치를 세션에 두지 않는다).
@@ -82,7 +82,6 @@ public class ItineraryController {
         var centerIds=defaults.centerIds();
         model.addAttribute("purposePlaceIds",purposeIds);
         model.addAttribute("centerPlaceIds",centerIds);
-        model.addAttribute("budgetItems",TripConstraints.BUDGET_ITEMS);
         model.addAttribute("maxDailyVisits",TripConstraints.MAX_DAILY);
         // 필수 조건이 모순돼 돌아온 경우 이유·선택지와 입력했던 값을 다시 보여 준다(한 번만).
         var conflict=session.getAttribute(CONFLICT_KEY) instanceof ConstraintInput previous && previous.parent().equals(id) ? previous : null;
@@ -91,7 +90,7 @@ public class ItineraryController {
         var transport=options.conditions().keywordNames("TRANSPORTATION").isEmpty()?null:options.transport();
         var homeArea=homeArea(principal,model);
         model.addAttribute("values",conflict!=null?conflict:new ConstraintInput(id,options.start(),options.end(),transport,
-            options.visitMinutes(),purposeIds,null,false,null,List.of(),null,List.of(),null,null,null,centerIds,HomeValues.startingFrom(homeArea)));
+            options.visitMinutes(),purposeIds,null,false,null,List.of(),null,null,null,centerIds,HomeValues.startingFrom(homeArea)));
         model.addAttribute("stayTiers",BudgetGuide.StayTier.values());
         synchronized(session) {
             var submission=new Submission(id,destinationId,login(principal),UUID.randomUUID().toString(),null);
@@ -104,7 +103,6 @@ public class ItineraryController {
             @RequestParam LocalTime start,@RequestParam LocalTime end,@RequestParam KakaoMapClient.Transport transport,
             @RequestParam int visitMinutes,@RequestParam(required=false) List<Long> required,
             @RequestParam(required=false) Integer dailyVisits,@RequestParam(defaultValue="PREFERRED") String dailyMode,
-            @RequestParam(required=false) String budgetBasis,@RequestParam(required=false) List<String> budgetIncludes,
             @RequestParam(required=false) String stayTier,
             @RequestParam(required=false) Integer durationDays,@RequestParam(required=false) Boolean accommodationNeeded,
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate startDate,
@@ -116,9 +114,9 @@ public class ItineraryController {
         var homeRequest=homeRequest(origin,originLongitude,originLatitude,returnPlace);
         var homeValues=new HomeValues(origin,returnPlace);
         if(!Set.of("REQUIRED","PREFERRED").contains(dailyMode)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"하루 방문 수의 구분을 다시 골라 주세요.");
-        String basis=budgetBasis==null || budgetBasis.isBlank()?null:budgetBasis;
         String tier=stayTier==null || stayTier.isBlank()?null:stayTier;
-        var constraints=new ItineraryPlan.Constraints(required,dailyVisits,dailyVisits!=null && "REQUIRED".equals(dailyMode),basis,budgetIncludes,tier,centers);
+        // 예산 기준·포함 비용은 더 받지 않으므로 비워 둔다(이전 작업 JSON 호환용 자리).
+        var constraints=new ItineraryPlan.Constraints(required,dailyVisits,dailyVisits!=null && "REQUIRED".equals(dailyMode),null,List.of(),tier,centers);
         UUID job;
         synchronized(session) {
             var submission=(Submission)session.getAttribute(SESSION_KEY);
@@ -134,7 +132,7 @@ public class ItineraryController {
                 } catch(TripConstraints.ConflictException conflict) {
                     // 모순된 필수 조건은 임의로 완화하지 않고 입력 화면으로 돌아가 이유와 선택지를 보여 준다.
                     session.setAttribute(CONFLICT_KEY,new ConstraintInput(id,start,end,transport,visitMinutes,constraints.requiredPlaceIds(),
-                        dailyVisits,constraints.dailyVisitsRequired(),basis,constraints.budgetIncludes(),tier,conflict.conflicts(),durationDays,accommodationNeeded,startDate,constraints.centerPlaceIds(),homeValues));
+                        dailyVisits,constraints.dailyVisitsRequired(),tier,conflict.conflicts(),durationDays,accommodationNeeded,startDate,constraints.centerPlaceIds(),homeValues));
                     session.removeAttribute(SESSION_KEY);
                     return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create("/travel/recommendations/"+id+"/destinations/"+destinationId+"/schedule"))
                         .cacheControl(CacheControl.noStore()).build();
@@ -247,7 +245,7 @@ public class ItineraryController {
             } catch(TripConstraints.ConflictException conflict) {
                 // 기본값으로도 조건이 맞지 않으면 자세한 입력 화면에서 이유와 선택지를 보여 준다.
                 session.setAttribute(CONFLICT_KEY,new ConstraintInput(id,options.start(),options.end(),mode,options.visitMinutes(),
-                    constraints.requiredPlaceIds(),null,false,null,List.of(),null,conflict.conflicts(),newDays,newStay,newDate,constraints.centerPlaceIds(),homeValues));
+                    constraints.requiredPlaceIds(),null,false,null,conflict.conflicts(),newDays,newStay,newDate,constraints.centerPlaceIds(),homeValues));
                 return seeOther(base+"/schedule");
             }
             session.setAttribute(key,job);

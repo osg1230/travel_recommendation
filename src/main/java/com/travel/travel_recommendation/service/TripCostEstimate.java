@@ -150,14 +150,12 @@ public record TripCostEstimate(List<Line> lines, List<String> excluded, int part
                 && k.valueJson().replace(" ", "").contains("\"value\":\"" + value + "\""));
     }
 
-    /** 입력한 예산을 추정 범위와 비교한 한 줄 안내를 붙인다. 예산이 없으면 안내 없이 그대로다. 예산 기준이 '1인'이면 인원을 곱해 전체 합계로 비교한다. */
+    /** 입력한 예산(전체 인원의 총예산)을 추정 범위와 비교한 한 줄 안내를 붙인다. 예산이 없으면 안내 없이 그대로다. */
     private TripCostEstimate withBudgetNote(Input input) {
         var budget = input.conditions().budget();
         if (budget == null) return this;
-        boolean perPerson = input.constraints() != null && "PER_PERSON".equals(input.constraints().budgetBasis());
-        long total = perPerson ? budget.longValue() * partySize : budget.longValue();
-        String entered = "입력한 예산 " + won(budget.longValue()) + "원"
-            + (perPerson ? "(1인 기준 × " + partySize + "명 = " + won(total) + "원)" : "");
+        long total = budget.longValue();
+        String entered = "입력한 예산 " + won(total) + "원";
         String note = total < totalMin() ? entered + "은 추정 최소보다 적어요. 숙소 유형이나 식사 횟수를 조정해 보세요."
             : total > totalMax() ? entered + "은 추정 최대보다 많아요." : entered + "은 추정 범위 안이에요.";
         return new TripCostEstimate(lines, excluded, partySize, partyBasis, days, nights, note);

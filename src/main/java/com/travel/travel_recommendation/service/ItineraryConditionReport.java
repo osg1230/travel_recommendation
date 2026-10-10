@@ -239,11 +239,9 @@ public final class ItineraryConditionReport {
                     + BudgetGuide.StayTier.valueOf(c.stayTier()).getLabel() + "'을 골랐어요(숙소 유형 기준, 요금 확인 필요).");
             return new Check("예산", Status.NOT_APPLICABLE, "예산을 입력하지 않았어요.");
         }
-        String basis = c == null || c.budgetBasis() == null ? "기준 미확인" : "PER_PERSON".equals(c.budgetBasis()) ? "1인 기준" : "전체 기준";
-        String scope = c == null || c.budgetIncludes().isEmpty() ? "포함 비용 미확인"
-            : "포함: " + String.join("·", c.budgetIncludes().stream().map(TripConstraints.BUDGET_ITEMS::get).toList());
-        return new Check("예산", Status.NEEDS_CHECK, "입력 예산 " + String.format("%,d원", budget.longValue()) + " (" + basis + ", " + scope
-            + ") · 예산 충족 여부는 판단하지 않았어요. 참고 가격은 날짜·객실별 요금이 아니니, 찾았다면 합계와 비교해 직접 확인해 주세요.");
+        // 예산은 전체 인원의 총예산으로 받는다. 예상 경비는 추정값이라 충족 여부를 정하지 않고 비교만 권한다.
+        return new Check("예산", Status.NEEDS_CHECK, "입력 예산 " + String.format("%,d원", budget.longValue())
+            + " · 예산 충족 여부는 판단하지 않았어요. 아래 예상 경비(추정)와 비교해 직접 확인해 주세요.");
     }
 
     private static List<Item> visits(Result result) {

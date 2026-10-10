@@ -167,9 +167,6 @@ class ItineraryConstraintsIntegrationTests {
                 .param("start","09:00").param("end","18:00").param("transport","CAR").param("visitMinutes","90").param("required","999999"))
             .andExpect(status().isBadRequest());
         mvc.perform(post(formUrl()).session(session).with(csrf()).param("submissionToken",token())
-                .param("start","09:00").param("end","18:00").param("transport","CAR").param("visitMinutes","90").param("budgetBasis","TOTAL"))
-            .andExpect(status().isBadRequest()).andExpect(content().string(containsString("예산을 정하지 않아")));
-        mvc.perform(post(formUrl()).session(session).with(csrf()).param("submissionToken",token())
                 .param("start","09:00").param("end","18:00").param("transport","CAR").param("visitMinutes","90").param("dailyMode","SOMETIMES"))
             .andExpect(status().isBadRequest());
     }

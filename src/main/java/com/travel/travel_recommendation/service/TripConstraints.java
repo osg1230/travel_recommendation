@@ -24,8 +24,6 @@ public final class TripConstraints {
     public static final int MIN_CANDIDATES = 16;
     /** 하루 방문 수로 고를 수 있는 값의 범위. 실제로 들어가는 수는 하루 시간으로 따로 추정한다. */
     public static final int MAX_DAILY = 10;
-    public static final Set<String> BUDGET_BASES = Set.of("TOTAL", "PER_PERSON");
-    public static final Map<String, String> BUDGET_ITEMS = Map.of("LODGING", "숙박", "MEAL", "식사", "ADMISSION", "입장료", "TRANSPORT", "교통");
     private static final int MEAL_MINUTES = 60, MOVE_MINUTES = 30;
     /** 하루 종료 시간이 이 시각 이후면 저녁 식사도 넣을 수 있는 날로 본다. */
     private static final LocalTime DINNER_DAY_END = LocalTime.of(19, 0);
@@ -275,8 +273,6 @@ public final class TripConstraints {
         if (c.dailyVisits() != null && (c.dailyVisits() < 1 || c.dailyVisits() > MAX_DAILY))
             throw new IllegalArgumentException("Daily visits out of range");
         if (c.dailyVisitsRequired() && c.dailyVisits() == null) throw new IllegalArgumentException("Required daily visits missing");
-        if (c.budgetBasis() != null && !BUDGET_BASES.contains(c.budgetBasis())) throw new IllegalArgumentException("Unknown budget basis");
-        if (!BUDGET_ITEMS.keySet().containsAll(c.budgetIncludes())) throw new IllegalArgumentException("Unknown budget item");
         // 숙소 예산대는 정해진 세 값만 받는다(SFR-03-03).
         if (c.stayTier() != null && java.util.Arrays.stream(BudgetGuide.StayTier.values()).noneMatch(t -> t.name().equals(c.stayTier())))
             throw new IllegalArgumentException("Unknown stay tier");
