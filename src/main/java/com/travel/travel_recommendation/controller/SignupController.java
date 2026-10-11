@@ -2,6 +2,8 @@ package com.travel.travel_recommendation.controller;
 
 import com.travel.travel_recommendation.dto.SignupForm;
 import com.travel.travel_recommendation.service.DuplicateUserException;
+import com.travel.travel_recommendation.service.KakaoMapClient;
+import com.travel.travel_recommendation.service.RecommendationException;
 import com.travel.travel_recommendation.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +22,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 @RequiredArgsConstructor
 public class SignupController {
     private final UserService userService;
+    private final KakaoMapClient maps;
 
     @InitBinder("signupForm")
     void bindSignupFields(WebDataBinder binder) {
@@ -35,6 +38,7 @@ public class SignupController {
     @PostMapping("/signup")
     public String signup(@Valid @ModelAttribute SignupForm signupForm, BindingResult result,
                          RedirectAttributes redirectAttributes) {
+        if (!result.hasErrors()) checkHomeArea(signupForm, result);
         if (!result.hasErrors()) {
             try {
                 userService.signup(signupForm);
@@ -52,6 +56,21 @@ public class SignupController {
         signupForm.setPassword(null);
         signupForm.setPasswordConfirm(null);
         return "signup";
+    }
+
+    // 주로 출발하는 곳을 적었으면 지도에서 실제 위치를 찾을 수 있는지 확인한다. 못 찾으면 다시 적게 한다.
+    // 일정 생성 때 같은 방법(KakaoMapClient.findOrigin)으로 찾으므로 여기서 통과한 값은 일정에서도 쓸 수 있다.
+    private void checkHomeArea(SignupForm form, BindingResult result) {
+        String homeArea = form.getHomeArea();
+        if (homeArea == null || homeArea.isBlank()) return;
+        try {
+            maps.findOrigin(homeArea);
+        } catch (RecommendationException ex) {
+            // MAP_ORIGIN은 적은 이름을 못 찾은 경우이고, 그 밖은 지도 서비스 문제라 비우고 가입할 수 있게 안내한다.
+            String message = "MAP_ORIGIN".equals(ex.getCode()) ? ex.getMessage()
+                    : "지금은 출발지를 확인하지 못했어요. 비우고 가입한 뒤 내 정보에서 다시 적어 주세요.";
+            result.rejectValue("homeArea", "homeArea.unknown", message);
+        }
     }
 
     @GetMapping("/signup/complete")

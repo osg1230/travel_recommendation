@@ -5,6 +5,7 @@ import com.travel.travel_recommendation.entity.UserRole;
 import com.travel.travel_recommendation.entity.UserStatus;
 import com.travel.travel_recommendation.repository.UserRepository;
 import com.travel.travel_recommendation.service.DuplicateUserException;
+import com.travel.travel_recommendation.service.KakaoMapClient;
 import com.travel.travel_recommendation.service.UserService;
 import jakarta.validation.ConstraintViolationException;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +37,8 @@ class SignupIntegrationTests {
     @Autowired UserRepository users;
     @Autowired PasswordEncoder encoder;
     @Autowired MockMvc mvc;
+    // 출발지 확인은 외부 지도 API라 가짜로 두고 저장만 검증한다.
+    @MockitoBean KakaoMapClient maps;
 
     private SignupForm form() {
         String suffix = UUID.randomUUID().toString().replace("-", "");

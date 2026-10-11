@@ -4,6 +4,8 @@ import com.travel.travel_recommendation.config.SecurityConfig;
 import com.travel.travel_recommendation.controller.SignupController;
 import com.travel.travel_recommendation.dto.SignupForm;
 import com.travel.travel_recommendation.service.DuplicateUserException;
+import com.travel.travel_recommendation.service.KakaoMapClient;
+import com.travel.travel_recommendation.service.RecommendationException;
 import com.travel.travel_recommendation.service.UserService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SignupControllerTests {
     @Autowired MockMvc mvc;
     @MockitoBean UserService users;
+    @MockitoBean KakaoMapClient maps;
 
     private MockHttpServletRequestBuilder validRequest() {
         return post("/signup").param("loginId", " traveler_01 ").param("nickname", " 여행자 ")
@@ -79,6 +82,34 @@ class SignupControllerTests {
                     .andExpect(content().string(not(containsString("value=\"Sample123!\""))))
                     .andExpect(content().string(not(containsString("Sample123!"))));
         }
+    }
+
+    @Test
+    void homeAreaIsCheckedOnMapOnlyWhenTyped() throws Exception {
+        // 비우면 지도를 찾지 않고 가입한다.
+        mvc.perform(validRequest().with(csrf()).param("homeArea", " ")).andExpect(redirectedUrl("/signup/complete"));
+        verifyNoInteractions(maps);
+        // 찾을 수 있는 곳이면 가입한다.
+        mvc.perform(validRequest().with(csrf()).param("homeArea", "서울 송파구")).andExpect(redirectedUrl("/signup/complete"));
+        verify(maps).findOrigin("서울 송파구");
+        verify(users, times(2)).signup(any());
+    }
+
+    @Test
+    void unknownHomeAreaAsksToRetypeWithoutSigningUp() throws Exception {
+        doThrow(new RecommendationException("MAP_ORIGIN", "'없는동네' 위치를 찾지 못했어요. 시·구·동 이름이나 역 이름으로 다시 적어 주세요."))
+                .when(maps).findOrigin("없는동네");
+        mvc.perform(validRequest().with(csrf()).param("homeArea", "없는동네")).andExpect(status().isOk())
+                .andExpect(model().attributeHasFieldErrors("signupForm", "homeArea"))
+                .andExpect(content().string(containsString("위치를 찾지 못했어요")))
+                .andExpect(content().string(containsString("value=\"없는동네\"")));
+        // 지도 서비스 문제면 비우고 가입하라고 안내하고 내부 메시지는 보이지 않는다.
+        doThrow(new RecommendationException("MAP_TIMEOUT", "private map details")).when(maps).findOrigin("대전역");
+        mvc.perform(validRequest().with(csrf()).param("homeArea", "대전역")).andExpect(status().isOk())
+                .andExpect(model().attributeHasFieldErrors("signupForm", "homeArea"))
+                .andExpect(content().string(containsString("비우고 가입한 뒤")))
+                .andExpect(content().string(not(containsString("private map details"))));
+        verifyNoInteractions(users);
     }
 
     @Test
