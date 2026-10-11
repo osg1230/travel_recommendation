@@ -86,6 +86,7 @@
             <p class="help" th:text="${'한국관광공사 운영정보 · 조회 ' + place.operatingInfo.fetchedAt + ' · 24시간 이후 재조회 필요'}"></p>
             <p th:text="${'운영시간: ' + (#strings.isEmpty(place.operatingInfo.hours) ? '정보 없음' : place.operatingInfo.hours)}"></p>
             <p th:text="${'휴무: ' + (#strings.isEmpty(place.operatingInfo.closedDays) ? '정보 없음' : place.operatingInfo.closedDays)}"></p>
+            <p th:text="${'주차: ' + (#strings.isEmpty(place.operatingInfo.parking) ? '정보 없음' : place.operatingInfo.parking)}"></p>
             <p th:if="${place.operatingInfo.contentTypeId == '32'}" th:text="${'입실: ' + place.operatingInfo.checkIn + ' / 퇴실: ' + place.operatingInfo.checkOut}"></p>
             <p class="help">출처의 안내 원문이에요. 입장 마감·공휴일·부분 휴관은 직접 확인해 주세요.</p>
         </div>

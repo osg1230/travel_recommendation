@@ -11,6 +11,14 @@ class OperatingHoursValidatorTests {
     private String check(PlaceOperatingInfo info, LocalDate date, int start, int end) {
         return OperatingHoursValidator.check("오죽헌", info, date, LocalTime.of(start, 0), LocalTime.of(end, 0));
     }
+    // 일정 항목 안내문에는 운영시간·휴무와 함께 주차 안내를 적고, 없으면 정보 없음으로 적는다.
+    @Test void noteListsParkingAfterHoursAndClosedDays() {
+        var withParking = new PlaceOperatingInfo("123", "12", "09:00~18:00", "연중무휴", "", "", "가능", Instant.now());
+        assertThat(OperatingHoursValidator.note("오죽헌", withParking, monday, LocalTime.of(10, 0), LocalTime.of(11, 0)))
+            .contains("운영시간: 09:00~18:00 / 휴무: 연중무휴").contains("\n주차: 가능");
+        assertThat(OperatingHoursValidator.note("오죽헌", info("09:00~18:00", "연중무휴"), monday, LocalTime.of(10, 0), LocalTime.of(11, 0)))
+            .contains("\n주차: 정보 없음");
+    }
     // 일정 생성이 멈춘 이유를 알 수 있도록 실패 메시지에 장소 이름을 남긴다.
     @Test void conflictMessagesNameThePlaceThatBlocksTheSchedule() {
         assertThatThrownBy(() -> check(info("09:00~18:00", "연중무휴"), monday, 8, 10))

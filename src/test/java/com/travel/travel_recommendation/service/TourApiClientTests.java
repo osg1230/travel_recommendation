@@ -34,10 +34,11 @@ class TourApiClientTests {
             + type + "\"" + fields + "}]}}}}");
     }
     @Test void encodesDecodedKeyOnceAndReadsAttractionText() {
-        response("12", ",\"usetime\":\"09:00~18:00\",\"restdate\":\"매주 월요일\"");
+        response("12", ",\"usetime\":\"09:00~18:00\",\"restdate\":\"매주 월요일\",\"parking\":\"가능\"");
         var result = client("a+b/c=").findOperatingInfo("123", "12").orElseThrow();
         assertThat(result.hours()).isEqualTo("09:00~18:00");
         assertThat(result.closedDays()).isEqualTo("매주 월요일");
+        assertThat(result.parking()).isEqualTo("가능");
         assertThat(result.fetchedAt()).isNotNull();
         assertThat(query.get()).contains("serviceKey=a%2Bb%2Fc%3D", "contentId=123", "contentTypeId=12", "MobileOS=WEB", "_type=json");
         assertThat(new TourApiProperties("a+b/c=").toString()).doesNotContain("a+b/c=");
@@ -55,6 +56,17 @@ class TourApiClientTests {
         assertThat(stay.checkIn()).isEqualTo("15:00"); assertThat(stay.checkOut()).isEqualTo("11:00");
         response("12", "");
         assertThat(client("key").findOperatingInfo("123", "12").orElseThrow().hours()).isEmpty();
+        // 주차는 유형별 필드에서 읽고, 문화시설·레포츠는 요금을 함께 적는다. 둘 다 없으면 빈 값이다.
+        response("14", ",\"parkingculture\":\"가능\",\"parkingfee\":\"무료\"");
+        assertThat(client("key").findOperatingInfo("123", "14").orElseThrow().parking()).isEqualTo("가능 · 요금 무료");
+        response("28", ",\"parkingfeeleports\":\"유료\"");
+        assertThat(client("key").findOperatingInfo("123", "28").orElseThrow().parking()).isEqualTo("요금 유료");
+        response("39", ",\"parkingfood\":\"가능\"");
+        assertThat(client("key").findOperatingInfo("123", "39").orElseThrow().parking()).isEqualTo("가능");
+        response("32", ",\"parkinglodging\":\"있음\"");
+        assertThat(client("key").findOperatingInfo("123", "32").orElseThrow().parking()).isEqualTo("있음");
+        response("14", "");
+        assertThat(client("key").findOperatingInfo("123", "14").orElseThrow().parking()).isEmpty();
     }
     @Test void rejectsMissingKeyAndBadIdsWithoutHttpCalls() {
         assertCode("TOUR_NOT_CONFIGURED", () -> client("").findOperatingInfo("123", "12"));

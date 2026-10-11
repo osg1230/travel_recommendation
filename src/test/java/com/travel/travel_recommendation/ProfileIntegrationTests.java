@@ -3,6 +3,7 @@ package com.travel.travel_recommendation;
 import com.travel.travel_recommendation.entity.User;
 import com.travel.travel_recommendation.entity.UserRole;
 import com.travel.travel_recommendation.repository.UserRepository;
+import com.travel.travel_recommendation.service.KakaoMapClient;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -12,6 +13,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +32,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class ProfileIntegrationTests {
     @Autowired MockMvc mvc;
+    // 출발지 확인은 외부 지도 API라 가짜로 두고 저장만 검증한다.
+    @MockitoBean KakaoMapClient maps;
     @Autowired UserRepository users;
     @Autowired PasswordEncoder encoder;
     @Autowired EntityManager em;

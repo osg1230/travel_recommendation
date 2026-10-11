@@ -1,8 +1,19 @@
 # 프로젝트 진행 요약
 
-기준일: 2026-10-11 | 프로젝트: travel_recommendation | 서비스 이름: 다녀올게
+기준일: 2026-10-12 | 프로젝트: travel_recommendation | 서비스 이름: 다녀올게
 
 작업 시작 시 이 요약과 Git 상태를 확인한다. 기능별 상세 구현·검증 기록은 [2026-09-22 정리 전 원문](progress-history/2026-09-22-before-cleanup.md)에 있으며, 과거 결정·검증 근거가 필요할 때 해당 부분만 읽는다.
+
+## 2026-10-12 장소 주차 안내 (사용자 결정, `test/full-regression`)
+
+- 배경: 사용자가 "자동차면 주차장까지 가고 관광지는 걸어가는 안내"를 제안했으나, 관광지 대부분 자체 주차장이 있고 어느 곳에서 그렇게 해야 하는지 판단할 데이터가 없어 길찾기는 바꾸지 않고, TourAPI 소개정보(detailIntro2)의 주차 항목만 보여 주기로 했다. 실제 호출로 확인: 관광지 `parking`(경포대·성산일출봉 "가능"), 문화시설 `parkingculture`+`parkingfee`(오죽헌 주차 비고 요금 "무료"), 레포츠 `parkingleports`+`parkingfeeleports`, 음식점 `parkingfood`("가능"), 숙소 `parkinglodging`("있음"). 비어 오는 곳도 있다.
+- 구현: `PlaceOperatingInfo`에 `parking` 추가(이전 7개 인자 생성자는 빈 값으로 두어 기존 호출·저장 JSON 호환). `TourApiClient.findOperatingInfo`가 유형별 주차 필드를 읽고 요금이 따로 오면 "가능 · 요금 무료"처럼 합친다. 일정 항목 안내문(`OperatingHoursValidator.note`)과 장소 후보 화면 운영정보에 "주차: 원문" 또는 "정보 없음"을 보여 준다. 이동수단과 무관하게 보여 준다. DB 변경 없음(`details_json.tourApiOperating.info.parking`, 정의서 2026-09-20 항목에 추가 기록). 24시간 안에 조회한 기존 운영정보는 재조회 전까지 주차가 정보 없음으로 나온다.
+- 확인: 단위 `TourApiClientTests` 10개(주차 유형별 필드·요금 합치기·빈 값), `OperatingHoursValidatorTests` 5개(안내문 주차 줄), `PlaceOperatingServiceTests`·`PlaceCandidateControllerTests`·`ItineraryGeneratorTests` 통과. SQL Server `ItineraryIntegrationTests` 16개·`PlaceCandidateIntegrationTests` 7개·`RecommendationJobIntegrationTests` 12개 통과(저장 JSON 읽고 쓰기 호환 포함). 브라우저 확인은 하지 않았다.
+
+## 2026-10-12 회원가입·내 정보 출발지 확인 (사용자 결정, `test/full-regression`)
+
+- DB 설계서 작성 중 "없는 출발지를 적으면?"에서 나온 결정. 회원가입의 '주로 출발하는 곳'을 적으면 가입 전에 일정 생성과 같은 방법(`KakaoMapClient.findOrigin`: 주소 검색 → 키워드 검색)으로 지도에서 찾고, 못 찾으면 그 칸에 "'OO' 위치를 찾지 못했어요. 시·구·동 이름이나 역 이름으로 다시 적어 주세요."를 보여 다시 적게 한다. 비우면 찾지 않는다. 지도 서비스 오류(키 없음·시간 초과 등)면 "비우고 가입한 뒤 내 정보에서 다시 적어 주세요"로 안내해 가입이 막히지 않게 했다. 내 정보 수정도 같은 확인을 하되, 이미 저장된 값 그대로면 지도를 다시 찾지 않는다(비밀번호만 바꿀 때 지도 문제로 막히지 않게). 저장 값은 그대로(적은 글자)이고 DB 변경 없음.
+- 확인: `SignupControllerTests` 9개(새 2개: 비우면 지도 미호출·찾으면 가입, 못 찾음·지도 오류 시 칸 오류와 가입 미호출), `ProfileControllerTests` 4개(새 1개: 못 찾음·지도 오류 시 칸 오류와 저장 미호출, 저장된 값 그대로면 지도 미호출), SQL Server `SignupIntegrationTests` 4개·`ProfileIntegrationTests` 8개 통과(통합 테스트는 지도 클라이언트를 가짜로 둠). 브라우저 확인은 하지 않았다.
 
 ## 2026-10-11 전체 회귀 테스트 (마무리 작업 4번)
 

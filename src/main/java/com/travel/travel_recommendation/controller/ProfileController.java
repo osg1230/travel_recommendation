@@ -1,8 +1,10 @@
 package com.travel.travel_recommendation.controller;
 
 import com.travel.travel_recommendation.dto.ProfileForm;
+import com.travel.travel_recommendation.service.KakaoMapClient;
 import com.travel.travel_recommendation.service.ProfileService;
 import com.travel.travel_recommendation.service.ProfileUpdateException;
+import com.travel.travel_recommendation.service.RecommendationException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -24,6 +26,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 @RequiredArgsConstructor
 public class ProfileController {
     private final ProfileService profiles;
+    private final KakaoMapClient maps;
     private final org.springframework.beans.factory.ObjectProvider<com.travel.travel_recommendation.service.WithdrawalService> withdrawals;
 
     @InitBinder("profileForm")
@@ -75,6 +78,7 @@ public class ProfileController {
                          Authentication authentication, Model model, RedirectAttributes redirect,
                          HttpServletRequest request, HttpServletResponse response) {
         model.addAttribute("loginId", authentication.getName());
+        if (!result.hasErrors()) checkHomeArea(profileForm, authentication.getName(), result);
         if (!result.hasErrors()) {
             try {
                 boolean passwordChanged = profiles.update(authentication.getName(), profileForm);
@@ -98,5 +102,24 @@ public class ProfileController {
         profileForm.setNewPassword("");
         profileForm.setNewPasswordConfirm("");
         return "account";
+    }
+
+    // 주로 출발하는 곳을 새로 적었으면 회원가입과 같이 지도에서 찾을 수 있는지 확인하고, 못 찾으면 다시 적게 한다.
+    // 이미 저장된 값 그대로면 다시 찾지 않는다. 비밀번호만 바꿀 때 지도 문제로 막히지 않게 하기 위해서다.
+    private void checkHomeArea(ProfileForm form, String loginId, BindingResult result) {
+        String homeArea = form.getHomeArea();
+        if (homeArea.isEmpty()) return;
+        try {
+            if (homeArea.equals(profiles.getHomeArea(loginId))) return;
+        } catch (DataAccessException ignored) {
+            // 저장 단계에서 같은 DB 오류를 안내하므로 여기서는 지도 확인만 이어 간다.
+        }
+        try {
+            maps.findOrigin(homeArea);
+        } catch (RecommendationException ex) {
+            String message = "MAP_ORIGIN".equals(ex.getCode()) ? ex.getMessage()
+                    : "지금은 출발지를 확인하지 못했어요. 잠시 후 다시 시도하거나 비우고 저장해 주세요.";
+            result.rejectValue("homeArea", "homeArea.unknown", message);
+        }
     }
 }
