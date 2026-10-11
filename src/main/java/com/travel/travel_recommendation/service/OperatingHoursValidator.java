@@ -47,6 +47,7 @@ public final class OperatingHoursValidator {
         if (info == null) return status;
         return status + "\n한국관광공사 TourAPI · 조회 " + info.fetchedAt()
             + "\n운영시간: " + value(info.hours()) + " / 휴무: " + value(info.closedDays())
+            + "\n주차: " + value(info.parking())
             + ("32".equals(info.contentTypeId()) ? "\n입실: " + value(info.checkIn()) + " / 퇴실: " + value(info.checkOut()) : "");
     }
     private static String value(String text) { return text == null || text.isBlank() ? "정보 없음" : text; }

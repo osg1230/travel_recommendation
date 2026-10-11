@@ -67,9 +67,25 @@ public class TourApiClient {
             case "39" -> "restdatefood";
             default -> "";
         };
+        // 주차 안내 원문. 문화시설·레포츠는 주차 가능 여부와 요금이 따로 와서 둘을 합쳐 적는다.
+        String parkingField = switch (contentTypeId) {
+            case "12" -> "parking";
+            case "14" -> "parkingculture";
+            case "28" -> "parkingleports";
+            case "32" -> "parkinglodging";
+            case "39" -> "parkingfood";
+            default -> "";
+        };
+        String feeField = switch (contentTypeId) {
+            case "14" -> "parkingfee";
+            case "28" -> "parkingfeeleports";
+            default -> "";
+        };
+        String parking = text(item, parkingField), fee = text(item, feeField);
+        if (!fee.isBlank()) parking = (parking.isBlank() ? "" : parking + " · ") + "요금 " + fee;
         return Optional.of(new PlaceOperatingInfo(contentId, contentTypeId, text(item, hoursField), text(item, closedField),
             "32".equals(contentTypeId) ? text(item, "checkintime") : "",
-            "32".equals(contentTypeId) ? text(item, "checkouttime") : "", Instant.now()));
+            "32".equals(contentTypeId) ? text(item, "checkouttime") : "", parking, Instant.now()));
     }
 
     /**
