@@ -230,6 +230,8 @@ button:hover, .button:hover { background: var(--brand-strong); color: #fff; }
 .form-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
 /* 목록 항목 안의 보조 동작(운영정보 확인, 즐겨찾기)은 작은 버튼으로 둔다. */
 .button-small { padding: 7px 14px; font-size: 14px; }
+/* 제출 중이거나 쓸 수 없는 버튼은 흐리게 보여 다시 누르지 않게 한다(submit-loading.js, bus-guide.js). */
+button:disabled { opacity: .55; cursor: not-allowed; }
 
 /* 누르거나 올려 둘 수 있는 요소는 색이 부드럽게 바뀌고, 버튼은 누르는 순간 살짝 내려가 눌렸음을 알린다. */
 a, button, .button, input, textarea, select, .shortcut,
@@ -663,7 +665,8 @@ button.map-badge:hover { background: var(--badge, var(--brand)); transform: scal
     .condition-summary { grid-template-columns: 1fr; }
     .condition-summary dt { border-bottom: 0; padding-bottom: 0; background: var(--surface); }
     .schedule-item { grid-template-columns: 1fr; }
-    .trip-map-canvas { height: 300px; }
+    /* 휴대폰에서는 지도가 일정표 위에 오므로 높이를 줄여 일정표까지 스크롤이 길어지지 않게 한다. */
+    .trip-map-canvas { height: 220px; }
     .place-grid { grid-template-columns: 1fr; }
     .destination-body { padding: 16px 18px 18px; }
     .hero-inner { padding: 36px 0 100px; }
