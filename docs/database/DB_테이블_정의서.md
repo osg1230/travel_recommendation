@@ -219,8 +219,17 @@ U1(category_id, keyword_code), U2(category_id, keyword_name). 동일 카테고�
 - 화면 필드와 카테고리 코드: region→REGION, season→SEASON, companion→COMPANION, themes→THEME, transportation→TRANSPORTATION. 기간·예산은 기존 숫자·날짜 입력을 유지한다.
 - 초기 value_json은 `{"value":"SEOUL"}`처럼 안정적인 키워드 코드를 담는 객체이다. 코드·표시명 매핑은 초기 데이터 SQL에 있다. 좌표나 외부 관광 API 코드로 간주하지 않는다. 자연어 조건 분석 시 이 값의 해석과 확정 조건 검증을 연결한다.
 - 두 테이블 모두 활성인 항목만 표시 순서·ID 순으로 조회한다. 제출값은 키워드 ID이며 카테고리별 허용 목록을 다시 확인한다. 검증 당시 ID·카테고리 코드·이름·value_json을 세션에 함께 보관한다. 추천 요청 DB 저장은 아직 하지 않는다.
-- Entity는 선택지 조회에 사용하며 등록·수정 API는 제공하지 않는다. 초기 생성 시간은 SQL 기본값으로 기록한다.
-- 원본 문서의 관리자 키워드 관리 표현과 AGENTS.md의 회원 관리 제한은 아직 불일치한다. 이번 구현은 사용자용 선택지 조회만 수행하며 관리자 키워드 화면은 만들지 않는다.
+- Entity는 선택지 조회에 사용하며 등록·수정 API는 제공하지 않는다. 초기 생성 시간은 SQL 기본값으로 기록한다. (2026-10-28 관리자 키워드 관리 구현으로 3.2가 대체)
+- 원본 문서의 관리자 키워드 관리 표현과 AGENTS.md의 회원 관리 제한은 아직 불일치한다. 이번 구현은 사용자용 선택지 조회만 수행하며 관리자 키워드 화면은 만들지 않는다. (2026-10-28 사용자 결정으로 AGENTS.md 6절에 키워드 관리를 넣어 불일치를 해소했다. 3.2 참고)
+
+### 3.2 관리자 키워드 관리 구현 기준 (2026-10-28)
+
+- 2·3절의 테이블·컬럼·제약은 바꾸지 않았다. 관리자 화면(`/admin/keywords`)에서 `keyword_categories`의 `category_name`·`sort_order`·`is_active`와 `keywords`의 `keyword_name`·`sort_order`·`is_active`를 고치고 `updated_at`을 갱신한다.
+- 카테고리는 추가·삭제하지 않는다. 조건 입력 화면의 질문 5개(REGION·SEASON·COMPANION·THEME·TRANSPORTATION)가 코드에 고정돼 있기 때문이다. `category_code`는 바꾸지 않는다(2절 규칙).
+- 키워드는 물리 삭제하지 않고 `is_active = 0`으로 사용 중지한다(3절 "사용된 키워드는 비활성화를 우선"). 저장된 추천 요청의 `conditions_json.selected_keywords`가 keyword_id를 참조한다. `keyword_code`·`value_json`은 바꾸지 않는다.
+- 새 키워드는 COMPANION·THEME에만 추가한다. `keyword_code`는 영문으로 시작하는 영문 대문자·숫자·밑줄 2~50자이고, `value_json`은 초기 데이터와 같은 `{"value":"코드"}`이다. U1·U2(같은 카테고리 안 코드·이름 중복)는 서비스에서 먼저 검사하고, 동시에 저장해 DB 제약에 걸리면 중복 안내를 보여 준다.
+- REGION·SEASON·TRANSPORTATION과 THEME 기본 6개(NATURE·SEA·REST·FOOD·CULTURE·ACTIVITY)는 추천 규칙이 이름·값을 그대로 쓰므로 이름 변경과 추가를 서비스에서 막고 표시 순서·사용 여부만 바꾼다.
+- 키워드 변경은 `operation_logs`에 남기지 않는다. 14절 `target_type` CHECK가 USER·RESERVATION·PAYMENT만 허용해, 기록하려면 제약을 바꿔야 하므로 이번 범위에 넣지 않았다.
 
 4 추천 요청 및 이력
 
