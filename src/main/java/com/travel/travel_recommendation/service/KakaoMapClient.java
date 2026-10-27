@@ -411,12 +411,107 @@ public class KakaoMapClient {
                 all.add(new double[]{Math.round(lat*1e5)/1e5,Math.round(lng*1e5)/1e5});
             }
         }
+        return thin(all);
+    }
+
+    // 점이 너무 많으면 처음과 끝을 남기고 일정한 간격으로 솎아 낸다. 점이 2개보다 적으면 선을 그릴 수 없어 빈 목록이다.
+    private static List<double[]> thin(List<double[]> all) {
         if (all.size()<2) return List.of();
         if (all.size()<=PATH_MAX_POINTS) return List.copyOf(all);
         var thinned=new ArrayList<double[]>();
         double step=(all.size()-1)/(double)(PATH_MAX_POINTS-1);
         for (int i=0;i<PATH_MAX_POINTS;i++) thinned.add(all.get((int)Math.round(i*step)));
         return List.copyOf(thinned);
+    }
+
+    /**
+     * 지도에 그릴 실제 이동 경로 한 조각. mode는 BUS·SUBWAY처럼 타는 수단이거나, 걷는 구간이면 WALK다.
+     * points는 [위도, 경도] 목록이다.
+     */
+    public record PathPiece(String mode, List<double[]> points) {}
+
+    /** 출발지·도착지에서 첫 승차·마지막 하차 지점까지 이보다 멀면(m) 도보 경로를 조회하고, 가까우면 두 점을 바로 잇는다. */
+    static final int WALK_LINK_METERS=80;
+
+    /**
+     * 대중교통 일정 지도의 실제 경로(SFR-11-03). 카카오 정책상 경로 응답을 저장하거나 캐시해 다시 쓰지 않으므로
+     * 화면에서 요청할 때마다 새로 조회하고 결과는 그 응답으로만 돌려준다.
+     * 카카오 대중교통 응답은 출발지→첫 승차, 마지막 하차→도착지 도보를 빼고 주므로 그 구간은 도보 경로로 채운다.
+     */
+    public List<PathPiece> transitPath(Location from, Location to) {
+        if (from==null || to==null) throw invalid();
+        var root=get(localEndpoint.resolve("/v2/routing/publictraffic?start_x="+from.longitude()+"&start_y="+from.latitude()
+            +"&end_x="+to.longitude()+"&end_y="+to.latitude()));
+        String status=root.path("status").asText();
+        // 걸어갈 만큼 가까운 구간은 대중교통 경로가 없으므로(NO_RESULTS) 도보 경로를 그린다.
+        if ("NO_RESULTS".equals(status) && walkingEstimate(from,to)!=null)
+            return List.of(new PathPiece("WALK",walkPath(from,to)));
+        if (!"OK".equals(status)) throw noRoute();
+        // 이동시간을 정할 때와 같이 가장 빠른 경로를 그린다.
+        JsonNode fastest=null; int best=Integer.MAX_VALUE;
+        for (var route:root.path("routes")) {
+            int seconds=route.path("properties").path("totalTime").asInt(0);
+            if (seconds>0 && seconds<best) { best=seconds; fastest=route; }
+        }
+        if (fastest==null) throw noRoute();
+        var pieces=new ArrayList<PathPiece>();
+        for (var step:fastest.path("steps")) {
+            String type=step.path("properties").path("type").asText("");
+            var points=points(step.path("path").path("points"));
+            if (!points.isEmpty()) pieces.add(new PathPiece("WALKING".equals(type)?"WALK":type,points));
+        }
+        if (pieces.isEmpty()) throw noRoute();
+        var boarding=pieces.getFirst().points().getFirst();
+        var alighting=pieces.getLast().points().getLast();
+        pieces.addFirst(walkLink(from.latitude(),from.longitude(),boarding[0],boarding[1]));
+        pieces.addLast(walkLink(alighting[0],alighting[1],to.latitude(),to.longitude()));
+        return List.copyOf(pieces);
+    }
+
+    /** 두 지점 사이의 도보 경로([위도, 경도] 목록). 찾지 못하면 MAP_NO_ROUTE다. */
+    public List<double[]> walkPath(Location from, Location to) {
+        var root=get(localEndpoint.resolve("/v2/routing/walk?start_x="+from.longitude()+"&start_y="+from.latitude()
+            +"&end_x="+to.longitude()+"&end_y="+to.latitude()));
+        if (!"OK".equals(root.path("status").asText())) throw noRoute();
+        var all=new ArrayList<double[]>();
+        for (var leg:root.path("route").path("legs")) for (var step:leg.path("steps")) {
+            var points=points(step.path("path").path("points"));
+            // 단계가 이어지는 점이 겹치면 한 번만 넣는다.
+            for (var point:points)
+                if (all.isEmpty() || all.getLast()[0]!=point[0] || all.getLast()[1]!=point[1]) all.add(point);
+        }
+        var path=thin(all);
+        if (path.isEmpty()) throw noRoute();
+        return path;
+    }
+
+    // 출발·도착 지점과 승하차 지점 사이. 멀면 도보 경로를 찾고, 가깝거나 찾지 못하면 두 점을 바로 잇는다(화면에서 점선).
+    private PathPiece walkLink(double fromLat,double fromLng,double toLat,double toLng) {
+        var straight=List.of(new double[]{fromLat,fromLng},new double[]{toLat,toLng});
+        if (meters(fromLat,fromLng,toLat,toLng)<=WALK_LINK_METERS) return new PathPiece("WALK",straight);
+        try {
+            return new PathPiece("WALK",walkPath(new Location("출발",fromLng,fromLat,Instant.now()),new Location("도착",toLng,toLat,Instant.now())));
+        } catch (RecommendationException | IllegalArgumentException e) {
+            return new PathPiece("WALK",straight);
+        }
+    }
+
+    // 대중교통·도보 응답의 path.points는 [[경도, 위도], ...]다. 국내 범위를 벗어난 값이 있으면 그 조각을 쓰지 않는다.
+    private static List<double[]> points(JsonNode array) {
+        var all=new ArrayList<double[]>();
+        for (var point:array) {
+            double lng=point.path(0).asDouble(Double.NaN), lat=point.path(1).asDouble(Double.NaN);
+            if (!(lat>=33 && lat<=39 && lng>=124 && lng<=132)) return List.of();
+            all.add(new double[]{Math.round(lat*1e5)/1e5,Math.round(lng*1e5)/1e5});
+        }
+        return thin(all);
+    }
+
+    // 두 좌표 사이의 직선거리(m, 하버사인 공식).
+    static int meters(double lat1,double lng1,double lat2,double lng2) {
+        double a=Math.toRadians(lat1), b=Math.toRadians(lat2), dLat=b-a, dLng=Math.toRadians(lng2-lng1);
+        double h=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(a)*Math.cos(b)*Math.sin(dLng/2)*Math.sin(dLng/2);
+        return (int)Math.ceil(6371000*2*Math.asin(Math.min(1,Math.sqrt(h))));
     }
 
     /** 도보로 대신할 최대 직선거리(m). 이보다 멀면 대중교통 경로가 없는 것으로 본다. */
@@ -427,10 +522,7 @@ public class KakaoMapClient {
      * 요약에 추정임을 밝히고, 직선거리가 WALK_MAX_METERS를 넘으면 null이다.
      */
     static TravelTime walkingEstimate(Location from, Location to) {
-        double lat1=Math.toRadians(from.latitude()), lat2=Math.toRadians(to.latitude());
-        double dLat=lat2-lat1, dLon=Math.toRadians(to.longitude()-from.longitude());
-        double h=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)*Math.sin(dLon/2);
-        int straight=(int)Math.ceil(6371000*2*Math.asin(Math.min(1,Math.sqrt(h))));
+        int straight=meters(from.latitude(),from.longitude(),to.latitude(),to.longitude());
         if (straight>WALK_MAX_METERS) return null;
         int meters=Math.max(1,(int)Math.ceil(straight*1.3));
         int seconds=Math.max(60,(int)Math.ceil(meters/(4000.0/3600)));
