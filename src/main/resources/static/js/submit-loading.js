@@ -11,8 +11,18 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             form.dataset.submitting = 'true';
             form.setAttribute('aria-busy', 'true');
-            var button = form.querySelector('button[type=submit]');
+            // 버튼이 여러 개인 폼(장소 교체 이유 고르기)도 있어 실제로 누른 버튼을 잠근다.
+            var button = event.submitter || form.querySelector('button[type=submit]');
             if (!button) return;
+            // 잠긴 버튼의 name·value는 전송에서 빠지므로(예: reason=TASTE) 숨은 칸에 옮겨 담아 함께 보낸다.
+            if (button.name) {
+                var copy = document.createElement('input');
+                copy.type = 'hidden';
+                copy.name = button.name;
+                copy.value = button.value;
+                copy.dataset.submitCopy = 'true';
+                form.appendChild(copy);
+            }
             button.dataset.originalText = button.textContent;
             button.textContent = form.dataset.submitLoading;
             button.disabled = true;
@@ -24,10 +34,13 @@ document.addEventListener('DOMContentLoaded', function () {
         forms.forEach(function (form) {
             delete form.dataset.submitting;
             form.removeAttribute('aria-busy');
-            var button = form.querySelector('button[type=submit]');
-            if (!button || button.dataset.originalText == null) return;
-            button.textContent = button.dataset.originalText;
-            button.disabled = false;
+            // 남겨 두면 다른 버튼을 눌렀을 때 값이 두 번 가므로 옮겨 담은 숨은 칸도 지운다.
+            form.querySelectorAll('input[data-submit-copy]').forEach(function (copy) { copy.remove(); });
+            form.querySelectorAll('button[data-original-text]').forEach(function (button) {
+                button.textContent = button.dataset.originalText;
+                delete button.dataset.originalText;
+                button.disabled = false;
+            });
         });
     });
 });
