@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>키워드 관리 안내 | 관리자 · 다녀올게</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="account">
+    <h1>요청을 처리하지 못했습니다</h1>
+    <p class="intro" role="alert" th:text="${message}"></p>
+    <!-- 작업하던 화면(목록·키워드·카테고리)으로 돌아간다. 관리 화면은 캐시하지 않아 입력값은 남지 않는다. 스크립트가 없으면 목록으로 간다. -->
+    <p><a th:href="@{/admin/keywords}" onclick="history.back(); return false;">이전 화면으로 돌아가기</a></p>
+    <p><a th:href="@{/admin/keywords}">키워드 목록으로 가기</a></p>
+    <a th:href="@{/admin}">관리자 시작 화면</a>
+</main>
+</body>
+</html>

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${category.name + ' 카테고리 | 관리자 · 다녀올게'}">카테고리 | 관리자 · 다녀올게</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="page">
+    <a class="back-link" th:href="@{/admin/keywords}">← 키워드 목록</a>
+    <h1 th:text="${category.name + ' 카테고리'}"></h1>
+    <p role="status" class="status-ok" th:if="${adminMessage != null}" th:text="${adminMessage}"></p>
+
+    <p>코드 <strong th:text="${category.code}"></strong></p>
+    <p>소속 키워드 <strong th:text="${category.keywordCount + '개'}"></strong></p>
+    <p>현재 상태 <strong th:text="${category.active ? '사용 중' : '사용 중지'}"></strong></p>
+    <p th:text="${'최근 변경 ' + @timeText.dateTime(category.updatedAt)}"></p>
+    <p class="help">코드는 조건 입력 화면의 질문과 연결돼 바꿀 수 없습니다.</p>
+
+    <h2>이름과 표시 순서</h2>
+    <p class="help">조건 입력 화면의 질문 문구와 순서는 화면에 고정돼 있어, 카테고리 이름과 표시 순서는 키워드 관리 목록에만 반영됩니다.</p>
+    <form th:action="@{/admin/keywords/categories/{id}(id=${category.id})}" method="post">
+        <div class="field">
+            <label for="name">이름 (필수)</label>
+            <input id="name" name="name" required maxlength="50" th:value="${category.name}">
+        </div>
+        <div class="field">
+            <label for="sortOrder">표시 순서 (필수)</label>
+            <input id="sortOrder" name="sortOrder" type="number" required min="0" max="999" inputmode="numeric"
+                   th:value="${category.sortOrder}" aria-describedby="order-help">
+            <p id="order-help" class="help">0~999 사이 숫자이며 작은 숫자가 목록 앞에 보입니다.</p>
+        </div>
+        <button type="submit">저장</button>
+    </form>
+
+    <h2>사용 여부</h2>
+    <th:block th:if="${category.active}">
+        <p>사용 중지하면 이 카테고리의 키워드가 조건 입력 화면에서 모두 빠집니다. 키워드 하나만 빼려면 키워드 목록에서 그 키워드를 사용 중지하세요.</p>
+        <form th:action="@{/admin/keywords/categories/{id}/active(id=${category.id})}" method="post"
+              onsubmit="return confirm('이 카테고리를 사용 중지할까요? 소속 키워드가 조건 입력 화면에서 모두 빠집니다.');">
+            <input type="hidden" name="active" value="false">
+            <button type="submit" class="button-danger">카테고리 사용 중지</button>
+        </form>
+    </th:block>
+    <th:block th:unless="${category.active}">
+        <p>다시 사용하면 사용 중인 키워드가 조건 입력 화면에 다시 나타납니다.</p>
+        <form th:action="@{/admin/keywords/categories/{id}/active(id=${category.id})}" method="post">
+            <input type="hidden" name="active" value="true">
+            <button type="submit">카테고리 다시 사용</button>
+        </form>
+    </th:block>
+    <p class="help">카테고리는 추가하거나 삭제하지 않습니다. 조건 입력 화면의 질문 5개가 화면에 고정돼 있기 때문입니다.</p>
+</main>
+</body>
+</html>

@@ -28,6 +28,7 @@
             <a th:href="@{/my/favorites}">즐겨찾기</a>
             <a th:href="@{/account}">내 정보</a>
             <a th:if="${admin}" th:href="@{/admin/members}">회원 관리</a>
+            <a th:if="${admin}" th:href="@{/admin/keywords}">키워드 관리</a>
             <span class="nav-user" th:if="${loginId != null and !#strings.isEmpty(loginId)}" th:text="${loginId + '님'}" th:title="${loginId}"></span>
             <form th:action="@{/logout}" method="post"><button type="submit">로그아웃</button></form>
         </th:block>

@@ -684,7 +684,11 @@ button.map-badge:hover { background: var(--badge, var(--brand)); transform: scal
     .flow-steps li.current .flow-label { display: inline; }
     .form-actions button, .form-actions .button { width: 100%; }
     table, thead, tbody, tr, th, td { display: block; }
+    /* 표를 블록으로 바꾸면 제목 칸이 좁아져 글자가 세로로 쌓이므로 제목도 블록으로 둔다. */
+    caption { display: block; padding-bottom: 6px; }
     thead { display: none; }
+    /* 머리글이 숨겨지므로 data-label이 있는 칸은 앞에 칸 이름을 붙인다. */
+    td[data-label]::before { content: attr(data-label) " "; color: var(--text-muted); }
     tbody tr { border-bottom: 1px solid var(--line); }
     tbody tr:last-child { border-bottom: 0; }
     td { border-bottom: 0; padding: 6px 16px; }
