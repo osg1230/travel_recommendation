@@ -1,6 +1,6 @@
 # DB 테이블 정의서 정리본
 
-> 현재 기준: 2026-10-09 · GitHub main(2026-10-09 객실 브랜치 병합 포함) · 가상 예약·결제를 포함한 18개 테이블을 구현 범위로 다룬다. 배포 SQL은 sql/001~016이다. 객실 유형 SQL 016과 객실 기능 코드는 2026-10-09 main에 병합했다. 기존 Word 파일은 과거 문서이며 현재 기준은 이 Markdown과 아래 실DB 확인 기록이다.
+> 현재 기준: 2026-10-09 · GitHub main(2026-10-09 객실 브랜치 병합 포함) · 가상 예약·결제를 포함한 18개 테이블을 구현 범위로 다룬다. 배포 SQL은 sql/001~018이다(017 한국 시각, 018 평가 한줄평). 객실 유형 SQL 016과 객실 기능 코드는 2026-10-09 main에 병합했다. 기존 Word 파일은 과거 문서이며 현재 기준은 이 Markdown과 아래 실DB 확인 기록이다.
 
 ### 현재 구현 및 실DB 확인
 
@@ -68,6 +68,12 @@
 - [017 SQL](sql/017_convert_timestamps_to_kst.sql)로 생성·수정·처리 시각의 DEFAULT를 SYSUTCDATETIME()에서 SYSDATETIME()으로 바꾸고, 이미 UTC로 저장된 datetime2 값에 9시간을 더했다. 이용 시각(itinerary_items.start_at/end_at, reservation_stock.usage_start_at/usage_end_at)은 처음부터 한국 시각이라 바꾸지 않았다. JSON 안의 절대 시각(Instant)도 그대로다.
 - 이유: 국내에서만 쓰는 서비스라 저장 값과 화면 값을 같은 한국 시각으로 두어 이해하기 쉽게 하기 위해서다(사용자 결정). 자바는 KoreaTime.now()로 시각을 만들고, 예약 SQL의 SYSUTCDATETIME()도 SYSDATETIME()으로 바꿨다. 화면 변환(TimeText)은 한국 시각 LocalDateTime을 그대로 보여 준다.
 - 영향: 다른 PC의 DB에도 017을 적용해야 한다(백업 후 실행, 두 번 실행하면 중단된다). 테이블·컬럼·관계 변경은 없고 DEFAULT 정의와 기존 값만 바뀐다. 배포 SQL 001~013의 DEFAULT도 SYSDATETIME()으로 고쳐 새 DB는 처음부터 한국 시각이다.
+
+### 1.16 적용 메모: 장소 평가 한줄평 (2026-10-28)
+
+- [018 SQL](sql/018_add_rating_comment.sql)로 `place_ratings.comment NVARCHAR(200) NULL`을 추가했다. 다른 테이블·컬럼·관계와 기존 평가 행은 바꾸지 않는다. 두 번 실행하면 중단된다.
+- 이유: 사용자 요청(2026-10-28)으로 별점·태그 평가에 선택 입력 한줄평을 더하고, 다른 회원의 최근 평가(별점·태그·한줄평)를 장소별로 보여 주기 위해서다(SFR-10 보완). 화면은 100자까지 받고 서버가 앞뒤 공백을 지운 뒤 비어 있으면 NULL로 저장한다. 본문·제목 컬럼은 여전히 두지 않는다.
+- 영향: 다른 PC의 DB에도 017 다음에 018을 적용해야 한다. 적용하지 않은 DB로 새 코드를 실행하면 평가 저장·조회에서 comment 컬럼이 없어 오류가 난다. 관리자 한줄평 삭제 기능은 없고 부적절한 글은 회원 이용 제한으로 대응한다.
 
 ### 1.8 적용 메모: 외부 장소 캐시
 
@@ -219,8 +225,17 @@ U1(category_id, keyword_code), U2(category_id, keyword_name). 동일 카테고�
 - 화면 필드와 카테고리 코드: region→REGION, season→SEASON, companion→COMPANION, themes→THEME, transportation→TRANSPORTATION. 기간·예산은 기존 숫자·날짜 입력을 유지한다.
 - 초기 value_json은 `{"value":"SEOUL"}`처럼 안정적인 키워드 코드를 담는 객체이다. 코드·표시명 매핑은 초기 데이터 SQL에 있다. 좌표나 외부 관광 API 코드로 간주하지 않는다. 자연어 조건 분석 시 이 값의 해석과 확정 조건 검증을 연결한다.
 - 두 테이블 모두 활성인 항목만 표시 순서·ID 순으로 조회한다. 제출값은 키워드 ID이며 카테고리별 허용 목록을 다시 확인한다. 검증 당시 ID·카테고리 코드·이름·value_json을 세션에 함께 보관한다. 추천 요청 DB 저장은 아직 하지 않는다.
-- Entity는 선택지 조회에 사용하며 등록·수정 API는 제공하지 않는다. 초기 생성 시간은 SQL 기본값으로 기록한다.
-- 원본 문서의 관리자 키워드 관리 표현과 AGENTS.md의 회원 관리 제한은 아직 불일치한다. 이번 구현은 사용자용 선택지 조회만 수행하며 관리자 키워드 화면은 만들지 않는다.
+- Entity는 선택지 조회에 사용하며 등록·수정 API는 제공하지 않는다. 초기 생성 시간은 SQL 기본값으로 기록한다. (2026-10-28 관리자 키워드 관리 구현으로 3.2가 대체)
+- 원본 문서의 관리자 키워드 관리 표현과 AGENTS.md의 회원 관리 제한은 아직 불일치한다. 이번 구현은 사용자용 선택지 조회만 수행하며 관리자 키워드 화면은 만들지 않는다. (2026-10-28 사용자 결정으로 AGENTS.md 6절에 키워드 관리를 넣어 불일치를 해소했다. 3.2 참고)
+
+### 3.2 관리자 키워드 관리 구현 기준 (2026-10-28)
+
+- 2·3절의 테이블·컬럼·제약은 바꾸지 않았다. 관리자 화면(`/admin/keywords`)에서 `keyword_categories`의 `category_name`·`sort_order`·`is_active`와 `keywords`의 `keyword_name`·`sort_order`·`is_active`를 고치고 `updated_at`을 갱신한다.
+- 카테고리는 추가·삭제하지 않는다. 조건 입력 화면의 질문 5개(REGION·SEASON·COMPANION·THEME·TRANSPORTATION)가 코드에 고정돼 있기 때문이다. `category_code`는 바꾸지 않는다(2절 규칙).
+- 키워드는 물리 삭제하지 않고 `is_active = 0`으로 사용 중지한다(3절 "사용된 키워드는 비활성화를 우선"). 저장된 추천 요청의 `conditions_json.selected_keywords`가 keyword_id를 참조한다. `keyword_code`·`value_json`은 바꾸지 않는다.
+- 새 키워드는 COMPANION·THEME에만 추가한다. `keyword_code`는 영문으로 시작하는 영문 대문자·숫자·밑줄 2~50자이고, `value_json`은 초기 데이터와 같은 `{"value":"코드"}`이다. U1·U2(같은 카테고리 안 코드·이름 중복)는 서비스에서 먼저 검사하고, 동시에 저장해 DB 제약에 걸리면 중복 안내를 보여 준다.
+- REGION·SEASON·TRANSPORTATION과 THEME 기본 6개(NATURE·SEA·REST·FOOD·CULTURE·ACTIVITY)는 추천 규칙이 이름·값을 그대로 쓰므로 이름 변경과 추가를 서비스에서 막고 표시 순서·사용 여부만 바꾼다.
+- 키워드 변경은 `operation_logs`에 남기지 않는다. 14절 `target_type` CHECK가 USER·RESERVATION·PAYMENT만 허용해, 기록하려면 제약을 바꿔야 하므로 이번 범위에 넣지 않았다.
 
 4 추천 요청 및 이력
 
@@ -484,7 +499,7 @@ U1(user_id, place_id)로 중복 등록을 차단한다.
 
 | 테이블명 | 한글명 | 설명 |
 | --- | --- | --- |
-| place_ratings | 장소 별점 평가 | 회원당 장소별 한 건의 별점 평가를 저장한다. |
+| place_ratings | 장소 별점 평가 | 회원당 장소별 한 건의 별점 평가와 선택 입력 한줄평을 저장한다. |
 
 관련 요구사항 및 구현 범위  DAR-08 / R2
 
@@ -494,14 +509,17 @@ U1(user_id, place_id)로 중복 등록을 차단한다.
 | user_id | BIGINT | N | - | users.user_id | U1 | - | - | 참조 식별자 |
 | place_id | BIGINT | N | - | places.place_id | U1 | - | - | 참조 식별자 |
 | score | TINYINT | N | - | - | - | - | BETWEEN 1 AND 5 | - |
+| comment | NVARCHAR(200) | Y | - | - | - | - | - | 한줄평(선택, SQL 018). 화면 최대 100자, 앞뒤 공백 제거, 비우면 NULL |
 | created_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 생성 시각 |
 | updated_at | DATETIME2(3) | N | - | - | - | KST_NOW | - | 최종 수정 시각 |
 
 제약과 처리 규칙
 
-U1(user_id, place_id). 기존 평가가 있으면 새 행 대신 갱신한다. 태그 0개도 유효하다.
+U1(user_id, place_id). 기존 평가가 있으면 새 행 대신 갱신한다(별점·태그·한줄평 모두 새 입력으로 바뀐다). 태그 0개, 한줄평 없음도 유효하다.
 
-제목·본문·공개 상태·관리자 검수 컬럼을 두지 않는다. 회원 본인만 변경·삭제하고 관리자는 자신의 평가에만 일반 회원 권한을 사용한다.
+제목·본문·공개 상태·관리자 검수 컬럼을 두지 않는다. 한줄평은 한 줄 문장만 두는 선택 입력이다. 회원 본인만 변경·삭제하고 관리자는 자신의 평가에만 일반 회원 권한을 사용한다. 관리자 한줄평 삭제 기능은 없고 부적절한 한줄평은 회원 이용 제한(users.status)으로 대응한다.
+
+다른 회원에게는 장소별 최근 평가 최대 5건(updated_at 내림차순)의 별점·태그·한줄평·수정 시각을 보여 주며, 평가자는 users.nickname의 앞 글자만 남기고 가린다(예: 김**). 로그인 ID와 전체 닉네임은 보여 주지 않는다.
 
 평균은 AVG(CAST(score AS DECIMAL(5,2))), 평가 수는 COUNT로 조회한다. 태그 조인 전에 별점을 집계해 중복 계산을 방지한다.
 

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${detail.keyword.name + ' 키워드 | 관리자 · 다녀올게'}">키워드 | 관리자 · 다녀올게</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="page">
+    <a class="back-link" th:href="@{/admin/keywords}">← 키워드 목록</a>
+    <h1 th:text="${detail.keyword.name}"></h1>
+    <p role="status" class="status-ok" th:if="${adminMessage != null}" th:text="${adminMessage}"></p>
+
+    <p>카테고리 <strong th:text="${detail.categoryName}"></strong></p>
+    <p>코드 <strong th:text="${detail.keyword.code}"></strong></p>
+    <p>현재 상태 <strong th:text="${detail.keyword.active ? '사용 중' : '사용 중지'}"></strong></p>
+    <p th:text="${'최근 변경 ' + @timeText.dateTime(detail.updatedAt)}"></p>
+    <p class="help">코드는 조건 해석에 쓰여 바꿀 수 없습니다.</p>
+    <p class="notice" th:unless="${detail.categoryActive}">이 키워드의 카테고리가 사용 중지 상태라, 키워드를 사용 중으로 두어도 조건 입력 화면에 보이지 않습니다.</p>
+
+    <h2>이름과 표시 순서</h2>
+    <form th:action="@{/admin/keywords/{id}(id=${detail.keyword.id})}" method="post">
+        <div class="field" th:if="${detail.keyword.nameLockReason == null}">
+            <label for="name">이름 (필수)</label>
+            <input id="name" name="name" required maxlength="80" th:value="${detail.keyword.name}"
+                   aria-describedby="name-help">
+            <p id="name-help" class="help">조건 입력 화면에 바로 반영됩니다. 이미 저장된 추천 요청·일정에는 그때의 이름이 그대로 남습니다.</p>
+        </div>
+        <div class="field" th:unless="${detail.keyword.nameLockReason == null}">
+            <p>이름 <strong th:text="${detail.keyword.name}"></strong> (고정)</p>
+            <p class="help" th:text="${detail.keyword.nameLockReason}"></p>
+        </div>
+        <div class="field">
+            <label for="sortOrder">표시 순서 (필수)</label>
+            <input id="sortOrder" name="sortOrder" type="number" required min="0" max="999" inputmode="numeric"
+                   th:value="${detail.keyword.sortOrder}" aria-describedby="order-help">
+            <p id="order-help" class="help">0~999 사이 숫자이며 같은 카테고리 안에서 작은 숫자가 앞에 보입니다.</p>
+        </div>
+        <button type="submit">저장</button>
+    </form>
+
+    <h2>사용 여부</h2>
+    <th:block th:if="${detail.keyword.active}">
+        <p>사용 중지하면 조건 입력 화면의 선택지에서 빠집니다. 이미 저장된 추천 요청과 일정의 조건 기록은 그대로 남습니다.</p>
+        <form th:action="@{/admin/keywords/{id}/active(id=${detail.keyword.id})}" method="post"
+              onsubmit="return confirm('이 키워드를 사용 중지할까요? 조건 입력 화면의 선택지에서 빠집니다.');">
+            <input type="hidden" name="active" value="false">
+            <button type="submit" class="button-danger">사용 중지</button>
+        </form>
+    </th:block>
+    <th:block th:unless="${detail.keyword.active}">
+        <p>다시 사용하면 조건 입력 화면의 선택지에 다시 나타납니다.</p>
+        <form th:action="@{/admin/keywords/{id}/active(id=${detail.keyword.id})}" method="post">
+            <input type="hidden" name="active" value="true">
+            <button type="submit">다시 사용</button>
+        </form>
+    </th:block>
+    <p class="help">키워드는 삭제하지 않습니다. 저장된 추천 요청이 이 키워드 번호를 기록하고 있기 때문입니다.</p>
+</main>
+</body>
+</html>

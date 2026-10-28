@@ -48,6 +48,13 @@
             <label th:each="t : ${form.tags}"><input type="checkbox" name="tags" th:value="${t.id}"
                    th:checked="${form.mine != null and form.mine.tagIds.contains(t.id)}"><span th:text="${t.name}"></span></label>
         </fieldset>
+        <!--/* 한줄평은 선택 입력이다. 글자 수 제한은 서버에서도 다시 검사하고, 앞뒤 공백을 지운 뒤 비어 있으면 저장하지 않는다. */-->
+        <div class="comment-input">
+            <label for="comment" th:text="${'3. 한줄평 (선택, 최대 ' + maxCommentLength + '자)'}"></label>
+            <input type="text" id="comment" name="comment" th:maxlength="${maxCommentLength}" aria-describedby="comment-help"
+                   th:value="${form.mine != null ? form.mine.comment : ''}" placeholder="예: 해 질 무렵에 가면 더 좋아요">
+            <p class="help" id="comment-help">별점·태그와 함께 다른 사람에게 보여요. 연락처나 개인정보는 적지 말아 주세요.</p>
+        </div>
         <div class="form-actions form-actions-end">
             <a class="button button-quiet" th:href="${returnTo != null ? returnTo : '/my/ratings'}">취소</a>
             <button type="submit" th:text="${form.mine == null ? '평가 등록' : '평가 바꾸기'}"></button>
@@ -55,9 +62,9 @@
     </form>
     <div class="guide-note">
         <p><strong>안내</strong></p>
-        <p>별점은 1~5점으로 고르고, 태그는 <span th:text="${maxTags}"></span>개까지 고를 수 있어요.</p>
-        <p>제목이나 글은 남기지 않고 별점과 태그만 저장해요. 등록한 평가는 다시 들어와 바꾸거나 삭제할 수 있어요.</p>
-        <p>다른 사람에게는 평균 별점과 많이 고른 태그만 보이고 누가 평가했는지는 보이지 않아요.</p>
+        <p>별점은 1~5점으로 고르고, 태그는 <span th:text="${maxTags}"></span>개까지 고를 수 있어요. 한줄평은 <span th:text="${maxCommentLength}"></span>자까지 적을 수 있고 비워 두어도 돼요.</p>
+        <p>긴 글이나 제목은 남기지 않아요. 등록한 평가는 다시 들어와 바꾸거나 삭제할 수 있어요.</p>
+        <p>다른 사람에게는 평균 별점·많이 고른 태그와 최근 평가(별점·태그·한줄평)가 보여요. 닉네임은 앞 글자만 보이고(예: 김**) 나머지는 가려져요.</p>
     </div>
     <form th:if="${form.mine != null}" method="post" th:action="@{/my/ratings/{id}/delete(id=${form.place.placeId})}"
           onsubmit="return confirm('이 장소 평가를 삭제할까요?');">

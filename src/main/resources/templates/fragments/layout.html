@@ -28,6 +28,7 @@
             <a th:href="@{/my/favorites}">즐겨찾기</a>
             <a th:href="@{/account}">내 정보</a>
             <a th:if="${admin}" th:href="@{/admin/members}">회원 관리</a>
+            <a th:if="${admin}" th:href="@{/admin/keywords}">키워드 관리</a>
             <span class="nav-user" th:if="${loginId != null and !#strings.isEmpty(loginId)}" th:text="${loginId + '님'}" th:title="${loginId}"></span>
             <form th:action="@{/logout}" method="post"><button type="submit">로그아웃</button></form>
         </th:block>
@@ -55,6 +56,7 @@
     <a th:href="@{/my/recommendations}" th:classappend="${current == 'recommendations' ? 'active' : ''}" th:attr="aria-current=${current == 'recommendations' ? 'page' : null}">추천 이력</a>
     <a th:href="@{/my/favorites}" th:classappend="${current == 'favorites' ? 'active' : ''}" th:attr="aria-current=${current == 'favorites' ? 'page' : null}">즐겨찾기</a>
     <a th:href="@{/my/ratings}" th:classappend="${current == 'ratings' ? 'active' : ''}" th:attr="aria-current=${current == 'ratings' ? 'page' : null}">내 평가</a>
+    <a th:href="@{/my/ratings/browse}" th:classappend="${current == 'ratings-browse' ? 'active' : ''}" th:attr="aria-current=${current == 'ratings-browse' ? 'page' : null}">평가 둘러보기</a>
     <a th:href="@{/my/reservations}" th:classappend="${current == 'reservations' ? 'active' : ''}" th:attr="aria-current=${current == 'reservations' ? 'page' : null}">예약</a>
 </nav>
 </body>
