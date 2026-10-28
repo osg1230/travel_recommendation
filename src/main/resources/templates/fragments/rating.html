@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- 장소별 평가 요약 한 줄과 다른 회원의 최근 평가(접어 둔 목록). 장소 후보 화면과 저장 일정 상세가 함께 쓴다. summary가 null이면 아무것도 보여 주지 않는다. -->
+<th:block th:fragment="summary(summary)" th:if="${summary != null}">
+    <p class="rating-summary"
+       th:text="${'★ ' + summary.average + ' · 평가 ' + summary.count + '개' + (summary.topTags.isEmpty() ? '' : ' · ' + #strings.listJoin(summary.topTags.![name], ', '))}"></p>
+    <!--/* 평가자는 가린 닉네임(예: 김**)으로만 보이고, 한줄평이 없는 평가도 별점·태그는 보여 준다. */-->
+    <details class="rating-recent" th:unless="${summary.recent.isEmpty()}">
+        <summary th:text="${'최근 평가 ' + summary.recent.size() + '건 보기'}"></summary>
+        <ul>
+            <li th:each="r : ${summary.recent}">
+                <p><span class="rating-stars" th:attr="aria-label=${'별점 ' + r.score + '점'}">
+                       <span aria-hidden="true" th:text="${#strings.repeat('★', r.score) + #strings.repeat('☆', 5 - r.score)}"></span></span>
+                   <span class="help" th:text="${r.raterName + ' · ' + @timeText.dateTime(r.updatedAt)}"></span></p>
+                <p class="help" th:if="${!r.tags.isEmpty()}" th:text="${#strings.listJoin(r.tags, ' · ')}"></p>
+                <p class="rating-comment" th:if="${r.comment != null}" th:text="${r.comment}"></p>
+            </li>
+        </ul>
+    </details>
+</th:block>
+</body>
+</html>

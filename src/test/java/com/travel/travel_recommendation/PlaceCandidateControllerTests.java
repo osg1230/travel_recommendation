@@ -27,6 +27,33 @@ class PlaceCandidateControllerTests {
     @Autowired MockMvc mvc;
     @MockitoBean PlaceCandidateService service;
     @MockitoBean PlaceOperatingService operating;
+    // DB 프로필에서만 있는 평가 서비스를 흉내 내 요약·최근 평가 화면만 확인한다.
+    @MockitoBean com.travel.travel_recommendation.service.PlaceRatingService ratings;
+
+    @Test void showsRecentRatingsWithMaskedNicknameAndEscapedComment() throws Exception {
+        UUID id = UUID.randomUUID();
+        var time = LocalDateTime.of(2026, 10, 28, 15, 25);
+        var destination = new DestinationCandidate(1L, "강릉", "강원특별자치도 강릉시", "", "https://visitgangneung.net/", time);
+        var attraction = new PlaceCandidate(10L, "경포대", "주소", "문화", "설명",
+            "https://www.gn.go.kr/", "https://map.kakao.com/link/search/test", time, null, null, "SYSTEM", null);
+        when(service.find(eq(id), eq(1L), isNull(), isNull())).thenReturn(
+            new PlaceCandidateView(id, destination, 1, false, List.of(attraction), List.of(), List.of()));
+        var recent = List.of(
+            new PlaceRatingView.Recent("김**", 5, List.of("경치가 좋아요"), "노을이 <b>예뻐요</b>", LocalDateTime.of(2026, 10, 28, 14, 0)),
+            new PlaceRatingView.Recent("박**", 3, List.of(), null, LocalDateTime.of(2026, 10, 27, 9, 30)));
+        when(ratings.summaries(any())).thenReturn(Map.of(10L,
+            new PlaceRatingView.Summary(4.0, 2, List.of(new PlaceRatingView.TagCount("경치가 좋아요", 1)), recent)));
+        mvc.perform(get("/travel/recommendations/" + id + "/destinations/1/places"))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("★ 4.0 · 평가 2개 · 경치가 좋아요")))
+            .andExpect(content().string(containsString("최근 평가 2건 보기")))
+            .andExpect(content().string(containsString("김** · 2026-10-28 14:00")))
+            .andExpect(content().string(containsString("노을이 &lt;b&gt;예뻐요&lt;/b&gt;")))
+            .andExpect(content().string(not(containsString("<b>예뻐요"))))
+            // 한줄평이 없는 평가도 별점은 보인다.
+            .andExpect(content().string(containsString("박** · 2026-10-27 09:30")))
+            .andExpect(content().string(containsString("★★★☆☆")));
+    }
 
     @Test void operatingLookupRequiresCsrfAndLimitsRepeatedCalls() throws Exception {
         UUID id=UUID.randomUUID(); var session=new MockHttpSession();

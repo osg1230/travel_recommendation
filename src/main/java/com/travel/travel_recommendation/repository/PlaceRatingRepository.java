@@ -11,6 +11,8 @@ public interface PlaceRatingRepository extends JpaRepository<PlaceRating,Long> {
     @Query("select r from PlaceRating r where r.userId=:userId and r.placeId=:placeId")
     Optional<PlaceRating> lockByUserIdAndPlaceId(Long userId, Long placeId);
     List<PlaceRating> findByUserIdOrderByUpdatedAtDescIdDesc(Long userId);
+    /** 여러 장소의 평가를 최근에 바꾼 순서로. 장소별 최근 5건은 서비스에서 고른다. */
+    List<PlaceRating> findByPlaceIdInOrderByUpdatedAtDescIdDesc(Collection<Long> placeIds);
     /** 장소별 평균 별점과 평가 수. 태그 조인 전에 별점만 따로 집계해 중복 계산을 막는다. */
     @Query("select r.placeId, avg(r.score * 1.0), count(r) from PlaceRating r where r.placeId in :placeIds group by r.placeId")
     List<Object[]> summarize(Collection<Long> placeIds);

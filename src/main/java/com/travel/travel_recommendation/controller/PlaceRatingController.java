@@ -40,14 +40,16 @@ public class PlaceRatingController {
         try { if(photo!=null) placePhoto=photo.photos(List.of(placeId)).get(placeId); } catch(RuntimeException error) { placePhoto=null; }
         model.addAttribute("placePhoto",placePhoto);
         model.addAttribute("maxTags",PlaceRatingService.MAX_TAGS);
+        model.addAttribute("maxCommentLength",PlaceRatingService.MAX_COMMENT_LENGTH);
         model.addAttribute("returnTo",safe(returnTo));
         return "my/rating";
     }
 
     @PostMapping("/{placeId}")
     String save(@PathVariable long placeId, @RequestParam(required=false) Integer score, @RequestParam(required=false) List<Long> tags,
-                @RequestParam(required=false) String returnTo, Principal principal, RedirectAttributes redirect) {
-        boolean created=service().save(placeId,principal.getName(),score,tags);
+                @RequestParam(required=false) String comment, @RequestParam(required=false) String returnTo,
+                Principal principal, RedirectAttributes redirect) {
+        boolean created=service().save(placeId,principal.getName(),score,tags,comment);
         redirect.addFlashAttribute("savedMessage",created?"평가를 등록했어요.":"평가를 새로 고른 내용으로 바꿨어요.");
         return "redirect:"+(safe(returnTo)!=null?safe(returnTo):"/my/ratings/"+placeId);
     }

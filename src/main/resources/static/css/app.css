@@ -527,6 +527,16 @@ button.map-badge:hover { background: var(--badge, var(--brand)); transform: scal
 .rating-summary { margin: 8px 0 0; font-weight: 600; color: var(--warn); }
 .rating-stars { color: var(--star); letter-spacing: 1px; }
 .rating-stars span + span { margin-left: 6px; color: var(--text-muted); letter-spacing: 0; font-size: 14px; }
+/* 한줄평: 내 평가 목록과 다른 회원의 최근 평가에서 별점·태그 아래 한 줄로 보여 준다. */
+.rating-comment { margin: 4px 0 0; overflow-wrap: anywhere; }
+/* 다른 회원의 최근 평가: 요약 아래에 접어 두고 누르면 최대 5건을 보여 준다. */
+.rating-recent { margin: 6px 0 0; font-size: 14px; }
+.rating-recent > summary { cursor: pointer; color: var(--brand); font-weight: 600; }
+.rating-recent > summary:hover { text-decoration: underline; }
+.rating-recent ul { list-style: none; margin: 6px 0 0; padding: 0; }
+.rating-recent li { padding: 8px 0; border-top: 1px solid var(--line); }
+.rating-recent li p { margin: 2px 0; }
+.rating-recent .rating-stars { font-size: 15px; }
 
 /* 여행 준비 단계 표시 */
 .flow-steps { margin: 0 0 18px; }
@@ -600,6 +610,9 @@ button.map-badge:hover { background: var(--badge, var(--brand)); transform: scal
 /* 고른 태그는 색으로 구분하므로 체크박스는 화면에서 숨긴다(키보드로는 그대로 고를 수 있다). */
 .rating-form .tag-choices input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .rating-form .tag-choices label:has(input:focus-visible) { outline: 3px solid var(--brand); outline-offset: 2px; }
+/* 한줄평 입력: 태그 아래에 제목·입력칸·도움말을 둔다. */
+.rating-form .comment-input { margin: 18px 0 4px; }
+.rating-form .comment-input input { width: 100%; }
 .form-actions-end { justify-content: flex-end; }
 @media (max-width: 520px) { .rating-photo { flex-basis: 104px; } }
 
