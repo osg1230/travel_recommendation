@@ -29,6 +29,18 @@ public class PlaceRatingController {
         return "my/ratings";
     }
 
+    /** 다른 회원이 남긴 평가를 장소별로 모아 보는 화면. 장소 이름 일부(q)로 좁힐 수 있다. */
+    @GetMapping("/browse")
+    String browse(@RequestParam(required=false) String q, HttpServletResponse response, Model model) {
+        response.setHeader("Cache-Control","no-store");
+        String keyword=q==null?"":q.strip();
+        if(keyword.length()>50) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"검색어는 50자까지 적을 수 있어요.");
+        model.addAttribute("keyword",keyword);
+        model.addAttribute("places",service().browse(keyword));
+        model.addAttribute("browseLimit",PlaceRatingService.BROWSE_LIMIT);
+        return "my/ratings-browse";
+    }
+
     @GetMapping("/{placeId}")
     String form(@PathVariable long placeId, @RequestParam(required=false) String returnTo, Principal principal,
                 HttpServletResponse response, Model model) {
@@ -70,10 +82,11 @@ public class PlaceRatingController {
         model.addAttribute("message",message);
         return "my/rating-error";
     }
-    // 돌아갈 주소는 이 서비스의 저장 일정·장소 목록 경로만 허용해 외부로 이동하지 않는다.
+    // 돌아갈 주소는 이 서비스의 저장 일정·장소 목록·평가 둘러보기 경로만 허용해 외부로 이동하지 않는다.
     private static String safe(String returnTo) {
         if(returnTo==null) return null;
-        return returnTo.matches("^/my/itineraries/\\d+$") || returnTo.matches("^/travel/recommendations/[0-9a-fA-F-]{36}/destinations/\\d+/places$")
+        return returnTo.equals("/my/ratings/browse") || returnTo.matches("^/my/itineraries/\\d+$")
+            || returnTo.matches("^/travel/recommendations/[0-9a-fA-F-]{36}/destinations/\\d+/places$")
             ? returnTo : null;
     }
     private PlaceRatingService service() {

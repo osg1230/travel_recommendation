@@ -211,4 +211,22 @@ class PlaceRatingIntegrationTests {
         mvc.perform(post("/my/ratings/"+attraction).with(user(owner.getLoginId())).with(csrf()).param("score","4").param("comment","가".repeat(PlaceRatingService.MAX_COMMENT_LENGTH+1)))
             .andExpect(status().isBadRequest()).andExpect(content().string(containsString("한줄평")));
     }
+
+    @Test void browseListsRecentlyRatedPlacesAndFiltersByName() throws Exception {
+        ratings.save(restaurant,owner.getLoginId(),4,List.of(tag("TASTY")),"양이 많아요");
+        Thread.sleep(5); // 마지막 평가 시각 순서를 확실히 하려고 조금 기다린다.
+        ratings.save(attraction,member().getLoginId(),5,List.of(),null);
+        clear();
+        // 가장 최근에 평가가 남은 장소가 먼저 오고, 장소마다 요약과 최근 평가가 함께 온다.
+        var all=ratings.browse("");
+        assertThat(all).extracting(p->p.place().placeId()).startsWith(attraction,restaurant);
+        assertThat(all.get(1).summary().recent()).singleElement().extracting(Recent::comment).isEqualTo("양이 많아요");
+        assertThat(all.get(1).summary().recent().get(0).raterName()).isEqualTo("여**");
+        // 장소 이름 일부로 좁힌다. 없는 이름이면 비어 있다.
+        String name=all.get(1).place().name();
+        assertThat(ratings.browse(name)).extracting(p->p.place().placeId()).contains(restaurant);
+        assertThat(ratings.browse("없는장소이름zzz")).isEmpty();
+        mvc.perform(get("/my/ratings/browse").param("q",name).with(user(owner.getLoginId()))).andExpect(status().isOk())
+            .andExpect(content().string(containsString(name))).andExpect(content().string(containsString("양이 많아요")));
+    }
 }

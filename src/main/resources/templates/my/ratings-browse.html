@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>평가 둘러보기 | 다녀올게</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="travel my-page">
+    <nav th:replace="~{fragments/layout :: myNav('ratings-browse')}"></nav>
+    <p class="eyebrow">내 여행 · 장소 평가</p>
+    <h1>평가 둘러보기</h1>
+    <p class="intro">다른 회원이 장소에 남긴 별점·태그·한줄평이에요. 최근에 평가가 남은 장소부터 보여 줘요.</p>
+    <!--/* '이 장소 평가하기'로 갔다가 저장하고 돌아오면 저장 안내를 한 번 보여 준다. */-->
+    <p role="status" class="status-ok" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
+    <!--/* 장소 이름 일부로 좁힌다. 비우면 최근 평가가 있는 장소를 순서대로 보여 준다. */-->
+    <form class="card" th:action="@{/my/ratings/browse}" method="get">
+        <div class="field">
+            <label for="q">장소 이름 검색 (선택)</label>
+            <input id="q" name="q" type="search" maxlength="50" th:value="${keyword}" aria-describedby="q-help" placeholder="예) 경포대, 한옥마을">
+            <p id="q-help" class="help" th:text="${'일부만 적어도 찾을 수 있어요. 비워 두면 최근 평가가 있는 장소를 ' + browseLimit + '곳까지 보여 줘요.'}"></p>
+        </div>
+        <div class="form-actions form-actions-end">
+            <a class="button button-quiet" th:if="${!#strings.isEmpty(keyword)}" th:href="@{/my/ratings/browse}">전체 보기</a>
+            <button type="submit">검색</button>
+        </div>
+    </form>
+    <p role="status" th:if="${places.isEmpty() and #strings.isEmpty(keyword)}">아직 남겨진 평가가 없어요. 저장한 일정의 장소를 먼저 평가해 보세요.</p>
+    <p role="status" th:if="${places.isEmpty() and !#strings.isEmpty(keyword)}" th:text="|“${keyword}”이(가) 든 장소의 평가를 찾지 못했어요.|"></p>
+    <!--/* 장소마다 요약 한 줄과 최근 평가 최대 5건을 펼친 채로 보여 준다. 평가자 닉네임은 앞 글자만 보인다. */-->
+    <article class="place-row" th:each="item : ${places}">
+        <p class="help"><span class="type-chip" th:text="${item.place.typeName}"></span></p>
+        <h2 th:text="${item.place.name}"></h2>
+        <p class="help" th:text="${item.place.address}"></p>
+        <p class="rating-summary"
+           th:text="${'★ ' + item.summary.average + ' · 평가 ' + item.summary.count + '개' + (item.summary.topTags.isEmpty() ? '' : ' · ' + #strings.listJoin(item.summary.topTags.![name], ', '))}"></p>
+        <div class="rating-recent">
+            <th:block th:replace="~{fragments/rating :: recentList(${item.summary.recent})}"></th:block>
+        </div>
+        <p class="place-links"><a th:href="@{/my/ratings/{id}(id=${item.place.placeId},returnTo='/my/ratings/browse')}">이 장소 평가하기</a></p>
+    </article>
+</main>
+</body>
+</html>

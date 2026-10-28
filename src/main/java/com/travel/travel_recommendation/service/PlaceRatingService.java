@@ -27,6 +27,8 @@ public class PlaceRatingService {
     public static final int MAX_COMMENT_LENGTH = 100;
     /** 장소별로 다른 회원에게 보여 주는 최근 평가 수. */
     public static final int RECENT_LIMIT = 5;
+    /** 평가 둘러보기 화면에 한 번에 보여 주는 장소 수. */
+    public static final int BROWSE_LIMIT = 30;
     private static final Map<String,String> RATABLE = Map.of("ATTRACTION","관광지","RESTAURANT","음식점","ACCOMMODATION","숙소");
     private final PlaceRatingRepository ratings;
     private final PlaceRatingTagRepository ratingTags;
@@ -115,6 +117,18 @@ public class PlaceRatingService {
             result.put(placeId,new Summary(average,((Number)row[2]).longValue(),top,recentByPlace.getOrDefault(placeId,List.of())));
         }
         return result;
+    }
+
+    /** 평가 둘러보기: 최근에 평가가 남은 장소부터 최대 BROWSE_LIMIT곳과 각 장소의 요약·최근 평가. keyword가 있으면 장소 이름에 그 글자가 든 곳만. */
+    @Transactional(readOnly=true,timeout=10)
+    public List<RatedPlace> browse(String keyword) {
+        String name=keyword==null?"":keyword.strip();
+        var ids=ratings.findRatedPlaceIds(name,org.springframework.data.domain.PageRequest.of(0,BROWSE_LIMIT));
+        if(ids.isEmpty()) return List.of();
+        var placeById=places.findAllById(ids).stream().collect(Collectors.toMap(Place::getId,p->p));
+        var summaryById=summaries(ids);
+        return ids.stream().filter(placeById::containsKey)
+            .map(id->new RatedPlace(info(placeById.get(id)),summaryById.getOrDefault(id,Summary.EMPTY))).toList();
     }
 
     /** 장소별 최근 평가 최대 RECENT_LIMIT건(별점·태그·한줄평·가린 닉네임). 평가는 최근에 바꾼 순서로 온다. */

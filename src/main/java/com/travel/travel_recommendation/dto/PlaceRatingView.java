@@ -19,4 +19,6 @@ public final class PlaceRatingView {
     public record Form(PlaceInfo place, Mine mine, List<Tag> tags, Summary summary) {}
     public record Mine(int score, List<Long> tagIds, String comment, LocalDateTime updatedAt) {}
     public record MyRating(PlaceInfo place, int score, List<String> tags, String comment, LocalDateTime updatedAt) {}
+    /** 평가 둘러보기 화면의 장소 한 곳: 장소 정보와 요약(최근 평가 포함). */
+    public record RatedPlace(PlaceInfo place, Summary summary) {}
 }
