@@ -57,7 +57,7 @@ class WithdrawalIntegrationTests {
 
     @Test void withdrawalAnonymizesAccountAndDeletesPersonalRecords() {
         favorites.add(placeOf("ATTRACTION"),member.getLoginId());
-        ratings.save(placeOf("ATTRACTION"),member.getLoginId(),5,List.of());
+        ratings.save(placeOf("ATTRACTION"),member.getLoginId(),5,List.of(),null);
         recommendations.create(new ConfirmedTravelConditions("TEXT","개인 여행 이야기","강릉",null,null,2,null,2,true,false,List.of(),""),member.getLoginId(),null);
         clear();
         assertThat(count("favorites")+count("place_ratings")+count("recommendation_requests")+count("ai_jobs")).isEqualTo(4);

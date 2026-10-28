@@ -144,6 +144,7 @@ erDiagram
         BIGINT user_id FK
         BIGINT place_id FK
         TINYINT score
+        NVARCHAR_200_ comment
         DATETIME2_3_ created_at
         DATETIME2_3_ updated_at
     }

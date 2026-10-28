@@ -161,6 +161,7 @@ CREATE TABLE [place_ratings] (
     [user_id] BIGINT NOT NULL,
     [place_id] BIGINT NOT NULL,
     [score] TINYINT NOT NULL,
+    [comment] NVARCHAR(200) NULL,
     [created_at] DATETIME2(3) NOT NULL,
     [updated_at] DATETIME2(3) NOT NULL,
     CONSTRAINT [PK_place_ratings] PRIMARY KEY ([rating_id])

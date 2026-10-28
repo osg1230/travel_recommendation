@@ -29,6 +29,18 @@ public class PlaceRatingController {
         return "my/ratings";
     }
 
+    /** 다른 회원이 남긴 평가를 장소별로 모아 보는 화면. 장소 이름 일부(q)로 좁힐 수 있다. */
+    @GetMapping("/browse")
+    String browse(@RequestParam(required=false) String q, HttpServletResponse response, Model model) {
+        response.setHeader("Cache-Control","no-store");
+        String keyword=q==null?"":q.strip();
+        if(keyword.length()>50) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"검색어는 50자까지 적을 수 있어요.");
+        model.addAttribute("keyword",keyword);
+        model.addAttribute("places",service().browse(keyword));
+        model.addAttribute("browseLimit",PlaceRatingService.BROWSE_LIMIT);
+        return "my/ratings-browse";
+    }
+
     @GetMapping("/{placeId}")
     String form(@PathVariable long placeId, @RequestParam(required=false) String returnTo, Principal principal,
                 HttpServletResponse response, Model model) {
@@ -40,14 +52,16 @@ public class PlaceRatingController {
         try { if(photo!=null) placePhoto=photo.photos(List.of(placeId)).get(placeId); } catch(RuntimeException error) { placePhoto=null; }
         model.addAttribute("placePhoto",placePhoto);
         model.addAttribute("maxTags",PlaceRatingService.MAX_TAGS);
+        model.addAttribute("maxCommentLength",PlaceRatingService.MAX_COMMENT_LENGTH);
         model.addAttribute("returnTo",safe(returnTo));
         return "my/rating";
     }
 
     @PostMapping("/{placeId}")
     String save(@PathVariable long placeId, @RequestParam(required=false) Integer score, @RequestParam(required=false) List<Long> tags,
-                @RequestParam(required=false) String returnTo, Principal principal, RedirectAttributes redirect) {
-        boolean created=service().save(placeId,principal.getName(),score,tags);
+                @RequestParam(required=false) String comment, @RequestParam(required=false) String returnTo,
+                Principal principal, RedirectAttributes redirect) {
+        boolean created=service().save(placeId,principal.getName(),score,tags,comment);
         redirect.addFlashAttribute("savedMessage",created?"평가를 등록했어요.":"평가를 새로 고른 내용으로 바꿨어요.");
         return "redirect:"+(safe(returnTo)!=null?safe(returnTo):"/my/ratings/"+placeId);
     }
@@ -68,10 +82,11 @@ public class PlaceRatingController {
         model.addAttribute("message",message);
         return "my/rating-error";
     }
-    // 돌아갈 주소는 이 서비스의 저장 일정·장소 목록 경로만 허용해 외부로 이동하지 않는다.
+    // 돌아갈 주소는 이 서비스의 저장 일정·장소 목록·평가 둘러보기 경로만 허용해 외부로 이동하지 않는다.
     private static String safe(String returnTo) {
         if(returnTo==null) return null;
-        return returnTo.matches("^/my/itineraries/\\d+$") || returnTo.matches("^/travel/recommendations/[0-9a-fA-F-]{36}/destinations/\\d+/places$")
+        return returnTo.equals("/my/ratings/browse") || returnTo.matches("^/my/itineraries/\\d+$")
+            || returnTo.matches("^/travel/recommendations/[0-9a-fA-F-]{36}/destinations/\\d+/places$")
             ? returnTo : null;
     }
     private PlaceRatingService service() {

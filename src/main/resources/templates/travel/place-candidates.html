@@ -78,10 +78,8 @@
         <!--/* 카카오 후보의 소개는 모든 곳이 같은 안내 문장이라 보여 주지 않는다. */-->
         <p th:unless="${place.sourceProvider == 'KAKAO'}" th:text="${place.description}"></p>
         <p th:text="${place.address}"></p>
-        <th:block th:with="summary=${ratingSummaries.get(place.placeId)}">
-        <p class="rating-summary" th:if="${summary != null}"
-           th:text="${'★ ' + summary.average + ' · 평가 ' + summary.count + '개' + (summary.topTags.isEmpty() ? '' : ' · ' + #strings.listJoin(summary.topTags.![name], ', '))}"></p>
-        </th:block>
+        <!--/* 평가 요약과 다른 회원의 최근 평가(접힘)는 공통 조각으로 보여 준다. */-->
+        <th:block th:replace="~{fragments/rating :: summary(${ratingSummaries.get(place.placeId)})}"></th:block>
         <div th:if="${place.operatingInfo != null}">
             <p class="help" th:text="${'한국관광공사 운영정보 · 조회 ' + place.operatingInfo.fetchedAt + ' · 24시간 이후 재조회 필요'}"></p>
             <p th:text="${'운영시간: ' + (#strings.isEmpty(place.operatingInfo.hours) ? '정보 없음' : place.operatingInfo.hours)}"></p>
