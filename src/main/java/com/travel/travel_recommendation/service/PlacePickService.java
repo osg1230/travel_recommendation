@@ -80,11 +80,15 @@ public class PlacePickService {
         var input=task.input();
         var c=input.constraints();
         var ordered=TripConstraints.byPicks(input.picking().pool(),c==null?List.of():c.centerPlaceIds(),picks.order(),picks.skip());
+        // '다른 관광지로 다시 만들기'면 AI 순서에서도 직전 초안의 관광지를 뒤로 보낸다. 필수·중심 장소는 그대로 둔다.
+        Set<Long> keep=new HashSet<>();
+        if(c!=null) { keep.addAll(c.requiredPlaceIds()); keep.addAll(c.centerPlaceIds()); }
+        ordered=TripConstraints.previousLast(ordered,input.picking().previous(),keep,Set.copyOf(picks.skip()));
         int days=input.conditions().durationDays()==null?1:input.conditions().durationDays();
         Input picked;
         try {
-            var arranged=ItineraryJobService.arrange(ordered,Set.copyOf(picks.skip()),true,input.places().accommodationNeeded(),days,
-                input.start(),input.end(),input.visitMinutes(),c);
+            var arranged=ItineraryJobService.withoutPrevious(ItineraryJobService.arrange(ordered,Set.copyOf(picks.skip()),true,
+                input.places().accommodationNeeded(),days,input.start(),input.end(),input.visitMinutes(),c),input.picking().previous());
             picked=input.withPicked(arranged.selected(),arranged.reserve(),arranged.evening());
             generator.checkInput(picked);
         } catch(RuntimeException error) {

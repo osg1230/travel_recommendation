@@ -102,9 +102,34 @@ public class PlaceCandidateService {
             String key=place.getPlaceType()+":"+address;
             if(seen.add(key)) distinct.add(place);
         }
+        Set<Long> keep=new HashSet<>(purposeIds); keep.addAll(festivalIds);
+        var spread=spreadKinds(distinct,keep,themes);
         return new PlaceCandidateView(jobId, destination, conditions.durationDays(), needsAccommodation,
-            ofType(distinct, "ATTRACTION", TripConstraints.candidateLimit(conditions.durationDays())),
-            needsAccommodation ? ofType(distinct, "ACCOMMODATION", 5) : List.of(), ofType(distinct, "RESTAURANT", 8));
+            ofType(spread, "ATTRACTION", TripConstraints.candidateLimit(conditions.durationDays())),
+            needsAccommodation ? ofType(spread, "ACCOMMODATION", 5) : List.of(), ofType(spread, "RESTAURANT", 8));
+    }
+
+    /** 관광지 후보 앞쪽에 둘 같은 종류의 수. 고른 여행 취향에 맞는 종류(예: 바다 취향의 해변)는 더 둔다. */
+    static final int KIND_LIMIT=3, THEME_KIND_LIMIT=5;
+    /** 종류로 세지 않는 넓은 분류. 카카오가 세부 분류 없이 "여행 > 관광,명소"로만 준 곳은 서로 다른 장소라 함께 묶지 않는다. */
+    private static final Set<String> BROAD_KINDS=Set.of("","관광,명소");
+
+    /**
+     * 같은 종류의 관광지가 후보 앞쪽을 다 차지하지 않게, 종류마다 앞에서 KIND_LIMIT곳까지만 제자리에 두고 나머지는 관광지 후보 맨 뒤로 보낸다.
+     * 인기 순서를 그대로 쓰면 강릉은 후보 16곳 중 9곳이 해변이 됐다(2026-10-30 측정). 뒤로 보낸 곳도 빼지는 않는다.
+     * 목적 시설·축제 장소(keep)는 세지 않고 제자리에 둔다. 관광지가 아닌 숙소·음식점의 순서는 바꾸지 않는다.
+     */
+    private List<Place> spreadKinds(List<Place> ordered,Set<Long> keep,List<String> themes) {
+        Map<String,Integer> counts=new HashMap<>();
+        List<Place> front=new ArrayList<>(), back=new ArrayList<>();
+        for(var place:ordered) {
+            String kind=TripConstraints.kind(place.getSubtype());
+            if(!"ATTRACTION".equals(place.getPlaceType()) || keep.contains(place.getId()) || BROAD_KINDS.contains(kind)) { front.add(place); continue; }
+            int limit=ThemePlaces.matched(place.getName(),place.getSubtype(),themes).isEmpty()?KIND_LIMIT:THEME_KIND_LIMIT;
+            if(counts.merge(kind,1,Integer::sum)<=limit) front.add(place); else back.add(place);
+        }
+        front.addAll(back);
+        return front;
     }
 
     private boolean usable(Place place, String region) {

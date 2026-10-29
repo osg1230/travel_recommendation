@@ -32,7 +32,8 @@ import static org.assertj.core.api.Assertions.*;
  * - 종류 수·같은 종류 최대: 일정 관광지의 종류(TripConstraints.kind, 해수욕장·해변은 하나로 본다)
  * - 후보 최다 종류: 관광지 후보 목록에서 가장 많은 종류와 그 수(예: 해변 8)
  * - 하루 이동·최장 이동: 하루 이동시간 합의 평균과 가장 긴 한 번 이동(분)
- * - 다시 만들기 겹침: 같은 조건으로 두 번 만든 초안에서 첫 초안의 관광지가 두 번째에도 나온 비율
+ * - 다시 만들기 겹침: 첫 초안의 관광지가 '다른 관광지로 다시 만들기'로 만든 두 번째 초안에도 나온 비율
+ *   (2026-10-30 3차 측정까지는 버튼이 없어 같은 조건으로 두 번 만든 초안끼리 비교했다)
  */
 @EnabledIfEnvironmentVariable(named="RUN_QUALITY_REPORT",matches="true")
 @SpringBootTest(properties={"spring.jpa.hibernate.ddl-auto=validate","travel.jobs.enabled=false"})
@@ -67,7 +68,7 @@ class ItineraryQualityReportTests {
     /** official은 관광공사 등록 여부이고, 관광공사 조회에 실패하면 null이다. */
     record Visit(String name, String kind, Boolean official, Double longitude, Double latitude) {}
     /** aiOrdered는 GPT가 관광지 순서를 정했는지다. false면 GPT 응답 실패 등으로 서버 규칙 순서를 썼다. */
-    record Draft(List<Visit> visits, int dailyMoveMinutes, int longestMoveMinutes, boolean aiOrdered) {}
+    record Draft(UUID id, List<Visit> visits, int dailyMoveMinutes, int longestMoveMinutes, boolean aiOrdered) {}
     record Measured(Scenario scenario, int candidateCount, Map<String, Long> candidateKinds, Draft first, Draft second, String error) {}
 
     private final Map<Long, Boolean> officialCache = new HashMap<>();
@@ -104,14 +105,20 @@ class ItineraryQualityReportTests {
         em.flush();
         var pool = candidates.find(parent, destination.placeId(), null, hash).attractions();
         var kinds = pool.stream().collect(Collectors.groupingBy(TripConstraints::kind, LinkedHashMap::new, Collectors.counting()));
-        return new Measured(s, pool.size(), kinds, draft(parent, destination.placeId(), hash),
-            draft(parent, destination.placeId(), hash), null);
+        // 두 번째 초안은 첫 초안 화면의 '다른 관광지로 다시 만들기'(2026-10-30 4단계)로 만든다.
+        var first = draft(parent, destination.placeId(), hash, null);
+        return new Measured(s, pool.size(), kinds, first, draft(parent, destination.placeId(), hash, first.id()), null);
     }
 
-    /** 빠른 일정 만들기와 같은 기본값(09:00~18:00, 체류 90분)으로 초안 하나를 만들고 관광지·이동시간을 읽는다. */
-    private Draft draft(UUID parent, long destination, byte[] hash) {
+    /**
+     * 빠른 일정 만들기와 같은 기본값(09:00~18:00, 체류 90분)으로 초안 하나를 만들고 관광지·이동시간을 읽는다.
+     * previous가 있으면 그 초안에서 '다른 관광지로 다시 만들기'를 누른 것과 같다.
+     */
+    private Draft draft(UUID parent, long destination, byte[] hash, UUID previous) {
         var options = schedules.options(parent, destination, null, hash);
-        UUID id = schedules.create(parent, destination, null, hash, options.start(), options.end(), options.transport(), options.visitMinutes());
+        UUID id = previous == null
+            ? schedules.create(parent, destination, null, hash, options.start(), options.end(), options.transport(), options.visitMinutes())
+            : schedules.recreate(previous, null, hash);
         // 실제 작업 순서(RecommendationJobWorker)와 같게: AI 관광지 순서 → 주변 음식점 → 일정 생성. 앞의 두 단계는 실패해도 서버 규칙으로 계속한다.
         try { placePicks.enrich(id); } catch (RuntimeException skipped) { /* 서버 규칙으로 고른 관광지를 그대로 쓴다. */ }
         try { restaurants.enrich(id); } catch (RuntimeException skipped) { /* 기존 음식점 후보를 쓴다. */ }
@@ -135,7 +142,7 @@ class ItineraryQualityReportTests {
                 place.getLongitude() == null ? null : place.getLongitude().doubleValue(),
                 place.getLatitude() == null ? null : place.getLatitude().doubleValue()));
         }
-        return new Draft(visits, moveSeconds / 60 / result.days().size(), longestSeconds / 60, aiOrdered);
+        return new Draft(id, visits, moveSeconds / 60 / result.days().size(), longestSeconds / 60, aiOrdered);
     }
 
     /** 일정 관광지 중 서로 가장 먼 두 곳의 직선거리(km). 작으면 한 동네에 몰린 일정이다. */
@@ -190,7 +197,7 @@ class ItineraryQualityReportTests {
         var out = new StringBuilder();
         out.append("# 일정 품질 측정 (").append(now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))).append(")\n\n")
             .append("조건: 출발 ").append(START).append("(가을 주말), 2명, 자동차, 09:00~18:00, 체류 90분(빠른 일정 기본값). ")
-            .append("시나리오마다 같은 조건으로 초안을 두 번 만들었고, 표의 값은 첫 초안 기준이다.\n\n")
+            .append("시나리오마다 초안을 만들고 그 초안에서 '다른 관광지로 다시 만들기'로 한 번 더 만들었다. 표의 값은 첫 초안 기준이다.\n\n")
             .append("| 시나리오 | 후보 관광지 | 후보 최다 종류 | 일정 관광지 | 공식 관광지 | 종류 수 | 같은 종류 최대 | 관광지 분포(km) | 하루 이동(분) | 최장 이동(분) | 다시 만들기 겹침 | AI 순서 |\n")
             .append("|---|---|---|---|---|---|---|---|---|---|---|---|\n");
         for (var m : measured) {

@@ -59,6 +59,8 @@ class PlaceDiscoveryIntegrationTests {
         parent=recommendations.create(conditions,null,hash); recommendations.prepare(parent);
         var candidate=recommendations.view(parent,null,hash).candidates().getFirst(); destination=candidate.placeId();
         jobs.findById(parent).orElseThrow().completeRecommendation(mapper.writeValueAsString(List.of(new RankedDestination(1,candidate,"테스트 추천")))); em.flush();
+        // 앱을 실행하면 여행지 행에 실제 대표 관광지 목록이 30일 보관된다. 이 테스트의 모의 응답으로 다시 만들도록 비운다(끝나면 롤백).
+        jdbc.update("UPDATE dbo.places SET details_json=NULL WHERE place_id=?",destination); em.clear();
         when(maps.searchPlaces(eq(region),anyString())).thenAnswer(call->{
             String type=call.getArgument(1);
             return switch(type) {
@@ -198,6 +200,43 @@ class PlaceDiscoveryIntegrationTests {
         discovery.refresh(parent,destination,null,hash);
         verify(landmarks,times(1)).names(anyString(),anyString());
         verify(tour,times(1)).relatedPlaces(anyString(),any(),anyInt());
+    }
+    // 같은 종류(해수욕장·해변은 하나)는 후보 앞쪽에 3곳까지만 두고 나머지는 관광지 후보 맨 뒤로 보낸다(빼지는 않는다).
+    @Test void sameKindBeyondThreeMovesToTheBackOfCandidates() {
+        doReturn(java.util.stream.IntStream.rangeClosed(1,8).mapToObj(i->{
+            var d=data(i,"ATTRACTION","강원 강릉시 테스트로 "+i);
+            return new KakaoPlace(d.sourceId(),d.type(),d.name(),d.region(),d.address(),
+                i<=6?"여행 > 관광,명소 > 해수욕장,해변":"여행 > 관광,명소 > 전망대",d.longitude(),d.latitude(),d.url(),d.checkedAt());
+        }).toList()).when(maps).searchPlaces(region,"ATTRACTION");
+        discovery.refresh(parent,destination,null,hash); em.flush();
+        var names=candidates.find(parent,destination,null,hash).attractions().stream().map(PlaceCandidate::name).toList();
+        assertThat(names).containsSubsequence("조회 장소 1","조회 장소 2","조회 장소 3","조회 장소 7","조회 장소 8","조회 장소 4","조회 장소 5","조회 장소 6");
+        assertThat(names.subList(names.size()-3,names.size())).containsExactly("조회 장소 4","조회 장소 5","조회 장소 6");
+    }
+    // '다른 관광지로 다시 만들기'는 같은 조건으로 새 초안을 만들되, 직전 초안의 관광지를 뒤로 보내 남은 후보부터 고른다. 원래 초안은 그대로다.
+    @Test void recreatePrefersAttractionsNotInPreviousDraft() throws Exception {
+        discovery.refresh(parent,destination,null,hash); em.flush();
+        var first=schedules.create(parent,destination,null,hash,LocalTime.of(9,0),LocalTime.of(14,0),KakaoMapClient.Transport.CAR,60);
+        var work=schedules.claim(first); schedules.complete(work,schedules.generate(work)); em.flush();
+        var visited=schedules.view(first,null,hash).result().days().stream().flatMap(d->d.items().stream())
+            .filter(i->"VISIT".equals(i.type())).map(ItineraryPlan.Item::placeId).collect(java.util.stream.Collectors.toSet());
+        var pool=candidates.find(parent,destination,null,hash).attractions().stream().map(PlaceCandidate::placeId).toList();
+        assertThat(visited).isNotEmpty();
+        mvc.perform(get("/travel/recommendations/itineraries/"+first).session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("다른 관광지로 다시 만들기")));
+        var redirect=mvc.perform(post("/travel/recommendations/itineraries/"+first+"/recreate").session(session).with(csrf()))
+            .andExpect(status().is3xxRedirection()).andReturn().getResponse().getRedirectedUrl();
+        var second=UUID.fromString(redirect.substring(redirect.lastIndexOf('/')+1));
+        var input=schedules.view(second,null,hash).input();
+        assertThat(input.picking().previous()).containsExactlyInAnyOrderElementsOf(visited);
+        var fresh=pool.stream().filter(id->!visited.contains(id)).toList();
+        var chosen=input.places().attractions().stream().map(PlaceCandidate::placeId).toList();
+        assertThat(fresh).isNotEmpty();
+        assertThat(chosen.subList(0,Math.min(chosen.size(),fresh.size()))).allMatch(fresh::contains);
+        // 남는 시간을 채우는 예비·저녁 관광 후보에도 직전 초안의 관광지는 넣지 않는다(가깝다는 이유로 다시 들어가지 않게).
+        assertThat(input.reserve()).extracting(PlaceCandidate::placeId).doesNotContainAnyElementsOf(visited);
+        assertThat(input.evening()).extracting(PlaceCandidate::placeId).doesNotContainAnyElementsOf(visited);
+        assertThat(schedules.view(first,null,hash).status()).isEqualTo("COMPLETED");
     }
     @Test void sameTypeAndBuildingAddressAreNotDuplicated() {
         var seed=candidates.find(parent,destination,null,hash).attractions().getFirst();
