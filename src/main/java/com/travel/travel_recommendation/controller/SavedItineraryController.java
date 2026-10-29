@@ -25,6 +25,7 @@ public class SavedItineraryController {
     private final ObjectProvider<com.travel.travel_recommendation.service.PlaceRatingService> ratings;
     private final ObjectProvider<com.travel.travel_recommendation.service.VirtualReservationService> reservations;
     private final ObjectProvider<com.travel.travel_recommendation.service.PlacePhotoService> photos;
+    private final ObjectProvider<com.travel.travel_recommendation.service.TransitRouteService> transitRoutes;
     private final tools.jackson.databind.ObjectMapper mapper;
 
     @PostMapping
@@ -67,6 +68,8 @@ public class SavedItineraryController {
                 .map(i->new com.travel.travel_recommendation.service.TripMap.Stop(i.type(),i.name(),i.mapUrl())).toList())).toList(),
             "자동차".equals(itinerary.transportName()));
         model.addAttribute("route",route); model.addAttribute("mapJson",mapper.writeValueAsString(route));
+        // 대중교통 일정은 지도에서 그날의 실제 대중교통·도보 경로를 눌러서 조회할 수 있다(저장하지 않고 볼 때마다 조회).
+        if(!"자동차".equals(itinerary.transportName())) model.addAttribute("dayPathsUrl","/my/itineraries/"+id+"/day-paths");
         // 다녀온 장소마다 평가 요약과 평가하기 링크를 보여 준다(SFR-10).
         var rating=ratings.getIfAvailable();
         model.addAttribute("ratingSummaries",rating==null?java.util.Map.of():rating.summaries(itinerary.days().stream()
@@ -96,6 +99,20 @@ public class SavedItineraryController {
         for(var b:bookables) bookableByItem.putIfAbsent(b.dayNo()+"-"+b.itemPlaceId(),b);
         model.addAttribute("bookableByItem",bookableByItem);
         return "my/itinerary";
+    }
+
+    /** 저장한 대중교통 일정 지도의 '실제 경로 보기'(SFR-11-03). 본인 일정만 조회하며, 경로는 저장하지 않고 요청 때마다 조회한다. */
+    @GetMapping("/{id}/day-paths")
+    @ResponseBody
+    org.springframework.http.ResponseEntity<?> dayPaths(@PathVariable long id, @RequestParam int day, Principal principal) {
+        var itinerary=service().detail(id,login(principal));
+        if("자동차".equals(itinerary.transportName()))
+            return org.springframework.http.ResponseEntity.badRequest().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(java.util.Map.of("message","대중교통 일정에서만 실제 경로를 볼 수 있어요."));
+        var route=com.travel.travel_recommendation.service.TripMap.route(itinerary.days().stream()
+            .map(d->new com.travel.travel_recommendation.service.TripMap.Day(d.number(),d.items().stream()
+                .map(i->new com.travel.travel_recommendation.service.TripMap.Stop(i.type(),i.name(),i.mapUrl())).toList())).toList(),false);
+        return ItineraryController.dayPathsOf(route,day,transitRoutes.getIfAvailable());
     }
 
     /** 완성된 수정안을 이 일정에 덮어쓴다. version이 다르면 다른 곳에서 먼저 바뀐 것으로 보고 거부한다. */

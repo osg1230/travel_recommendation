@@ -33,6 +33,7 @@ public class ItineraryController {
     private final ObjectProvider<HomeTripService> homeTrips;
     private final ObjectProvider<ProfileService> profiles;
     private final ObjectProvider<KakaoMapClient> mapClients;
+    private final ObjectProvider<TransitRouteService> transitRoutes;
     private final tools.jackson.databind.ObjectMapper mapper;
     private record Submission(UUID parent,long destination,String login,String token,UUID job) {}
     private static final String SESSION_KEY="itinerarySubmission";
@@ -269,6 +270,8 @@ public class ItineraryController {
                 d.items().stream().map(i->new TripMap.Stop(i.type(),i.name(),i.mapUrl())).toList())).toList(),
                 car,roads);
             model.addAttribute("route",route); model.addAttribute("mapJson",mapper.writeValueAsString(route));
+            // 대중교통 일정은 지도에서 그날의 실제 대중교통·도보 경로를 눌러서 조회할 수 있게 주소를 넘긴다.
+            if(!car) model.addAttribute("dayPathsUrl","/travel/recommendations/itineraries/"+id+"/day-paths");
             // 지역 대표 음식 안내(SFR-17-01). 공식 출처로 확인한 지역만 보여 준다.
             model.addAttribute("foods",RegionalFoods.of(job.result().destination()).orElse(null));
             // 수정안에서 바꿀 수 있는 관광지는 실제로 배치된 곳뿐이다(시간이 부족해 뺀 곳 제외).
@@ -540,6 +543,31 @@ public class ItineraryController {
     ResponseEntity<?> status(@PathVariable UUID id,Principal principal,HttpSession session) {
         var job=service().view(id,login(principal),hash(session));
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(Map.of("status",job.status(),"message",job.message(),"pending",job.pending()));
+    }
+    /**
+     * 대중교통 일정 초안 지도의 '실제 경로 보기'(SFR-11-03). 고른 날의 구간만 지금 카카오에서 조회해 돌려주고 저장하지 않는다.
+     * 초안을 볼 수 있는 사람(만든 회원 또는 같은 세션의 비회원)만 부를 수 있다.
+     */
+    @GetMapping("/itineraries/{id}/day-paths")
+    @ResponseBody
+    ResponseEntity<?> dayPaths(@PathVariable UUID id,@RequestParam int day,Principal principal,HttpSession session) {
+        var job=service().view(id,login(principal),hash(session));
+        if(job.result()==null || job.result().transport()!=KakaoMapClient.Transport.PUBLIC_TRANSIT)
+            return ResponseEntity.badRequest().cacheControl(CacheControl.noStore()).body(Map.of("message","대중교통 일정에서만 실제 경로를 볼 수 있어요."));
+        var route=TripMap.route(job.result().days().stream().map(d->new TripMap.Day(d.number(),
+            d.items().stream().map(i->new TripMap.Stop(i.type(),i.name(),i.mapUrl())).toList())).toList(),false);
+        return dayPathsOf(route,day,transitRoutes.getIfAvailable());
+    }
+    /** 공통: 고른 날의 경로를 조회해 JSON으로 돌려준다. 저장 일정 화면(SavedItineraryController)도 같이 쓴다. */
+    static ResponseEntity<?> dayPathsOf(TripMap.Route route,int day,TransitRouteService routes) {
+        var target=route.days().stream().filter(d->d.number()==day).findFirst().orElse(null);
+        if(target==null) return ResponseEntity.status(HttpStatus.NOT_FOUND).cacheControl(CacheControl.noStore()).body(Map.of("message","그날 일정을 찾지 못했어요."));
+        if(routes==null) return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).cacheControl(CacheControl.noStore()).body(Map.of("message","지도 API 연결 설정이 필요해요."));
+        try {
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(routes.day(target));
+        } catch(RecommendationException e) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).cacheControl(CacheControl.noStore()).body(Map.of("message",e.getMessage()));
+        }
     }
     @ExceptionHandler({ResponseStatusException.class,RecommendationException.class,DataAccessException.class})
     String error(RuntimeException error,HttpServletRequest request,HttpServletResponse response,HttpSession session,Model model) {

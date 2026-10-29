@@ -24,6 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SavedItineraryControllerTests {
     @Autowired MockMvc mvc;
     @MockitoBean SavedItineraryService service;
+    @MockitoBean com.travel.travel_recommendation.service.TransitRouteService transitRoutes;
     // DB 프로필에서만 있는 평가 서비스를 흉내 내 저장 일정 상세의 최근 평가 표시만 확인한다.
     @MockitoBean com.travel.travel_recommendation.service.PlaceRatingService ratings;
 
@@ -69,7 +70,42 @@ class SavedItineraryControllerTests {
             .andExpect(header().string("Cache-Control","no-store"))
             .andExpect(content().string(containsString("강릉 2일 일정")))
             .andExpect(content().string(containsString("경포해변")))
-            .andExpect(content().string(containsString("이 일정 삭제")));
+            .andExpect(content().string(containsString("이 일정 삭제")))
+            // 자동차 일정에는 대중교통 실제 경로 보기를 붙이지 않는다.
+            .andExpect(content().string(org.hamcrest.Matchers.not(containsString("data-day-paths"))));
+    }
+
+    // 대중교통 저장 일정: 지도에서 그날 실제 경로를 조회할 주소를 주고, 요청하면 그날 구간만 지금 조회해 JSON으로 돌려준다.
+    @Test void transitItineraryLooksUpDayPathsOnRequest() throws Exception {
+        var summary=new SavedItinerary.Summary(8L,"강릉 2일 일정","강릉",LocalDate.of(2026,11,21),LocalDate.of(2026,11,22),2,
+            LocalDateTime.of(2026,10,28,1,0));
+        var first=new SavedItinerary.Item("VISIT","관광",LocalTime.of(9,0),LocalTime.of(10,30),"경포해변","확인 필요",
+            "https://map.kakao.com/link/map/경포해변,37.8055,128.9087","https://source",null);
+        var second=new SavedItinerary.Item("VISIT","관광",LocalTime.of(11,0),LocalTime.of(12,0),"오죽헌","확인 필요",
+            "https://map.kakao.com/link/map/오죽헌,37.7795,128.8785","https://source",null);
+        when(service.detail(8L,"member")).thenReturn(new SavedItinerary.Detail(summary,"대중교통",
+            List.of(new SavedItinerary.Day(1,LocalDate.of(2026,11,21),List.of(first,second)))));
+        mvc.perform(get("/my/itineraries/8").with(user("member"))).andExpect(status().isOk())
+            .andExpect(content().string(containsString("data-day-paths=\"/my/itineraries/8/day-paths\"")));
+        var piece=new com.travel.travel_recommendation.service.KakaoMapClient.PathPiece("BUS",
+            List.of(new double[]{37.8055,128.9087},new double[]{37.7795,128.8785}));
+        when(transitRoutes.day(any())).thenReturn(new com.travel.travel_recommendation.service.TransitRouteService.DayPath(1,List.of(List.of(piece)),0));
+        mvc.perform(get("/my/itineraries/8/day-paths").param("day","1").with(user("member")))
+            .andExpect(status().isOk()).andExpect(header().string("Cache-Control","no-store"))
+            .andExpect(jsonPath("$.day").value(1)).andExpect(jsonPath("$.legs[0][0].mode").value("BUS"))
+            .andExpect(jsonPath("$.legs[0][0].points[1][0]").value(37.7795));
+        // 없는 날은 404이고 경로를 조회하지 않는다.
+        mvc.perform(get("/my/itineraries/8/day-paths").param("day","3").with(user("member"))).andExpect(status().isNotFound());
+        verify(transitRoutes,times(1)).day(any());
+    }
+
+    @Test void dayPathsNeedLoginAndTransitItinerary() throws Exception {
+        mvc.perform(get("/my/itineraries/7/day-paths").param("day","1")).andExpect(status().isFound()).andExpect(redirectedUrl("/login"));
+        var summary=new SavedItinerary.Summary(7L,"강릉 2일 일정","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,
+            LocalDateTime.of(2026,9,20,1,0));
+        when(service.detail(7L,"member")).thenReturn(new SavedItinerary.Detail(summary,"자동차",List.of()));
+        mvc.perform(get("/my/itineraries/7/day-paths").param("day","1").with(user("member"))).andExpect(status().isBadRequest());
+        verifyNoInteractions(transitRoutes);
     }
 
     @Test void showsGuidanceWhenDraftCannotBeSaved() throws Exception {
