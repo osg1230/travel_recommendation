@@ -10,7 +10,8 @@
 - 함께 고침: 브라우저 확인 중 식사 이유에 지시문이 새어 나온 AI 문장("부드러운 대화 tone")이 보였다. `OpenAiItineraryClient.placeReasons`가 '~요'로 끝나지 않는 장소 이유는 버리고 서버 이유를 쓰게 했다.
 - 확인: 단위 `PopularPlacesTests` 4·`DestinationLandmarksTests` 3·`KakaoMapClientTests` 22·`ItineraryGeneratorTests` 40(인기 음식점 우선 1 추가)·`PlaceReasonsTests` 2·`OpenAiItineraryClientTests` 7(이유 문장 끝 1 추가) 등 통과. SQL Server 통합 11개 클래스 80개 통과(`PlaceDiscoveryIntegrationTests`에 인기 음식점·숙소가 후보 맨 앞·인기 표시 검증 추가). 최종 품질 측정(02:11): 다시 만들기 겹침 강릉 13%·바다 0%·경주 25%·부산 27%·전주 0%·제주 60%, 첫 초안 식사 중 인기 음식점 강릉 1/3·경주 2/3·부산 1/5, 인기 숙소 강릉·경주·부산 1/1(제주 0/1). 브라우저(8080, 강릉 1박 2일): '장소 더 찾아보기'로 다시 수집하자 인기 숙소 5곳·음식점 4곳이 저장됐고, 새 일정의 점심 동화가든에 인기 근거가, 숙소는 스카이베이호텔 경포가 나왔다. 서버·콘솔 오류 없음. 전체 테스트는 돌리지 않았다.
 - 한계: 인기 표시는 장소를 다시 수집할 때(카카오 장소 24시간 유효, 후보 부족 시 자동 또는 '장소 더 찾아보기') 붙는다. 인기 음식점은 동선에서 2km 안쪽일 때만 먼저 고르고, 인기 순위는 차량 내비 기준이라 걸어서 가는 맛집과 다를 수 있다. 다음 달 순위에서 빠진 곳의 인기 표시는 지우지 않는다.
-- 다음: 전체 테스트(`clean verify`)와 PR. 요구분석서에 외부 데이터(관광공사 연관 관광지)를 적을지는 사용자 결정 대기.
+- 전체 테스트(데스크탑, `feature/itinerary-quality` `248ab52`, Windows 인증 SQL Server, `RUN_SQLSERVER_TESTS=true`, OpenAI 테스트 끔, 확인용 앱은 내리고 실행): `clean verify` 7분 57초, **534개 실행, 실패·오류 0, 건너뜀 12**(외부 API 실호출 테스트 9개 클래스와 품질 측정 `ItineraryQualityReportTests`), `BUILD SUCCESS`.
+- 다음: PR 리뷰·병합. 요구분석서에 외부 데이터(관광공사 연관 관광지)를 적을지는 사용자 결정 대기.
 
 ## 2026-10-30 일정 품질 개선 4단계: 같은 종류 상한·'다른 관광지로 다시 만들기' (`feature/itinerary-quality`)
 
