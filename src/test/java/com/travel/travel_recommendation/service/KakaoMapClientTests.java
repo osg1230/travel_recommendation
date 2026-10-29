@@ -14,13 +14,17 @@ class KakaoMapClientTests {
     private HttpServer server;
     private final AtomicReference<String> body=new AtomicReference<>(), path=new AtomicReference<>(), auth=new AtomicReference<>();
     private final AtomicInteger status=new AtomicInteger(200), calls=new AtomicInteger();
+    // 요청 주소가 이 키로 시작하면 그 응답을 준다(대중교통·도보처럼 한 번에 여러 API를 부르는 경우). 없으면 body를 준다.
+    private final java.util.Map<String,String> bodies=new java.util.concurrent.ConcurrentHashMap<>();
     private final KakaoMapClient.Location from=new KakaoMapClient.Location("출발",128.87,37.77,Instant.now());
     private final KakaoMapClient.Location to=new KakaoMapClient.Location("도착",128.89,37.79,Instant.now());
     @BeforeEach void setup() throws Exception {
         server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
         server.createContext("/",e->{
             calls.incrementAndGet(); path.set(e.getRequestURI().toString()); auth.set(e.getRequestHeaders().getFirst("Authorization"));
-            byte[] bytes=body.get().getBytes(StandardCharsets.UTF_8);
+            String reply=bodies.entrySet().stream().filter(b->e.getRequestURI().toString().startsWith(b.getKey()))
+                .map(java.util.Map.Entry::getValue).findFirst().orElseGet(body::get);
+            byte[] bytes=reply.getBytes(StandardCharsets.UTF_8);
             e.sendResponseHeaders(status.get(),bytes.length); e.getResponseBody().write(bytes); e.close();
         }); server.start();
     }
@@ -119,6 +123,60 @@ class KakaoMapClientTests {
         // 카카오가 경로를 주면 추정값이 아니다.
         body.set("{\"status\":\"OK\",\"routes\":[{\"properties\":{\"totalTime\":300,\"totalDistance\":200}}]}");
         assertThat(client("key").travelTime(beach,street,KakaoMapClient.Transport.PUBLIC_TRANSIT).walkingEstimate()).isFalse();
+    }
+    // 대중교통 지도 경로(SFR-11-03): 가장 빠른 경로의 탑승·도보 단계 좌표를 [위도, 경도]로 바꾸고,
+    // 응답에 없는 출발지→첫 승차, 마지막 하차→도착지는 도보 경로로 채운다. 보관하지 않으므로 부를 때마다 조회한다.
+    @Test void transitPathDrawsFastestStepsAndFillsWalkingEnds() {
+        String slow="{\"properties\":{\"totalTime\":2000},\"steps\":[{\"properties\":{\"type\":\"BUS\"},\"path\":{\"points\":[[128.0,37.0],[128.1,37.1]]}}]}";
+        String fast="{\"properties\":{\"totalTime\":900},\"steps\":["
+            +"{\"properties\":{\"type\":\"BUS\"},\"path\":{\"points\":[[128.872,37.772],[128.88,37.78]]}},"
+            +"{\"properties\":{\"type\":\"WALKING\"},\"path\":{\"points\":[[128.88,37.78],[128.881,37.781]]}},"
+            +"{\"properties\":{\"type\":\"SUBWAY\"},\"path\":{\"points\":[[128.881,37.781],[128.888,37.788]]}}]}";
+        bodies.put("/v2/routing/publictraffic","{\"status\":\"OK\",\"routes\":["+slow+","+fast+"]}");
+        bodies.put("/v2/routing/walk","{\"status\":\"OK\",\"route\":{\"legs\":[{\"steps\":["
+            +"{\"path\":{\"points\":[[128.87,37.77],[128.871,37.771]]}},{\"path\":{\"points\":[[128.871,37.771],[128.872,37.772]]}}]}]}}");
+        var pieces=client("key").transitPath(from,to);
+        assertThat(pieces).extracting(KakaoMapClient.PathPiece::mode).containsExactly("WALK","BUS","WALK","SUBWAY","WALK");
+        // 첫 도보는 도보 경로 응답의 단계를 이어 붙이고, 단계 사이에 겹치는 점은 한 번만 넣는다.
+        assertThat(pieces.getFirst().points()).containsExactly(new double[]{37.77,128.87},new double[]{37.771,128.871},new double[]{37.772,128.872});
+        assertThat(pieces.get(1).points()).containsExactly(new double[]{37.772,128.872},new double[]{37.78,128.88});
+        // 대중교통 1번 + 처음·마지막 도보 2번. 같은 구간을 다시 그려도 다시 조회한다.
+        assertThat(calls.get()).isEqualTo(3);
+        client("key").transitPath(from,to);
+        assertThat(calls.get()).isEqualTo(6);
+    }
+    @Test void nearbyLegIsDrawnAsWalkingRouteAndCloseEndsAreJoinedDirectly() {
+        // 걸어갈 만큼 가까워 대중교통 경로가 없는 구간(NO_RESULTS)은 도보 경로 하나로 그린다.
+        var beach=new KakaoMapClient.Location("안목해변",128.948275,37.772262,Instant.now());
+        var street=new KakaoMapClient.Location("카페거리",128.947242,37.772654,Instant.now());
+        bodies.put("/v2/routing/publictraffic","{\"status\":\"NO_RESULTS\"}");
+        bodies.put("/v2/routing/walk","{\"status\":\"OK\",\"route\":{\"legs\":[{\"steps\":[{\"path\":{\"points\":[[128.94802,37.77207],[128.94728,37.77275]]}}]}]}}");
+        var walk=client("key").transitPath(beach,street);
+        assertThat(walk).extracting(KakaoMapClient.PathPiece::mode).containsExactly("WALK");
+        assertThat(walk.getFirst().points()).containsExactly(new double[]{37.77207,128.94802},new double[]{37.77275,128.94728});
+        // 승하차 지점이 출발·도착지에서 80m 안이면 도보 경로를 조회하지 않고 두 점을 바로 잇는다.
+        calls.set(0);
+        bodies.put("/v2/routing/publictraffic","{\"status\":\"OK\",\"routes\":[{\"properties\":{\"totalTime\":600},\"steps\":["
+            +"{\"properties\":{\"type\":\"BUS\"},\"path\":{\"points\":[[128.8701,37.7701],[128.8899,37.7899]]}}]}]}");
+        var bus=client("key").transitPath(from,to);
+        assertThat(bus).extracting(KakaoMapClient.PathPiece::mode).containsExactly("WALK","BUS","WALK");
+        assertThat(bus.getFirst().points()).containsExactly(new double[]{37.77,128.87},new double[]{37.7701,128.8701});
+        assertThat(calls.get()).isEqualTo(1);
+    }
+    @Test void walkingEndsFallBackToStraightLinesAndBadPointsAreDropped() {
+        // 국내 범위를 벗어난 좌표가 섞인 단계는 그리지 않고, 도보 경로를 찾지 못하면 두 점을 바로 잇는다.
+        bodies.put("/v2/routing/publictraffic","{\"status\":\"OK\",\"routes\":[{\"properties\":{\"totalTime\":600},\"steps\":["
+            +"{\"properties\":{\"type\":\"BUS\"},\"path\":{\"points\":[[128.872,37.772],[0,0]]}},"
+            +"{\"properties\":{\"type\":\"SUBWAY\"},\"path\":{\"points\":[[128.872,37.772],[128.888,37.788]]}}]}]}");
+        bodies.put("/v2/routing/walk","{\"status\":\"ROUTE_RESULT_NOT_FOUND\"}");
+        var pieces=client("key").transitPath(from,to);
+        assertThat(pieces).extracting(KakaoMapClient.PathPiece::mode).containsExactly("WALK","SUBWAY","WALK");
+        assertThat(pieces.getFirst().points()).containsExactly(new double[]{37.77,128.87},new double[]{37.772,128.872});
+        // 경로가 없거나 그릴 좌표가 하나도 없으면 MAP_NO_ROUTE다.
+        bodies.put("/v2/routing/publictraffic","{\"status\":\"ERROR\"}");
+        assertCode("MAP_NO_ROUTE",()->client("key").transitPath(from,to));
+        bodies.put("/v2/routing/publictraffic","{\"status\":\"OK\",\"routes\":[{\"properties\":{\"totalTime\":600},\"steps\":[]}]}");
+        assertCode("MAP_NO_ROUTE",()->client("key").transitPath(from,to));
     }
     @Test void noRouteAndMalformedDurationsNeverBecomeEstimatedTimes() {
         body.set("{\"status\":\"NO_RESULTS\"}");

@@ -56,7 +56,8 @@
             const hasRoads = data.days.some((day) => (day.legs || []).some((leg) => leg.length > 0));
             const lineNote = hasRoads
                 ? '선은 조회한 자동차 추천 경로를 따라 그렸고, 경로를 받지 못한 구간은 직선으로 이었어요. 실제 주행 경로는 달라질 수 있어요.'
-                : '선은 방문 순서를 이은 것이며 실제 이동 경로가 아니에요.';
+                : '선은 방문 순서를 이은 것이며 실제 이동 경로가 아니에요.'
+                    + (box.dataset.dayPaths ? ' 아래 버튼을 누르면 그날의 실제 대중교통·도보 경로를 지금 찾아 그려요.' : '');
             tell(count ? '번호는 일차-방문 순서예요. 번호를 누르면 일정 항목으로 가요. ' + lineNote : '지도에 표시할 좌표가 있는 장소가 없어요.');
             return;
         }
@@ -113,10 +114,11 @@
             const line = marks.length > 1
                 ? new maps.Polyline({ map, path, strokeWeight: 4, strokeColor: color, strokeOpacity: 0.75, strokeStyle: 'solid' })
                 : null;
-            days.push({ number: day.number, marks, line });
+            // live는 '실제 경로 보기'로 그린 선들이다. 그린 날은 직선(line) 대신 이 선을 보여 준다.
+            days.push({ number: day.number, marks, line, color, live: null });
         });
         fitAll();
-        followDayTabs(days, map, fitAll);
+        followDayTabs(days, map, fitAll, setupDayPaths(days, map));
 
         function addMapButton(item, key) {
             const links = item.querySelector('.place-links');
@@ -141,15 +143,75 @@
         }
     }
 
+    // 대중교통 일정: 고른 날의 실제 대중교통·도보 경로를 버튼으로 조회해 그린다(SFR-11-03).
+    // 카카오 정책상 서버는 경로를 저장하지 않고 누를 때마다 새로 조회한다. 타는 구간은 실선, 걷는 구간은 점선이다.
+    // 고른 날이 바뀔 때 버튼 글자를 맞추는 함수를 돌려준다. 대중교통 일정이 아니면 null이다.
+    function setupDayPaths(days, map) {
+        const url = box.dataset.dayPaths;
+        if (!url || !days.length || !status) return null;
+        const maps = window.kakao.maps;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'button-quiet button-small trip-map-paths';
+        status.after(button);
+        let current = days.length === 1 ? days[0].number : 1;
+        const update = () => {
+            const day = days.find((d) => d.number === current);
+            if (!day) { button.disabled = true; button.textContent = '일차를 고르면 그날 실제 경로를 볼 수 있어요'; return; }
+            button.disabled = !!day.live || day.marks.length < 2;
+            button.textContent = day.live ? current + '일차 실제 경로를 표시했어요' : current + '일차 실제 경로 보기';
+        };
+        const drawLive = (day, body) => {
+            const lines = [];
+            (body.legs || []).forEach((pieces, i) => {
+                // 경로를 찾지 못한 구간은 두 장소를 직선으로 남긴다.
+                if (!pieces.length) {
+                    if (day.marks[i + 1]) lines.push(new maps.Polyline({ map, path: [day.marks[i].at, day.marks[i + 1].at],
+                        strokeWeight: 3, strokeColor: day.color, strokeOpacity: 0.5, strokeStyle: 'solid' }));
+                    return;
+                }
+                pieces.forEach((piece) => {
+                    const walk = piece.mode === 'WALK';
+                    lines.push(new maps.Polyline({ map, path: piece.points.map(([lat, lng]) => new maps.LatLng(lat, lng)),
+                        strokeWeight: walk ? 3 : 5, strokeColor: day.color, strokeOpacity: walk ? 0.95 : 0.8,
+                        strokeStyle: walk ? 'shortdash' : 'solid' }));
+                });
+            });
+            if (day.line) day.line.setMap(null);
+            day.live = lines;
+        };
+        button.addEventListener('click', async () => {
+            const day = days.find((d) => d.number === current);
+            if (!day || day.live) return;
+            button.disabled = true;
+            button.textContent = '경로를 찾고 있어요…';
+            try {
+                const response = await fetch(url + '?day=' + encodeURIComponent(day.number), { headers: { Accept: 'application/json' } });
+                const body = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(body.message || '');
+                drawLive(day, body);
+                tell(day.number + '일차 선은 방금 조회한 카카오 대중교통·도보 경로예요(실선: 버스·지하철, 점선: 걷기). 실제 운행과 길 상황에 따라 달라질 수 있어요.'
+                    + (body.failed ? ' 경로를 찾지 못한 ' + body.failed + '구간은 직선으로 남겼어요.' : ''));
+            } catch (error) {
+                tell('실제 경로를 불러오지 못했어요. ' + (error.message || '잠시 후 다시 시도해 주세요.'));
+            }
+            update();
+        });
+        update();
+        return (number) => { current = number; update(); };
+    }
+
     // 화면 위 일차 버튼(day-tabs.js)을 따라 그날 번호와 선만 보이고 그날 범위로 지도를 맞춘다.
-    function followDayTabs(days, map, fitAll) {
+    function followDayTabs(days, map, fitAll, onDay) {
         const maps = window.kakao.maps;
         const show = (number) => {
             days.forEach((day) => {
                 const shown = number === 0 || day.number === number;
                 day.marks.forEach((mark) => mark.overlay.setMap(shown ? map : null));
-                if (day.line) day.line.setMap(shown ? map : null);
+                if (day.line) day.line.setMap(shown && !day.live ? map : null);
+                (day.live || []).forEach((line) => line.setMap(shown ? map : null));
             });
+            if (onDay) onDay(number);
             if (number === 0) { fitAll(); return; }
             const day = days.find((d) => d.number === number);
             if (!day || !day.marks.length) return;
