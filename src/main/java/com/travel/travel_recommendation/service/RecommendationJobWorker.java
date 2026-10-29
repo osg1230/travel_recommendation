@@ -24,6 +24,7 @@ public class RecommendationJobWorker {
     private final PlacePhotoService photos;
     private final NearbyRestaurantService restaurants;
     private final PlacePickService placePicks;
+    private final DestinationLandmarkService landmarks;
     private volatile boolean ready;
 
     @EventListener(ApplicationReadyEvent.class)
@@ -51,6 +52,10 @@ public class RecommendationJobWorker {
                 // 추천 이유에 나온 중심 장소의 관광공사 사진을 여행지 카드 사진으로 찾아 둔다(최대 10초). 한 번 찾은 사진은 30일 동안 다시 쓰고, 실패해도 추천은 그대로다.
                 try { photos.findForDestinations(ranked,java.time.Instant.now().plusSeconds(10)); }
                 catch(RuntimeException e) { log.warn("여행지 사진 찾기를 건너뜀 job={} ({})",id,e.toString()); }
+                // 추천된 여행지의 대표 관광지 목록(관광공사 인기 순서 + GPT 제안)을 미리 만들어 둔다. 서울처럼 구가 많은 곳은
+                // 관광공사를 수십 번 불러 오래 걸리므로, 다른 작업을 처리하는 이 실행기를 붙잡지 않게 별도 스레드에서 돌린다.
+                var destinationIds=ranked.stream().map(r->r.destination().placeId()).toList();
+                Thread.ofVirtual().name("destination-landmarks").start(()->landmarks.prepare(destinationIds));
             }
             catch(RecommendationException e) { recommendations.fail(work,e.getCode(),e.getMessage()); }
             catch(RuntimeException e) { recommendations.fail(work,"RECOMMENDATION_FAILED","추천 결과를 저장하지 못했어요. 잠시 후 다시 시도해 주세요."); }

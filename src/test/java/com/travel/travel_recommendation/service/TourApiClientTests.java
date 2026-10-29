@@ -173,4 +173,25 @@ class TourApiClientTests {
         assertCode("TOUR_RESPONSE", () -> client("key").findPetInfo("129784"));
         assertCode("TOUR_INPUT", () -> client("key").findPetInfo("abc"));
     }
+    // 연관 관광지는 시·군·구 코드 앞 두 자리를 시·도 코드로 보내고, 순위가 숫자가 아닌 행만 버린다. 전체 행이 한 쪽 안이면 다음 쪽을 부르지 않는다.
+    @Test void relatedPlacesSendsDistrictCodesAndSkipsBadRows() {
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":2,\"items\":{\"item\":["
+            + "{\"tAtsNm\":\"경포대\",\"rlteTatsNm\":\"강릉중앙시장\",\"rlteSignguCd\":\"51150\",\"rlteCtgryLclsNm\":\"관광지\",\"rlteCtgryMclsNm\":\"쇼핑\",\"rlteCtgrySclsNm\":\"시장\",\"rlteRank\":\"4\"},"
+            + "{\"tAtsNm\":\"경포대\",\"rlteTatsNm\":\"순위 없음\",\"rlteSignguCd\":\"51150\",\"rlteCtgryLclsNm\":\"관광지\",\"rlteCtgryMclsNm\":\"쇼핑\",\"rlteCtgrySclsNm\":\"시장\",\"rlteRank\":\"x\"}]}}}}");
+        var rows = client("key").relatedPlaces("51150", java.time.YearMonth.of(2026, 9), 3);
+        assertThat(rows).containsExactly(new TourApiClient.RelatedPlace("경포대", "강릉중앙시장", "51150", "관광지", "쇼핑", "시장", 4));
+        assertThat(query.get()).contains("baseYm=202609", "areaCd=51", "signguCd=51150", "pageNo=1", "numOfRows=1000");
+        assertThat(calls.get()).isEqualTo(1);
+        assertCode("TOUR_INPUT", () -> client("key").relatedPlaces("150", java.time.YearMonth.of(2026, 9), 1));
+        assertThat(calls.get()).isEqualTo(1);
+    }
+    @Test void districtCodesListsThreeDigitCodesInsideProvince() {
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":3,\"items\":{\"item\":["
+            + "{\"code\":\"110\",\"name\":\"중구\"},{\"code\":\"140\",\"name\":\"서구\"},{\"code\":\"x\",\"name\":\"잘못된 코드\"}]}}}}");
+        assertThat(client("key").districtCodes("26")).containsExactly("110", "140");
+        assertThat(query.get()).contains("lDongRegnCd=26");
+        int before = calls.get();
+        assertThat(client("key").districtCodes("2")).isEmpty();
+        assertThat(calls.get()).isEqualTo(before);
+    }
 }

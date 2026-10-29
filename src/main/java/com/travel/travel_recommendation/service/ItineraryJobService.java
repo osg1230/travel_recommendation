@@ -141,6 +141,31 @@ public class ItineraryJobService {
     public UUID create(UUID parentId,long destinationId,String login,byte[] hash,LocalTime start,LocalTime end,
                        KakaoMapClient.Transport transport,int visitMinutes,Constraints constraints,Integer durationDays,Boolean accommodationNeeded,
                        LocalDate startDate,HomeTrip home) {
+        return create(parentId,destinationId,login,hash,start,end,transport,visitMinutes,constraints,durationDays,accommodationNeeded,startDate,home,Set.of());
+    }
+
+    /**
+     * '다른 관광지로 다시 만들기'(SFR-04 일정 재생성). 보고 있던 초안(sourceId)과 같은 추천·여행지·시간·이동수단·필수 조건으로 새 초안을 만들되,
+     * 그 초안에 넣었던 관광지는 후보 순서에서 뒤로 보내 이번에는 다른 곳부터 고르게 한다. 원래 초안은 그대로 둔다.
+     * 같은 조건으로 다시 만들면 관광지가 73~100% 겹쳤기 때문이다(2026-10-30 측정).
+     */
+    @Transactional(timeout=10)
+    public UUID recreate(UUID sourceId,String login,byte[] hash) {
+        var source=view(sourceId,login,hash);
+        if(source.result()==null || !"COMPLETED".equals(source.status()))
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"일정 초안이 완성된 뒤에 다시 만들 수 있어요.");
+        var input=source.input(); var c=input.conditions();
+        Set<Long> previous=source.result().days().stream().flatMap(d->d.items().stream())
+            .filter(i->"VISIT".equals(i.type()) && i.placeId()!=null).map(Item::placeId).collect(java.util.stream.Collectors.toSet());
+        return create(input.recommendationId(),input.places().destination().placeId(),login,hash,input.start(),input.end(),input.transport(),
+            input.visitMinutes(),input.constraints(),c.durationDays(),c.accommodationNeeded(),c.startDate(),input.home(),previous);
+    }
+
+    /** previous는 직전 초안에 넣었던 관광지 ID다('다른 관광지로 다시 만들기'). 비어 있으면 보통 초안을 만든다. */
+    @Transactional(timeout=10)
+    public UUID create(UUID parentId,long destinationId,String login,byte[] hash,LocalTime start,LocalTime end,
+                       KakaoMapClient.Transport transport,int visitMinutes,Constraints constraints,Integer durationDays,Boolean accommodationNeeded,
+                       LocalDate startDate,HomeTrip home,Set<Long> previous) {
         var current=options(parentId,destinationId,login,hash);
         // 추천 때 미정이던 값만 일정 생성 시 받는다. 명시된 날짜·기간을 조용히 덮어쓰지 않는다.
         var c=current.conditions();
@@ -197,16 +222,19 @@ public class ItineraryJobService {
         var ordered=ThemePlaces.religiousLast(TripConstraints.aroundCenters(pool,
             constraints==null?List.of():constraints.centerPlaceIds(),orderThemes),
             orderThemes,current.conditions().travelPurpose(),keepInOrder);
+        // '다른 관광지로 다시 만들기'면 직전 초안의 관광지를 뒤로 보내 이번에는 다른 곳부터 고른다. 필수·중심·목적 시설·축제 장소는 그대로 둔다.
+        var later=previous.stream().filter(id->!keepInOrder.contains(id)).toList();
+        ordered=TripConstraints.previousLast(ordered,later,keepInOrder,Set.of());
         Arranged arranged;
         try {
-            arranged=arrange(ordered,Set.of(),false,places.accommodationNeeded(),days,start,end,visitMinutes,constraints);
+            arranged=withoutPrevious(arrange(ordered,Set.of(),false,places.accommodationNeeded(),days,start,end,visitMinutes,constraints),later);
         } catch(IllegalArgumentException invalid) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"화면에 있는 장소와 값으로 조건을 다시 골라 주세요.");
         }
         places=new PlaceCandidateView(places.jobId(),places.destination(),places.durationDays(),places.accommodationNeeded(),
             arranged.selected(),places.accommodations(),places.restaurants());
         var input=new Input(parentId,places,current.conditions(),start,end,transport,visitMinutes,null,constraints,arranged.reserve(),arranged.evening(),home)
-            .withPicking(new Picking(pool,false));
+            .withPicking(new Picking(pool,false,later));
         try {
             generator.checkInput(input);
         } catch(RecommendationException error) {
@@ -248,6 +276,18 @@ public class ItineraryJobService {
         var selected=TripConstraints.select(daytimeOrder,days,start,end,visitMinutes,constraints);
         // 예비 관광지는 저녁 몫을 뺀 후보에서 고른다. 저녁에 들른 곳이 낮 관광지로 다시 쓰이지 않게 한다.
         return new Arranged(selected,reserve(daytimeOrder.stream().filter(p->!skips.contains(p.placeId())).toList(),selected),evening);
+    }
+
+    /**
+     * '다른 관광지로 다시 만들기'면 직전 초안의 관광지(previous)를 예비·저녁 관광 후보에서 뺀다. 일정 생성은 남는 시간을
+     * "가까운" 예비 관광지로 채우므로, 순서만 뒤로 보내면 직전에 간 곳이 가깝다는 이유로 다시 들어갔다(2026-10-30 브라우저 확인).
+     * 새로 고른 낮 관광지(selected)는 그대로 두며, 채울 곳이 없으면 그 시간은 비워 둔다.
+     */
+    static Arranged withoutPrevious(Arranged arranged,Collection<Long> previous) {
+        if(previous.isEmpty()) return arranged;
+        return new Arranged(arranged.selected(),
+            arranged.reserve().stream().filter(p->!previous.contains(p.placeId())).toList(),
+            arranged.evening().stream().filter(p->!previous.contains(p.placeId())).toList());
     }
 
     /** 예비 관광지 수. 섬처럼 갈 수 없어 빠진 곳을 채울 만큼만 둔다. */

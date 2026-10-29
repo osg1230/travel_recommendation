@@ -513,6 +513,17 @@ class ItineraryGeneratorTests {
         assertThat(meals.get(1).note()).startsWith("저녁 식사 · 중식").contains("고른 이유: 앞서 먹은 음식(한식)과 다른 분류예요.");
         generator.validate(input,result);
     }
+    // 가장 가까운 음식점보다 2km 안쪽으로만 더 멀면 인기 음식점(관광공사 연관 관광지)을 먼저 고르고 그 점을 이유로 적는다.
+    @Test void mealPrefersPopularRestaurantNearby() {
+        var near=restaurant(3,"음식점 > 한식");
+        var popular=new PlaceCandidate(15L,"식당15","강원 강릉시 경포로 15","음식점 > 한식","소개","https://www.gn.go.kr/","https://map.kakao.com/",
+            LocalDateTime.of(2026,9,1,0,0),null,null,"SYSTEM",null,true);
+        var meal=generator.generate(dayTrip(List.of(place(1),place(2)),List.of(near,popular),90,List.of())).days().getFirst().items().stream()
+            .filter(i->i.type().equals("MEAL")).findFirst().orElseThrow();
+        // 식당15는 식당3보다 약 1km 더 멀다.
+        assertThat(meal.placeId()).isEqualTo(15L);
+        assertThat(meal.note()).contains("고른 이유: 한국관광공사 연관 관광지 정보에서 이 지역 여행자들이 함께 많이 찾은 음식점이에요.");
+    }
     // 지역 대표 음식이 상호에 들어간 곳을 먼저 고르고, 가까운 후보가 없어 먼 곳을 넣었으면 그렇다고 알린다.
     @Test void mealNotesRegionalFoodAndFarDistance() {
         var tofu=new PlaceCandidate(15L,"초당두부마을","강원 강릉시 경포로 15","음식점 > 한식","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));

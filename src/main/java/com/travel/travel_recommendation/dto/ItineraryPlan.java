@@ -125,10 +125,13 @@ public final class ItineraryPlan {
      * 관광지를 고르는 과정의 기록. pool은 일정 작업을 만들 때의 관광지 후보 전체로, 작업이 시작되기 전에 AI가 순서를 정해
      * 다시 고를 때 쓴다(다시 고른 뒤에는 비운다). byAi는 지금 고른 관광지가 AI가 정한 순서를 따른 것인지다.
      */
-    public record Picking(List<PlaceCandidate> pool, boolean byAi) {
+    /** previous는 '다른 관광지로 다시 만들기'에서 직전 초안에 넣었던 관광지 ID다. AI가 순서를 정한 뒤에도 뒤로 보낸다. 이전 JSON에는 없다. */
+    public record Picking(List<PlaceCandidate> pool, boolean byAi, List<Long> previous) {
         public Picking {
             pool = pool == null ? List.of() : List.copyOf(pool);
+            previous = previous == null ? List.of() : List.copyOf(previous);
         }
+        public Picking(List<PlaceCandidate> pool, boolean byAi) { this(pool, byAi, List.of()); }
     }
     /**
      * 필수·선호 조건 구분(SFR-02-07). 필수 장소는 반드시 넣고, 하루 방문 수는 required이면 반드시 지키고

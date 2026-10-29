@@ -317,6 +317,25 @@ public class ItineraryController {
         model.addAttribute("applyTargets",saved==null || job.result()==null || job.input().revision()==null?List.of():saved.targets(id,login(principal)));
         return "travel/itinerary-result";
     }
+    /**
+     * '다른 관광지로 다시 만들기'. 같은 시간·이동수단·필수 조건으로 새 초안을 만들되 이 초안의 관광지는 뒤로 보낸다.
+     * 원래 초안은 그대로 두고, 만들지 못하면 이유를 이 초안 화면에 보여 준다.
+     */
+    @PostMapping("/itineraries/{id}/recreate")
+    String recreate(@PathVariable UUID id,Principal principal,HttpSession session,
+                    org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
+        try {
+            return "redirect:/travel/recommendations/itineraries/"+service().recreate(id,login(principal),hash(session));
+        } catch(ResponseStatusException e) {
+            if(e.getStatusCode().value()==404) throw e;
+            redirect.addFlashAttribute("recreateError",e.getReason()+" 지금 일정은 그대로예요.");
+        } catch(RecommendationException e) {
+            redirect.addFlashAttribute("recreateError",e.getMessage()+" 지금 일정은 그대로예요.");
+        } catch(TripConstraints.ConflictException conflict) {
+            redirect.addFlashAttribute("recreateError",conflict.conflicts().get(0).reason()+" 지금 일정은 그대로예요.");
+        }
+        return "redirect:/travel/recommendations/itineraries/"+id;
+    }
     /** 유지·교체할 관광지와 시간을 받아 새 수정안 작업을 만든다. 원본 초안은 그대로 둔다. */
     @PostMapping("/itineraries/{id}/revisions")
     ResponseEntity<?> revise(@PathVariable UUID id,@RequestParam(required=false) List<Long> replace,

@@ -304,6 +304,56 @@ class KakaoMapClientTests {
         assertThat(found).extracting(com.travel.travel_recommendation.dto.KakaoPlace::sourceId).containsExactly("301","302","303");
         assertThat(found).allSatisfy(p->assertThat(p.region()).isEqualTo("인천광역시"));
     }
+    // 대표 관광지는 이름이 같은 곳을 먼저 고른다. 사찰(종교)·시장·공원도 받아, 본체 대신 "불국사 다보탑" 같은 부속 시설로 연결되지 않게 한다.
+    @Test void findLandmarkPrefersExactNameAndAcceptsTempleMarketPark() {
+        var tower=searchItem("501","경북 경주시 진현동 15"); tower.put("place_name","불국사 다보탑"); tower.put("category_group_code","");
+        tower.put("category_name","여행 > 관광,명소 > 문화유적 > 탑,비석");
+        var temple=searchItem("502","경북 경주시 진현동 15"); temple.put("place_name","불국사"); temple.put("category_group_code","");
+        temple.put("category_name","문화,예술 > 종교 > 불교 > 절,사찰");
+        var parking=searchItem("503","경북 경주시 진현동 16"); parking.put("place_name","불국사 주차장"); parking.put("category_group_code","PK6");
+        parking.put("category_name","교통,수송 > 교통시설 > 주차장");
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(parking,tower,temple))));
+        var found=client("key").findLandmark("불국사","경상북도 경주시").orElseThrow();
+        assertThat(found.sourceId()).isEqualTo("502"); assertThat(found.type()).isEqualTo("ATTRACTION");
+        assertThat(path.get()).contains("size=15").doesNotContain("category_group_code");
+        var market=searchItem("504","부산 중구 남포동5가 105-1"); market.put("place_name","자갈치시장"); market.put("category_group_code","");
+        market.put("category_name","가정,생활 > 시장");
+        var fish=searchItem("505","부산 중구 남포동5가 105-2"); fish.put("place_name","자갈치시장 횟집"); fish.put("category_group_code","FD6");
+        fish.put("category_name","음식점 > 한식 > 해물,생선");
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(fish,market))));
+        assertThat(client("key").findLandmark("자갈치시장","부산광역시").orElseThrow().sourceId()).isEqualTo("504");
+    }
+    // 같은 이름이 없으면 이름이 서로 포함되는 곳 중 가장 짧은 곳을 고른다. 다른 지역·관광지가 아닌 분류는 고르지 않는다.
+    @Test void findLandmarkFallsBackToShortestContainingNameInsideRegion() {
+        var beach=searchItem("601","강원 강릉시 강동면 정동진리 1"); beach.put("place_name","정동진 해변");
+        var trail=searchItem("602","강원 강릉시 강동면 정동진리 2"); trail.put("place_name","정동진 해변 산책로 입구");
+        var station=searchItem("603","강원 강릉시 강동면 정동진리 3"); station.put("place_name","정동진역"); station.put("category_group_code","");
+        station.put("category_name","교통,수송 > 기차,철도 > 기차역");
+        var other=searchItem("604","강원 동해시 천곡동 1"); other.put("place_name","정동진");
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(trail,station,other,beach))));
+        assertThat(client("key").findLandmark("정동진","강원특별자치도 강릉시").orElseThrow().sourceId()).isEqualTo("601");
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(station,other))));
+        assertThat(client("key").findLandmark("정동진","강원특별자치도 강릉시")).isEmpty();
+        int before=calls.get();
+        assertCode("MAP_INVALID_RESPONSE",()->client("key").findLandmark("가","강원특별자치도 강릉시"));
+        assertThat(calls.get()).isEqualTo(before);
+    }
+    // 인기 음식점은 음식점(FD6) 중 끼니로 맞는 곳만, 인기 숙소는 숙박(AD5)만 이름으로 맞춘다.
+    @Test void findRestaurantAndStayKeepTheirCategoriesOnly() {
+        var cafe=searchItem("701","강원 강릉시 초당동 1"); cafe.put("place_name","초당순두부 카페"); cafe.put("category_group_code","FD6");
+        cafe.put("category_name","음식점 > 카페");
+        var tofu=searchItem("702","강원 강릉시 초당동 2"); tofu.put("place_name","초당순두부"); tofu.put("category_group_code","FD6");
+        tofu.put("category_name","음식점 > 한식 > 두부전문점");
+        var hotel=searchItem("703","강원 강릉시 난설헌로 1"); hotel.put("place_name","초당순두부 호텔"); hotel.put("category_group_code","AD5");
+        hotel.put("category_name","여행 > 숙박 > 호텔");
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(cafe,hotel,tofu))));
+        var meal=client("key").findRestaurant("초당순두부","강원특별자치도 강릉시").orElseThrow();
+        assertThat(meal.sourceId()).isEqualTo("702"); assertThat(meal.type()).isEqualTo("RESTAURANT");
+        var stay=client("key").findStay("초당순두부 호텔","강원특별자치도 강릉시").orElseThrow();
+        assertThat(stay.sourceId()).isEqualTo("703"); assertThat(stay.type()).isEqualTo("ACCOMMODATION");
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(cafe))));
+        assertThat(client("key").findRestaurant("초당순두부","강원특별자치도 강릉시")).isEmpty();
+    }
     // 관광공사에서 찾은 시설은 좌표 1km 안에서 이름이 맞는 가장 가까운 목적 시설로 맞춘다. 주차장·다른 이름은 고르지 않는다.
     @Test void findNearMatchesNameAndCategoryNearTheCoordinate() {
         var parking=searchItem("401","강원 강릉시 초당동 505"); parking.put("place_name","경포아쿠아리움 주차장"); parking.put("category_group_code","PK6");

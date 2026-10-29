@@ -136,6 +136,9 @@ public class OpenAiItineraryClient {
             if(!id.isIntegralNumber() || !allowed.contains(id.longValue()) || reasons.containsKey(id.longValue())) continue;
             if(reason.isEmpty() || reason.length()>200 || reason.contains("<") || reason.contains(">") || reason.contains("@")
                 || reason.contains("\n") || reason.toLowerCase().contains("http")) continue;
+            // 지시대로 '~해요'·'~이에요'로 끝나지 않는 문장은 버리고 서버 이유를 둔다. 지시문이 새어 나온 "부드러운 대화 tone" 같은
+            // 응답이 식사 이유로 화면에 나왔기 때문이다(2026-10-30 브라우저 확인).
+            if(!reason.matches(".*요[.!]?")) continue;
             reasons.put(id.longValue(),reason);
         }
         return reasons;

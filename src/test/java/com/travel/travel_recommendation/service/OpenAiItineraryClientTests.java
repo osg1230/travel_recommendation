@@ -80,6 +80,13 @@ class OpenAiItineraryClientTests {
         output("{\"summary\":\"안내\",\"days\":[]}");
         assertCode("AI_INVALID_RESPONSE",()->client("key",Duration.ofSeconds(2)).assist(conditions(),plan(),null));
     }
+    // 장소 이유는 '~요'로 끝나는 문장만 받는다. 지시문이 새어 나온 것 같은 문장은 그 장소만 버린다(일정 안내는 그대로).
+    @Test void dropsPlaceReasonsThatDoNotEndAsSentences() {
+        output("{\"summary\":\"안내\",\"days\":[{\"number\":1,\"advice\":\"안내\"}],\"places\":[{\"placeId\":10,\"reason\":\"부드러운 대화 tone\"}]}");
+        assertThat(client("key",Duration.ofSeconds(2)).assist(conditions(),plan(),null).placeReasons()).isEmpty();
+        output("{\"summary\":\"안내\",\"days\":[{\"number\":1,\"advice\":\"안내\"}],\"places\":[{\"placeId\":10,\"reason\":\"조선 시대 집을 둘러보기 좋은 곳이에요.\"}]}");
+        assertThat(client("key",Duration.ofSeconds(2)).assist(conditions(),plan(),null).placeReasons()).containsEntry(10L,"조선 시대 집을 둘러보기 좋은 곳이에요.");
+    }
     @Test void rejectsMarkupLinksAndEmptyOrOversizedText() {
         for(String advice:new String[]{"<b>안내</b>","https://example.com 확인","mail@example.com 문의","   ","안".repeat(601)}) {
             output(mapper.writeValueAsString(Map.of("summary","안내","days",List.of(Map.of("number",1,"advice",advice)))));

@@ -278,7 +278,8 @@ public class ItineraryGenerator {
 
     /**
      * after 주변의 음식점. 가장 가까운 곳에서 MEAL_CHOICE_KM 안쪽은 이동 부담이 비슷하다고 보고, 그중
-     * ① 이번 여행에서 아직 먹지 않은 음식 분류 ② 지역 대표 음식이 상호·분류에 들어간 곳 ③ 가까운 곳 순서로 고른다.
+     * ① 이번 여행에서 아직 먹지 않은 음식 분류 ② 인기 음식점(관광공사 연관 관광지에서 여행자들이 함께 많이 간 곳)
+     * ③ 지역 대표 음식이 상호·분류에 들어간 곳 ④ 가까운 곳 순서로 고른다.
      * 이미 간 곳은 후보가 모자랄 때만 다시 고른다. 간식·술집·카페는 끼니로 어울리지 않아, 다른 음식점이 하나도 없을 때만 고른다.
      */
     private PlaceCandidate pickRestaurant(DayBuilder builder,PlaceCandidate after) {
@@ -306,6 +307,7 @@ public class ItineraryGenerator {
             .filter(p->OperatingHoursValidator.closedOn(p.operatingInfo(),builder.date)==nearestClosed
                 && kilometers(from,builder.locations.get(p.placeId()))<=limit)
             .min(Comparator.<PlaceCandidate>comparingInt(p->eaten.contains(p.subtypeLabel())?1:0)
+                .thenComparingInt(p->p.popular()?0:1)
                 .thenComparingInt(p->regionalFood(builder,p).isPresent()?0:1)).orElse(nearest);
     }
 
@@ -337,12 +339,13 @@ public class ItineraryGenerator {
         builder.move(restaurant);
         if(!dinner && builder.time.isBefore(LocalTime.NOON) && !builder.end.isBefore(LocalTime.of(13,0)))
             builder.add("FREE",restaurant,"식사 전 자유시간",(int)Duration.between(builder.time,LocalTime.NOON).toMinutes(),"주변 휴식·자유시간",null,null);
-        // 음식 분류와 고른 이유를 적는다(SFR-17-01). 이유는 pickRestaurant가 실제로 쓴 기준(아직 먹지 않은 음식·지역 대표 음식)만 적고,
+        // 음식 분류와 고른 이유를 적는다(SFR-17-01). 이유는 pickRestaurant가 실제로 쓴 기준(아직 먹지 않은 음식·인기 음식점·지역 대표 음식)만 적고,
         // 거리는 이유가 아니라 위치 정보로 함께 보여 준다. 지역 대표 음식 안내(SFR-17-02)는 끼니마다 반복하지 않고 여행의 첫 식사에만 적는다.
         boolean firstMeal=builder.usedRestaurants.size()==1 && fresh;
         String kind=restaurant.subtypeLabel();
         var reasons=new ArrayList<String>();
         if(builder.input.choices().preferRestaurants().contains(restaurant.placeId())) reasons.add("수정 요청에서 가고 싶다고 한 식당이에요.");
+        if(restaurant.popular()) reasons.add("한국관광공사 연관 관광지 정보에서 이 지역 여행자들이 함께 많이 찾은 음식점이에요.");
         regionalFood(builder,restaurant).ifPresent(food->reasons.add("상호나 분류에 이 지역 대표 음식("+food+")이 들어간 곳이에요."));
         if(fresh && !kind.isEmpty() && !eaten.isEmpty() && !eaten.contains(kind))
             reasons.add("앞서 먹은 음식("+String.join("·",eaten)+")과 다른 분류예요.");

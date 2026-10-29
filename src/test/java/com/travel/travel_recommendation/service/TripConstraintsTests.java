@@ -188,4 +188,15 @@ class TripConstraintsTests {
         assertThat(ids(rule.evening())).containsExactly(1L, 8L, 9L);
         assertThat(ids(rule.selected())).containsExactly(2L, 3L, 4L, 5L, 6L, 7L);
     }
+    // 다시 만들기: 직전 초안의 관광지는 뒤로 가되 빠지지 않는다. 지킬 장소는 제자리, AI가 뺄 곳은 그보다 더 뒤에 둔다.
+    @Test void previousPlacesMoveBehindOthersButBeforeSkipped() {
+        var ordered = pool(6);
+        assertThat(ids(TripConstraints.previousLast(ordered, List.of(1L, 2L, 3L), List.of(2L), List.of(6L)))).containsExactly(2L, 4L, 5L, 1L, 3L, 6L);
+        assertThat(TripConstraints.previousLast(ordered, List.of(), List.of(), List.of())).isSameAs(ordered);
+    }
+    @Test void kindFromSubtypeMatchesCandidateKind() {
+        assertThat(TripConstraints.kind("여행 > 관광,명소 > 해수욕장,해변")).isEqualTo("해변");
+        assertThat(TripConstraints.kind("가정,생활 > 시장")).isEqualTo("시장");
+        assertThat(TripConstraints.kind((String) null)).isEmpty();
+    }
 }

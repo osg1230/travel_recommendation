@@ -84,10 +84,30 @@ public final class TripConstraints {
      * 분류가 없으면 빈 문자열이다.
      */
     public static String kind(PlaceCandidate place) {
-        String subtype = place.subtype() == null ? "" : place.subtype().strip();
-        String last = subtype.contains(">") ? subtype.substring(subtype.lastIndexOf('>') + 1).strip() : subtype;
+        return kind(place.subtype());
+    }
+
+    /** 분류 글자(places.subtype)로 관광지 종류를 정한다. {@link #kind(PlaceCandidate)}와 같은 규칙이다. */
+    public static String kind(String subtype) {
+        String value = subtype == null ? "" : subtype.strip();
+        String last = value.contains(">") ? value.substring(value.lastIndexOf('>') + 1).strip() : value;
         if (last.contains("해수욕장") || last.contains("해변")) return "해변";
         return last;
+    }
+
+    /**
+     * 직전 초안에 넣었던 관광지(previous)를 순서의 뒤로 보낸다. '다른 관광지로 다시 만들기'에서 이번에는 다른 곳부터 고르게 하기 위해서다.
+     * 빼지는 않으므로 후보가 모자라면 다시 쓰인다. 필수·중심·목적 시설·축제 장소(keep)는 제자리에 두고, AI가 뺄 곳으로 적은 곳(skips)은 그보다도 뒤에 둔다.
+     */
+    public static List<PlaceCandidate> previousLast(List<PlaceCandidate> ordered, Collection<Long> previous,
+                                                    Collection<Long> keep, Collection<Long> skips) {
+        if (previous.isEmpty()) return ordered;
+        java.util.function.Predicate<PlaceCandidate> skipped = p -> skips.contains(p.placeId());
+        java.util.function.Predicate<PlaceCandidate> later = p -> previous.contains(p.placeId()) && !keep.contains(p.placeId()) && !skipped.test(p);
+        List<PlaceCandidate> result = new ArrayList<>(ordered.stream().filter(later.negate().and(skipped.negate())).toList());
+        result.addAll(ordered.stream().filter(later).toList());
+        result.addAll(ordered.stream().filter(skipped).toList());
+        return result;
     }
 
     /**

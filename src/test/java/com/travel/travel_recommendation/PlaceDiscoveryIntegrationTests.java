@@ -46,6 +46,8 @@ class PlaceDiscoveryIntegrationTests {
     @Autowired JdbcTemplate jdbc;
     @Autowired MockMvc mvc;
     @MockitoBean KakaoMapClient maps;
+    // 장소 수집(refresh)이 실제 GPT에 대표 관광지를 묻지 않게 한다(모의 객체는 설정 안 됨으로 답한다).
+    @org.springframework.test.context.bean.override.mockito.MockitoBean com.travel.travel_recommendation.service.OpenAiLandmarkClient landmarks;
     @MockitoBean TourApiClient tour;
     private final String region="강원특별자치도 강릉시";
     private MockHttpSession session; private byte[] hash; private UUID parent; private long destination;
@@ -57,6 +59,8 @@ class PlaceDiscoveryIntegrationTests {
         parent=recommendations.create(conditions,null,hash); recommendations.prepare(parent);
         var candidate=recommendations.view(parent,null,hash).candidates().getFirst(); destination=candidate.placeId();
         jobs.findById(parent).orElseThrow().completeRecommendation(mapper.writeValueAsString(List.of(new RankedDestination(1,candidate,"테스트 추천")))); em.flush();
+        // 앱을 실행하면 여행지 행에 실제 대표 관광지 목록이 30일 보관된다. 이 테스트의 모의 응답으로 다시 만들도록 비운다(끝나면 롤백).
+        jdbc.update("UPDATE dbo.places SET details_json=NULL WHERE place_id=?",destination); em.clear();
         when(maps.searchPlaces(eq(region),anyString())).thenAnswer(call->{
             String type=call.getArgument(1);
             return switch(type) {
@@ -165,6 +169,85 @@ class PlaceDiscoveryIntegrationTests {
         jdbc.update("DELETE FROM dbo.places WHERE source_provider='KAKAO' AND source_place_id='9100000000000002'"); em.clear();
         discovery.refresh(parent,destination,null,hash); em.flush();
         assertThat(places.findBySourceProviderAndSourcePlaceId("KAKAO","9100000000000002")).isEmpty();
+    }
+    // 대표 관광지는 관광공사 연관 관광지(티맵) 인기 순서를 먼저, GPT 제안을 그 뒤에 두고 카카오에서 확인된 곳만 저장해 후보 맨 앞에 둔다.
+    // 관광공사에 없는 사찰은 빼고, 이름 목록은 여행지 행에 보관해 같은 여행지에서 다시 계산하지 않는다.
+    @Test void popularAndSuggestedLandmarksComeFirstAndAreMadeOncePerDestination() {
+        var popular=new KakaoPlace("9200000000000003","ATTRACTION","인기 관광지",region,"강원 강릉시 대표로 3","가정,생활 > 시장",
+            128.87,37.76,"https://place.map.kakao.com/9200000000000003",KoreaTime.now().withNano(0));
+        var landmark=new KakaoPlace("9200000000000001","ATTRACTION","대표 관광지",region,"강원 강릉시 대표로 1","여행 > 관광,명소",
+            128.86,37.76,"https://place.map.kakao.com/9200000000000001",KoreaTime.now().withNano(0));
+        var localTemple=new KakaoPlace("9200000000000002","ATTRACTION","동네 절",region,"강원 강릉시 대표로 2","문화,예술 > 종교 > 불교 > 절,사찰",
+            128.85,37.75,"https://place.map.kakao.com/9200000000000002",KoreaTime.now().withNano(0));
+        when(tour.configured()).thenReturn(true);
+        when(tour.districtCode(null,"강원특별자치도")).thenReturn(Optional.of("51"));
+        when(tour.districtCode("51","강릉시")).thenReturn(Optional.of("150"));
+        when(tour.relatedPlaces(eq("51150"),any(),anyInt())).thenReturn(List.of(
+            new TourApiClient.RelatedPlace("경포대","인기 관광지","51150","관광지","쇼핑","시장",1),
+            new TourApiClient.RelatedPlace("경포대","강릉역","51150","관광지","기타관광","교통시설",2),
+            new TourApiClient.RelatedPlace("경포대","인기 식당","51150","음식","음식","한식",1),
+            new TourApiClient.RelatedPlace("경포대","인기 호텔","51150","숙박","숙박","호텔",1)));
+        when(maps.findRestaurant("인기 식당",region)).thenReturn(Optional.of(new KakaoPlace("9200000000000004","RESTAURANT","인기 식당",region,
+            "강원 강릉시 대표로 4","음식점 > 한식",128.87,37.76,"https://place.map.kakao.com/9200000000000004",KoreaTime.now().withNano(0))));
+        when(maps.findStay("인기 호텔",region)).thenReturn(Optional.of(new KakaoPlace("9200000000000005","ACCOMMODATION","인기 호텔",region,
+            "강원 강릉시 대표로 5","여행 > 숙박 > 호텔",128.87,37.76,"https://place.map.kakao.com/9200000000000005",KoreaTime.now().withNano(0))));
+        when(tour.searchFacilities(anyString())).thenReturn(List.of());
+        when(landmarks.configured()).thenReturn(true);
+        when(landmarks.names(eq("강릉"),eq(region))).thenReturn(List.of("대표 관광지","동네 절","없는 곳","인기 관광지"));
+        when(maps.findLandmark("인기 관광지",region)).thenReturn(Optional.of(popular));
+        when(maps.findLandmark("대표 관광지",region)).thenReturn(Optional.of(landmark));
+        when(maps.findLandmark("동네 절",region)).thenReturn(Optional.of(localTemple));
+        // 조회 장소 8곳·음식점·숙소에 대표 관광지 2곳과 인기 음식점·숙소 1곳씩이 더해진다. 역은 연관 관광지에서, "없는 곳"은 카카오에 없어 버린다.
+        assertThat(discovery.refresh(parent,destination,null,hash)).isEqualTo(14);
+        em.flush();
+        var view=candidates.find(parent,destination,null,hash);
+        var attractions=view.attractions();
+        assertThat(attractions).extracting(PlaceCandidate::name).startsWith("인기 관광지","대표 관광지").doesNotContain("동네 절");
+        // 인기 음식점·숙소는 그 종류의 후보 맨 앞에 오고 '인기' 표시가 붙는다(일정의 식사 고르기에서 쓴다).
+        assertThat(view.restaurants().getFirst()).satisfies(p->{ assertThat(p.name()).isEqualTo("인기 식당"); assertThat(p.popular()).isTrue(); });
+        assertThat(view.accommodations().getFirst()).satisfies(p->{ assertThat(p.name()).isEqualTo("인기 호텔"); assertThat(p.popular()).isTrue(); });
+        assertThat(attractions.getFirst().popular()).isFalse();
+        assertThat(places.findById(destination).orElseThrow().getDetailsJson()).contains("landmarks","인기 관광지","\"popular\":true");
+        discovery.refresh(parent,destination,null,hash);
+        verify(landmarks,times(1)).names(anyString(),anyString());
+        verify(tour,times(1)).relatedPlaces(anyString(),any(),anyInt());
+    }
+    // 같은 종류(해수욕장·해변은 하나)는 후보 앞쪽에 3곳까지만 두고 나머지는 관광지 후보 맨 뒤로 보낸다(빼지는 않는다).
+    @Test void sameKindBeyondThreeMovesToTheBackOfCandidates() {
+        doReturn(java.util.stream.IntStream.rangeClosed(1,8).mapToObj(i->{
+            var d=data(i,"ATTRACTION","강원 강릉시 테스트로 "+i);
+            return new KakaoPlace(d.sourceId(),d.type(),d.name(),d.region(),d.address(),
+                i<=6?"여행 > 관광,명소 > 해수욕장,해변":"여행 > 관광,명소 > 전망대",d.longitude(),d.latitude(),d.url(),d.checkedAt());
+        }).toList()).when(maps).searchPlaces(region,"ATTRACTION");
+        discovery.refresh(parent,destination,null,hash); em.flush();
+        var names=candidates.find(parent,destination,null,hash).attractions().stream().map(PlaceCandidate::name).toList();
+        assertThat(names).containsSubsequence("조회 장소 1","조회 장소 2","조회 장소 3","조회 장소 7","조회 장소 8","조회 장소 4","조회 장소 5","조회 장소 6");
+        assertThat(names.subList(names.size()-3,names.size())).containsExactly("조회 장소 4","조회 장소 5","조회 장소 6");
+    }
+    // '다른 관광지로 다시 만들기'는 같은 조건으로 새 초안을 만들되, 직전 초안의 관광지를 뒤로 보내 남은 후보부터 고른다. 원래 초안은 그대로다.
+    @Test void recreatePrefersAttractionsNotInPreviousDraft() throws Exception {
+        discovery.refresh(parent,destination,null,hash); em.flush();
+        var first=schedules.create(parent,destination,null,hash,LocalTime.of(9,0),LocalTime.of(14,0),KakaoMapClient.Transport.CAR,60);
+        var work=schedules.claim(first); schedules.complete(work,schedules.generate(work)); em.flush();
+        var visited=schedules.view(first,null,hash).result().days().stream().flatMap(d->d.items().stream())
+            .filter(i->"VISIT".equals(i.type())).map(ItineraryPlan.Item::placeId).collect(java.util.stream.Collectors.toSet());
+        var pool=candidates.find(parent,destination,null,hash).attractions().stream().map(PlaceCandidate::placeId).toList();
+        assertThat(visited).isNotEmpty();
+        mvc.perform(get("/travel/recommendations/itineraries/"+first).session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("다른 관광지로 다시 만들기")));
+        var redirect=mvc.perform(post("/travel/recommendations/itineraries/"+first+"/recreate").session(session).with(csrf()))
+            .andExpect(status().is3xxRedirection()).andReturn().getResponse().getRedirectedUrl();
+        var second=UUID.fromString(redirect.substring(redirect.lastIndexOf('/')+1));
+        var input=schedules.view(second,null,hash).input();
+        assertThat(input.picking().previous()).containsExactlyInAnyOrderElementsOf(visited);
+        var fresh=pool.stream().filter(id->!visited.contains(id)).toList();
+        var chosen=input.places().attractions().stream().map(PlaceCandidate::placeId).toList();
+        assertThat(fresh).isNotEmpty();
+        assertThat(chosen.subList(0,Math.min(chosen.size(),fresh.size()))).allMatch(fresh::contains);
+        // 남는 시간을 채우는 예비·저녁 관광 후보에도 직전 초안의 관광지는 넣지 않는다(가깝다는 이유로 다시 들어가지 않게).
+        assertThat(input.reserve()).extracting(PlaceCandidate::placeId).doesNotContainAnyElementsOf(visited);
+        assertThat(input.evening()).extracting(PlaceCandidate::placeId).doesNotContainAnyElementsOf(visited);
+        assertThat(schedules.view(first,null,hash).status()).isEqualTo("COMPLETED");
     }
     @Test void sameTypeAndBuildingAddressAreNotDuplicated() {
         var seed=candidates.find(parent,destination,null,hash).attractions().getFirst();
