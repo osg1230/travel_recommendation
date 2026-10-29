@@ -153,6 +153,50 @@ public class TourApiClient {
         return Optional.empty();
     }
 
+    /** 시·도 안의 시·군·구 코드 전체(예: "26" → 부산광역시 16개 구·군의 "110"·"140"…). 연관 관광지를 시·도 전체로 모을 때 쓴다. */
+    public List<String> districtCodes(String provinceCode) {
+        if (provinceCode == null || !provinceCode.matches("[0-9]{2}")) return List.of();
+        var data = get(endpoint.resolve("ldongCode2"), 100, "&lDongRegnCd=" + provinceCode);
+        List<String> codes = new ArrayList<>();
+        for (var item : data.path("items").path("item")) {
+            String code = item.path("code").asText("");
+            if (code.matches("[0-9]{3}")) codes.add(code);
+        }
+        return List.copyOf(codes);
+    }
+
+    /**
+     * 관광공사 '관광지별 연관 관광지 정보'(티맵 내비게이션 이동 데이터)의 한 행. center는 시·군·구의 중심 관광지,
+     * name은 중심 관광지에 간 차량이 함께 많이 간 곳, rank는 그 순위(1이 가장 많음)다. large·middle·small은 대·중·소 분류다.
+     */
+    public record RelatedPlace(String center, String name, String districtCode, String large, String middle, String small, int rank) {}
+    static final int RELATED_ROWS = 1000;
+
+    /** 시·군·구(districtCode, 5자리 법정동 코드)의 연관 관광지를 month 기준으로 최대 maxPages쪽(쪽당 RELATED_ROWS행)까지 받는다. */
+    public List<RelatedPlace> relatedPlaces(String districtCode, YearMonth month, int maxPages) {
+        if (districtCode == null || !districtCode.matches("[0-9]{5}") || month == null || maxPages < 1)
+            throw failure("TOUR_INPUT", "지역 코드를 확인해 주세요.");
+        String extra = "&baseYm=" + month.format(DateTimeFormatter.ofPattern("yyyyMM"))
+            + "&areaCd=" + districtCode.substring(0, 2) + "&signguCd=" + districtCode;
+        List<RelatedPlace> result = new ArrayList<>();
+        for (int page = 1; page <= maxPages; page++) {
+            var data = get(endpoint.resolve("../TarRlteTarService1/areaBasedList1"), page, RELATED_ROWS, extra);
+            for (var item : data.path("items").path("item")) {
+                try {
+                    String center = text(item, "tAtsNm"), name = text(item, "rlteTatsNm");
+                    int rank = Integer.parseInt(text(item, "rlteRank"));
+                    if (center.isBlank() || name.isBlank() || name.length() > 100 || rank < 1 || rank > 100) continue;
+                    result.add(new RelatedPlace(center, name, text(item, "rlteSignguCd"), text(item, "rlteCtgryLclsNm"),
+                        text(item, "rlteCtgryMclsNm"), text(item, "rlteCtgrySclsNm"), rank));
+                } catch (RecommendationException | NumberFormatException ignored) {
+                    // 한 행의 형식 오류로 다른 행까지 잃지 않는다.
+                }
+            }
+            if ((long) page * RELATED_ROWS >= data.path("totalCount").asLong(0)) break;
+        }
+        return List.copyOf(result);
+    }
+
     /**
      * 시·도(와 시·군·구) 안의 자연 관광지(대분류 A01, 관광지 12) 가운데 사진이 있는 곳을 제목순으로 받는다.
      * 여행지 대표 경치 사진을 고를 때 쓴다. districtCode가 없으면 시·도 전체에서 찾는다.
@@ -238,12 +282,17 @@ public class TourApiClient {
     }
 
     private JsonNode get(URI target, int rows, String extra) {
+        return get(target, 1, rows, extra);
+    }
+
+    /** page쪽(1부터)을 rows행씩 받는다. 마지막 쪽은 남은 행 수만큼 와야 한다. */
+    private JsonNode get(URI target, int page, int rows, String extra) {
         String parameters = "&numOfRows=" + rows + extra;
         if (!properties.isConfigured())
             throw failure("TOUR_NOT_CONFIGURED", "TourAPI 인증키 설정이 필요해요.");
         // Decoding 키를 한 번만 인코딩한다. 요청 URL에는 키가 있어 로그에 남기지 않는다.
         String query = "?serviceKey=" + URLEncoder.encode(properties.serviceKey().trim(), StandardCharsets.UTF_8)
-            + "&MobileOS=WEB&MobileApp=travel_recommendation&_type=json&pageNo=1" + parameters;
+            + "&MobileOS=WEB&MobileApp=travel_recommendation&_type=json&pageNo=" + page + parameters;
         try {
             var request = HttpRequest.newBuilder(URI.create(target + query)).timeout(timeout).GET().build();
             var response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
@@ -271,7 +320,7 @@ public class TourApiClient {
                 if ((items.isArray() && !items.isEmpty()) || items.isObject()) throw invalid();
                 return data;
             }
-            if (count < 1 || !items.isArray() || items.size() != Math.min(count, rows)) throw invalid();
+            if (count < 1 || !items.isArray() || items.size() != Math.min(count - (page - 1) * rows, rows)) throw invalid();
             return data;
         } catch (HttpTimeoutException e) {
             throw failure("TOUR_TIMEOUT", "관광정보 조회 시간이 초과됐어요. 다시 시도해 주세요.");

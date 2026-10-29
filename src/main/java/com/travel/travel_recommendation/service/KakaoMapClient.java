@@ -185,6 +185,37 @@ public class KakaoMapClient {
     }
 
     /**
+     * GPT가 제안한 대표 관광지 이름을 그 여행지(region) 안의 카카오 장소로 맞춘다. 공백·기호를 뺀 이름이 같은 곳을 먼저 고르고,
+     * 없으면 이름이 서로 포함되는 곳 중 가장 짧은 이름을 고른다(예: "불국사 다보탑"보다 "불국사"). 맞는 곳이 없으면 비어 있다.
+     * 분류는 {@link #landmarkCategory}를 쓴다. 사찰·성당은 동네 절·본당일 수 있어 관광지로 볼지는 호출하는 쪽에서 다시 확인한다.
+     */
+    public Optional<KakaoPlace> findLandmark(String name,String region) {
+        String wanted=compactName(name==null?"":name);
+        if(wanted.length()<2 || name.length()>40 || region==null) throw invalid();
+        var root=get(localEndpoint.resolve("/v2/local/search/keyword.json?query="
+            +URLEncoder.encode(name.strip(),StandardCharsets.UTF_8)+"&rect=124,33,132,39&size=15&page=1&sort=accuracy"));
+        KakaoPlace shortest=null;
+        for(var place:places(root,KakaoMapClient::landmarkCategory,List.of(region),"ATTRACTION",15)) {
+            String found=compactName(place.name());
+            if(found.equals(wanted)) return Optional.of(place);
+            if(found.length()>=2 && (found.contains(wanted) || wanted.contains(found))
+                && (shortest==null || found.length()<compactName(shortest.name()).length())) shortest=place;
+        }
+        return Optional.ofNullable(shortest);
+    }
+
+    /**
+     * 대표 관광지로 받을 카카오 분류. 목적 시설 분류에 더해 종교(사찰·성당), 전통시장, 공원도 받는다.
+     * 불국사·해동용궁사(종교), 자갈치시장·중앙시장(시장), 부산시민공원(공원)이 이 분류라 목적 시설 분류만 쓰면
+     * 본체 대신 "불국사 다보탑"·"해동용궁사 일주문" 같은 부속 시설로 연결됐다(2026-10-30 실제 검색으로 확인).
+     */
+    static boolean landmarkCategory(JsonNode item) {
+        if(purposeCategory(item)) return true;
+        String category=item.path("category_name").asText("");
+        return category.startsWith("문화,예술 > 종교") || category.startsWith("가정,생활 > 시장") || category.startsWith("여행 > 공원");
+    }
+
+    /**
      * 관광공사 등 다른 출처에서 찾은 시설을 카카오 장소로 맞춘다. 좌표 1km 안에서 이름이 서로 포함되는 목적 시설 분류의
      * 장소 중 가장 가까운 곳을 고른다. 이름만 비슷한 주차장·음식점·축제는 분류에서 빠진다. 맞는 곳이 없으면 비어 있다.
      */

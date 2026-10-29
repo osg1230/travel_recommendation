@@ -46,6 +46,8 @@ class PlaceDiscoveryIntegrationTests {
     @Autowired JdbcTemplate jdbc;
     @Autowired MockMvc mvc;
     @MockitoBean KakaoMapClient maps;
+    // 장소 수집(refresh)이 실제 GPT에 대표 관광지를 묻지 않게 한다(모의 객체는 설정 안 됨으로 답한다).
+    @org.springframework.test.context.bean.override.mockito.MockitoBean com.travel.travel_recommendation.service.OpenAiLandmarkClient landmarks;
     @MockitoBean TourApiClient tour;
     private final String region="강원특별자치도 강릉시";
     private MockHttpSession session; private byte[] hash; private UUID parent; private long destination;
@@ -165,6 +167,37 @@ class PlaceDiscoveryIntegrationTests {
         jdbc.update("DELETE FROM dbo.places WHERE source_provider='KAKAO' AND source_place_id='9100000000000002'"); em.clear();
         discovery.refresh(parent,destination,null,hash); em.flush();
         assertThat(places.findBySourceProviderAndSourcePlaceId("KAKAO","9100000000000002")).isEmpty();
+    }
+    // 대표 관광지는 관광공사 연관 관광지(티맵) 인기 순서를 먼저, GPT 제안을 그 뒤에 두고 카카오에서 확인된 곳만 저장해 후보 맨 앞에 둔다.
+    // 관광공사에 없는 사찰은 빼고, 이름 목록은 여행지 행에 보관해 같은 여행지에서 다시 계산하지 않는다.
+    @Test void popularAndSuggestedLandmarksComeFirstAndAreMadeOncePerDestination() {
+        var popular=new KakaoPlace("9200000000000003","ATTRACTION","인기 관광지",region,"강원 강릉시 대표로 3","가정,생활 > 시장",
+            128.87,37.76,"https://place.map.kakao.com/9200000000000003",KoreaTime.now().withNano(0));
+        var landmark=new KakaoPlace("9200000000000001","ATTRACTION","대표 관광지",region,"강원 강릉시 대표로 1","여행 > 관광,명소",
+            128.86,37.76,"https://place.map.kakao.com/9200000000000001",KoreaTime.now().withNano(0));
+        var localTemple=new KakaoPlace("9200000000000002","ATTRACTION","동네 절",region,"강원 강릉시 대표로 2","문화,예술 > 종교 > 불교 > 절,사찰",
+            128.85,37.75,"https://place.map.kakao.com/9200000000000002",KoreaTime.now().withNano(0));
+        when(tour.configured()).thenReturn(true);
+        when(tour.districtCode(null,"강원특별자치도")).thenReturn(Optional.of("51"));
+        when(tour.districtCode("51","강릉시")).thenReturn(Optional.of("150"));
+        when(tour.relatedPlaces(eq("51150"),any(),anyInt())).thenReturn(List.of(
+            new TourApiClient.RelatedPlace("경포대","인기 관광지","51150","관광지","쇼핑","시장",1),
+            new TourApiClient.RelatedPlace("경포대","강릉역","51150","관광지","기타관광","교통시설",2)));
+        when(tour.searchFacilities(anyString())).thenReturn(List.of());
+        when(landmarks.configured()).thenReturn(true);
+        when(landmarks.names(eq("강릉"),eq(region))).thenReturn(List.of("대표 관광지","동네 절","없는 곳","인기 관광지"));
+        when(maps.findLandmark("인기 관광지",region)).thenReturn(Optional.of(popular));
+        when(maps.findLandmark("대표 관광지",region)).thenReturn(Optional.of(landmark));
+        when(maps.findLandmark("동네 절",region)).thenReturn(Optional.of(localTemple));
+        // 조회 장소 8곳·음식점·숙소에 대표 관광지 2곳이 더해진다. 역은 연관 관광지에서, "없는 곳"은 카카오에 없어 버린다.
+        assertThat(discovery.refresh(parent,destination,null,hash)).isEqualTo(12);
+        em.flush();
+        var attractions=candidates.find(parent,destination,null,hash).attractions();
+        assertThat(attractions).extracting(PlaceCandidate::name).startsWith("인기 관광지","대표 관광지").doesNotContain("동네 절");
+        assertThat(places.findById(destination).orElseThrow().getDetailsJson()).contains("landmarks","인기 관광지","\"popular\":true");
+        discovery.refresh(parent,destination,null,hash);
+        verify(landmarks,times(1)).names(anyString(),anyString());
+        verify(tour,times(1)).relatedPlaces(anyString(),any(),anyInt());
     }
     @Test void sameTypeAndBuildingAddressAreNotDuplicated() {
         var seed=candidates.find(parent,destination,null,hash).attractions().getFirst();

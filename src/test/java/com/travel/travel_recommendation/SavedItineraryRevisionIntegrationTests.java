@@ -48,6 +48,8 @@ class SavedItineraryRevisionIntegrationTests {
     @Autowired EntityManager em;
     @Autowired MockMvc mvc;
     @MockitoBean KakaoMapClient maps;
+    // 장소 수집(refresh)이 실제 관광공사·GPT에 대표 관광지를 묻지 않게 한다(모의 객체는 빈 목록을 돌려준다).
+    @org.springframework.test.context.bean.override.mockito.MockitoBean com.travel.travel_recommendation.service.DestinationLandmarkService landmarks;
     @MockitoBean TourApiClient tour;
     private User owner;
     private UUID original;

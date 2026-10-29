@@ -20,6 +20,7 @@ public class PlaceDiscoveryService {
     private final PlaceRepository places;
     private final KakaoMapClient maps;
     private final TourApiClient tour;
+    private final DestinationLandmarkService landmarkNames;
     private final tools.jackson.databind.ObjectMapper mapper;
     private final PlatformTransactionManager transactions;
 
@@ -28,15 +29,19 @@ public class PlaceDiscoveryService {
         String region=before.destination().region();
         List<KakaoPlace> found=new ArrayList<>();
         // 외부 조회는 DB 잠금 밖에서 한다. 세 종류 조회가 끝나야 한 번에 저장한다.
-        // 관광지는 검색 결과에서 몇 번째였는지(0부터)를 함께 기억한다. 후보 수를 줄일 때 이름순 대신 이 순서를 쓴다.
+        // 관광지는 몇 번째로 찾았는지(0부터)를 함께 기억한다. 후보 수를 줄일 때 이름순 대신 이 순서를 쓴다.
+        // 대표 관광지(관광공사 인기 순서 + GPT 제안 중 카카오에서 확인된 곳)를 맨 앞에 두고, "○○ 명소" 검색·사찰·성당은 그 뒤 순서로 둔다.
+        // 대표 관광지 목록이 없으면(키 없음·실패) 예전처럼 "○○ 명소" 검색 순서만 쓴다.
         Map<String,Integer> ranks=new HashMap<>();
+        var landmarks=listedLandmarks(landmarkNames.names(destinationId),region); rank(landmarks,ranks,0); found.addAll(landmarks);
+        int after=landmarks.size();
         for(String type:List.of("ATTRACTION","RESTAURANT","ACCOMMODATION")) {
             var list=maps.searchPlaces(region,type);
-            if("ATTRACTION".equals(type)) rank(list,ranks);
+            if("ATTRACTION".equals(type)) rank(list,ranks,after);
             found.addAll(list);
         }
-        var temples=touristTemples(maps.searchTemples(region)); rank(temples,ranks); found.addAll(temples);
-        var cathedrals=touristCathedrals(maps.searchCathedrals(region)); rank(cathedrals,ranks); found.addAll(cathedrals);
+        var temples=touristTemples(maps.searchTemples(region)); rank(temples,ranks,after); found.addAll(temples);
+        var cathedrals=touristCathedrals(maps.searchCathedrals(region)); rank(cathedrals,ranks,after); found.addAll(cathedrals);
         var transaction=new TransactionTemplate(transactions); transaction.setTimeout(10);
         return transaction.execute(status->{
             // 같은 지역의 동시 수집을 직렬화하고, 조회 중 만료·권한 변경도 다시 검사한다.
@@ -92,9 +97,30 @@ public class PlaceDiscoveryService {
         }));
     }
 
-    /** 목록에서의 순서(0부터)를 기록한다. 여러 검색에 나온 곳은 먼저 기록한 순서를 둔다. */
-    private static void rank(List<KakaoPlace> list,Map<String,Integer> ranks) {
-        for(int i=0;i<list.size();i++) ranks.putIfAbsent(list.get(i).sourceId(),i);
+    /** 목록에서의 순서를 offset부터 기록한다. 여러 검색에 나온 곳은 먼저 기록한 순서를 둔다. */
+    private static void rank(List<KakaoPlace> list,Map<String,Integer> ranks,int offset) {
+        for(int i=0;i<list.size();i++) ranks.putIfAbsent(list.get(i).sourceId(),offset+i);
+    }
+
+    /**
+     * 대표 관광지 이름마다 이 지역의 카카오 장소를 찾아 제안 순서대로 돌려준다. 찾지 못한 이름은 버린다.
+     * 사찰·성당은 대표 관광지 목록에 있어도 동네 절·본당일 수 있어, 관광공사에 관광지로 등록된 곳만 쓴다(사찰 검색과 같은 기준).
+     */
+    private List<KakaoPlace> listedLandmarks(List<String> names,String region) {
+        List<KakaoPlace> listed=new ArrayList<>(); Set<String> ids=new HashSet<>();
+        for(String name:names) {
+            Optional<KakaoPlace> match;
+            try { match=maps.findLandmark(name,region); }
+            catch(RecommendationException error) { log.warn("대표 관광지 찾기 실패 name={} ({})",name,error.getCode()); continue; }
+            if(match.isEmpty() || !ids.add(match.get().sourceId())) continue;
+            var place=match.get();
+            if(place.category().startsWith("문화,예술 > 종교")) {
+                try { if(!tour.configured() || !nearTourFacility(place,TEMPLE_METERS)) continue; }
+                catch(RecommendationException error) { log.warn("관광공사 조회 실패로 대표 관광지 사찰·성당을 넣지 않았어요 ({})",error.getCode()); continue; }
+            }
+            listed.add(place);
+        }
+        return listed;
     }
 
     /** 사찰 후보 중 관광지로 받는 수와, 관광공사 관광지와 같은 곳으로 보는 거리(m). 큰 절은 경내가 넓어 성당보다 넉넉히 본다. */
@@ -110,14 +136,16 @@ public class PlaceDiscoveryService {
         List<KakaoPlace> listed=new ArrayList<>();
         for(var temple:temples) {
             if(listed.size()==MAX_TEMPLES) break;
-            // "대한불교조계종 ○○사"처럼 종단 이름이 붙은 곳은 마지막 단어(절 이름)로 찾는다.
-            String name=temple.name().substring(temple.name().lastIndexOf(' ')+1);
-            try {
-                if(tour.searchFacilities(name).stream().anyMatch(t->meters(temple.longitude(),temple.latitude(),t.longitude(),t.latitude())<=TEMPLE_METERS))
-                    listed.add(temple);
-            } catch(RecommendationException error) { log.warn("관광공사 사찰 조회 실패로 남은 사찰 후보를 넣지 않았어요 ({})",error.getCode()); break; }
+            try { if(nearTourFacility(temple,TEMPLE_METERS)) listed.add(temple); }
+            catch(RecommendationException error) { log.warn("관광공사 사찰 조회 실패로 남은 사찰 후보를 넣지 않았어요 ({})",error.getCode()); break; }
         }
         return listed;
+    }
+
+    /** 관광공사 관광지·문화시설 중 이 장소에서 meters 안에 있는 곳이 있는지. "대한불교조계종 ○○사"처럼 종단 이름이 붙은 곳은 마지막 단어(절 이름)로 찾는다. */
+    private boolean nearTourFacility(KakaoPlace place,int meters) {
+        String name=place.name().substring(place.name().lastIndexOf(' ')+1);
+        return tour.searchFacilities(name).stream().anyMatch(t->meters(place.longitude(),place.latitude(),t.longitude(),t.latitude())<=meters);
     }
 
     /**
