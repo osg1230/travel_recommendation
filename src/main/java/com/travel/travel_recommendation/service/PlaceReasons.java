@@ -7,13 +7,14 @@ import java.util.Map;
 
 /**
  * 일정 항목 메모의 '고른 이유'를 AI가 쓴 문장으로 바꾼다. 서버가 적은 이유는 배치 규칙 설명(시간이 남아서, 종류가 겹치지 않게 등)이라
- * 읽는 사람에게는 와닿지 않기 때문이다. 다만 필수 방문·수정 요청·축제처럼 사용자가 꼭 알아야 하는 사실은 AI 문장 뒤에 그대로 남긴다.
+ * 읽는 사람에게는 와닿지 않기 때문이다. 다만 필수 방문·수정 요청·축제처럼 사용자가 꼭 알아야 하는 사실과
+ * 외부 자료로 확인한 근거(관광공사 연관 관광지의 인기 음식점)는 AI 문장 뒤에 그대로 남긴다.
  */
 public final class PlaceReasons {
     private PlaceReasons() {}
     static final String PREFIX = "고른 이유: ";
     /** 서버 이유 중 AI 문장으로 바꿔도 남겨 둘 문장에 들어 있는 말. */
-    private static final List<String> KEY_FACTS = List.of("필수 방문", "수정 요청", "행사가 열려요", "정확한 행사 장소");
+    private static final List<String> KEY_FACTS = List.of("필수 방문", "수정 요청", "행사가 열려요", "정확한 행사 장소", "연관 관광지 정보");
 
     /** 관광·식사 항목 중 AI 이유가 있는 것만 메모를 바꾼다. 시각·장소·순서는 그대로다. */
     public static Result apply(Result plan, Map<Long, String> reasons) {

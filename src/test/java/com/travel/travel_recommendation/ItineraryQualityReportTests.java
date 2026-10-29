@@ -34,6 +34,7 @@ import static org.assertj.core.api.Assertions.*;
  * - 하루 이동·최장 이동: 하루 이동시간 합의 평균과 가장 긴 한 번 이동(분)
  * - 다시 만들기 겹침: 첫 초안의 관광지가 '다른 관광지로 다시 만들기'로 만든 두 번째 초안에도 나온 비율
  *   (2026-10-30 3차 측정까지는 버튼이 없어 같은 조건으로 두 번 만든 초안끼리 비교했다)
+ * - 인기 음식점 식사·인기 숙소: 첫 초안의 식사·숙소 중 관광공사 연관 관광지의 인기 음식점·숙소로 확인한 곳의 수(5단계)
  */
 @EnabledIfEnvironmentVariable(named="RUN_QUALITY_REPORT",matches="true")
 @SpringBootTest(properties={"spring.jpa.hibernate.ddl-auto=validate","travel.jobs.enabled=false"})
@@ -68,7 +69,8 @@ class ItineraryQualityReportTests {
     /** official은 관광공사 등록 여부이고, 관광공사 조회에 실패하면 null이다. */
     record Visit(String name, String kind, Boolean official, Double longitude, Double latitude) {}
     /** aiOrdered는 GPT가 관광지 순서를 정했는지다. false면 GPT 응답 실패 등으로 서버 규칙 순서를 썼다. */
-    record Draft(UUID id, List<Visit> visits, int dailyMoveMinutes, int longestMoveMinutes, boolean aiOrdered) {}
+    record Draft(UUID id, List<Visit> visits, int dailyMoveMinutes, int longestMoveMinutes, boolean aiOrdered,
+                 int meals, int popularMeals, int stays, int popularStays) {}
     record Measured(Scenario scenario, int candidateCount, Map<String, Long> candidateKinds, Draft first, Draft second, String error) {}
 
     private final Map<Long, Boolean> officialCache = new HashMap<>();
@@ -130,11 +132,18 @@ class ItineraryQualityReportTests {
         schedules.complete(work, result);
         em.flush();
         List<Visit> visits = new ArrayList<>();
-        int moveSeconds = 0, longestSeconds = 0;
+        int moveSeconds = 0, longestSeconds = 0, meals = 0, popularMeals = 0;
+        Set<Long> stays = new HashSet<>(), popularStays = new HashSet<>();
         for (var day : result.days()) for (var item : day.items()) {
             if (item.travelSeconds() != null) {
                 moveSeconds += item.travelSeconds();
                 longestSeconds = Math.max(longestSeconds, item.travelSeconds());
+            }
+            // 식사·숙소는 관광공사 연관 관광지의 인기 음식점·숙소로 확인한 곳인지 센다(5단계).
+            if (("MEAL".equals(item.type()) || "STAY".equals(item.type())) && item.placeId() != null) {
+                boolean popular = places.findById(item.placeId()).map(p -> PlaceRankDetails.popular(p, mapper)).orElse(false);
+                if ("MEAL".equals(item.type())) { meals++; if (popular) popularMeals++; }
+                else { stays.add(item.placeId()); if (popular) popularStays.add(item.placeId()); }
             }
             if (!"VISIT".equals(item.type()) || item.placeId() == null) continue;
             var place = places.findById(item.placeId()).orElseThrow();
@@ -142,7 +151,8 @@ class ItineraryQualityReportTests {
                 place.getLongitude() == null ? null : place.getLongitude().doubleValue(),
                 place.getLatitude() == null ? null : place.getLatitude().doubleValue()));
         }
-        return new Draft(id, visits, moveSeconds / 60 / result.days().size(), longestSeconds / 60, aiOrdered);
+        return new Draft(id, visits, moveSeconds / 60 / result.days().size(), longestSeconds / 60, aiOrdered,
+            meals, popularMeals, stays.size(), popularStays.size());
     }
 
     /** 일정 관광지 중 서로 가장 먼 두 곳의 직선거리(km). 작으면 한 동네에 몰린 일정이다. */
@@ -198,10 +208,10 @@ class ItineraryQualityReportTests {
         out.append("# 일정 품질 측정 (").append(now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))).append(")\n\n")
             .append("조건: 출발 ").append(START).append("(가을 주말), 2명, 자동차, 09:00~18:00, 체류 90분(빠른 일정 기본값). ")
             .append("시나리오마다 초안을 만들고 그 초안에서 '다른 관광지로 다시 만들기'로 한 번 더 만들었다. 표의 값은 첫 초안 기준이다.\n\n")
-            .append("| 시나리오 | 후보 관광지 | 후보 최다 종류 | 일정 관광지 | 공식 관광지 | 종류 수 | 같은 종류 최대 | 관광지 분포(km) | 하루 이동(분) | 최장 이동(분) | 다시 만들기 겹침 | AI 순서 |\n")
-            .append("|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+            .append("| 시나리오 | 후보 관광지 | 후보 최다 종류 | 일정 관광지 | 공식 관광지 | 종류 수 | 같은 종류 최대 | 관광지 분포(km) | 하루 이동(분) | 최장 이동(분) | 다시 만들기 겹침 | AI 순서 | 인기 음식점 식사 | 인기 숙소 |\n")
+            .append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
         for (var m : measured) {
-            if (m.error() != null) { out.append("| ").append(m.scenario().name()).append(" | 실패: ").append(m.error().replace("|", "/")).append(" |||||||||||\n"); continue; }
+            if (m.error() != null) { out.append("| ").append(m.scenario().name()).append(" | 실패: ").append(m.error().replace("|", "/")).append(" |||||||||||||\n"); continue; }
             var visits = m.first().visits();
             var kindCounts = visits.stream().collect(Collectors.groupingBy(Visit::kind, Collectors.counting()));
             out.append("| ").append(m.scenario().name())
@@ -215,11 +225,14 @@ class ItineraryQualityReportTests {
                 .append(" | ").append(m.first().dailyMoveMinutes())
                 .append(" | ").append(m.first().longestMoveMinutes())
                 .append(" | ").append(overlap(m.first(), m.second()))
-                .append(" | ").append(m.first().aiOrdered() ? "성공" : "실패").append("/").append(m.second().aiOrdered() ? "성공" : "실패").append(" |\n");
+                .append(" | ").append(m.first().aiOrdered() ? "성공" : "실패").append("/").append(m.second().aiOrdered() ? "성공" : "실패")
+                .append(" | ").append(m.first().popularMeals()).append("/").append(m.first().meals())
+                .append(" | ").append(m.first().stays() == 0 ? "-" : m.first().popularStays() + "/" + m.first().stays()).append(" |\n");
         }
         out.append("\n공식 관광지는 관광공사 이름 검색 결과가 1km 안에 있는지로 판단해, 이름이 크게 다르면 등록된 곳도 빠질 수 있다(개선 전후 같은 기준). ")
             .append("괄호 안 '확인 못 함'은 관광공사 조회 실패 수다. 관광지 분포는 일정 관광지 중 서로 가장 먼 두 곳의 직선거리다. ")
-            .append("AI 순서는 첫/두 번째 초안에서 GPT가 관광지 순서를 정했는지이며, 실패하면 서비스처럼 서버 규칙 순서로 만들었다.\n");
+            .append("AI 순서는 첫/두 번째 초안에서 GPT가 관광지 순서를 정했는지이며, 실패하면 서비스처럼 서버 규칙 순서로 만들었다. ")
+            .append("인기 음식점 식사·인기 숙소는 첫 초안의 식사·숙소 중 관광공사 연관 관광지의 인기 음식점·숙소로 확인한 곳의 수다.\n");
         for (var m : measured) {
             if (m.error() != null) continue;
             out.append("\n## ").append(m.scenario().name()).append("\n\n")

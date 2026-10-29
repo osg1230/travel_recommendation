@@ -171,6 +171,7 @@ public class PlaceCandidateService {
         return new PlaceCandidate(place.getId(), place.getName(), place.getAddress(), place.getSubtype(),
             place.getDescription(), place.getSourceUrl(), "KAKAO".equals(place.getSourceProvider())?place.getSourceUrl():"https://map.kakao.com/link/search/" + query,
             place.getVerifiedAt(),place.getLongitude()==null?null:place.getLongitude().doubleValue(),
-            place.getLatitude()==null?null:place.getLatitude().doubleValue(),place.getSourceProvider(),PlaceOperatingDetails.read(place,mapper));
+            place.getLatitude()==null?null:place.getLatitude().doubleValue(),place.getSourceProvider(),PlaceOperatingDetails.read(place,mapper),
+            PlaceRankDetails.popular(place,mapper));
     }
 }

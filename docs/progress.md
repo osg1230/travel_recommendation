@@ -4,6 +4,14 @@
 
 작업 시작 시 이 요약과 Git 상태를 확인한다. 기능별 상세 구현·검증 기록은 [2026-09-22 정리 전 원문](progress-history/2026-09-22-before-cleanup.md)에 있으며, 과거 결정·검증 근거가 필요할 때 해당 부분만 읽는다.
 
+## 2026-10-30 일정 품질 개선 5단계: 인기 음식점·숙소 (관광공사 연관 관광지, `feature/itinerary-quality`)
+
+- 구현: `PopularAttractions`를 `PopularPlaces`로 바꿔 같은 연관 관광지 행에서 관광지(20)·음식점(10, 카페·간이음식 제외)·숙소(5, 모텔·캠핑 제외) 인기 순서를 함께 만든다(관광공사 추가 호출 없음). 여행지 행 `details_json.landmarks`에 `restaurants[]`·`stays[]`를 더했고(이전 형식은 다시 만듦), `DestinationLandmarkService`가 `names`·`restaurants`·`stays`를 돌려준다. `PlaceDiscoveryService.refresh`가 `KakaoMapClient.findRestaurant`(FD6, 끼니 아닌 분류 제외)·`findStay`(AD5)로 확인된 곳만 그 종류의 후보 맨 앞(`kakaoRank`)에 두고 `details_json.popular=true`를 남긴다. `PlaceCandidate.popular`(작업 JSON, 이전 값은 false)를 `ItineraryGenerator.pickRestaurant`가 2km 안쪽 후보 중 '아직 안 먹은 종류' 다음 우선순위로 쓰고, 고른 이유에 "한국관광공사 연관 관광지 정보에서 이 지역 여행자들이 함께 많이 찾은 음식점이에요."를 적는다. `PlaceReasons`가 AI 이유로 바꿀 때도 이 근거를 남긴다. 숙소는 인기 숙소가 후보 앞쪽을 채우고 지금처럼 관광지와 가까운 순으로 고른다. DB 테이블·컬럼 변경 없음, DB 정의서 details_json 메모 갱신.
+- 함께 고침: 브라우저 확인 중 식사 이유에 지시문이 새어 나온 AI 문장("부드러운 대화 tone")이 보였다. `OpenAiItineraryClient.placeReasons`가 '~요'로 끝나지 않는 장소 이유는 버리고 서버 이유를 쓰게 했다.
+- 확인: 단위 `PopularPlacesTests` 4·`DestinationLandmarksTests` 3·`KakaoMapClientTests` 22·`ItineraryGeneratorTests` 40(인기 음식점 우선 1 추가)·`PlaceReasonsTests` 2·`OpenAiItineraryClientTests` 7(이유 문장 끝 1 추가) 등 통과. SQL Server 통합 11개 클래스 80개 통과(`PlaceDiscoveryIntegrationTests`에 인기 음식점·숙소가 후보 맨 앞·인기 표시 검증 추가). 최종 품질 측정(02:11): 다시 만들기 겹침 강릉 13%·바다 0%·경주 25%·부산 27%·전주 0%·제주 60%, 첫 초안 식사 중 인기 음식점 강릉 1/3·경주 2/3·부산 1/5, 인기 숙소 강릉·경주·부산 1/1(제주 0/1). 브라우저(8080, 강릉 1박 2일): '장소 더 찾아보기'로 다시 수집하자 인기 숙소 5곳·음식점 4곳이 저장됐고, 새 일정의 점심 동화가든에 인기 근거가, 숙소는 스카이베이호텔 경포가 나왔다. 서버·콘솔 오류 없음. 전체 테스트는 돌리지 않았다.
+- 한계: 인기 표시는 장소를 다시 수집할 때(카카오 장소 24시간 유효, 후보 부족 시 자동 또는 '장소 더 찾아보기') 붙는다. 인기 음식점은 동선에서 2km 안쪽일 때만 먼저 고르고, 인기 순위는 차량 내비 기준이라 걸어서 가는 맛집과 다를 수 있다. 다음 달 순위에서 빠진 곳의 인기 표시는 지우지 않는다.
+- 다음: 전체 테스트(`clean verify`)와 PR. 요구분석서에 외부 데이터(관광공사 연관 관광지)를 적을지는 사용자 결정 대기.
+
 ## 2026-10-30 일정 품질 개선 4단계: 같은 종류 상한·'다른 관광지로 다시 만들기' (`feature/itinerary-quality`)
 
 - 결정: 3단계(인기 신호로 순서 정하기)는 2단계에서 관광공사 연관 관광지 순서를 후보 순서로 쓰면서 함께 처리돼 따로 하지 않았다. 사용자가 4단계 뒤 큰 문제가 없으면 5단계까지 이어서 하라고 했다.

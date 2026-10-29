@@ -280,6 +280,22 @@ class KakaoMapClientTests {
         assertCode("MAP_INVALID_RESPONSE",()->client("key").findLandmark("가","강원특별자치도 강릉시"));
         assertThat(calls.get()).isEqualTo(before);
     }
+    // 인기 음식점은 음식점(FD6) 중 끼니로 맞는 곳만, 인기 숙소는 숙박(AD5)만 이름으로 맞춘다.
+    @Test void findRestaurantAndStayKeepTheirCategoriesOnly() {
+        var cafe=searchItem("701","강원 강릉시 초당동 1"); cafe.put("place_name","초당순두부 카페"); cafe.put("category_group_code","FD6");
+        cafe.put("category_name","음식점 > 카페");
+        var tofu=searchItem("702","강원 강릉시 초당동 2"); tofu.put("place_name","초당순두부"); tofu.put("category_group_code","FD6");
+        tofu.put("category_name","음식점 > 한식 > 두부전문점");
+        var hotel=searchItem("703","강원 강릉시 난설헌로 1"); hotel.put("place_name","초당순두부 호텔"); hotel.put("category_group_code","AD5");
+        hotel.put("category_name","여행 > 숙박 > 호텔");
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(cafe,hotel,tofu))));
+        var meal=client("key").findRestaurant("초당순두부","강원특별자치도 강릉시").orElseThrow();
+        assertThat(meal.sourceId()).isEqualTo("702"); assertThat(meal.type()).isEqualTo("RESTAURANT");
+        var stay=client("key").findStay("초당순두부 호텔","강원특별자치도 강릉시").orElseThrow();
+        assertThat(stay.sourceId()).isEqualTo("703"); assertThat(stay.type()).isEqualTo("ACCOMMODATION");
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(cafe))));
+        assertThat(client("key").findRestaurant("초당순두부","강원특별자치도 강릉시")).isEmpty();
+    }
     // 관광공사에서 찾은 시설은 좌표 1km 안에서 이름이 맞는 가장 가까운 목적 시설로 맞춘다. 주차장·다른 이름은 고르지 않는다.
     @Test void findNearMatchesNameAndCategoryNearTheCoordinate() {
         var parking=searchItem("401","강원 강릉시 초당동 505"); parking.put("place_name","경포아쿠아리움 주차장"); parking.put("category_group_code","PK6");

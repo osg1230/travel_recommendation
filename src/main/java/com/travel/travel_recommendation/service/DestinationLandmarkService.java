@@ -14,7 +14,8 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * 여행지(도시)의 대표 관광지 이름 목록을 준비한다. 관광공사 연관 관광지(티맵 이동 데이터)로 정한 인기 순서를 먼저 쓰고,
- * GPT가 제안한 대표 관광지 중 빠진 곳을 뒤에 붙인다. 목록은 여행지 행에 보관해 다시 계산하지 않는다({@link DestinationLandmarks}).
+ * GPT가 제안한 대표 관광지 중 빠진 곳을 뒤에 붙인다. 같은 연관 관광지 자료에서 인기 음식점·숙소 이름도 함께 만든다(추가 호출 없음).
+ * 목록은 여행지 행에 보관해 다시 계산하지 않는다({@link DestinationLandmarks}).
  * 이름은 카카오 검색어로만 쓰며, 실제 장소인지·그 지역 안인지는 {@link PlaceDiscoveryService}가 카카오로 확인한다.
  * 외부 호출 동안 DB 연결을 잡지 않도록 읽기 → 외부 조회 → 저장을 나눈다.
  */
@@ -34,17 +35,24 @@ public class DestinationLandmarkService {
     private final PlatformTransactionManager transactions;
 
     /** 계산한 목록. popular는 관광공사 연관 관광지를 받았는지다(못 받았으면 하루 뒤 다시 계산한다). */
-    record Made(List<String> names,boolean popular) {}
+    record Made(DestinationLandmarks.Lists lists,boolean popular) {}
+
+    /** 대표 관광지 이름(관광공사 인기 순서 + GPT 제안). */
+    public List<String> names(long destinationId) { return lists(destinationId).names(); }
+    /** 인기 음식점 이름(관광공사 연관 관광지의 음식 순위). */
+    public List<String> restaurants(long destinationId) { return lists(destinationId).restaurants(); }
+    /** 인기 숙소 이름(관광공사 연관 관광지의 숙박 순위). */
+    public List<String> stays(long destinationId) { return lists(destinationId).stays(); }
 
     /** 보관한 목록이 있으면 그것을, 없거나 오래됐으면 새로 만들어 보관한 뒤 돌려준다. 만들지 못하면 빈 목록이다. */
-    public List<String> names(long destinationId) {
+    private DestinationLandmarks.Lists lists(long destinationId) {
         var destination=places.findById(destinationId).filter(p->"DESTINATION".equals(p.getPlaceType())).orElse(null);
-        if(destination==null) return List.of();
+        if(destination==null) return DestinationLandmarks.Lists.EMPTY;
         var saved=DestinationLandmarks.read(destination,Instant.now(),mapper);
         if(saved!=null) return saved;
         var made=make(destination);
         save(destinationId,made);
-        return made.names();
+        return made.lists();
     }
 
     /**
@@ -53,13 +61,13 @@ public class DestinationLandmarkService {
      */
     public void prepare(Collection<Long> destinationIds) {
         for(long id:destinationIds) {
-            try { names(id); }
+            try { lists(id); }
             catch(RuntimeException error) { log.warn("대표 관광지 목록을 미리 만들지 못함 destination={} ({})",id,error.toString()); }
         }
     }
 
     private Made make(Place destination) {
-        List<String> popular=List.of(); boolean popularDone=!tour.configured();
+        var popular=DestinationLandmarks.Lists.EMPTY; boolean popularDone=!tour.configured();
         if(tour.configured()) {
             try { popular=popular(destination.getRegion()); popularDone=true; }
             catch(RecommendationException error) { log.warn("연관 관광지 조회를 건너뜀 destination={} ({})",destination.getName(),error.getCode()); }
@@ -71,20 +79,25 @@ public class DestinationLandmarkService {
         }
         // 인기 순서를 앞에 두고 GPT 제안 중 이미 있는 이름(띄어쓰기만 다른 것 포함)은 뺀다.
         List<String> names=new ArrayList<>(); Set<String> seen=new HashSet<>();
-        for(String name:concat(popular,suggested))
+        for(String name:concat(popular.names(),suggested))
             if(names.size()<MAX_NAMES && seen.add(KakaoMapClient.compactName(name))) names.add(name);
-        return new Made(List.copyOf(names),popularDone);
+        return new Made(new DestinationLandmarks.Lists(names,popular.restaurants(),popular.stays()),popularDone);
     }
 
-    /** 여행지 지역의 시·군·구마다 지난달 연관 관광지를 받아 인기 순서로 모은다. 지역 코드를 찾지 못하면 빈 목록이다. */
-    private List<String> popular(String region) {
+    /**
+     * 여행지 지역의 시·군·구마다 지난달 연관 관광지를 받아 인기 관광지·음식점·숙소 순서로 모은다(한 번 받은 행을 세 가지로 나눈다).
+     * 지역 코드를 찾지 못하면 빈 목록이다.
+     */
+    private DestinationLandmarks.Lists popular(String region) {
         var codes=districtCodes(region);
-        if(codes.isEmpty()) return List.of();
+        if(codes.isEmpty()) return DestinationLandmarks.Lists.EMPTY;
         var month=YearMonth.now(KoreaTime.ZONE).minusMonths(1);
         int pages=codes.size()>1?1:MAX_PAGES;
         List<TourApiClient.RelatedPlace> rows=new ArrayList<>();
         for(String code:codes) rows.addAll(tour.relatedPlaces(code,month,pages));
-        return PopularAttractions.rank(rows,Set.copyOf(codes),PopularAttractions.LIMIT);
+        var inside=Set.copyOf(codes);
+        return new DestinationLandmarks.Lists(PopularPlaces.attractions(rows,inside,PopularPlaces.ATTRACTIONS),
+            PopularPlaces.restaurants(rows,inside,PopularPlaces.RESTAURANTS),PopularPlaces.stays(rows,inside,PopularPlaces.STAYS));
     }
 
     /**
@@ -105,7 +118,7 @@ public class DestinationLandmarkService {
     private void save(long destinationId,Made made) {
         var transaction=new TransactionTemplate(transactions); transaction.setTimeout(10);
         transaction.executeWithoutResult(status->places.lockById(destinationId).ifPresent(place->{
-            String json=DestinationLandmarks.write(place,made.names(),made.popular(),Instant.now(),mapper);
+            String json=DestinationLandmarks.write(place,made.lists(),made.popular(),Instant.now(),mapper);
             if(json!=null) { place.updateDetails(json); places.flush(); }
         }));
     }

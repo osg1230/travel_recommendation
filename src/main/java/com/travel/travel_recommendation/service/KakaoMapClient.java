@@ -190,12 +190,27 @@ public class KakaoMapClient {
      * 분류는 {@link #landmarkCategory}를 쓴다. 사찰·성당은 동네 절·본당일 수 있어 관광지로 볼지는 호출하는 쪽에서 다시 확인한다.
      */
     public Optional<KakaoPlace> findLandmark(String name,String region) {
+        return findNamed(name,region,KakaoMapClient::landmarkCategory,"ATTRACTION");
+    }
+
+    /** 관광공사 연관 관광지의 인기 음식점 이름을 이 여행지의 카카오 음식점(FD6)으로 맞춘다. 간식·술집·카페는 받지 않는다. 맞추는 규칙은 findLandmark와 같다. */
+    public Optional<KakaoPlace> findRestaurant(String name,String region) {
+        return findNamed(name,region,item->"FD6".equals(item.path("category_group_code").asText())
+            && !PlaceCandidate.notForMeals(item.path("category_name").asText("")),"RESTAURANT");
+    }
+
+    /** 관광공사 연관 관광지의 인기 숙소 이름을 이 여행지의 카카오 숙박(AD5)으로 맞춘다. 맞추는 규칙은 findLandmark와 같다. */
+    public Optional<KakaoPlace> findStay(String name,String region) {
+        return findNamed(name,region,item->"AD5".equals(item.path("category_group_code").asText()),"ACCOMMODATION");
+    }
+
+    private Optional<KakaoPlace> findNamed(String name,String region,java.util.function.Predicate<JsonNode> accepts,String type) {
         String wanted=compactName(name==null?"":name);
         if(wanted.length()<2 || name.length()>40 || region==null) throw invalid();
         var root=get(localEndpoint.resolve("/v2/local/search/keyword.json?query="
             +URLEncoder.encode(name.strip(),StandardCharsets.UTF_8)+"&rect=124,33,132,39&size=15&page=1&sort=accuracy"));
         KakaoPlace shortest=null;
-        for(var place:places(root,KakaoMapClient::landmarkCategory,List.of(region),"ATTRACTION",15)) {
+        for(var place:places(root,accepts,List.of(region),type,15)) {
             String found=compactName(place.name());
             if(found.equals(wanted)) return Optional.of(place);
             if(found.length()>=2 && (found.contains(wanted) || wanted.contains(found))

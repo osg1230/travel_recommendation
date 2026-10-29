@@ -2,10 +2,17 @@ package com.travel.travel_recommendation.dto;
 
 import java.time.LocalDateTime;
 
-/** 장소 존재와 주소를 확인한 후보. 가격·영업시간·이동시간 검증과는 구분한다. */
+/**
+ * 장소 존재와 주소를 확인한 후보. 가격·영업시간·이동시간 검증과는 구분한다.
+ * popular는 관광공사 연관 관광지 정보(티맵 이동 데이터)에서 이 여행지의 인기 음식점·숙소로 나온 곳인지다. 이전 JSON에는 없다(false).
+ */
 public record PlaceCandidate(Long placeId, String name, String address, String subtype,
         String description, String sourceUrl, String mapSearchUrl, LocalDateTime verifiedAt,
-        Double longitude,Double latitude,String sourceProvider, PlaceOperatingInfo operatingInfo) {
+        Double longitude,Double latitude,String sourceProvider, PlaceOperatingInfo operatingInfo, boolean popular) {
+    public PlaceCandidate(Long id,String name,String address,String subtype,String description,String sourceUrl,String mapUrl,
+            LocalDateTime verifiedAt,Double longitude,Double latitude,String sourceProvider,PlaceOperatingInfo operatingInfo) {
+        this(id,name,address,subtype,description,sourceUrl,mapUrl,verifiedAt,longitude,latitude,sourceProvider,operatingInfo,false);
+    }
     public PlaceCandidate(Long id,String name,String address,String subtype,String description,String sourceUrl,String mapUrl,
             LocalDateTime verifiedAt,Double longitude,Double latitude,String sourceProvider) {
         this(id,name,address,subtype,description,sourceUrl,mapUrl,verifiedAt,longitude,latitude,sourceProvider,null);

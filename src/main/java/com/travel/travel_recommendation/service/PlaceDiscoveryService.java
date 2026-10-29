@@ -34,6 +34,13 @@ public class PlaceDiscoveryService {
         // 대표 관광지 목록이 없으면(키 없음·실패) 예전처럼 "○○ 명소" 검색 순서만 쓴다.
         Map<String,Integer> ranks=new HashMap<>();
         var landmarks=listedLandmarks(landmarkNames.names(destinationId),region); rank(landmarks,ranks,0); found.addAll(landmarks);
+        // 인기 음식점·숙소(같은 연관 관광지 자료)도 카카오에서 확인된 곳만 그 종류의 후보 맨 앞에 두고 '인기' 표시를 남긴다.
+        // 일정의 식사 고르기에서 가까운 음식점 중 인기 음식점을 먼저 고르는 데 쓴다.
+        Set<String> popularIds=new HashSet<>();
+        for(var list:List.of(listedPopular(landmarkNames.restaurants(destinationId),region,maps::findRestaurant),
+                listedPopular(landmarkNames.stays(destinationId),region,maps::findStay))) {
+            rank(list,ranks,0); list.forEach(p->popularIds.add(p.sourceId())); found.addAll(list);
+        }
         int after=landmarks.size();
         for(String type:List.of("ATTRACTION","RESTAURANT","ACCOMMODATION")) {
             var list=maps.searchPlaces(region,type);
@@ -59,7 +66,7 @@ public class PlaceDiscoveryService {
                     place.refreshKakao(data);
                 } else place=places.save(Place.fromKakao(data));
                 Integer rank=ranks.get(data.sourceId());
-                String details=rank==null?null:PlaceRankDetails.write(place,rank,mapper);
+                String details=rank==null?null:PlaceRankDetails.write(place,rank,popularIds.contains(data.sourceId()),mapper);
                 if(details!=null) place.updateDetails(details);
                 count++;
             }
@@ -119,6 +126,17 @@ public class PlaceDiscoveryService {
                 catch(RecommendationException error) { log.warn("관광공사 조회 실패로 대표 관광지 사찰·성당을 넣지 않았어요 ({})",error.getCode()); continue; }
             }
             listed.add(place);
+        }
+        return listed;
+    }
+
+    /** 인기 음식점·숙소 이름마다 이 지역의 카카오 장소를 찾아 순서대로 돌려준다. 찾지 못한 이름은 버린다. */
+    private List<KakaoPlace> listedPopular(List<String> names,String region,
+                                          java.util.function.BiFunction<String,String,Optional<KakaoPlace>> finder) {
+        List<KakaoPlace> listed=new ArrayList<>(); Set<String> ids=new HashSet<>();
+        for(String name:names) {
+            try { finder.apply(name,region).filter(p->ids.add(p.sourceId())).ifPresent(listed::add); }
+            catch(RecommendationException error) { log.warn("인기 음식점·숙소 찾기 실패 name={} ({})",name,error.getCode()); }
         }
         return listed;
     }

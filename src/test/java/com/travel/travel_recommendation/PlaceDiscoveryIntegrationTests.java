@@ -184,18 +184,29 @@ class PlaceDiscoveryIntegrationTests {
         when(tour.districtCode("51","강릉시")).thenReturn(Optional.of("150"));
         when(tour.relatedPlaces(eq("51150"),any(),anyInt())).thenReturn(List.of(
             new TourApiClient.RelatedPlace("경포대","인기 관광지","51150","관광지","쇼핑","시장",1),
-            new TourApiClient.RelatedPlace("경포대","강릉역","51150","관광지","기타관광","교통시설",2)));
+            new TourApiClient.RelatedPlace("경포대","강릉역","51150","관광지","기타관광","교통시설",2),
+            new TourApiClient.RelatedPlace("경포대","인기 식당","51150","음식","음식","한식",1),
+            new TourApiClient.RelatedPlace("경포대","인기 호텔","51150","숙박","숙박","호텔",1)));
+        when(maps.findRestaurant("인기 식당",region)).thenReturn(Optional.of(new KakaoPlace("9200000000000004","RESTAURANT","인기 식당",region,
+            "강원 강릉시 대표로 4","음식점 > 한식",128.87,37.76,"https://place.map.kakao.com/9200000000000004",KoreaTime.now().withNano(0))));
+        when(maps.findStay("인기 호텔",region)).thenReturn(Optional.of(new KakaoPlace("9200000000000005","ACCOMMODATION","인기 호텔",region,
+            "강원 강릉시 대표로 5","여행 > 숙박 > 호텔",128.87,37.76,"https://place.map.kakao.com/9200000000000005",KoreaTime.now().withNano(0))));
         when(tour.searchFacilities(anyString())).thenReturn(List.of());
         when(landmarks.configured()).thenReturn(true);
         when(landmarks.names(eq("강릉"),eq(region))).thenReturn(List.of("대표 관광지","동네 절","없는 곳","인기 관광지"));
         when(maps.findLandmark("인기 관광지",region)).thenReturn(Optional.of(popular));
         when(maps.findLandmark("대표 관광지",region)).thenReturn(Optional.of(landmark));
         when(maps.findLandmark("동네 절",region)).thenReturn(Optional.of(localTemple));
-        // 조회 장소 8곳·음식점·숙소에 대표 관광지 2곳이 더해진다. 역은 연관 관광지에서, "없는 곳"은 카카오에 없어 버린다.
-        assertThat(discovery.refresh(parent,destination,null,hash)).isEqualTo(12);
+        // 조회 장소 8곳·음식점·숙소에 대표 관광지 2곳과 인기 음식점·숙소 1곳씩이 더해진다. 역은 연관 관광지에서, "없는 곳"은 카카오에 없어 버린다.
+        assertThat(discovery.refresh(parent,destination,null,hash)).isEqualTo(14);
         em.flush();
-        var attractions=candidates.find(parent,destination,null,hash).attractions();
+        var view=candidates.find(parent,destination,null,hash);
+        var attractions=view.attractions();
         assertThat(attractions).extracting(PlaceCandidate::name).startsWith("인기 관광지","대표 관광지").doesNotContain("동네 절");
+        // 인기 음식점·숙소는 그 종류의 후보 맨 앞에 오고 '인기' 표시가 붙는다(일정의 식사 고르기에서 쓴다).
+        assertThat(view.restaurants().getFirst()).satisfies(p->{ assertThat(p.name()).isEqualTo("인기 식당"); assertThat(p.popular()).isTrue(); });
+        assertThat(view.accommodations().getFirst()).satisfies(p->{ assertThat(p.name()).isEqualTo("인기 호텔"); assertThat(p.popular()).isTrue(); });
+        assertThat(attractions.getFirst().popular()).isFalse();
         assertThat(places.findById(destination).orElseThrow().getDetailsJson()).contains("landmarks","인기 관광지","\"popular\":true");
         discovery.refresh(parent,destination,null,hash);
         verify(landmarks,times(1)).names(anyString(),anyString());
