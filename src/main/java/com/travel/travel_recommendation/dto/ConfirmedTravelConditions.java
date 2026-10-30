@@ -9,9 +9,11 @@ public record ConfirmedTravelConditions(String inputMode, String originalText, S
         LocalDate startDate, LocalDate endDate, Integer durationDays, BigDecimal budget,
         Integer partySize, Boolean accommodationNeeded, Boolean includeNearby,
         List<TravelKeyword> selectedKeywords, String interpretationSummary, boolean directRecommendation, String travelPurpose,
-        PurposeSearch purposeSearch, boolean purposeSuggested, List<String> excludedRegions, RegionSuggestion regionSuggestion) {
+        PurposeSearch purposeSearch, boolean purposeSuggested, List<String> excludedRegions, RegionSuggestion regionSuggestion,
+        DestinationPick destinationPick) {
     // excludedRegions는 "부산 말고"처럼 사용자가 가지 않겠다고 한 지역 이름이다. 추천 후보에서 뺀다. 이전 JSON에는 없다.
     // regionSuggestion은 지역을 정하지 않은 요청에서 AI가 제안하고 서버가 확인한 여행지다. 추천 작업이 후보를 고르기 전에 채운다.
+    // destinationPick은 자연어 요청에서 AI가 여행지별 근거를 보고 고른 후보다. regionSuggestion 다음에 채운다.
     public ConfirmedTravelConditions {
         excludedRegions = excludedRegions == null ? List.of() : List.copyOf(excludedRegions);
     }
@@ -21,7 +23,7 @@ public record ConfirmedTravelConditions(String inputMode, String originalText, S
             List<TravelKeyword> selectedKeywords, String interpretationSummary, boolean directRecommendation, String travelPurpose,
             PurposeSearch purposeSearch, boolean purposeSuggested, List<String> excludedRegions) {
         this(inputMode, originalText, region, startDate, endDate, durationDays, budget, partySize, accommodationNeeded, includeNearby,
-            selectedKeywords, interpretationSummary, directRecommendation, travelPurpose, purposeSearch, purposeSuggested, excludedRegions, null);
+            selectedKeywords, interpretationSummary, directRecommendation, travelPurpose, purposeSearch, purposeSuggested, excludedRegions, null, null);
     }
     public ConfirmedTravelConditions(String inputMode, String originalText, String region,
             LocalDate startDate, LocalDate endDate, Integer durationDays, BigDecimal budget,
@@ -57,16 +59,16 @@ public record ConfirmedTravelConditions(String inputMode, String originalText, S
     }
     public ConfirmedTravelConditions forDirectRecommendation() {
         return new ConfirmedTravelConditions(inputMode, originalText, region, startDate, endDate, durationDays,
-            budget, partySize, accommodationNeeded, includeNearby, selectedKeywords, interpretationSummary, true, travelPurpose, purposeSearch, purposeSuggested, excludedRegions, regionSuggestion);
+            budget, partySize, accommodationNeeded, includeNearby, selectedKeywords, interpretationSummary, true, travelPurpose, purposeSearch, purposeSuggested, excludedRegions, regionSuggestion, destinationPick);
     }
     public ConfirmedTravelConditions withSchedule(Integer days, Boolean stay) {
         return new ConfirmedTravelConditions(inputMode, originalText, region, startDate, endDate, days,
-            budget, partySize, stay, includeNearby, selectedKeywords, interpretationSummary, directRecommendation, travelPurpose, purposeSearch, purposeSuggested, excludedRegions, regionSuggestion);
+            budget, partySize, stay, includeNearby, selectedKeywords, interpretationSummary, directRecommendation, travelPurpose, purposeSearch, purposeSuggested, excludedRegions, regionSuggestion, destinationPick);
     }
     /** 출발일이 미정이던 조건에 일정 생성 때 고른 출발일을 넣는다. 마지막 날은 여행 일수로 계산한다. */
     public ConfirmedTravelConditions withStartDate(LocalDate start) {
         return new ConfirmedTravelConditions(inputMode, originalText, region, start, start.plusDays(durationDays - 1), durationDays,
-            budget, partySize, accommodationNeeded, includeNearby, selectedKeywords, interpretationSummary, directRecommendation, travelPurpose, purposeSearch, purposeSuggested, excludedRegions, regionSuggestion);
+            budget, partySize, accommodationNeeded, includeNearby, selectedKeywords, interpretationSummary, directRecommendation, travelPurpose, purposeSearch, purposeSuggested, excludedRegions, regionSuggestion, destinationPick);
     }
     public ConfirmedTravelConditions withPurpose(String purpose) {
         return withPurpose(purpose, false);
@@ -74,7 +76,7 @@ public record ConfirmedTravelConditions(String inputMode, String originalText, S
     /** suggested가 true면 AI가 제안한 여행 방향으로 표시한다. */
     public ConfirmedTravelConditions withPurpose(String purpose, boolean suggested) {
         return new ConfirmedTravelConditions(inputMode, originalText, region, startDate, endDate, durationDays,
-            budget, partySize, accommodationNeeded, includeNearby, selectedKeywords, interpretationSummary, directRecommendation, purpose, purposeSearch, suggested, excludedRegions, regionSuggestion);
+            budget, partySize, accommodationNeeded, includeNearby, selectedKeywords, interpretationSummary, directRecommendation, purpose, purposeSearch, suggested, excludedRegions, regionSuggestion, destinationPick);
     }
     /** 화면과 안내 문구에서 목적을 부르는 말. 사용자가 말한 목적과 AI 제안을 구분한다. */
     public String purposeLabel() {
@@ -82,11 +84,11 @@ public record ConfirmedTravelConditions(String inputMode, String originalText, S
     }
     public ConfirmedTravelConditions withExcludedRegions(List<String> regions) {
         return new ConfirmedTravelConditions(inputMode, originalText, region, startDate, endDate, durationDays,
-            budget, partySize, accommodationNeeded, includeNearby, selectedKeywords, interpretationSummary, directRecommendation, travelPurpose, purposeSearch, purposeSuggested, regions, regionSuggestion);
+            budget, partySize, accommodationNeeded, includeNearby, selectedKeywords, interpretationSummary, directRecommendation, travelPurpose, purposeSearch, purposeSuggested, regions, regionSuggestion, destinationPick);
     }
     public ConfirmedTravelConditions withPurposeSearch(PurposeSearch search) {
         return new ConfirmedTravelConditions(inputMode, originalText, region, startDate, endDate, durationDays,
-            budget, partySize, accommodationNeeded, includeNearby, selectedKeywords, interpretationSummary, directRecommendation, travelPurpose, search, purposeSuggested, excludedRegions, regionSuggestion);
+            budget, partySize, accommodationNeeded, includeNearby, selectedKeywords, interpretationSummary, directRecommendation, travelPurpose, search, purposeSuggested, excludedRegions, regionSuggestion, destinationPick);
     }
     /** 목적 시설이 있는 여행지 ID. 목적 검색을 하지 않았거나 찾지 못했으면 비어 있다. */
     public List<String> purposeThemes() {
@@ -97,11 +99,23 @@ public record ConfirmedTravelConditions(String inputMode, String originalText, S
     }
     public ConfirmedTravelConditions withRegionSuggestion(RegionSuggestion suggestion) {
         return new ConfirmedTravelConditions(inputMode, originalText, region, startDate, endDate, durationDays,
-            budget, partySize, accommodationNeeded, includeNearby, selectedKeywords, interpretationSummary, directRecommendation, travelPurpose, purposeSearch, purposeSuggested, excludedRegions, suggestion);
+            budget, partySize, accommodationNeeded, includeNearby, selectedKeywords, interpretationSummary, directRecommendation, travelPurpose, purposeSearch, purposeSuggested, excludedRegions, suggestion, destinationPick);
     }
     /** AI가 제안하고 서버가 근거를 확인한 여행지 ID. 지역 제안을 하지 않았으면 비어 있다. */
     public List<Long> suggestedDestinationIds() {
         return regionSuggestion == null ? List.of() : regionSuggestion.destinationIds();
+    }
+    /** 원하는 여행을 나타내는 관광공사 소분류 코드(예: NA010100 산). 지역 제안을 하지 않았으면 비어 있다. */
+    public List<String> wishCategories() {
+        return regionSuggestion == null ? List.of() : regionSuggestion.categories();
+    }
+    public ConfirmedTravelConditions withDestinationPick(DestinationPick pick) {
+        return new ConfirmedTravelConditions(inputMode, originalText, region, startDate, endDate, durationDays,
+            budget, partySize, accommodationNeeded, includeNearby, selectedKeywords, interpretationSummary, directRecommendation, travelPurpose, purposeSearch, purposeSuggested, excludedRegions, regionSuggestion, pick);
+    }
+    /** AI가 근거를 보고 고른 여행지 ID(잘 맞는 순서). 고르지 않았으면 비어 있다. */
+    public List<Long> pickedDestinationIds() {
+        return destinationPick == null ? List.of() : destinationPick.destinationIds();
     }
     public String keywordNames(String categoryCode) {
         return selectedKeywords.stream().filter(k -> k.categoryCode().equals(categoryCode))

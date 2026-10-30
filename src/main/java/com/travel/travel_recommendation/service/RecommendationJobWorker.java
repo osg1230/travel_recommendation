@@ -21,6 +21,7 @@ public class RecommendationJobWorker {
     private final ItineraryJobService itineraries;
     private final PurposePlaceService purposes;
     private final RegionSuggestionService regions;
+    private final DestinationPickService picks;
     private final FestivalPlaceService festivalPlaces;
     private final PlacePhotoService photos;
     private final NearbyRestaurantService restaurants;
@@ -41,6 +42,8 @@ public class RecommendationJobWorker {
             // 그다음 구체적 목적의 시설을 찾아 둔다. 새로 추가한 여행지도 시설 검색 대상이 된다. 실패해도 추천은 그대로 진행한다.
             try { regions.enrich(id); } catch(RuntimeException e) { log.warn("지역 제안을 건너뜀 job={} ({})",id,e.toString()); }
             try { purposes.enrich(id); } catch(RuntimeException e) { log.warn("목적 시설 검색을 건너뜀 job={} ({})",id,e.toString()); }
+            // 문장으로 입력했고 여행지가 5곳보다 많으면 AI가 여행지별 근거를 보고 후보 5곳을 고른다. 실패하면 기존 기준으로 고른다.
+            try { picks.enrich(id); } catch(RuntimeException e) { log.warn("후보 고르기를 건너뜀 job={} ({})",id,e.toString()); }
             try { service.prepare(id); }
             catch(RuntimeException e) { service.fail(id); }
         }

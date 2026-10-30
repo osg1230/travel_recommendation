@@ -31,8 +31,8 @@ class RegionSuggestionServiceTests {
         assertThat(RegionSuggestionService.subtype(profile, List.of("NA010100", "NA040100", "NA010400"))).isEqualTo("자연");
         assertThat(RegionSuggestionService.subtype(profile, List.of("NA020500", "HS030100", "EX050100", "NA010100"))).isEqualTo("바다,문화·역사,휴식");
         assertThat(RegionSuggestionService.subtype(profile, List.of("NA010400"))).isNull();
-        assertThat(RegionSuggestionService.theme("VE020400")).isEqualTo("체험·액티비티");
-        assertThat(RegionSuggestionService.theme("VE040300")).isEqualTo("자연");
+        assertThat(WishCategories.theme("VE020400")).isEqualTo("체험·액티비티");
+        assertThat(WishCategories.theme("VE040300")).isEqualTo("자연");
     }
 
     // 소개는 근거 분류마다 대표 장소 이름을 하나씩 돌아가며 고른다(산 이름만 나오지 않고 국립공원도 나오게).

@@ -45,4 +45,26 @@ public final class WishCategories {
     public static List<String> known(Collection<String> codes) {
         return codes.stream().filter(NAMES::containsKey).distinct().toList();
     }
+
+    /**
+     * 소분류 하나가 가까운 여행 취향(조건 선택의 여행지 분류 이름). 위에서부터 먼저 맞는 것을 쓴다.
+     * 예) 섬·해변 → 바다, 온천·휴양림 → 휴식, 산·계곡 → 자연, 사찰·박물관 → 문화·역사, 전통시장 → 맛집, 체험마을·수족관 → 체험·액티비티.
+     */
+    public static String theme(String code) {
+        if (startsWithAny(code, "NA0205", "NA0207", "NA0208", "NA0209", "LS0201", "LS0204", "LS0206")) return "바다";
+        if (startsWithAny(code, "EX0501", "EX0401", "NA0406")) return "휴식";
+        if (startsWithAny(code, "NA", "VE0403")) return "자연";
+        if (startsWithAny(code, "HS", "VE04", "VE07")) return "문화·역사";
+        if (startsWithAny(code, "SH")) return "맛집";
+        return "체험·액티비티";
+    }
+
+    /** 여행 취향 이름들에 해당하는 소분류 코드. 버튼으로 고른 취향을 여행지 근거와 맞출 때 쓴다. */
+    public static List<String> codesFor(Collection<String> themes) {
+        return NAMES.keySet().stream().filter(code -> themes.contains(theme(code))).toList();
+    }
+
+    private static boolean startsWithAny(String code, String... prefixes) {
+        return Arrays.stream(prefixes).anyMatch(code::startsWith);
+    }
 }

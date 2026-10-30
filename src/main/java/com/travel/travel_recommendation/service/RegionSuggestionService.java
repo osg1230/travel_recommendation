@@ -165,21 +165,9 @@ public class RegionSuggestionService {
      * 시·군마다 사찰·박물관·체험 시설은 대부분 몇 곳씩 있어 장소 수로 정하면 모든 곳이 같은 분류가 되기 때문이다.
      */
     static String subtype(Map<String, DestinationProfile.Category> profile, List<String> categories) {
-        String themes = found(profile, categories).stream().map(RegionSuggestionService::theme).distinct().limit(3)
+        String themes = found(profile, categories).stream().map(WishCategories::theme).distinct().limit(3)
             .collect(Collectors.joining(","));
         return themes.isEmpty() ? null : themes;
-    }
-    /** 관광공사 소분류 하나가 가까운 여행 취향. 위에서부터 먼저 맞는 것을 쓴다. */
-    static String theme(String code) {
-        if (startsWithAny(code, "NA0205", "NA0207", "NA0208", "NA0209", "LS0201", "LS0204", "LS0206")) return "바다";
-        if (startsWithAny(code, "EX0501", "EX0401", "NA0406")) return "휴식";
-        if (startsWithAny(code, "NA", "VE0403")) return "자연";
-        if (startsWithAny(code, "HS", "VE04", "VE07")) return "문화·역사";
-        if (startsWithAny(code, "SH")) return "맛집";
-        return "체험·액티비티";
-    }
-    private static boolean startsWithAny(String code, String... prefixes) {
-        return Arrays.stream(prefixes).anyMatch(code::startsWith);
     }
 
     /**

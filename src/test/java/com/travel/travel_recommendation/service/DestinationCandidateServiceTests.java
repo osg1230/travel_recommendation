@@ -74,4 +74,12 @@ class DestinationCandidateServiceTests {
         var picked = DestinationCandidateService.pick(all, List.of(), true, List.of(sokcho.getId(), gangneung.getId()), List.of(jeju.getId()), List.of());
         assertThat(names(picked)).containsExactly("속초", "강릉", "제주", "부산", "경주");
     }
+
+    // 근거 가짓수는 여행 취향 점수가 같은 여행지끼리 순서를 정한다. 취향이 맞지 않는 곳(여수)은 근거가 많아도 앞서지 않는다.
+    @Test void evidenceOrdersDestinationsWithTheSameThemeScore() {
+        var all = List.of(gangneung, busan, gyeongju, sokcho, yeosu, jeonju, jeju);
+        var evidence = Map.of(gyeongju.getId(), 3, jeju.getId(), 1, yeosu.getId(), 5);
+        var picked = DestinationCandidateService.pick(all, List.of("자연"), true, List.of(), List.of(), List.of(), evidence);
+        assertThat(names(picked)).containsExactly("경주", "제주", "강릉", "여수", "부산");
+    }
 }

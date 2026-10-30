@@ -112,7 +112,9 @@ public class DestinationRecommendationService {
         return true;
     }
     private List<DestinationCandidate> pool(AiJob job) { return List.of(mapper.readValue(job.getResultJson(),DestinationCandidate[].class)); }
+    // 준비한 후보가 지금도 같은 정보로 쓸 수 있는 여행지인지 본다(사용 중지·정보 변경이면 실패).
+    // 다른 추천이 여행지를 새로 추가해도(RegionSuggestionService) 이 작업의 후보는 그대로이므로 실패로 보지 않는다.
     private boolean currentPlacesMatch(ConfirmedTravelConditions c,List<DestinationCandidate> pool) {
-        return !pool.isEmpty() && pool.size()<=5 && places.find(c).equals(pool);
+        return !pool.isEmpty() && pool.size()<=5 && places.usable().containsAll(pool);
     }
 }

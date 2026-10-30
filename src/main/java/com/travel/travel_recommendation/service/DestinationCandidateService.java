@@ -3,12 +3,14 @@ package com.travel.travel_recommendation.service;
 import com.travel.travel_recommendation.dto.DestinationCandidate;
 import com.travel.travel_recommendation.entity.Place;
 import com.travel.travel_recommendation.repository.PlaceRepository;
+import java.time.Instant;
 import java.net.URI;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 여행 조건의 지역으로 추천 후보 여행지를 고른다. 여행지는 DB의 DESTINATION 행(공식 관광 사이트로 확인한 전국 주요 도시)이다.
@@ -26,6 +28,7 @@ public class DestinationCandidateService {
         // 한국관광공사 대한민국 구석구석. 추천 중에 관광공사 정보로 확인해 추가한 여행지(RegionSuggestionService)의 출처다.
         "korean.visitkorea.or.kr");
     private final PlaceRepository places;
+    private final ObjectMapper mapper;
 
     @Transactional(readOnly=true, timeout=10)
     public List<DestinationCandidate> find(String region) {
@@ -51,8 +54,32 @@ public class DestinationCandidateService {
     @Transactional(readOnly=true, timeout=10)
     public List<DestinationCandidate> find(com.travel.travel_recommendation.dto.ConfirmedTravelConditions c) {
         var matched=matched(c.region(),c.excludedRegions());
-        return pick(matched,c.themeNames(),blank(c.region()),c.suggestedDestinationIds(),c.purposeDestinationIds(),c.purposeThemes())
+        // AI가 근거를 보고 고른 여행지, 그다음 AI가 제안하고 서버가 확인한 여행지를 맨 앞에 둔다.
+        var preferred=java.util.stream.Stream.concat(c.pickedDestinationIds().stream(),c.suggestedDestinationIds().stream()).distinct().toList();
+        // 원하는 여행의 분류가 있으면 그 분류로, 없으면 고른 여행 취향(바다·자연 등)의 분류로 여행지마다 근거를 센다.
+        var codes=!c.wishCategories().isEmpty()?c.wishCategories():WishCategories.codesFor(c.themeNames());
+        return pick(matched,c.themeNames(),blank(c.region()),preferred,c.purposeDestinationIds(),c.purposeThemes(),evidence(matched,codes))
             .stream().map(DestinationCandidateService::candidate).toList();
+    }
+
+    /** 조건의 지역에 맞는 여행지 전체(5곳으로 줄이기 전). AI가 근거를 보고 후보를 고를 때(DestinationPickService) 쓴다. */
+    @Transactional(readOnly=true, timeout=10)
+    public List<DestinationCandidate> matching(com.travel.travel_recommendation.dto.ConfirmedTravelConditions c) {
+        return matched(c.region(),c.excludedRegions()).stream().map(DestinationCandidateService::candidate).toList();
+    }
+
+    /**
+     * 여행지마다 codes 소분류 중 관광공사 등록 장소가 있는 가짓수. 장소 수를 그대로 쓰면 제주·서울처럼 넓은 곳이 늘 앞서므로
+     * "몇 가지를 할 수 있는지"를 센다. 보관한 "할 수 있는 것" 목록만 읽고 새로 만들지 않는다(없으면 0).
+     */
+    private Map<Long,Integer> evidence(List<Place> matched,List<String> codes) {
+        if(codes.isEmpty() || matched.size()<=MAX_CANDIDATES) return Map.of();
+        Map<Long,Integer> result=new HashMap<>(); Instant now=Instant.now();
+        for(var place:matched) {
+            var profile=DestinationProfile.read(place,now,mapper);
+            if(profile!=null) result.put(place.getId(),(int)codes.stream().filter(code->DestinationProfile.count(profile,List.of(code))>0).count());
+        }
+        return result;
     }
 
     /** purposeThemes는 목적과 가까운 여행지 분류(예: 갯벌 체험 → 바다)로, 사용자가 고른 취향 다음으로 순서를 정한다. */
@@ -99,25 +126,32 @@ public class DestinationCandidateService {
      * 후보가 5곳 이하면 그대로 쓴다. 더 많으면 여행 목적 시설이 있는 곳, 여행 취향과 겹치는 분류가 많은 곳,
      * 목적과 가까운 분류(예: 갯벌 체험 → 바다)가 겹치는 곳 순서로 고르고,
      * 같으면 먼저 등록한 곳을 앞에 둔다. 전국에서 고를 때는 한 시·도에 몰리지 않도록 시·도마다 한 곳씩 먼저 고른 뒤 남는 자리를 채운다.
-     * 같은 조건이면 늘 같은 후보가 나와야 추천 저장 직전의 재확인(currentPlacesMatch)과 맞는다.
+     * 같은 조건과 같은 여행지 목록이면 늘 같은 후보가 나온다.
      */
     static List<Place> pick(List<Place> matched,List<String> themes,boolean nationwide,List<Long> purposeDestinationIds,
                             List<String> purposeThemes) {
         return pick(matched,themes,nationwide,List.of(),purposeDestinationIds,purposeThemes);
     }
 
-    /**
-     * suggestedDestinationIds는 지역을 정하지 않은 요청에서 AI가 제안하고 서버가 관광공사 등록 장소로 근거를 확인한 여행지다.
-     * 원하는 여행을 할 수 있는 곳으로 확인했으므로 시·도가 겹쳐도 제안 순서대로 먼저 넣고, 남는 자리를 아래 기준으로 채운다.
-     */
-    static List<Place> pick(List<Place> matched,List<String> themes,boolean nationwide,List<Long> suggestedDestinationIds,
+    static List<Place> pick(List<Place> matched,List<String> themes,boolean nationwide,List<Long> preferredDestinationIds,
                             List<Long> purposeDestinationIds,List<String> purposeThemes) {
+        return pick(matched,themes,nationwide,preferredDestinationIds,purposeDestinationIds,purposeThemes,Map.of());
+    }
+
+    /**
+     * preferredDestinationIds는 AI가 여행지별 근거를 보고 고른 여행지와, 지역을 정하지 않은 요청에서 AI가 제안하고 서버가 관광공사 등록 장소로
+     * 근거를 확인한 여행지다. 원하는 여행을 할 수 있는 곳으로 골랐으므로 시·도가 겹쳐도 그 순서대로 먼저 넣고, 남는 자리를 아래 기준으로 채운다.
+     * evidence는 여행지마다 원하는 여행(또는 고른 취향)의 근거 가짓수로, 여행 취향 점수가 같을 때 등록 순서보다 먼저 본다.
+     */
+    static List<Place> pick(List<Place> matched,List<String> themes,boolean nationwide,List<Long> preferredDestinationIds,
+                            List<Long> purposeDestinationIds,List<String> purposeThemes,Map<Long,Integer> evidence) {
         if(matched.size()<=MAX_CANDIDATES) return matched;
         var ranked=new ArrayList<>(matched);
         ranked.sort(Comparator.comparingInt((Place p)->purposeDestinationIds.contains(p.getId())?0:1)
-            .thenComparingInt(p->-themeScore(p,themes)).thenComparingInt(p->-themeScore(p,purposeThemes)).thenComparing(Place::getId));
+            .thenComparingInt(p->-themeScore(p,themes)).thenComparingInt(p->-evidence.getOrDefault(p.getId(),0))
+            .thenComparingInt(p->-themeScore(p,purposeThemes)).thenComparing(Place::getId));
         List<Place> chosen=new ArrayList<>(); Set<String> provinces=new HashSet<>();
-        for(Long id:suggestedDestinationIds) for(var place:matched)
+        for(Long id:preferredDestinationIds) for(var place:matched)
             if(place.getId().equals(id) && chosen.size()<MAX_CANDIDATES && !chosen.contains(place)) { chosen.add(place); provinces.add(province(place)); }
         // 목적과 가까운 분류가 여러 개면(예: AI가 제안한 방향이 자연·바다·문화·역사) 분류마다 한 곳씩 먼저 골라
         // 후보가 한 종류의 여행지로만 채워지지 않게 한다.

@@ -50,6 +50,16 @@ public class DestinationProfileService {
         }
     }
 
+    /** 보관한 목록만 여행지 ID별로 읽는다(관광공사를 부르지 않는다). 없거나 오래된 여행지는 빠진다. */
+    public Map<Long,Map<String,DestinationProfile.Category>> saved(Collection<Long> destinationIds) {
+        Map<Long,Map<String,DestinationProfile.Category>> result=new HashMap<>(); Instant now=Instant.now();
+        for(var place:places.findByIdIn(destinationIds)) {
+            var profile=DestinationProfile.read(place,now,mapper);
+            if(profile!=null) result.put(place.getId(),profile);
+        }
+        return result;
+    }
+
     /**
      * 목록이 없거나 오래된 여행지를 모두 채운다. 추천이 들어오면 RecommendationJobWorker가 별도 스레드에서 부른다.
      * 처음 한 번은 28곳에 약 200번 호출해 몇 분 걸리므로, 이미 돌고 있으면 바로 돌아간다.

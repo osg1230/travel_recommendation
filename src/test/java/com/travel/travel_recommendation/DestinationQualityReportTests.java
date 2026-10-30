@@ -43,6 +43,7 @@ class DestinationQualityReportTests {
     @Autowired RecommendationJobService recommendations;
     @Autowired PurposePlaceService purposes;
     @Autowired RegionSuggestionService regions;
+    @Autowired DestinationPickService picks;
     @Autowired AiJobRepository jobs;
     @Autowired tools.jackson.databind.ObjectMapper mapper;
     @Autowired DestinationRecommendationService ranking;
@@ -104,8 +105,14 @@ class DestinationQualityReportTests {
         byte[] hash = MessageDigest.getInstance("SHA-256").digest(UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8));
         UUID id = recommendations.create(conditions, null, hash);
         // 서비스 작업 실행기와 같은 순서다. 지역 제안이 새로 추가한 여행지는 서비스처럼 실제로 저장된다(테스트 롤백과 무관).
+        // 단계마다 걸린 시간을 재서 추천 대기 시간 제한(60초) 안에 끝나는지 본다.
+        long started = System.nanoTime();
         try { regions.enrich(id); } catch (RuntimeException skipped) { /* 서비스처럼 지역 제안 없이 계속한다. */ }
+        long regionDone = System.nanoTime();
         try { purposes.enrich(id); } catch (RuntimeException skipped) { /* 서비스처럼 목적 시설 없이 계속한다. */ }
+        long purposeDone = System.nanoTime();
+        try { picks.enrich(id); } catch (RuntimeException skipped) { /* 서비스처럼 기존 기준으로 후보를 고른다. */ }
+        long pickDone = System.nanoTime();
         for (var destination : places.findDestinations())
             profileByName.computeIfAbsent(destination.getName(), name -> profiles.profile(destination.getId()));
         var enriched = mapper.readValue(jobs.findById(id).orElseThrow().getRequestJson(), ConfirmedTravelConditions.class);
@@ -120,7 +127,12 @@ class DestinationQualityReportTests {
             + (enriched.regionSuggestion() == null ? "" : " · 지역 제안 " + enriched.regionSuggestion().status() + " "
                 + enriched.regionSuggestion().destinationIds().stream().map(destinationId -> places.findById(destinationId).map(p -> p.getName()
                     + ("TOURAPI".equals(p.getSourceProvider()) ? "(추가)" : "")).orElse("?")).collect(Collectors.joining("·"))
-                + " 분류 " + String.join("·", enriched.regionSuggestion().categories()));
+                + " 분류 " + String.join("·", enriched.regionSuggestion().categories()))
+            + (enriched.destinationPick() == null ? "" : " · AI 후보 고르기 " + enriched.destinationPick().status() + " "
+                + enriched.destinationPick().destinationIds().stream().map(destinationId -> places.findById(destinationId).map(p -> p.getName()).orElse("?"))
+                    .collect(Collectors.joining("·")))
+            + String.format(" · 준비 시간 지역 제안 %.1f초·목적 시설 %.1f초·후보 고르기 %.1f초",
+                (regionDone - started) / 1e9, (purposeDone - regionDone) / 1e9, (pickDone - purposeDone) / 1e9);
         // 여행지 전체를 이 시나리오의 근거 수로 줄 세운다.
         Map<String, Integer> counts = new LinkedHashMap<>();
         profileByName.forEach((name, profile) -> counts.put(name, DestinationProfile.count(profile, s.categories())));
