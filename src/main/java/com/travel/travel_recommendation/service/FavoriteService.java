@@ -22,7 +22,11 @@ public class FavoriteService {
     private final UserRepository users;
     private static final Set<String> ALLOWED_TYPES=Set.of("DESTINATION","ATTRACTION","ACCOMMODATION");
 
-    /** 이미 등록한 장소면 false를 돌려주고 새 행을 만들지 않는다. */
+    /**
+     * 이미 등록한 장소면 false를 돌려주고 새 행을 만들지 않는다.
+     * 다른 탭에서 거의 동시에 등록하면 DB 중복 방지(UQ_favorites_user_place)에 걸려 DataIntegrityViolationException이 나고,
+     * 이 트랜잭션은 되돌려진다. 컨트롤러가 이를 '이미 즐겨찾기에 있음'으로 안내한다.
+     */
     @Transactional(timeout=10)
     public boolean add(Long placeId, String loginId) {
         Long userId=member(loginId);
@@ -35,12 +39,19 @@ public class FavoriteService {
         return true;
     }
 
+    /** 지운 즐겨찾기의 장소 이름과, 되돌리기(다시 등록)를 할 수 있는 활성 장소인지 여부. */
+    public record Removed(String placeName, boolean restorable) {}
+
+    /**
+     * 본인 즐겨찾기만 지운다. 지울 것이 없으면(두 번 누름·다른 탭에서 먼저 삭제) 빈 값을 돌려주며 오류로 보지 않는다.
+     * 비활성 장소의 즐겨찾기도 지울 수 있다.
+     */
     @Transactional(timeout=10)
-    public void remove(Long placeId, String loginId) {
-        var favorite=favorites.findByUserIdAndPlaceId(member(loginId),placeId)
-            .orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"등록한 즐겨찾기를 찾을 수 없어요."));
-        favorites.delete(favorite);
-        favorites.flush();
+    public Optional<Removed> remove(Long placeId, String loginId) {
+        if(favorites.deleteByUserAndPlace(member(loginId),placeId)==0) return Optional.empty();
+        var place=places.findById(placeId);
+        return Optional.of(new Removed(place.map(Place::getName).orElse("장소"),
+            place.map(p->p.isActive() && ALLOWED_TYPES.contains(p.getPlaceType())).orElse(false)));
     }
 
     @Transactional(readOnly=true,timeout=10)
@@ -52,10 +63,10 @@ public class FavoriteService {
         var result=new ArrayList<FavoritePlace>();
         for(var favorite:registered) {
             var place=found.get(favorite.getPlaceId());
-            // 장소가 지워졌거나 비활성이면 목록에서 제외하고 등록 행은 그대로 둔다.
-            if(place==null || !place.isActive()) continue;
+            // 장소 행이 없으면 보여 줄 정보가 없어 뺀다. 비활성(더 이상 확인되지 않는) 장소는 표시만 바꿔 남겨 삭제할 수 있게 한다.
+            if(place==null) continue;
             result.add(new FavoritePlace(favorite.getId(),place.getId(),place.getPlaceType(),typeName(place.getPlaceType()),
-                place.getName(),place.getRegion(),place.getAddress(),place.getSourceUrl(),place.getMapUrl(),favorite.getCreatedAt()));
+                place.getName(),place.getRegion(),place.getAddress(),place.getSourceUrl(),place.getMapUrl(),favorite.getCreatedAt(),place.isActive()));
         }
         return result;
     }

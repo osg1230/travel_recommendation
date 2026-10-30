@@ -84,17 +84,46 @@ class FavoriteIntegrationTests {
         assertThat(favorites.list(other.getLoginId())).isEmpty();
         mvc.perform(get("/my/favorites").with(user(other.getLoginId()))).andExpect(status().isOk())
             .andExpect(content().string(containsString("아직 등록한 즐겨찾기가 없어요")));
+        // 다른 회원이 지우려 해도 자기 즐겨찾기에 없으니 지워지는 것이 없고, 오류 대신 '이미 빠진 장소'로 안내한다.
         mvc.perform(post("/my/favorites/"+attraction+"/delete").with(user(other.getLoginId())).with(csrf()))
-            .andExpect(status().isNotFound());
+            .andExpect(redirectedUrl("/my/favorites")).andExpect(flash().attribute("favoriteMessage",containsString("이미 즐겨찾기에서 빠진")));
+        em.clear();
         assertThat(repository.existsByUserIdAndPlaceId(owner.getId(),attraction)).isTrue();
     }
 
     @Test void removesRegisteredPlace() throws Exception {
         favorites.add(attraction,owner.getLoginId());
         em.flush(); em.clear();
+        String name=places.findById(attraction).orElseThrow().getName();
         mvc.perform(post("/my/favorites/"+attraction+"/delete").with(user(owner.getLoginId())).with(csrf()))
-            .andExpect(redirectedUrl("/my/favorites"));
+            .andExpect(redirectedUrl("/my/favorites"))
+            .andExpect(flash().attribute("favoriteMessage","‘"+name+"’ 즐겨찾기를 삭제했어요."))
+            .andExpect(flash().attribute("removedPlaceId",attraction));
         em.clear();
         assertThat(repository.existsByUserIdAndPlaceId(owner.getId(),attraction)).isFalse();
+        // 두 번 눌러도 오류가 아니다.
+        assertThat(favorites.remove(attraction,owner.getLoginId())).isEmpty();
+        // 되돌리기는 같은 장소를 다시 등록한다.
+        mvc.perform(post("/my/favorites").with(user(owner.getLoginId())).with(csrf()).param("placeId",String.valueOf(attraction)).param("returnTo","/my/favorites"))
+            .andExpect(redirectedUrl("/my/favorites"));
+        em.clear();
+        assertThat(repository.existsByUserIdAndPlaceId(owner.getId(),attraction)).isTrue();
+    }
+
+    // 더 이상 확인되지 않는(비활성) 장소도 목록에 표시해 지울 수 있게 하고, 되돌리기는 두지 않는다.
+    @Test void listsInactivePlaceSoItCanBeRemoved() throws Exception {
+        favorites.add(attraction,owner.getLoginId());
+        em.flush();
+        jdbc.update("UPDATE dbo.places SET is_active=0 WHERE place_id=?",attraction);
+        em.clear();
+        assertThat(favorites.list(owner.getLoginId())).singleElement().satisfies(f->{
+            assertThat(f.placeId()).isEqualTo(attraction);
+            assertThat(f.active()).isFalse();
+        });
+        mvc.perform(get("/my/favorites").with(user(owner.getLoginId()))).andExpect(status().isOk())
+            .andExpect(content().string(containsString("더 이상 확인되지 않는 장소예요")));
+        assertThat(favorites.remove(attraction,owner.getLoginId())).hasValueSatisfying(r->assertThat(r.restorable()).isFalse());
+        em.clear();
+        assertThat(favorites.list(owner.getLoginId())).isEmpty();
     }
 }

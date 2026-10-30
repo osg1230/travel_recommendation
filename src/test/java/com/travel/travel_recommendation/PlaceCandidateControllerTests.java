@@ -92,6 +92,6 @@ class PlaceCandidateControllerTests {
             .andExpect(content().string(containsString("연중무휴(부분 휴관)")))
             .andExpect(content().string(containsString("&lt;script&gt;")))
             .andExpect(result -> org.assertj.core.api.Assertions.assertThat(result.getResponse().getContentAsString())
-                .containsOnlyOnce("<article class=\"place-row\">"));
+                .containsOnlyOnce("<article class=\"place-row\" id=\"place-10\">"));
     }
 }
