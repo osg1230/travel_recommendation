@@ -179,13 +179,30 @@ public final class ItineraryConditionReport {
             + "는 약 " + trip.returnMinutes() + "분(" + trip.returnBasis() + ")에 여유 10분을 더했어요.";
         var moves = result.days().stream().flatMap(d -> d.items().stream()).filter(i -> "TRANSIT".equals(i.type()) && i.placeId() != null).toList();
         if (moves.isEmpty()) return new Check("이동시간", Status.NOT_APPLICABLE, "장소 사이 이동이 없어요." + home);
-        long unknown = moves.stream().filter(i -> i.travelSeconds() == null || i.checkedAt() == null).count();
-        if (unknown > 0) return new Check("이동시간", Status.NEEDS_CHECK,
-            "이동 " + moves.size() + "구간 중 " + unknown + "구간은 같은 주소 안 이동이라 실제 내부 동선을 확인해야 해요." + home);
+        // 확인이 필요한 구간을 종류별로 나눠 함께 알린다. 하나라도 있으면 '확인 필요'다.
+        var notes = new ArrayList<String>();
+        long estimated = estimatedMoves(result);
+        if (estimated > 0) notes.add(estimated + "구간은 카카오 길찾기에 연결하지 못해 직선거리로 이동시간을 추정했어요(" + estimatedNames(result)
+            + "). 출발 전에 길찾기로 이동시간을 확인해 주세요.");
+        long sameAddress = moves.stream().filter(i -> i.travelSeconds() == null).count();
+        if (sameAddress > 0) notes.add(sameAddress + "구간은 같은 주소 안 이동이라 실제 내부 동선을 확인해야 해요.");
         long walking = moves.stream().filter(i -> i.note() != null && i.note().startsWith(ItineraryGenerator.WALK_NOTE_PREFIX)).count();
-        if (walking > 0) return new Check("이동시간", Status.NEEDS_CHECK,
-            "이동 " + moves.size() + "구간 중 " + walking + "구간은 가까워서 대중교통 경로가 없어 도보 시간을 직선거리로 추정했어요. 실제 보행 경로를 확인해 주세요." + home);
+        if (walking > 0) notes.add(walking + "구간은 가까워서 대중교통 경로가 없어 도보 시간을 직선거리로 추정했어요. 실제 보행 경로를 확인해 주세요.");
+        if (!notes.isEmpty()) return new Check("이동시간", Status.NEEDS_CHECK, "이동 " + moves.size() + "구간 중 " + String.join(" ", notes) + home);
         return new Check("이동시간", Status.MET, "이동 " + moves.size() + "구간 모두 카카오 예상 이동시간과 여유 10분을 반영했어요. 실시간 교통은 보장하지 않아요." + home);
+    }
+
+    /** 카카오 길찾기 대신 직선거리로 이동시간을 추정한 구간 수. 결과 화면에서도 따로 안내한다. */
+    public static long estimatedMoves(Result result) {
+        return result.days().stream().flatMap(d -> d.items().stream()).filter(ItineraryGenerator::estimated).count();
+    }
+
+    // 추정 구간 이름(최대 3개). 예) "1일차 경포대 → 오죽헌"
+    private static String estimatedNames(Result result) {
+        var names = new ArrayList<String>();
+        for (var day : result.days()) for (var item : day.items())
+            if (ItineraryGenerator.estimated(item)) names.add(day.number() + "일차 " + item.name());
+        return String.join(", ", names.subList(0, Math.min(3, names.size()))) + (names.size() > 3 ? " 외" : "");
     }
 
     private static Check operating(Input input, Result result) {

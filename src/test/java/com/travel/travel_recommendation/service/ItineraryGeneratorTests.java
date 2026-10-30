@@ -647,4 +647,30 @@ class ItineraryGeneratorTests {
         ((tools.jackson.databind.node.ObjectNode)tree).remove("operatingInfo");
         assertThat(mapper.treeToValue(tree,PlaceCandidate.class).operatingInfo()).isNull();
     }
+    @Test void mapTimeoutFallsBackToMarkedStraightLineEstimate() {
+        // 카카오 길찾기가 시간 초과면 초안을 실패시키지 않고 직선거리로 어림한 추정 이동시간을 넣는다.
+        when(maps.travelTime(any(),any(),any())).thenThrow(new RecommendationException("MAP_TIMEOUT","카카오 응답이 늦어요."));
+        var input=input(1,LocalTime.of(18,0)); var result=generator.generate(input);
+        var moves=result.days().getFirst().items().stream().filter(i->i.type().equals("TRANSIT")).toList();
+        assertThat(moves).isNotEmpty().allSatisfy(m->{
+            // 조회 시각이 없고, 메모에 추정이라는 것과 확인이 필요하다는 것을 적는다.
+            assertThat(m.checkedAt()).isNull();
+            assertThat(m.note()).startsWith(ItineraryGenerator.ESTIMATE_NOTE_PREFIX).contains("추정, 이동시간 확인 필요");
+            assertThat(ItineraryGenerator.estimated(m)).isTrue();
+        });
+        generator.validate(input,result);
+        // 첫 실패 뒤에는 남은 구간마다 8초씩 기다리지 않도록 카카오를 다시 부르지 않는다.
+        verify(maps,times(1)).travelTime(any(),any(),any());
+        // 조건 확인에서는 이동시간을 '확인 필요'로 보여 주고, 추정 구간 수를 따로 센다.
+        var report=ItineraryConditionReport.evaluate(input,result);
+        assertThat(report.checks()).anySatisfy(c->{ assertThat(c.name()).isEqualTo("이동시간"); assertThat(c.status()).isEqualTo(ItineraryConditionReport.Status.NEEDS_CHECK); });
+        assertThat(report.complete()).isTrue();
+        assertThat(ItineraryConditionReport.estimatedMoves(result)).isEqualTo(moves.size());
+    }
+    @Test void missingMapSettingStillFailsInsteadOfGuessing() {
+        // 설정 문제(키 없음)는 잠깐의 장애가 아니므로 추정으로 넘기지 않고 실패로 알린다.
+        when(maps.travelTime(any(),any(),any())).thenThrow(new RecommendationException("MAP_NOT_CONFIGURED","지도 API 연결 설정이 필요해요."));
+        assertThatThrownBy(()->generator.generate(input(1,LocalTime.of(18,0))))
+            .isInstanceOfSatisfying(RecommendationException.class,e->assertThat(e.getCode()).isEqualTo("MAP_NOT_CONFIGURED"));
+    }
 }

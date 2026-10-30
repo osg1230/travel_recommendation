@@ -248,6 +248,13 @@ class PlaceDiscoveryIntegrationTests {
         assertThat(input.reserve()).extracting(PlaceCandidate::placeId).doesNotContainAnyElementsOf(visited);
         assertThat(input.evening()).extracting(PlaceCandidate::placeId).doesNotContainAnyElementsOf(visited);
         assertThat(schedules.view(first,null,hash).status()).isEqualTo("COMPLETED");
+        // 새 초안은 이전 초안을 기억해 두고, 완성되면 이전 초안으로 가는 길과 달라진 부분을 보여 준다.
+        assertThat(input.previousJobId()).isEqualTo(first);
+        var secondWork=schedules.claim(second); schedules.complete(secondWork,schedules.generate(secondWork)); em.flush();
+        mvc.perform(get("/travel/recommendations/itineraries/"+second).session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("다른 관광지로 다시 만든 초안이에요")))
+            .andExpect(content().string(containsString("/travel/recommendations/itineraries/"+first+"\">이전 초안 보기")))
+            .andExpect(content().string(containsString("이전 초안과 달라진 부분")));
     }
     // 여행지 "할 수 있는 것" 목록은 관광공사 대분류마다 한 번씩 받아 소분류로 세고, 여행지 행에 보관해 다시 세지 않는다.
     // 관광공사 오류로 일부만 받았으면 보관하지 않고 빈 목록을 돌려준다.

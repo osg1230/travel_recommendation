@@ -5,6 +5,8 @@ document.addEventListener('DOMContentLoaded', function () {
     var forms = document.querySelectorAll('form[data-submit-loading]');
     forms.forEach(function (form) {
         form.addEventListener('submit', function (event) {
+            // 확인 창(confirm)에서 '취소'를 눌러 제출이 막혔으면 버튼을 잠그지 않는다.
+            if (event.defaultPrevented) return;
             if (form.dataset.submitting === 'true') {
                 event.preventDefault();
                 return;
