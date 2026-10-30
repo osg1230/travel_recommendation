@@ -138,11 +138,31 @@ public class PlaceCandidateService {
      */
     @Transactional(readOnly = true, timeout = 10)
     public Optional<PlaceCandidate> usableAttraction(long placeId, String region) {
-        return places.findById(placeId).filter(place -> "ATTRACTION".equals(place.getPlaceType()))
+        return usableOfType(placeId, "ATTRACTION", region);
+    }
+
+    /** 수정안에서 고른 식당이 후보 목록(개수 제한) 밖이어도 지금 확인된 이 지역 음식점이면 일정 후보 형식으로 돌려준다. */
+    @Transactional(readOnly = true, timeout = 10)
+    public Optional<PlaceCandidate> usableRestaurant(long placeId, String region) {
+        return usableOfType(placeId, "RESTAURANT", region);
+    }
+
+    /** 수정안에서 고른 숙소가 후보 목록(개수 제한) 밖이어도 지금 확인된 이 지역 숙소면 일정 후보 형식으로 돌려준다. */
+    @Transactional(readOnly = true, timeout = 10)
+    public Optional<PlaceCandidate> usableAccommodation(long placeId, String region) {
+        return usableOfType(placeId, "ACCOMMODATION", region);
+    }
+
+    private Optional<PlaceCandidate> usableOfType(long placeId, String type, String region) {
+        return places.findById(placeId).filter(place -> type.equals(place.getPlaceType()))
             .filter(place -> usable(place, region)).map(this::candidate);
     }
 
-    private boolean usable(Place place, String region) {
+    /**
+     * 지금 일정 후보로 쓸 수 있는 장소인지: 이 지역의 사용 중인 장소이고, 카카오 장소는 24시간 안에 확인했으며
+     * 그 밖의 장소는 허용한 출처 주소다. 일정 작업을 마칠 때 장소가 그대로인지 볼 때도 같은 기준을 쓴다(ItineraryJobService).
+     */
+    boolean usable(Place place, String region) {
         return place.isActive() && region.equals(place.getRegion())
             && place.getName() != null && !place.getName().isBlank()
             && place.getAddress() != null && !place.getAddress().isBlank()

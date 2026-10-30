@@ -94,6 +94,25 @@ public class ItineraryJobService {
         return null;
     }
 
+    /** 초안에 넣지 않은 여행 기간 축제 안내. placeName은 축제가 열리는 관광지 이름이다. */
+    public record FestivalSuggestion(String title,String period,String placeName) {}
+
+    /**
+     * 여행 기간에 열리는 축제 장소가 이 초안에 없으면 넣는 방법을 안내한다(SFR-04-03). 바로 만든 초안·다시 만든 초안은 축제 장소를
+     * 자동으로 넣지 않기 때문이다. 축제가 없거나, 이미 일정에 있거나, 입력 화면의 관광지 후보에 없어 고를 수 없으면 null이다.
+     */
+    @Transactional(readOnly=true,timeout=10)
+    public FestivalSuggestion festivalSuggestion(Input input,Result result,String login,byte[] hash) {
+        var c=input.conditions();
+        long destinationId=input.places().destination().placeId();
+        var festival=festivalVisit(input.recommendationId(),destinationId,login,hash,c.startDate(),c.durationDays());
+        if(festival==null) return null;
+        boolean placed=result.days().stream().flatMap(d->d.items().stream()).anyMatch(i->festival.placeId().equals(i.placeId()));
+        if(placed) return null;
+        var place=findPlace(attractionPool(input.recommendationId(),destinationId,login,hash),festival.placeId());
+        return place==null?null:new FestivalSuggestion(festival.title(),festival.period(),place.name());
+    }
+
     /** 출발일을 정하지 않았을 때 제안할 축제. 이 여행지의 축제 중 가장 먼저 열리는 것이며 없으면 null이다. */
     @Transactional(readOnly=true,timeout=10)
     public RegionalFestival firstFestival(UUID parentId,long destinationId,String login,byte[] hash) {
@@ -141,7 +160,7 @@ public class ItineraryJobService {
     public UUID create(UUID parentId,long destinationId,String login,byte[] hash,LocalTime start,LocalTime end,
                        KakaoMapClient.Transport transport,int visitMinutes,Constraints constraints,Integer durationDays,Boolean accommodationNeeded,
                        LocalDate startDate,HomeTrip home) {
-        return create(parentId,destinationId,login,hash,start,end,transport,visitMinutes,constraints,durationDays,accommodationNeeded,startDate,home,Set.of());
+        return create(parentId,destinationId,login,hash,start,end,transport,visitMinutes,constraints,durationDays,accommodationNeeded,startDate,home,Set.of(),null);
     }
 
     /**
@@ -157,15 +176,37 @@ public class ItineraryJobService {
         var input=source.input(); var c=input.conditions();
         Set<Long> previous=source.result().days().stream().flatMap(d->d.items().stream())
             .filter(i->"VISIT".equals(i.type()) && i.placeId()!=null).map(Item::placeId).collect(java.util.stream.Collectors.toSet());
+        // 결과 화면에서 이전 초안으로 돌아가고 무엇이 바뀌었는지 비교할 수 있게 이전 초안 ID(sourceId)도 남긴다.
         return create(input.recommendationId(),input.places().destination().placeId(),login,hash,input.start(),input.end(),input.transport(),
-            input.visitMinutes(),input.constraints(),c.durationDays(),c.accommodationNeeded(),c.startDate(),input.home(),previous);
+            input.visitMinutes(),input.constraints(),c.durationDays(),c.accommodationNeeded(),c.startDate(),input.home(),previous,sourceId);
     }
 
-    /** previous는 직전 초안에 넣었던 관광지 ID다('다른 관광지로 다시 만들기'). 비어 있으면 보통 초안을 만든다. */
+    /**
+     * 실패한 초안을 같은 조건(하루 시간·이동수단·필수 조건·여행 정보·집 출발·귀가)으로 다시 만든다.
+     * 수정안은 원래 초안에서 다시 고쳐야 하므로 여기서 다시 만들지 않는다. 실패한 초안은 그대로 둔다.
+     */
+    @Transactional(timeout=10)
+    public UUID retry(UUID failedId,String login,byte[] hash) {
+        var failed=view(failedId,login,hash);
+        if(!"FAILED".equals(failed.status()))
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"만들지 못한 초안만 같은 조건으로 다시 만들 수 있어요.");
+        var input=failed.input(); var c=input.conditions();
+        if(input.revision()!=null)
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"수정안은 원래 초안 화면에서 다시 요청해 주세요.");
+        // '다른 관광지로 다시 만들기'였다면 그때의 이전 초안 정보도 그대로 이어 간다.
+        Set<Long> previous=input.picking()==null?Set.of():Set.copyOf(input.picking().previous());
+        return create(input.recommendationId(),input.places().destination().placeId(),login,hash,input.start(),input.end(),input.transport(),
+            input.visitMinutes(),input.constraints(),c.durationDays(),c.accommodationNeeded(),c.startDate(),input.home(),previous,input.previousJobId());
+    }
+
+    /**
+     * previous는 직전 초안에 넣었던 관광지 ID다('다른 관광지로 다시 만들기'). 비어 있으면 보통 초안을 만든다.
+     * previousJobId는 그 직전 초안의 작업 ID로, 결과 화면의 '이전 초안 보기'와 비교에 쓴다(보통 초안은 null).
+     */
     @Transactional(timeout=10)
     public UUID create(UUID parentId,long destinationId,String login,byte[] hash,LocalTime start,LocalTime end,
                        KakaoMapClient.Transport transport,int visitMinutes,Constraints constraints,Integer durationDays,Boolean accommodationNeeded,
-                       LocalDate startDate,HomeTrip home,Set<Long> previous) {
+                       LocalDate startDate,HomeTrip home,Set<Long> previous,UUID previousJobId) {
         var current=options(parentId,destinationId,login,hash);
         // 추천 때 미정이던 값만 일정 생성 시 받는다. 명시된 날짜·기간을 조용히 덮어쓰지 않는다.
         var c=current.conditions();
@@ -197,7 +238,9 @@ public class ItineraryJobService {
         // 숙소 예산대는 예산을 정하지 않았고 숙소가 필요한 여행에서만 고른다(SFR-03-03).
         if(constraints!=null && constraints.stayTier()!=null && (current.conditions().budget()!=null || !current.places().accommodationNeeded()))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"숙소 예산대는 예산을 정하지 않은 숙박 여행에서만 고를 수 있어요.");
-        var places=current.places();
+        // 고른 필수·중심 장소가 후보 순서가 바뀌어 목록(개수 제한)에서 밀려났으면 지금도 확인된 장소인지 다시 읽어 후보에 더한다.
+        // 확인하지 못한 곳은 임의로 빼지 않고 이름을 알려 다시 고르게 한다('다른 관광지로 다시 만들기'·하루 시간 입력 제출).
+        var places=withChosenPlaces(current.places(),constraints);
         int days=current.conditions().durationDays()==null?1:current.conditions().durationDays();
         // 시간 범위 자체의 검증은 generator.checkInput이 한다. 여기서는 조건 선택에 필요한 값만 먼저 확인한다.
         if(start==null || end==null || (constraints!=null && !end.isAfter(start)))
@@ -234,7 +277,7 @@ public class ItineraryJobService {
         places=new PlaceCandidateView(places.jobId(),places.destination(),places.durationDays(),places.accommodationNeeded(),
             arranged.selected(),places.accommodations(),places.restaurants());
         var input=new Input(parentId,places,current.conditions(),start,end,transport,visitMinutes,null,constraints,arranged.reserve(),arranged.evening(),home)
-            .withPicking(new Picking(pool,false,later));
+            .withPicking(new Picking(pool,false,later,previousJobId));
         try {
             generator.checkInput(input);
         } catch(RecommendationException error) {
@@ -298,6 +341,31 @@ public class ItineraryJobService {
         return ordered.stream().filter(p->!ids.contains(p.placeId())).limit(MAX_RESERVE).toList();
     }
 
+    /**
+     * 필수·중심 장소 중 관광지 후보에 없는 곳을 지금 확인된 이 지역 관광지인지 다시 읽어 후보에 더한다.
+     * 후보 수 제한·순서 변경·24시간 경과로 목록에서 밀려났을 뿐이면 그대로 쓰고, 확인하지 못하면 이름을 적어 ConflictException을 던진다.
+     */
+    private PlaceCandidateView withChosenPlaces(PlaceCandidateView pool,Constraints constraints) {
+        if(constraints==null) return pool;
+        var chosen=new LinkedHashSet<Long>(constraints.requiredPlaceIds()); chosen.addAll(constraints.centerPlaceIds());
+        var attractions=new ArrayList<>(pool.attractions());
+        var missing=new ArrayList<String>();
+        for(Long id:chosen) {
+            if(id==null || findPlace(attractions,id)!=null) continue;
+            var now=candidates.usableAttraction(id,pool.destination().region());
+            if(now.isPresent()) attractions.add(now.get());
+            else missing.add(places.findById(id).map(Place::getName).orElse("고른 관광지"));
+        }
+        if(!missing.isEmpty())
+            throw new TripConstraints.ConflictException(List.of(new TripConstraints.Conflict(
+                "'"+String.join("', '",missing)+"'의 장소 정보를 지금 다시 확인하지 못했어요.",
+                List.of("꼭 가야 하는 관광지·일정의 중심에서 이 장소를 빼고 다시 만들기",
+                    "장소 목록에서 '카카오에서 장소 더 찾아보기'로 장소 정보를 새로 확인한 뒤 다시 만들기"))));
+        if(attractions.size()==pool.attractions().size()) return pool;
+        return new PlaceCandidateView(pool.jobId(),pool.destination(),pool.durationDays(),pool.accommodationNeeded(),
+            List.copyOf(attractions),pool.accommodations(),pool.restaurants());
+    }
+
     private TripConstraints.ConflictException scheduleConflict(String message) {
         return new TripConstraints.ConflictException(List.of(new TripConstraints.Conflict(message,
             List.of("아래 여행 기간·숙박 여부·출발일을 고르거나 추천 화면의 조건 수정에서 변경해 주세요."))));
@@ -321,6 +389,14 @@ public class ItineraryJobService {
     public UUID revise(UUID sourceId,String login,byte[] hash,List<Long> replace,ReplaceReason reason,
                        LocalTime start,LocalTime end,int visitMinutes) {
         if(reason==ReplaceReason.AI_REQUEST || reason==ReplaceReason.DIRECT) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"교체 이유를 다시 골라 주세요.");
+        // 'AI 없이 시간만 바꾸기'에서 지금과 같은 시간을 다시 보내면 같은 일정만 하나 더 생기므로 막는다(직접 수정과 같은 검사).
+        // 아직 완성되지 않은 초안은 아래 공통 검사에서 '완성된 일정 초안에서만'으로 안내한다.
+        var source=access.owned(sourceId,login,hash,"ITINERARY");
+        if((replace==null || replace.isEmpty()) && "COMPLETED".equals(source.getStatus())) {
+            var original=mapper.readValue(source.getRequestJson(),Input.class);
+            if(Objects.equals(start,original.start()) && Objects.equals(end,original.end()) && visitMinutes==original.visitMinutes())
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"바꾼 내용이 없어요. 바꿀 시간을 고른 뒤 다시 눌러 주세요.");
+        }
         return revise(sourceId,login,hash,replace,null,reason,start,end,visitMinutes,null,null,List.of(),Changes.NONE);
     }
 
@@ -403,24 +479,53 @@ public class ItineraryJobService {
         final var keptIds=keptFirm.stream().map(PlaceCandidate::placeId).toList();
         var extras=kept.stream().filter(p->!keptIds.contains(p.placeId())).toList();
         var attractions=new ArrayList<>(keptFirm); attractions.addAll(added);
-        // 식당·숙소는 지금 확인된 후보를 쓰되, 이번 요청에서 고른 식당·숙소가 원본 초안에만 있으면(주변 식당 등) 함께 넣는다.
+        // 식당·숙소는 지금 확인된 후보를 쓴다. 이번 요청에서 고른 식당·숙소가 후보 목록(개수 제한) 밖이면(주변 식당 등)
+        // 지금도 확인된 장소인지 다시 읽어 넣는다. 원본 초안의 옛 정보를 그대로 넣으면 같은 장소가 두 번 들어가 완료 검사에서 실패하거나
+        // 24시간이 지나 '장소 정보가 오래됐어요'로 실패했다. 그래서 장소 ID로 비교하고, 확인하지 못한 곳은 빼고 안내한다.
         var choices=changes.choices()==null?original.choices():changes.choices();
+        String region=pool.destination().region();
+        var choiceNotices=new ArrayList<String>();
         var restaurants=new ArrayList<>(pool.restaurants());
-        original.places().restaurants().stream().filter(p->choices.preferRestaurants().contains(p.placeId()) && !restaurants.contains(p)).forEach(restaurants::add);
+        var prefer=new ArrayList<Long>();
+        for(Long id:choices.preferRestaurants()) {
+            var before=findPlace(original.places().restaurants(),id);
+            if(findPlace(restaurants,id)!=null || before==null) { prefer.add(id); continue; }
+            var now=candidates.usableRestaurant(id,region);
+            if(now.isPresent()) { restaurants.add(now.get()); prefer.add(id); }
+            else choiceNotices.add("고른 식당 '"+before.name()+"'의 정보를 지금 확인하지 못해 다른 곳으로 골랐어요.");
+        }
         var stays=new ArrayList<>(pool.accommodations());
-        original.places().accommodations().stream().filter(p->p.placeId().equals(choices.stayPlaceId()) && !stays.contains(p)).forEach(stays::add);
+        Long stay=choices.stayPlaceId();
+        if(stay!=null && pool.accommodationNeeded() && findPlace(stays,stay)==null) {
+            var now=candidates.usableAccommodation(stay,region);
+            if(now.isPresent()) stays.add(now.get());
+            else {
+                var before=findPlace(original.places().accommodations(),stay);
+                choiceNotices.add("고른 숙소"+(before==null?"":" '"+before.name()+"'")+"의 정보를 지금 확인하지 못해 다른 곳으로 골랐어요.");
+                stay=null;
+            }
+        }
+        choices=new Choices(choices.avoidRestaurants(),prefer,stay);
         var places=new PlaceCandidateView(pool.jobId(),pool.destination(),pool.durationDays(),
             pool.accommodationNeeded(),List.copyOf(attractions),List.copyOf(stays),List.copyOf(restaurants));
         var revision=new Revision(sourceId,refs(keptFirm),refs(placed.stream().filter(p->chosen.contains(p.placeId())).toList()),
             refs(added),chosen.isEmpty() && reason!=ReplaceReason.AI_REQUEST?null:reason.name(),Instant.now(),request,explanation,
-            List.copyOf(unavailable));
+            List.copyOf(unavailable),List.copyOf(choiceNotices));
         // 새로 넣지 않고 남은 후보는 이 수정안의 예비 관광지로 둔다.
         var spareLeft=new ArrayList<>(extras);
         // 관광지를 뺀 수정안은 빈 시간을 다른 예비 관광지로 다시 채우지 않는다(뺀 자리는 자유 시간으로 남는다).
         if(changes.remove().isEmpty())
             spare.subList(added.size(),spare.size()).stream().limit(MAX_RESERVE).forEach(spareLeft::add);
         // 저녁 관광 후보와 집 출발·귀가 설정은 원본 초안에서 이어받는다. 이번에 관광지로 넣은 곳은 저녁 관광 후보에서 뺀다.
-        var evening=original.evening().stream().filter(p->!attractions.contains(p) && !spareLeft.contains(p)).toList();
+        // 저녁 관광 후보도 지금 확인된 정보로 바꾸고, 다시 확인하지 못한 곳은 뺀다(식당·숙소와 같은 이유).
+        Set<Long> used=new HashSet<>();
+        attractions.forEach(p->used.add(p.placeId())); spareLeft.forEach(p->used.add(p.placeId()));
+        var evening=new ArrayList<PlaceCandidate>();
+        for(var p:original.evening()) {
+            if(used.contains(p.placeId())) continue;
+            var now=findPlace(pool.attractions(),p.placeId());
+            if(now!=null) evening.add(now); else candidates.usableAttraction(p.placeId(),region).ifPresent(evening::add);
+        }
         var input=new Input(original.recommendationId(),places,original.conditions(),start,end,
             changes.transport()==null?original.transport():changes.transport(),visitMinutes,revision,
             original.constraints(),List.copyOf(spareLeft),evening,changes.home()==null?original.home():changes.home(),choices)
@@ -673,8 +778,8 @@ public class ItineraryJobService {
 
     /** 한 번에 가격을 찾는 장소 수. 숙소 1곳과 일정에 넣은 음식점을 앞에서부터 센다. 유료 검색이라 상한을 둔다. */
     static final int MAX_PRICE_PLACES=8;
-    /** 같은 초안을 다시 눌러도 이 시간 안에는 이전 조회 결과를 쓴다. */
-    static final Duration PRICE_REUSE=Duration.ofHours(24);
+    /** 같은 초안을 다시 눌러도 이 시간 안에는 이전 조회 결과를 쓴다. 결과 화면은 이 시간이 지난 뒤에 '다시 찾기'를 보여 준다. */
+    public static final Duration PRICE_REUSE=Duration.ofHours(24);
     /** stored는 이 장소에 저장해 둔 재사용 가능한 가격이다. 있으면 다시 검색하지 않는다. */
     public record PriceTarget(PlaceCandidate place,String kind,PriceQuote stored) {
         PriceTarget(PlaceCandidate place,String kind) { this(place,kind,null); }
@@ -899,12 +1004,17 @@ public class ItineraryJobService {
     private static List<PlaceRef> refs(List<PlaceCandidate> places) {
         return places.stream().map(p->new PlaceRef(p.placeId(),p.name())).toList();
     }
+    /** 목록에서 장소 ID가 같은 후보. 없으면 null이다. 확인 시각·운영정보가 달라도 같은 장소로 본다. */
+    private static PlaceCandidate findPlace(List<PlaceCandidate> places,Long placeId) {
+        return places.stream().filter(p->p.placeId().equals(placeId)).findFirst().orElse(null);
+    }
 
     @Transactional(readOnly=true,timeout=10)
     public View view(UUID id,String login,byte[] hash) {
         var job=access.owned(id,login,hash,"ITINERARY");
         return new View(id,job.getStatus(),job.getMessage(),Set.of("QUEUED","GENERATING_SCHEDULE","VALIDATING_SCHEDULE").contains(job.getStatus()),
-            mapper.readValue(job.getRequestJson(),Input.class),job.getResultJson()==null?null:mapper.readValue(job.getResultJson(),Result.class));
+            mapper.readValue(job.getRequestJson(),Input.class),job.getResultJson()==null?null:mapper.readValue(job.getResultJson(),Result.class),
+            job.getExpiresAt());
     }
     @Transactional(readOnly=true)
     public List<UUID> queued() { return jobs.findTop5ByJobTypeAndStatusOrderByCreatedAtAsc("ITINERARY","QUEUED").stream().map(AiJob::getId).toList(); }
@@ -956,6 +1066,12 @@ public class ItineraryJobService {
         jobs.lockById(work.id()).filter(j->"ITINERARY".equals(j.getJobType()) && "GENERATING_SCHEDULE".equals(j.getStatus()))
             .ifPresent(j->j.fail(code,message));
     }
+    /**
+     * 일정을 만드는 동안 장소가 바뀌지 않았는지 본다. 이름·주소·좌표·출처·활성·유형이 같고 지금도 쓸 수 있는 장소(usable)면 그대로로 본다.
+     * 확인 시각(verifiedAt)은 같은 지역 장소를 누군가 다시 조회하면 바뀌므로 "같음" 대신 "지금도 확인 유효"인지만 본다.
+     * 운영정보도 비교하지 않는다. 다른 사람이 장소 상세를 열 때 새로 조회돼 바뀔 수 있고, 일정의 운영시간 판단은 작업 입력의 정보로 이미 했기 때문이다.
+     * 둘을 그대로 비교하면 같은 지역을 다른 사람이 조회했을 뿐인데 만들던 초안·수정안이 마지막에 실패했다.
+     */
     private boolean unchanged(Input input) {
         var pool=new ArrayList<>(input.attractionsWithReserve()); pool.addAll(input.places().restaurants()); pool.addAll(input.places().accommodations());
         var destination=input.places().destination();
@@ -963,11 +1079,9 @@ public class ItineraryJobService {
                 && destination.name().equals(p.getName()) && destination.region().equals(p.getRegion())).isEmpty()) return false;
         for(var candidate:pool) {
             String type=input.attractionsWithReserve().contains(candidate)?"ATTRACTION":input.places().restaurants().contains(candidate)?"RESTAURANT":"ACCOMMODATION";
-            if(places.findById(candidate.placeId()).filter(p->p.isActive() && type.equals(p.getPlaceType())
-                && destination.region().equals(p.getRegion()) && candidate.name().equals(p.getName())
+            if(places.findById(candidate.placeId()).filter(p->type.equals(p.getPlaceType())
+                && candidates.usable(p,destination.region()) && candidate.name().equals(p.getName())
                 && candidate.address().equals(p.getAddress()) && candidate.sourceUrl().equals(p.getSourceUrl())
-                && candidate.verifiedAt().equals(p.getVerifiedAt())
-                && Objects.equals(candidate.operatingInfo(),PlaceOperatingDetails.read(p,mapper))
                 && (candidate.longitude()==null || (p.getLongitude()!=null && Double.compare(candidate.longitude(),p.getLongitude().doubleValue())==0))
                 && (candidate.latitude()==null || (p.getLatitude()!=null && Double.compare(candidate.latitude(),p.getLatitude().doubleValue())==0))).isEmpty()) return false;
         }

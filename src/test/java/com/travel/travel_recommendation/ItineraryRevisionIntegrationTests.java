@@ -341,9 +341,25 @@ class ItineraryRevisionIntegrationTests {
         mvc.perform(post(url).session(session).with(csrf()).param("replace",ids.getFirst().toString()).param("reason","TASTE")
                 .param("start","09:00").param("end","18:00").param("visitMinutes","90"))
             .andExpect(status().isSeeOther()).andExpect(header().string("Location",containsString("/travel/recommendations/itineraries/")));
+        // 만들지 못하면 오류 화면으로 가지 않고 보던 초안의 '일정 수정하기' 절에 이유를 보여 준다.
         mvc.perform(post(url).session(session).with(csrf()).param("replace",ids.getFirst().toString())
                 .param("start","09:00").param("end","18:00").param("visitMinutes","90"))
-            .andExpect(status().isBadRequest()).andExpect(content().string(containsString("원래 일정 초안으로 돌아가기")));
+            .andExpect(status().isSeeOther())
+            .andExpect(header().string("Location","/travel/recommendations/itineraries/"+original+"#revise-title"))
+            .andExpect(flash().attribute("reviseError",containsString("교체 이유를 골라 주세요.")));
+        // 직접 수정 화면에서 보낸 요청이면 그 화면으로 돌아간다.
+        mvc.perform(post(url).session(session).with(csrf()).param("replace",ids.getFirst().toString()).param("fromEdit","true")
+                .param("start","09:00").param("end","18:00").param("visitMinutes","90"))
+            .andExpect(status().isSeeOther())
+            .andExpect(header().string("Location","/travel/recommendations/itineraries/"+original+"/edit"))
+            .andExpect(flash().attribute("editError",containsString("교체 이유를 골라 주세요.")));
+        // 시간만 바꾸기에서 지금과 같은 값을 보내면 수정안을 만들지 않고, 입력한 값을 다시 채울 수 있게 돌려준다.
+        long count=jobs.count();
+        mvc.perform(post(url).session(session).with(csrf()).param("start","09:00").param("end","16:00").param("visitMinutes","90"))
+            .andExpect(status().isSeeOther())
+            .andExpect(flash().attribute("reviseError",containsString("바꾼 내용이 없어요")))
+            .andExpect(flash().attributeExists("timeValues"));
+        assertThat(jobs.count()).isEqualTo(count);
         mvc.perform(get("/travel/recommendations/itineraries/"+original).session(session)).andExpect(status().isOk())
             .andExpect(content().string(containsString("AI 없이 시간만 바꾸기")));
     }

@@ -39,11 +39,30 @@ public class ItineraryController {
     private static final String SESSION_KEY="itinerarySubmission";
     private static final String CONFLICT_KEY="itineraryConstraintConflict";
     private static final String QUICK_KEY="quickItinerary:";
+    // 입력 화면의 제출 토큰과 되돌려 보여 줄 입력값은 (추천, 여행지)마다 따로 둔다. 다른 여행지 입력 화면을 다른 탭에서 열어도 서로 덮어쓰지 않는다.
+    private static String submissionKey(UUID id,long destinationId) { return SESSION_KEY+":"+id+":"+destinationId; }
+    private static String conflictKey(UUID id,long destinationId) { return CONFLICT_KEY+":"+id+":"+destinationId; }
     /** 일정 입력 화면의 값. 필수 조건 충돌로 돌아갈 때 입력을 잃지 않도록 세션에 잠시 둔다. */
     public record ConstraintInput(UUID parent,LocalTime start,LocalTime end,KakaoMapClient.Transport transport,int visitMinutes,
                                   List<Long> required,Integer dailyVisits,boolean dailyRequired,
                                   String stayTier,List<TripConstraints.Conflict> conflicts,
-                                  Integer durationDays,Boolean accommodationNeeded,LocalDate startDate,List<Long> centers,HomeValues home) {}
+                                  Integer durationDays,Boolean accommodationNeeded,LocalDate startDate,List<Long> centers,HomeValues home) {
+        /** 같은 입력값에 만들지 못한 이유를 붙인다. */
+        ConstraintInput withConflicts(List<TripConstraints.Conflict> reasons) {
+            return new ConstraintInput(parent,start,end,transport,visitMinutes,required,dailyVisits,dailyRequired,stayTier,reasons,
+                durationDays,accommodationNeeded,startDate,centers,home);
+        }
+        /** 고칠 방법이 이유 문장에 들어 있는 오류(시간 범위·후보 부족 등)를 붙인다. */
+        ConstraintInput withReason(String reason) {
+            return withConflicts(List.of(new TripConstraints.Conflict(reason==null?"입력한 값을 확인해 주세요.":reason,List.of())));
+        }
+    }
+    /** 입력 화면으로 돌아가 만들지 못한 이유와 입력했던 값을 한 번 보여 준다. 새 제출 토큰은 입력 화면을 열 때 다시 만든다. */
+    private ResponseEntity<?> backToForm(HttpSession session,long destinationId,ConstraintInput values) {
+        session.setAttribute(conflictKey(values.parent(),destinationId),values);
+        session.removeAttribute(submissionKey(values.parent(),destinationId));
+        return seeOther("/travel/recommendations/"+values.parent()+"/destinations/"+destinationId+"/schedule");
+    }
     /**
      * 집 출발·귀가 입력값(출발지·돌아갈 곳). 다시 보여 줄 때 쓰며 '내 위치로 찾기' 좌표는 담지 않는다(위치를 세션에 두지 않는다).
      * 출발·귀가 시각과 편도 이동시간은 입력받지 않는다(2026-09-29 결정). 시각은 아래 고정값, 이동시간은 카카오 길찾기로 찾는다.
@@ -62,9 +81,10 @@ public class ItineraryController {
         return new HomeTripService.Request(origin,longitude,latitude,HOME_DEPART_AT,HOME_ARRIVE_BY,null,returnPlace,null);
     }
 
+    /** from은 입력값을 미리 채울 이전 초안이다(예: 만들지 못한 초안의 '시간·조건 자세히 정해서 다시 만들기'). */
     @GetMapping("/{id}/destinations/{destinationId}/schedule")
-    String form(@PathVariable UUID id,@PathVariable long destinationId,Principal principal,HttpSession session,
-                HttpServletResponse response,Model model) {
+    String form(@PathVariable UUID id,@PathVariable long destinationId,@RequestParam(required=false) UUID from,
+                Principal principal,HttpSession session,HttpServletResponse response,Model model) {
         response.setHeader("Cache-Control","no-store");
         findMorePlacesIfFew(id,destinationId,principal,session);
         var options=service().options(id,destinationId,login(principal),hash(session));
@@ -84,20 +104,43 @@ public class ItineraryController {
         model.addAttribute("purposePlaceIds",purposeIds);
         model.addAttribute("centerPlaceIds",centerIds);
         model.addAttribute("maxDailyVisits",TripConstraints.MAX_DAILY);
-        // 필수 조건이 모순돼 돌아온 경우 이유·선택지와 입력했던 값을 다시 보여 준다(한 번만).
-        var conflict=session.getAttribute(CONFLICT_KEY) instanceof ConstraintInput previous && previous.parent().equals(id) ? previous : null;
-        session.removeAttribute(CONFLICT_KEY);
+        // 필수 조건이 모순되거나 값이 맞지 않아 돌아온 경우 이유·선택지와 입력했던 값을 다시 보여 준다(한 번만).
+        var conflict=session.getAttribute(conflictKey(id,destinationId)) instanceof ConstraintInput previous && previous.parent().equals(id) ? previous : null;
+        session.removeAttribute(conflictKey(id,destinationId));
         // 여행 조건에서 이동수단을 정하지 않았다면 자동차로 미리 고르지 않고 사용자가 직접 고르게 한다.
         var transport=options.conditions().keywordNames("TRANSPORTATION").isEmpty()?null:options.transport();
         var homeArea=homeArea(principal,model);
-        model.addAttribute("values",conflict!=null?conflict:new ConstraintInput(id,options.start(),options.end(),transport,
+        var values=conflict!=null?conflict:valuesFrom(from,id,destinationId,principal,session);
+        model.addAttribute("values",values!=null?values:new ConstraintInput(id,options.start(),options.end(),transport,
             options.visitMinutes(),purposeIds,null,false,null,List.of(),null,null,null,centerIds,HomeValues.startingFrom(homeArea)));
         model.addAttribute("stayTiers",BudgetGuide.StayTier.values());
         synchronized(session) {
             var submission=new Submission(id,destinationId,login(principal),UUID.randomUUID().toString(),null);
-            session.setAttribute(SESSION_KEY,submission); model.addAttribute("submissionToken",submission.token());
+            session.setAttribute(submissionKey(id,destinationId),submission); model.addAttribute("submissionToken",submission.token());
         }
         return "travel/itinerary-form";
+    }
+
+    /**
+     * 이전 초안(from)의 하루 시간·이동수단·필수 조건·여행 정보·집 출발·귀가로 입력 화면을 미리 채운다.
+     * 같은 추천·여행지의 초안을 볼 수 있을 때만 쓰고, 그렇지 않으면 null(기본값)이다.
+     */
+    private ConstraintInput valuesFrom(UUID from,UUID id,long destinationId,Principal principal,HttpSession session) {
+        if(from==null) return null;
+        ItineraryPlan.View draft;
+        try { draft=service().view(from,login(principal),hash(session)); }
+        catch(ResponseStatusException unavailable) { return null; }
+        var input=draft.input();
+        if(!id.equals(input.recommendationId()) || input.places().destination().placeId()!=destinationId) return null;
+        var c=input.conditions(); var limits=input.constraints();
+        var home=input.home();
+        // 돌아갈 곳이 출발지와 같으면 화면의 '돌아갈 곳' 칸은 비워 둔다(비우면 출발지로 돌아온다).
+        var homeValues=home==null?new HomeValues("",null)
+            :new HomeValues(home.origin(),home.returnPlace().equals(home.origin())?null:home.returnPlace());
+        return new ConstraintInput(id,input.start(),input.end(),input.transport(),input.visitMinutes(),
+            limits==null?List.of():limits.requiredPlaceIds(),limits==null?null:limits.dailyVisits(),limits!=null && limits.dailyVisitsRequired(),
+            limits==null?null:limits.stayTier(),List.of(),c.durationDays(),c.accommodationNeeded(),c.startDate(),
+            limits==null?List.of():limits.centerPlaceIds(),homeValues);
     }
     @PostMapping("/{id}/destinations/{destinationId}/schedule")
     ResponseEntity<?> create(@PathVariable UUID id,@PathVariable long destinationId,@RequestParam String submissionToken,
@@ -118,12 +161,16 @@ public class ItineraryController {
         String tier=stayTier==null || stayTier.isBlank()?null:stayTier;
         // 예산 기준·포함 비용은 더 받지 않으므로 비워 둔다(이전 작업 JSON 호환용 자리).
         var constraints=new ItineraryPlan.Constraints(required,dailyVisits,dailyVisits!=null && "REQUIRED".equals(dailyMode),null,List.of(),tier,centers);
+        // 일정을 만들지 못하면 입력 화면으로 돌아가 이유와 함께 이 값을 다시 보여 준다.
+        var entered=new ConstraintInput(id,start,end,transport,visitMinutes,constraints.requiredPlaceIds(),dailyVisits,constraints.dailyVisitsRequired(),
+            tier,List.of(),durationDays,accommodationNeeded,startDate,constraints.centerPlaceIds(),homeValues);
         UUID job;
         synchronized(session) {
-            var submission=(Submission)session.getAttribute(SESSION_KEY);
+            var submission=(Submission)session.getAttribute(submissionKey(id,destinationId));
+            // 같은 여행지 입력 화면을 다른 탭에서 다시 열었거나 오래 둬서 토큰이 바뀌었으면, 입력값을 잃지 않게 화면으로 돌려보낸다.
             if(submission==null || !submission.parent().equals(id) || submission.destination()!=destinationId
                 || !Objects.equals(submission.login(),login(principal)) || !submission.token().equals(submissionToken))
-                throw new ResponseStatusException(HttpStatus.CONFLICT,"입력 화면이 만료됐어요. 장소 목록에서 일정 만들기를 다시 열어 주세요.");
+                return backToForm(session,destinationId,entered.withReason("입력 화면이 새로 열려 이 화면의 입력을 받지 못했어요. 입력한 값을 확인하고 다시 눌러 주세요."));
             if(submission.job()!=null) {
                 job=submission.job(); service().view(job,login(principal),hash(session));
             } else {
@@ -132,13 +179,16 @@ public class ItineraryController {
                     job=service().create(id,destinationId,login(principal),hash(session),start,end,transport,visitMinutes,constraints,durationDays,accommodationNeeded,startDate,home);
                 } catch(TripConstraints.ConflictException conflict) {
                     // 모순된 필수 조건은 임의로 완화하지 않고 입력 화면으로 돌아가 이유와 선택지를 보여 준다.
-                    session.setAttribute(CONFLICT_KEY,new ConstraintInput(id,start,end,transport,visitMinutes,constraints.requiredPlaceIds(),
-                        dailyVisits,constraints.dailyVisitsRequired(),tier,conflict.conflicts(),durationDays,accommodationNeeded,startDate,constraints.centerPlaceIds(),homeValues));
-                    session.removeAttribute(SESSION_KEY);
-                    return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create("/travel/recommendations/"+id+"/destinations/"+destinationId+"/schedule"))
-                        .cacheControl(CacheControl.noStore()).build();
+                    return backToForm(session,destinationId,entered.withConflicts(conflict.conflicts()));
+                } catch(RecommendationException error) {
+                    // 하루 시간이 4시간보다 짧거나 후보가 부족한 것처럼 입력을 고쳐야 하는 문제다.
+                    return backToForm(session,destinationId,entered.withReason(error.getMessage()));
+                } catch(ResponseStatusException error) {
+                    // 찾을 수 없음(만료·다른 세션)과 서비스 연결 문제는 오류 화면에서 안내한다.
+                    if(error.getStatusCode().value()==404 || error.getStatusCode().value()==503) throw error;
+                    return backToForm(session,destinationId,entered.withReason(error.getReason()));
                 }
-                session.setAttribute(SESSION_KEY,new Submission(id,destinationId,login(principal),submissionToken,job));
+                session.setAttribute(submissionKey(id,destinationId),new Submission(id,destinationId,login(principal),submissionToken,job));
             }
         }
         String location="/travel/recommendations/itineraries/"+job;
@@ -201,8 +251,12 @@ public class ItineraryController {
         UUID job;
         synchronized(session) {
             // 두 번 누르거나 뒤로 가서 다시 눌러도 같은 초안으로 보낸다. 다른 시간으로 만들려면 초안의 '자세히 정해서 다시 만들기'를 쓴다.
+            // 그 초안을 만들지 못했거나(실패) 사라졌으면 기억을 지우고 새로 만든다. 실패한 초안으로만 계속 보내면 다시 시도할 수 없다.
             String key=QUICK_KEY+id+":"+destinationId+":"+login(principal);
-            if(session.getAttribute(key) instanceof UUID made) return seeOther("/travel/recommendations/itineraries/"+made);
+            if(session.getAttribute(key) instanceof UUID made) {
+                if(stillUsable(made,principal,session)) return seeOther("/travel/recommendations/itineraries/"+made);
+                session.removeAttribute(key);
+            }
             findMorePlacesIfFew(id,destinationId,principal,session);
             var options=service().options(id,destinationId,login(principal),hash(session));
             var c=options.conditions();
@@ -245,13 +299,39 @@ public class ItineraryController {
                     options.visitMinutes(),constraints,newDays,newStay,newDate,home);
             } catch(TripConstraints.ConflictException conflict) {
                 // 기본값으로도 조건이 맞지 않으면 자세한 입력 화면에서 이유와 선택지를 보여 준다.
-                session.setAttribute(CONFLICT_KEY,new ConstraintInput(id,options.start(),options.end(),mode,options.visitMinutes(),
+                return backToForm(session,destinationId,new ConstraintInput(id,options.start(),options.end(),mode,options.visitMinutes(),
                     constraints.requiredPlaceIds(),null,false,null,conflict.conflicts(),newDays,newStay,newDate,constraints.centerPlaceIds(),homeValues));
-                return seeOther(base+"/schedule");
             }
             session.setAttribute(key,job);
         }
         return seeOther("/travel/recommendations/itineraries/"+job);
+    }
+    /** 기억해 둔 바로 만들기 초안을 계속 보여 줘도 되는지: 아직 볼 수 있고 실패하지 않았으면 true다. */
+    private boolean stillUsable(UUID made,Principal principal,HttpSession session) {
+        try { return !"FAILED".equals(service().view(made,login(principal),hash(session)).status()); }
+        catch(ResponseStatusException e) {
+            if(e.getStatusCode().value()==404) return false;
+            throw e;
+        }
+    }
+    /**
+     * 만들지 못한 초안을 같은 조건으로 다시 만든다. 실패한 초안의 입력(하루 시간·이동수단·필수 조건·여행 정보·집 출발·귀가)을 그대로 쓰고,
+     * 만들 수 없으면 이유를 실패한 초안 화면에 보여 준다. 볼 수 없는 초안(다른 사람·만료)은 찾을 수 없음으로 처리한다.
+     */
+    @PostMapping("/itineraries/{id}/retry")
+    String retry(@PathVariable UUID id,Principal principal,HttpSession session,
+                 org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
+        try {
+            return "redirect:/travel/recommendations/itineraries/"+service().retry(id,login(principal),hash(session));
+        } catch(ResponseStatusException e) {
+            if(e.getStatusCode().value()==404) throw e;
+            redirect.addFlashAttribute("retryError",e.getReason());
+        } catch(RecommendationException e) {
+            redirect.addFlashAttribute("retryError",e.getMessage());
+        } catch(TripConstraints.ConflictException conflict) {
+            redirect.addFlashAttribute("retryError",conflict.conflicts().get(0).reason());
+        }
+        return "redirect:/travel/recommendations/itineraries/"+id;
     }
     @GetMapping("/itineraries/{id}")
     String result(@PathVariable UUID id,Principal principal,HttpSession session,HttpServletResponse response,Model model) {
@@ -302,6 +382,14 @@ public class ItineraryController {
             // 조회 시각은 한국 시간으로 보여 준다.
             model.addAttribute("pricesCheckedAt",job.result().prices()==null?null:java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
                 .format(job.result().prices().checkedAt().atZone(java.time.ZoneId.of("Asia/Seoul"))));
+            // 찾은 가격은 24시간 동안 다시 쓰므로 그 전에는 '다시 찾기' 대신 다시 찾을 수 있는 시각을 보여 준다.
+            var pricesReusedUntil=job.result().prices()==null?null:job.result().prices().checkedAt().plus(ItineraryJobService.PRICE_REUSE);
+            model.addAttribute("pricesRefreshAt",pricesReusedUntil==null || !pricesReusedUntil.isAfter(java.time.Instant.now())?null
+                :java.time.format.DateTimeFormatter.ofPattern("M월 d일 HH:mm").format(pricesReusedUntil.atZone(java.time.ZoneId.of("Asia/Seoul"))));
+            // 카카오 길찾기에 연결하지 못해 직선거리로 추정한 이동 구간 수(SFR-04-04). 있으면 이동시간 안내 옆에 따로 알린다.
+            model.addAttribute("estimatedMoves",ItineraryConditionReport.estimatedMoves(job.result()));
+            // 일정 항목에 AI가 쓴 'AI 설명' 줄이 있으면 화면 끝에서 그 뜻을 알린다.
+            model.addAttribute("aiReasonsUsed",com.travel.travel_recommendation.service.PlaceReasons.used(job.result()));
             // 장소에 저장해 둔 이전 검색 결과를 다시 쓴 곳은 그 검색 시각을 따로 보여 준다.
             var reusedAt=new java.util.HashMap<Long,String>();
             if(job.result().prices()!=null) job.result().prices().quotes().stream()
@@ -309,9 +397,18 @@ public class ItineraryController {
                 .forEach(q->reusedAt.put(q.placeId(),java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
                     .format(q.checkedAt().atZone(java.time.ZoneId.of("Asia/Seoul")))));
             model.addAttribute("priceReusedAt",reusedAt);
-            // 수정안이면 원래 초안과 비교해 바뀐 관광지·식당·숙소와 시각을 보여 준다(SFR-08-04).
-            model.addAttribute("revisionChanges",revisionChanges(job,login(principal),hash(session)));
+            // 수정안이면 원래 초안과, '다른 관광지로 다시 만들기'로 만든 초안이면 이전 초안과 비교해
+            // 바뀐 관광지·식당·숙소와 시각을 보여 준다(SFR-08-04). 비교할 초안을 볼 수 없으면 null이다.
+            var compareWith=job.input().revision()!=null?job.input().revision().sourceJobId():job.input().previousJobId();
+            model.addAttribute("revisionChanges",changesFrom(compareWith,job,login(principal),hash(session)));
+            // 여행 기간 축제 장소가 이 초안에 없으면 넣는 방법을 한 줄로 안내한다(SFR-04-03). 수정안은 원래 일정을 이어 고치는 것이라 보여 주지 않는다.
+            if(job.input().revision()==null) {
+                try { model.addAttribute("festivalSuggestion",service().festivalSuggestion(job.input(),job.result(),login(principal),hash(session))); }
+                catch(RuntimeException unavailable) { /* 축제 안내를 읽지 못해도 초안은 그대로 보여 준다. */ }
+            }
         }
+        // '다른 관광지로 다시 만들기'로 만든 초안이면 이전 초안으로 돌아가는 링크를 보여 준다(실패·처리 중이어도).
+        model.addAttribute("previousDraftId",job.input().revision()==null?job.input().previousJobId():null);
         // 내 일정 저장은 회원만 할 수 있어 화면에서 로그인 여부를 구분한다.
         model.addAttribute("loggedIn",principal!=null);
         // 수정안이면 이어진 저장 일정에 덮어쓸 수 있게 대상 일정을 함께 보여 준다.
@@ -319,12 +416,11 @@ public class ItineraryController {
         model.addAttribute("applyTargets",saved==null || job.result()==null || job.input().revision()==null?List.of():saved.targets(id,login(principal)));
         return "travel/itinerary-result";
     }
-    // 원래 초안이 만료·삭제됐거나 아직 완성되지 않았으면 비교하지 않는다(null).
-    private ItineraryChanges.Comparison revisionChanges(ItineraryPlan.View job, String login, byte[] hash) {
-        var revision=job.input().revision();
-        if(revision==null || revision.sourceJobId()==null) return null;
+    // 비교할 초안(sourceId)이 없거나 만료·삭제됐거나 아직 완성되지 않았으면 비교하지 않는다(null).
+    private ItineraryChanges.Comparison changesFrom(UUID sourceId, ItineraryPlan.View job, String login, byte[] hash) {
+        if(sourceId==null) return null;
         ItineraryPlan.View source;
-        try { source=service().view(revision.sourceJobId(),login,hash); }
+        try { source=service().view(sourceId,login,hash); }
         catch(RuntimeException unavailable) { return null; }
         if(source.result()==null) return null;
         var settings=new ArrayList<String>();
@@ -359,14 +455,44 @@ public class ItineraryController {
         }
         return "redirect:/travel/recommendations/itineraries/"+id;
     }
-    /** 유지·교체할 관광지와 시간을 받아 새 수정안 작업을 만든다. 원본 초안은 그대로 둔다. */
+    /** 화면에서 입력한 기본 정보(이동수단·하루 시간·체류시간). 수정안을 만들지 못했을 때 입력 칸을 다시 채우는 데 쓴다. */
+    public record EditValues(KakaoMapClient.Transport transport,LocalTime start,LocalTime end,Integer visitMinutes) {}
+
+    /**
+     * 유지·교체할 관광지와 시간을 받아 새 수정안 작업을 만든다. 원본 초안은 그대로 둔다.
+     * 만들지 못하면 오류 화면 대신 보던 화면(초안 또는 직접 수정 화면)에 이유를 보여 주고, 시간만 바꾸던 값은 다시 채운다.
+     */
     @PostMapping("/itineraries/{id}/revisions")
-    ResponseEntity<?> revise(@PathVariable UUID id,@RequestParam(required=false) List<Long> replace,
+    org.springframework.web.servlet.view.RedirectView revise(@PathVariable UUID id,@RequestParam(required=false) List<Long> replace,
             @RequestParam(required=false) ItineraryJobService.ReplaceReason reason,@RequestParam LocalTime start,
-            @RequestParam LocalTime end,@RequestParam int visitMinutes,Principal principal,HttpSession session) {
-        UUID job=service().revise(id,login(principal),hash(session),replace,reason,start,end,visitMinutes);
-        return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create("/travel/recommendations/itineraries/"+job))
-            .cacheControl(CacheControl.noStore()).build();
+            @RequestParam LocalTime end,@RequestParam int visitMinutes,@RequestParam(defaultValue="false") boolean fromEdit,
+            Principal principal,HttpSession session,org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
+        String error;
+        try {
+            return seeOtherView("/travel/recommendations/itineraries/"+service().revise(id,login(principal),hash(session),replace,reason,start,end,visitMinutes));
+        } catch(ResponseStatusException e) {
+            if(e.getStatusCode().value()==404) throw e;
+            error=e.getReason();
+        } catch(RecommendationException e) {
+            error=e.getMessage();
+        } catch(TripConstraints.ConflictException conflict) {
+            error=conflict.conflicts().get(0).reason();
+        }
+        if(fromEdit) {
+            redirect.addFlashAttribute("editError",error+" 원래 일정은 그대로예요.");
+            return seeOtherView("/travel/recommendations/itineraries/"+id+"/edit");
+        }
+        redirect.addFlashAttribute("reviseError",error+" 지금 일정은 그대로예요.");
+        // 'AI 없이 시간만 바꾸기'에서 보낸 값이면 입력 칸에 다시 채운다.
+        if(replace==null || replace.isEmpty()) redirect.addFlashAttribute("timeValues",new EditValues(null,start,end,visitMinutes));
+        // 안내는 '일정 수정하기' 절에 보이므로 그 위치로 돌아간다.
+        return seeOtherView("/travel/recommendations/itineraries/"+id+"#revise-title");
+    }
+    /** POST 뒤 다른 화면으로 303으로 보낸다. RedirectAttributes에 담은 flash 안내도 함께 넘어간다. */
+    private static org.springframework.web.servlet.view.RedirectView seeOtherView(String url) {
+        var view=new org.springframework.web.servlet.view.RedirectView(url,true);
+        view.setStatusCode(HttpStatus.SEE_OTHER);
+        return view;
     }
     /**
      * 직접 수정 화면(SFR-08-04). 왼쪽에 기본 정보(이동수단·시간), 오른쪽에 일차별 장소 목록을 보여 주고
@@ -403,6 +529,9 @@ public class ItineraryController {
             // 하루 방문 수처럼 반드시 지키기로 한 조건과 맞지 않는 변경이다.
             redirect.addFlashAttribute("editError",conflict.conflicts().get(0).reason()+" 원래 일정은 그대로예요.");
         }
+        // 기본 정보(이동수단·시간·체류시간)를 바꾸다 실패했으면 입력했던 값을 다시 채워 고쳐 보낼 수 있게 한다.
+        if(transport!=null || start!=null || end!=null || visitMinutes!=null)
+            redirect.addFlashAttribute("editValues",new EditValues(transport,start,end,visitMinutes));
         return "redirect:/travel/recommendations/itineraries/"+id+"/edit";
     }
     private static final String AI_COOLDOWN_KEY="itineraryAiRevisionNext";
@@ -579,7 +708,27 @@ public class ItineraryController {
             return ResponseEntity.badRequest().cacheControl(CacheControl.noStore()).body(Map.of("message","대중교통 일정에서만 실제 경로를 볼 수 있어요."));
         var route=TripMap.route(job.result().days().stream().map(d->new TripMap.Day(d.number(),
             d.items().stream().map(i->new TripMap.Stop(i.type(),i.name(),i.mapUrl())).toList())).toList(),false);
+        var wait=dayPathsCooldown(session);
+        if(wait!=null) return wait;
         return dayPathsOf(route,day,transitRoutes.getIfAvailable());
+    }
+    private static final String DAY_PATHS_COOLDOWN_KEY="itineraryDayPathsNext";
+    /**
+     * '실제 경로 보기'는 한 번에 그날 여러 구간을 카카오에 조회하므로 다른 버튼처럼 같은 세션에서 10초에 한 번만 받는다.
+     * 기다려야 하면 남은 초를 알려 주는 429 응답을, 조회해도 되면 null을 돌려준다. 저장 일정 화면도 같이 쓸 수 있다.
+     */
+    static ResponseEntity<?> dayPathsCooldown(HttpSession session) {
+        synchronized(session) {
+            var now=java.time.Instant.now();
+            var next=session.getAttribute(DAY_PATHS_COOLDOWN_KEY) instanceof java.time.Instant at?at:null;
+            if(next!=null && next.isAfter(now)) {
+                long seconds=(java.time.Duration.between(now,next).toMillis()+999)/1000;
+                return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).cacheControl(CacheControl.noStore())
+                    .body(Map.of("message","방금 경로를 찾았어요. "+seconds+"초 뒤에 다시 눌러 주세요."));
+            }
+            session.setAttribute(DAY_PATHS_COOLDOWN_KEY,now.plusSeconds(10));
+            return null;
+        }
     }
     /** 공통: 고른 날의 경로를 조회해 JSON으로 돌려준다. 저장 일정 화면(SavedItineraryController)도 같이 쓴다. */
     static ResponseEntity<?> dayPathsOf(TripMap.Route route,int day,TransitRouteService routes) {
@@ -601,11 +750,13 @@ public class ItineraryController {
         response.setStatus(status); response.setHeader("Cache-Control","no-store"); model.addAttribute("message",message);
         // 찾을 수 없음(만료·다른 세션)이면 비회원에게 세션 만료 가능성을 함께 안내한다.
         model.addAttribute("notFound",status==404);
-        var submission=(Submission)session.getAttribute(SESSION_KEY);
+        String path=request.getRequestURI().substring(request.getContextPath().length());
         // 수정안을 만들지 못하면 원본 초안은 그대로이므로 원본으로 돌아가는 길을 안내한다.
-        var revision=java.util.regex.Pattern.compile("^/travel/recommendations/itineraries/([0-9a-fA-F-]{36})/revisions$").matcher(request.getRequestURI().substring(request.getContextPath().length()));
+        var revision=java.util.regex.Pattern.compile("^/travel/recommendations/itineraries/([0-9a-fA-F-]{36})/revisions$").matcher(path);
         if(revision.matches()) model.addAttribute("sourceUrl","/travel/recommendations/itineraries/"+revision.group(1));
-        if(submission!=null) model.addAttribute("editUrl","/travel/recommendations/"+submission.parent()+"/destinations/"+submission.destination()+"/schedule");
+        // 일정 조건 화면에서 보낸 요청이 실패했으면 그 입력 화면으로 돌아가는 길을 안내한다.
+        var schedule=java.util.regex.Pattern.compile("^/travel/recommendations/([0-9a-fA-F-]{36})/destinations/(\\d+)/(schedule|quick-schedule|trip-info)$").matcher(path);
+        if(schedule.matches()) model.addAttribute("editUrl","/travel/recommendations/"+schedule.group(1)+"/destinations/"+schedule.group(2)+"/schedule");
         return "travel/itinerary-error";
     }
     private ItineraryJobService service() {

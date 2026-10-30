@@ -4,6 +4,7 @@
 <body>
 <script defer th:src="@{/js/day-tabs.js}"></script>
 <script defer th:src="@{/js/request-examples.js}"></script>
+<script defer th:src="@{/js/submit-loading.js}"></script>
 <header th:replace="~{fragments/layout :: header}"></header>
 <main class="travel itinerary-page" th:with="input=${options.input}, result=${options.result}">
 <a class="back-link" th:href="@{/travel/recommendations/itineraries/{id}(id=${jobId})}">← 일정으로 돌아가기</a>
@@ -25,15 +26,17 @@
 <dd th:if="${input.conditions.startDate == null}" th:text="${result.days.size() + '일 (날짜 미정)'}"></dd>
 </dl>
 <p class="help">지역과 여행 기간은 여기서 바꿀 수 없어요. 여행 조건부터 새 일정을 만들어 주세요.</p>
-<form method="post" th:action="@{/travel/recommendations/itineraries/{id}/direct-revisions(id=${jobId})}">
+<!--/* 수정안을 만들지 못하고 돌아왔으면(editValues) 원래 값 대신 입력했던 값을 다시 채운다. */-->
+<form method="post" th:action="@{/travel/recommendations/itineraries/{id}/direct-revisions(id=${jobId})}" data-submit-loading="수정안 만드는 중…"
+      th:with="transportName=${editValues != null and editValues.transport != null ? editValues.transport.name() : input.transport.name()}">
 <fieldset class="choice-chips">
 <legend>이동수단</legend>
-<label><input type="radio" name="transport" value="CAR" th:checked="${input.transport.name() == 'CAR'}"><span>자동차</span></label>
-<label><input type="radio" name="transport" value="PUBLIC_TRANSIT" th:checked="${input.transport.name() != 'CAR'}"><span>대중교통</span></label>
+<label><input type="radio" name="transport" value="CAR" th:checked="${transportName == 'CAR'}"><span>자동차</span></label>
+<label><input type="radio" name="transport" value="PUBLIC_TRANSIT" th:checked="${transportName != 'CAR'}"><span>대중교통</span></label>
 </fieldset>
-<div class="field"><label for="edit-start">하루 시작 시간</label><input id="edit-start" name="start" type="time" min="08:00" max="17:00" th:value="${input.start}" required></div>
-<div class="field"><label for="edit-end">하루 종료 시간</label><input id="edit-end" name="end" type="time" min="12:00" max="21:00" th:value="${input.end}" required></div>
-<div class="field"><label for="edit-visit">관광지 체류시간 (분)</label><input id="edit-visit" name="visitMinutes" type="number" min="30" max="180" th:value="${input.visitMinutes}" required></div>
+<div class="field"><label for="edit-start">하루 시작 시간</label><input id="edit-start" name="start" type="time" min="08:00" max="17:00" th:value="${editValues != null and editValues.start != null ? editValues.start : input.start}" required></div>
+<div class="field"><label for="edit-end">하루 종료 시간</label><input id="edit-end" name="end" type="time" min="12:00" max="21:00" th:value="${editValues != null and editValues.end != null ? editValues.end : input.end}" required></div>
+<div class="field"><label for="edit-visit">관광지 체류시간 (분)</label><input id="edit-visit" name="visitMinutes" type="number" min="30" max="180" th:value="${editValues != null and editValues.visitMinutes != null ? editValues.visitMinutes : input.visitMinutes}" required></div>
 <div class="form-actions"><button type="submit">이 조건으로 수정안 만들기</button></div>
 </form>
 </section>
@@ -52,7 +55,7 @@
 <details class="condition-section edit-add" th:unless="${options.addable.isEmpty()}">
 <summary><span class="details-title">+ 장소 더하기</span></summary>
 <p class="help">더할 관광지를 고르면 하루 시간 안에서 자리를 찾아 넣어요. 시간이 모자라면 기존 관광지 일부가 빠질 수 있어요.</p>
-<form method="post" th:action="@{/travel/recommendations/itineraries/{id}/direct-revisions(id=${jobId})}">
+<form method="post" th:action="@{/travel/recommendations/itineraries/{id}/direct-revisions(id=${jobId})}" data-submit-loading="수정안 만드는 중…">
 <ul class="edit-add-list">
 <li th:each="place : ${options.addable}">
 <div><strong th:text="${place.name}"></strong><span class="help" th:if="${place.address != null}" th:text="${place.address}"></span></div>
@@ -85,7 +88,9 @@
 <th:block th:if="${item.type == 'VISIT' and options.editableIds.contains(item.placeId)}">
 <details class="item-replace">
 <summary class="button button-quiet button-small">바꾸기</summary>
-<form method="post" th:action="@{/travel/recommendations/itineraries/{id}/revisions(id=${jobId})}">
+<!--/* fromEdit: 만들지 못하면 이 수정 화면으로 돌아와 이유를 보여 준다. */-->
+<form method="post" th:action="@{/travel/recommendations/itineraries/{id}/revisions(id=${jobId})}" data-submit-loading="수정안 만드는 중…">
+<input type="hidden" name="fromEdit" value="true">
 <input type="hidden" name="replace" th:value="${item.placeId}">
 <input type="hidden" name="start" th:value="${input.start}"><input type="hidden" name="end" th:value="${input.end}">
 <input type="hidden" name="visitMinutes" th:value="${input.visitMinutes}">
@@ -98,20 +103,20 @@
 </form>
 </details>
 <form method="post" th:action="@{/travel/recommendations/itineraries/{id}/direct-revisions(id=${jobId})}"
-      onsubmit="return confirm('이 관광지를 일정에서 뺄까요?');">
+      onsubmit="return confirm('이 관광지를 일정에서 뺄까요?');" data-submit-loading="빼는 중…">
 <button type="submit" class="button-small button-danger" name="remove" th:value="${item.placeId}">빼기</button>
 </form>
 </th:block>
 <span class="help" th:if="${item.type == 'VISIT' and !options.editableIds.contains(item.placeId)}"
       th:text="${#strings.startsWith(item.note, '저녁 관광') ? '수정안마다 다시 골라요' : '필수 방문 장소'}"></span>
 <!--/* 식당: 이 식당을 빼고 가까운 다른 식당으로 바꾼다. */-->
-<form th:if="${item.type == 'MEAL' and item.placeId != null}" method="post" th:action="@{/travel/recommendations/itineraries/{id}/direct-revisions(id=${jobId})}">
+<form th:if="${item.type == 'MEAL' and item.placeId != null}" method="post" th:action="@{/travel/recommendations/itineraries/{id}/direct-revisions(id=${jobId})}" data-submit-loading="바꾸는 중…">
 <button type="submit" class="button-quiet button-small" name="avoidRestaurant" th:value="${item.placeId}">다른 식당으로</button>
 </form>
 <!--/* 숙소: 확인된 다른 숙소 후보 중에서 고른다. */-->
 <details class="item-replace" th:if="${item.type == 'STAY' and result.lodging != null and result.lodging.options.size() > 1}">
 <summary class="button button-quiet button-small">숙소 바꾸기</summary>
-<form method="post" th:action="@{/travel/recommendations/itineraries/{id}/direct-revisions(id=${jobId})}">
+<form method="post" th:action="@{/travel/recommendations/itineraries/{id}/direct-revisions(id=${jobId})}" data-submit-loading="바꾸는 중…">
 <p class="help">바꿀 숙소를 골라 주세요. 요금·예약은 숙소 출처에서 확인해 주세요.</p>
 <div class="item-replace-reasons">
 <button type="submit" class="button-quiet button-small" name="stay" th:each="stay : ${result.lodging.options}"
@@ -132,7 +137,7 @@
 <p class="notice" role="status" th:if="${aiQuestion != null}" th:text="${'확인이 필요해요 · ' + aiQuestion}"></p>
 <p class="notice" role="status" th:if="${aiNotice != null}" th:text="${'바꿀 수 없는 요청이에요 · ' + aiNotice}"></p>
 <p role="alert" th:if="${aiError != null}" th:text="${aiError}"></p>
-<form method="post" th:action="@{/travel/recommendations/itineraries/{id}/ai-revisions(id=${jobId})}">
+<form method="post" th:action="@{/travel/recommendations/itineraries/{id}/ai-revisions(id=${jobId})}" data-submit-loading="AI 수정안 만드는 중…">
 <input type="hidden" name="fromEdit" value="true">
 <label for="ai-request">수정 요청 (1~300자)</label>
 <div class="request-examples" data-request-examples hidden>

@@ -77,13 +77,18 @@ public final class ItineraryPlan {
         public Input withPicking(Picking picking) {
             return new Input(recommendationId, places, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, choices, picking);
         }
-        /** AI가 정한 순서로 다시 고른 관광지·예비 관광지·저녁 관광 후보로 바꾼다. 고르기 전 후보는 더 쓰지 않으므로 비운다. */
+        /**
+         * AI가 정한 순서로 다시 고른 관광지·예비 관광지·저녁 관광 후보로 바꾼다. 고르기 전 후보는 더 쓰지 않으므로 비운다.
+         * '다른 관광지로 다시 만들기'의 이전 초안 기록(previous·previousJobId)은 결과 화면의 비교에 쓰므로 그대로 둔다.
+         */
         public Input withPicked(List<PlaceCandidate> attractions, List<PlaceCandidate> reserve, List<PlaceCandidate> evening) {
             var view = new PlaceCandidateView(places.jobId(), places.destination(), places.durationDays(), places.accommodationNeeded(),
                 attractions, places.accommodations(), places.restaurants());
             return new Input(recommendationId, view, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, choices,
-                new Picking(List.of(), true));
+                new Picking(List.of(), true, picking == null ? List.of() : picking.previous(), picking == null ? null : picking.previousJobId()));
         }
+        /** '다른 관광지로 다시 만들기'로 만든 초안이면 이전 초안의 작업 ID, 아니면 null이다. */
+        public UUID previousJobId() { return picking == null ? null : picking.previousJobId(); }
         /** AI가 정한 순서로 관광지를 골랐는지. */
         public boolean pickedByAi() { return picking != null && picking.byAi(); }
         private int dayCount() { return conditions == null || conditions.durationDays() == null ? 1 : conditions.durationDays(); }
@@ -126,11 +131,13 @@ public final class ItineraryPlan {
      * 다시 고를 때 쓴다(다시 고른 뒤에는 비운다). byAi는 지금 고른 관광지가 AI가 정한 순서를 따른 것인지다.
      */
     /** previous는 '다른 관광지로 다시 만들기'에서 직전 초안에 넣었던 관광지 ID다. AI가 순서를 정한 뒤에도 뒤로 보낸다. 이전 JSON에는 없다. */
-    public record Picking(List<PlaceCandidate> pool, boolean byAi, List<Long> previous) {
+    /** previousJobId는 '다른 관광지로 다시 만들기'의 직전 초안 작업 ID다. 결과 화면에서 이전 초안 링크와 비교에 쓴다. 이전 JSON에는 없다. */
+    public record Picking(List<PlaceCandidate> pool, boolean byAi, List<Long> previous, UUID previousJobId) {
         public Picking {
             pool = pool == null ? List.of() : List.copyOf(pool);
             previous = previous == null ? List.of() : List.copyOf(previous);
         }
+        public Picking(List<PlaceCandidate> pool, boolean byAi, List<Long> previous) { this(pool, byAi, previous, null); }
         public Picking(List<PlaceCandidate> pool, boolean byAi) { this(pool, byAi, List.of()); }
     }
     /**
@@ -189,8 +196,17 @@ public final class ItineraryPlan {
      * unavailablePlaces는 수정 요청에 이름이 나왔지만 확인된 교체 후보에 없어 비슷한 곳으로 바꾼 장소다.
      * 이 값이 생기기 전의 작업 JSON에는 없으므로 null이면 빈 목록으로 본다.
      */
+    /**
+     * choiceNotices는 원래 고른 식당·숙소를 지금 다시 확인하지 못해 다른 곳으로 고른 경우의 안내 문장이다.
+     * 이 값이 생기기 전의 작업 JSON에는 없으므로 null이면 빈 목록으로 본다.
+     */
     public record Revision(UUID sourceJobId, List<PlaceRef> kept, List<PlaceRef> replaced, List<PlaceRef> added,
-                           String reason, Instant requestedAt, String request, String explanation, List<String> unavailablePlaces) {
+                           String reason, Instant requestedAt, String request, String explanation, List<String> unavailablePlaces,
+                           List<String> choiceNotices) {
+        public Revision(UUID sourceJobId, List<PlaceRef> kept, List<PlaceRef> replaced, List<PlaceRef> added,
+                        String reason, Instant requestedAt, String request, String explanation, List<String> unavailablePlaces) {
+            this(sourceJobId, kept, replaced, added, reason, requestedAt, request, explanation, unavailablePlaces, null);
+        }
         public Revision(UUID sourceJobId, List<PlaceRef> kept, List<PlaceRef> replaced, List<PlaceRef> added,
                         String reason, Instant requestedAt, String request, String explanation) {
             this(sourceJobId, kept, replaced, added, reason, requestedAt, request, explanation, List.of());
@@ -201,6 +217,7 @@ public final class ItineraryPlan {
             this(sourceJobId, kept, replaced, added, reason, requestedAt, null, null);
         }
         public List<String> missingPlaces() { return unavailablePlaces == null ? List.of() : unavailablePlaces; }
+        public List<String> choiceChanges() { return choiceNotices == null ? List.of() : choiceNotices; }
     }
     public record Item(String type, Long placeId, String name, LocalTime start, LocalTime end,
                        String note, String mapUrl, String sourceUrl, Integer travelSeconds, Instant checkedAt) {
@@ -354,5 +371,14 @@ public final class ItineraryPlan {
         public Result withPets(List<PetCheck> pets) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices, pets, verifications); }
         public Result withVerifications(Verifications verifications) { return new Result(destination, days, transport, createdAt, assist, nearby, lodging, skipped, prices, pets, verifications); }
     }
-    public record View(UUID id, String status, String message, boolean pending, Input input, Result result) {}
+    /** expiresAt은 이 초안이 사라지는 시각(한국 시간)이다. 부모 추천 작업의 보관 기한을 따른다. */
+    public record View(UUID id, String status, String message, boolean pending, Input input, Result result, LocalDateTime expiresAt) {
+        public View(UUID id, String status, String message, boolean pending, Input input, Result result) {
+            this(id, status, message, pending, input, result, null);
+        }
+        /** 화면용 보관 기한. 예) "11월 2일 14:30". 저장 JSON에는 들어가지 않는다. */
+        public String expiresAtText() {
+            return expiresAt == null ? null : java.time.format.DateTimeFormatter.ofPattern("M월 d일 HH:mm").format(expiresAt);
+        }
+    }
 }
