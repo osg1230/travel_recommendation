@@ -6,6 +6,7 @@
     <link rel="stylesheet" th:href="@{/css/app.css}">
     <script defer th:src="@{/js/day-tabs.js}"></script>
     <script defer th:src="@{/js/trip-map.js}"></script>
+    <script defer th:src="@{/js/submit-loading.js}"></script>
 </head>
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
@@ -19,6 +20,21 @@
         + ' (' + itinerary.summary.dayCount + '일) · 이동수단 ' + itinerary.transportName}"></p>
     <p class="guide-note">저장할 때의 일정 초안이에요. 체류시간은 계획값이고 이동시간은 저장 당시의 예상값이에요. 영업시간·휴무일·예산·예약 가능 여부는 방문 전에 각 장소의 출처에서 확인해 주세요.</p>
 
+    <!--/* 가장 최근의 수정안 적용(또는 되돌리기)으로 바뀐 부분과 되돌리기 버튼(SFR-08-04). 직전 한 단계만 남겨 둔다. */-->
+    <section class="condition-section" th:if="${itinerary.lastChange != null}" th:with="change=${itinerary.lastChange}" aria-labelledby="change-title">
+        <h2 id="change-title" th:text="${change.undone ? '되돌리기로 바뀐 부분' : '최근 수정에서 바뀐 부분'}"></h2>
+        <p class="help" th:text="${(change.changedAt == null ? '' : change.changedAt + '(한국 시간)에 ')
+            + (change.undone ? '수정 전 일정으로 되돌렸어요. 되돌리기 전 일정과 비교한 내용이에요.' : '수정안을 적용했어요. 적용 전 일정과 비교한 내용이에요.')}"></p>
+        <th:block th:replace="~{fragments/itinerary-changes :: list(${change.comparison})}"></th:block>
+        <p th:if="${change.comparison.empty()}">관광지·식당·숙소와 방문 시각은 그대로예요. 이동시간이나 안내 문구만 바뀌었을 수 있어요.</p>
+        <p class="help">일정표에도 새로 넣은 곳과 시간·날짜가 바뀐 곳을 표시했어요. 이동·자유 시간은 비교하지 않아요.</p>
+        <form method="post" th:action="@{/my/itineraries/{id}/undo(id=${itinerary.summary.id})}" data-submit-loading="되돌리는 중…">
+            <input type="hidden" name="version" th:value="${itinerary.version}">
+            <div class="form-actions"><button type="submit" class="button-quiet" th:text="${change.undone ? '되돌리기 취소하기' : '수정 전으로 되돌리기'}"></button></div>
+            <p class="help">직전 한 단계만 되돌릴 수 있어요. 되돌린 뒤 한 번 더 누르면 되돌리기를 취소해요.</p>
+        </form>
+    </section>
+
     <!--/* 일정 초안 화면과 같은 배치: 넓은 화면에서는 일정표 옆에 지도를 고정하고, 좁은 화면에서는 CSS로 지도를 일정표 위에 보여 준다. */-->
     <div class="itinerary-layout">
     <div th:replace="~{fragments/map :: dayTabs(${itinerary.days})}"></div>
@@ -31,6 +47,10 @@
             <p class="schedule-time" th:text="${#temporals.format(item.start, 'HH:mm') + '–' + #temporals.format(item.end, 'HH:mm')}"></p>
             <div class="schedule-body">
             <p class="schedule-type" th:text="${item.typeName}"></p>
+            <!--/* 최근 수정에서 새로 넣었거나 시간·날짜가 바뀐 곳 표시. */-->
+            <th:block th:with="mark=${itinerary.changeMark(day.number, st.index)}">
+            <p class="change-mark" th:if="${mark != null}"><span class="change-badge" th:text="${mark}"></span></p>
+            </th:block>
             <th:block th:if="${item.type == 'VISIT' and item.placeId != null and photoByPlace.get(item.placeId) != null}">
             <!--/* 관광공사 대표 사진. 출처 표시 조건(공공누리)에 따라 사진 아래에 출처를 적는다. */-->
             <figure class="place-photo"><img th:src="${photoByPlace.get(item.placeId).url}" th:alt="${item.name + ' 사진'}" loading="lazy" referrerpolicy="no-referrer">
@@ -123,7 +143,7 @@
         <h2 id="edit-title">일정 수정하기</h2>
         <div th:replace="~{fragments/revision-scope :: scope}"></div>
         <th:block th:if="${itinerary.editableJobId != null}">
-            <p class="help">장소를 빼거나 바꾸고 더하거나, AI에게 문장으로 요청해 수정안을 만들어요. 수정안을 확인하고 '이 일정에 적용하기'를 눌러야 바뀌며, 그 전까지 이 일정은 그대로예요.</p>
+            <p class="help">장소를 빼거나 바꾸고 더하거나, AI에게 문장으로 요청해 수정안을 만들어요. 수정안을 확인하고 '이 일정에 적용하기'를 눌러야 바뀌며, 그 전까지 이 일정은 그대로예요. 적용한 뒤에도 바로 전 일정으로 되돌릴 수 있어요.</p>
             <div class="form-actions"><a class="button" th:href="@{/travel/recommendations/itineraries/{id}/edit(id=${itinerary.editableJobId})}">수정안 만들러 가기</a></div>
         </th:block>
         <form th:if="${itinerary.editableJobId == null}" method="post" th:action="@{/my/itineraries/{id}/edit(id=${itinerary.summary.id})}">

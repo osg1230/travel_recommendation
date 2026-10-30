@@ -309,6 +309,8 @@ public class ItineraryController {
                 .forEach(q->reusedAt.put(q.placeId(),java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
                     .format(q.checkedAt().atZone(java.time.ZoneId.of("Asia/Seoul")))));
             model.addAttribute("priceReusedAt",reusedAt);
+            // 수정안이면 원래 초안과 비교해 바뀐 관광지·식당·숙소와 시각을 보여 준다(SFR-08-04).
+            model.addAttribute("revisionChanges",revisionChanges(job,login(principal),hash(session)));
         }
         // 내 일정 저장은 회원만 할 수 있어 화면에서 로그인 여부를 구분한다.
         model.addAttribute("loggedIn",principal!=null);
@@ -316,6 +318,27 @@ public class ItineraryController {
         var saved=savedItineraries.getIfAvailable();
         model.addAttribute("applyTargets",saved==null || job.result()==null || job.input().revision()==null?List.of():saved.targets(id,login(principal)));
         return "travel/itinerary-result";
+    }
+    // 원래 초안이 만료·삭제됐거나 아직 완성되지 않았으면 비교하지 않는다(null).
+    private ItineraryChanges.Comparison revisionChanges(ItineraryPlan.View job, String login, byte[] hash) {
+        var revision=job.input().revision();
+        if(revision==null || revision.sourceJobId()==null) return null;
+        ItineraryPlan.View source;
+        try { source=service().view(revision.sourceJobId(),login,hash); }
+        catch(RuntimeException unavailable) { return null; }
+        if(source.result()==null) return null;
+        var settings=new ArrayList<String>();
+        ItineraryChanges.setting(settings,"이동수단",transportName(source.result().transport()),transportName(job.result().transport()));
+        ItineraryChanges.setting(settings,"하루 일정 시간",source.input().start()+"~"+source.input().end(),job.input().start()+"~"+job.input().end());
+        ItineraryChanges.setting(settings,"관광지 체류시간",source.input().visitMinutes()+"분",job.input().visitMinutes()+"분");
+        ItineraryChanges.setting(settings,"집 출발·귀가 시각",homeHours(source.input().home()),homeHours(job.input().home()));
+        return ItineraryChanges.compare(ItineraryChanges.fromPlan(source.result().days()),ItineraryChanges.fromPlan(job.result().days()),settings);
+    }
+    private static String transportName(KakaoMapClient.Transport transport) {
+        return transport==KakaoMapClient.Transport.CAR?"자동차":"대중교통";
+    }
+    private static String homeHours(ItineraryPlan.HomeTrip home) {
+        return home==null?null:home.departAt()+" 출발 · "+home.arriveBy()+" 귀가";
     }
     /**
      * '다른 관광지로 다시 만들기'. 같은 시간·이동수단·필수 조건으로 새 초안을 만들되 이 초안의 관광지는 뒤로 보낸다.
