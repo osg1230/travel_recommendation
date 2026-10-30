@@ -166,6 +166,50 @@ public class TourApiClient {
     }
 
     /**
+     * 시·도 안에서 시·군 이름(예: "수원시")의 시·군·구 코드. 수원·전주·포항처럼 일반구가 있는 시는 관광지가 구 코드로 등록돼
+     * 시 코드(예: 110)로는 관광공사 분류 조회·연관 관광지가 0건이므로, 그 아래 구 코드들(예: 111·113·115·117)을 돌려준다.
+     * 구가 없으면 시·군 코드 하나, 이름을 찾지 못하면 빈 목록이다.
+     */
+    public List<String> cityDistrictCodes(String provinceCode, String cityName) {
+        if (provinceCode == null || !provinceCode.matches("[0-9]{2}") || cityName == null || cityName.isBlank() || cityName.length() > 40)
+            return List.of();
+        var data = get(endpoint.resolve("ldongCode2"), 100, "&lDongRegnCd=" + provinceCode);
+        String own = null; List<String> wards = new ArrayList<>();
+        for (var item : data.path("items").path("item")) {
+            String code = item.path("code").asText(""), name = item.path("name").asText("");
+            if (!code.matches("[0-9]{3}")) continue;
+            if (name.equals(cityName)) own = code;
+            else if (name.startsWith(cityName + " ")) wards.add(code);
+        }
+        if (!wards.isEmpty()) return List.copyOf(wards);
+        return own == null ? List.of() : List.of(own);
+    }
+
+    /** 분류 하나에 든 관광공사 등록 장소 수와 앞쪽 이름 몇 개. */
+    public record CategoryPlaces(int count, List<String> names) {}
+    static final int CATEGORY_NAMES = 5;
+
+    /**
+     * 관광공사 새 분류체계(lclsSystm) 소분류 하나에 등록된 장소 수와 이름 몇 개를 받는다. 예) "NA040100"(국립공원),
+     * 속초 → 1곳 "설악산 국립공원(외설악)". 여행지에서 원하는 여행을 실제로 할 수 있는지 확인된 근거로 쓴다.
+     * districtCode가 없으면 시·도 전체(부산·제주 등)에서 센다.
+     */
+    public CategoryPlaces categoryPlaces(String provinceCode, String districtCode, String category) {
+        if (provinceCode == null || !provinceCode.matches("[0-9]{2,5}") || category == null || !category.matches("[A-Z]{2}[0-9]{6}"))
+            throw failure("TOUR_INPUT", "지역 코드와 분류를 확인해 주세요.");
+        String extra = "&lclsSystm1=" + category.substring(0, 2) + "&lclsSystm2=" + category.substring(0, 4) + "&lclsSystm3=" + category
+            + "&lDongRegnCd=" + provinceCode;
+        if (districtCode != null && districtCode.matches("[0-9]{3}")) extra += "&lDongSignguCd=" + districtCode;
+        var data = get(endpoint.resolve("areaBasedList2"), CATEGORY_NAMES, extra);
+        List<String> names = new ArrayList<>();
+        for (var item : data.path("items").path("item")) {
+            try { String title = text(item, "title"); if (!title.isBlank() && title.length() <= 100) names.add(title); }
+            catch (RecommendationException ignored) { /* 한 항목의 형식 오류로 다른 이름까지 잃지 않는다. */ }
+        }
+        return new CategoryPlaces(data.path("totalCount").asInt(0), List.copyOf(names));
+    }
+
+    /**
      * 관광공사 '관광지별 연관 관광지 정보'(티맵 내비게이션 이동 데이터)의 한 행. center는 시·군·구의 중심 관광지,
      * name은 중심 관광지에 간 차량이 함께 많이 간 곳, rank는 그 순위(1이 가장 많음)다. large·middle·small은 대·중·소 분류다.
      */

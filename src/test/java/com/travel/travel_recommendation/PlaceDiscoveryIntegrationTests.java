@@ -181,7 +181,7 @@ class PlaceDiscoveryIntegrationTests {
             128.85,37.75,"https://place.map.kakao.com/9200000000000002",KoreaTime.now().withNano(0));
         when(tour.configured()).thenReturn(true);
         when(tour.districtCode(null,"강원특별자치도")).thenReturn(Optional.of("51"));
-        when(tour.districtCode("51","강릉시")).thenReturn(Optional.of("150"));
+        when(tour.cityDistrictCodes("51","강릉시")).thenReturn(List.of("150"));
         when(tour.relatedPlaces(eq("51150"),any(),anyInt())).thenReturn(List.of(
             new TourApiClient.RelatedPlace("경포대","인기 관광지","51150","관광지","쇼핑","시장",1),
             new TourApiClient.RelatedPlace("경포대","강릉역","51150","관광지","기타관광","교통시설",2),

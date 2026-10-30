@@ -102,6 +102,7 @@ public class DestinationLandmarkService {
 
     /**
      * 여행지 지역 이름을 5자리 시·군·구 코드로 바꾼다. "강원특별자치도 강릉시" → [51150],
+     * "경기도 수원시"처럼 일반구가 있는 시는 구 코드들([41111, 41113, 41115, 41117]),
      * "부산광역시"처럼 시·도 전체인 여행지는 그 안의 시·군·구 전부, 세종특별자치시는 [36110]이다.
      */
     private List<String> districtCodes(String region) {
@@ -110,7 +111,7 @@ public class DestinationLandmarkService {
         var province=tour.districtCode(null,parts[0]).orElse(null);
         if(province==null) return List.of();
         if(province.length()==5) return List.of(province);
-        if(parts.length==2) return tour.districtCode(province,parts[1]).map(code->List.of(province+code)).orElse(List.of());
+        if(parts.length==2) return tour.cityDistrictCodes(province,parts[1]).stream().map(code->province+code).toList();
         return tour.districtCodes(province).stream().map(code->province+code).toList();
     }
 
