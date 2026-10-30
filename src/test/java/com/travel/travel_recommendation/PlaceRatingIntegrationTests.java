@@ -117,11 +117,13 @@ class PlaceRatingIntegrationTests {
         ratings.save(attraction,owner.getLoginId(),5,List.of(tag("VIEW")),null);
         ratings.save(attraction,other.getLoginId(),1,List.of(),null);
         clear();
-        // 다른 회원은 내 평가를 지울 수 없고, 자기 평가만 지운다.
+        // 다른 회원은 내 평가를 지울 수 없고(지울 자기 평가가 없어 false), 자기 평가만 지운다.
         var third=member();
-        assertThatThrownBy(()->ratings.delete(attraction,third.getLoginId())).isInstanceOf(ResponseStatusException.class).hasMessageContaining("내 평가가 없어요");
-        ratings.delete(attraction,other.getLoginId());
+        assertThat(ratings.delete(attraction,third.getLoginId())).isFalse();
+        assertThat(ratings.delete(attraction,other.getLoginId())).isTrue();
         clear();
+        // 두 번 누르거나 다른 탭에서 먼저 지웠으면 오류 없이 false다.
+        assertThat(ratings.delete(attraction,other.getLoginId())).isFalse();
         var summary=ratings.summaries(List.of(attraction)).get(attraction);
         assertThat(summary.count()).isEqualTo(1);
         assertThat(summary.average()).isEqualTo(5.0);
@@ -148,11 +150,76 @@ class PlaceRatingIntegrationTests {
             var folder=java.nio.file.Path.of("target","ui-check"); java.nio.file.Files.createDirectories(folder);
             java.nio.file.Files.writeString(folder.resolve("rating.html"),html);
         }
+        // 별점 없이 보내면 오류 화면 대신 평가 화면으로 돌아가 안내한다(적은 값은 flash로 다시 채운다).
         mvc.perform(post("/my/ratings/"+attraction).with(user(owner.getLoginId())).with(csrf()))
-            .andExpect(status().isBadRequest()).andExpect(content().string(containsString("별점")));
+            .andExpect(redirectedUrl("/my/ratings/"+attraction)).andExpect(flash().attribute("ratingError",containsString("별점")));
         mvc.perform(get("/my/ratings/"+destination).with(user(owner.getLoginId()))).andExpect(status().isNotFound());
         mvc.perform(post("/my/ratings/"+attraction+"/delete").with(user(owner.getLoginId())).with(csrf()))
-            .andExpect(redirectedUrl("/my/ratings"));
+            .andExpect(redirectedUrl("/my/ratings")).andExpect(flash().attribute("savedMessage",containsString("평가를 삭제했어요")));
+        // 이미 지운 평가를 다시 지우면(두 번 누름) 오류 대신 안내하고, 보던 화면으로 돌아간다.
+        mvc.perform(post("/my/ratings/"+attraction+"/delete").with(user(owner.getLoginId())).with(csrf()).param("returnTo","/my/itineraries/12#stop-1-0"))
+            .andExpect(redirectedUrl("/my/itineraries/12#stop-1-0")).andExpect(flash().attribute("savedMessage",containsString("이미 삭제됐어요")));
+    }
+
+    // 이용 제한·탈퇴 회원의 한줄평은 공개 목록에 내보내지 않는다. 별점·태그는 그대로 보이고 집계에도 들어간다.
+    @Test void hidesCommentsOfMembersWhoAreNotActive() {
+        var restricted=member(); var active=member();
+        ratings.save(attraction,restricted.getLoginId(),1,List.of(tag("VIEW")),"부적절한 한줄평");
+        ratings.save(attraction,active.getLoginId(),5,List.of(),"좋았어요");
+        jdbc.update("UPDATE dbo.users SET status='RESTRICTED' WHERE user_id=?",restricted.getId());
+        clear();
+        var summary=ratings.summaries(List.of(attraction)).get(attraction);
+        assertThat(summary.count()).isEqualTo(2);
+        assertThat(summary.average()).isEqualTo(3.0);
+        assertThat(summary.recent()).extracting(Recent::comment).containsExactly("좋았어요",null);
+        assertThat(summary.recent().get(1).score()).isEqualTo(1);
+        assertThat(summary.recent().get(1).tags()).containsExactly("경치가 좋아요");
+        // 평가 둘러보기와 평가 화면의 요약도 같은 규칙이다.
+        assertThat(ratings.browse(ratings.form(attraction,owner.getLoginId()).place().name())).filteredOn(p->p.place().placeId().equals(attraction))
+            .singleElement().satisfies(p->assertThat(p.summary().recent()).extracting(Recent::comment).doesNotContain("부적절한 한줄평"));
+        assertThat(ratings.form(attraction,owner.getLoginId()).summary().recent()).extracting(Recent::comment).doesNotContain("부적절한 한줄평");
+    }
+
+    // 더 이상 확인되지 않는(비활성) 장소의 평가는 바꿀 수 없지만 화면을 열어 삭제할 수 있다.
+    @Test void inactivePlaceRatingCanOnlyBeDeleted() throws Exception {
+        ratings.save(attraction,owner.getLoginId(),4,List.of(),null);
+        jdbc.update("UPDATE dbo.places SET is_active=0 WHERE place_id=?",attraction);
+        clear();
+        var form=ratings.form(attraction,owner.getLoginId());
+        assertThat(form.place().active()).isFalse();
+        assertThat(form.mine().score()).isEqualTo(4);
+        assertThat(ratings.mine(owner.getLoginId())).singleElement().satisfies(r->assertThat(r.place().active()).isFalse());
+        assertThatThrownBy(()->ratings.save(attraction,owner.getLoginId(),5,List.of(),null)).isInstanceOf(ResponseStatusException.class);
+        mvc.perform(get("/my/ratings/"+attraction).with(user(owner.getLoginId()))).andExpect(status().isOk())
+            .andExpect(content().string(containsString("평가를 새로 남기거나 바꿀 수 없어요")));
+        // 평가하지 않은 회원에게는 여전히 열리지 않는다.
+        assertThatThrownBy(()->ratings.form(attraction,member().getLoginId())).isInstanceOf(ResponseStatusException.class);
+        assertThat(ratings.delete(attraction,owner.getLoginId())).isTrue();
+        clear();
+        assertThatThrownBy(()->ratings.form(attraction,owner.getLoginId())).isInstanceOf(ResponseStatusException.class);
+    }
+
+    // 내 평가에 사용 중지된 태그가 있으면 화면에서 '저장하면 빠진다'고 알릴 수 있게 이름을 돌려준다.
+    @Test void reportsRetiredTagsInMyRating() {
+        ratings.save(attraction,owner.getLoginId(),4,List.of(tag("VIEW"),tag("KIDS")),null);
+        jdbc.update("UPDATE dbo.rating_tags SET is_active=0 WHERE tag_code='KIDS'");
+        clear();
+        var form=ratings.form(attraction,owner.getLoginId());
+        String kids=tags.findById(tag("KIDS")).orElseThrow().getName();
+        assertThat(form.droppedTags()).containsExactly(kids);
+        assertThat(form.tags()).extracting(com.travel.travel_recommendation.dto.PlaceRatingView.Tag::name).doesNotContain(kids);
+        assertThat(form.mine().tagIds()).contains(tag("KIDS"));
+    }
+
+    // 저장 일정 상세의 '내 평가 ★4'용 별점과 위치 보기 주소.
+    @Test void collectsMyScoresAndPlaceLinks() {
+        ratings.save(attraction,owner.getLoginId(),4,List.of(),null);
+        ratings.save(restaurant,member().getLoginId(),2,List.of(),null);
+        clear();
+        assertThat(ratings.myScores(List.of(attraction,restaurant),owner.getLoginId())).containsExactly(Map.entry(attraction,4));
+        assertThat(ratings.myScores(List.of(attraction),null)).isEmpty();
+        assertThat(ratings.form(attraction,owner.getLoginId()).place().mapUrl()).startsWith("https://");
+        assertThat(ratings.mine(owner.getLoginId())).singleElement().satisfies(r->assertThat(r.place().mapUrl()).startsWith("https://"));
     }
 
     @Test void savesTrimmedCommentAndClearsItWhenBlank() {
@@ -208,8 +275,15 @@ class PlaceRatingIntegrationTests {
             .andExpect(content().string(containsString("value=\"바다가 바로 앞이에요\"")));
         mvc.perform(get("/my/ratings").with(user(owner.getLoginId()))).andExpect(status().isOk())
             .andExpect(content().string(containsString("바다가 바로 앞이에요")));
-        mvc.perform(post("/my/ratings/"+attraction).with(user(owner.getLoginId())).with(csrf()).param("score","4").param("comment","가".repeat(PlaceRatingService.MAX_COMMENT_LENGTH+1)))
-            .andExpect(status().isBadRequest()).andExpect(content().string(containsString("한줄평")));
+        // 너무 긴 한줄평은 저장하지 않고, 적은 글을 그대로 들고 평가 화면으로 돌아간다.
+        String tooLong="가".repeat(PlaceRatingService.MAX_COMMENT_LENGTH+1);
+        mvc.perform(post("/my/ratings/"+attraction).with(user(owner.getLoginId())).with(csrf()).param("score","4").param("comment",tooLong))
+            .andExpect(redirectedUrl("/my/ratings/"+attraction)).andExpect(flash().attribute("ratingError",containsString("한줄평")))
+            .andExpect(flash().attribute("draft",new Draft(4,List.of(),tooLong)));
+        mvc.perform(get("/my/ratings/"+attraction).with(user(owner.getLoginId())).flashAttr("draft",new Draft(4,List.of(),tooLong)))
+            .andExpect(status().isOk()).andExpect(content().string(containsString("value=\""+tooLong+"\"")));
+        clear();
+        assertThat(ratings.form(attraction,owner.getLoginId()).mine().comment()).isEqualTo("바다가 바로 앞이에요");
     }
 
     @Test void browseListsRecentlyRatedPlacesAndFiltersByName() throws Exception {

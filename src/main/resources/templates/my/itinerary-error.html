@@ -10,6 +10,8 @@
 <main class="travel">
     <h1>일정을 처리하지 못했어요</h1>
     <p class="intro" role="alert" th:text="${message}"></p>
+    <!--/* 저장·적용 실패는 그 초안 화면, 이름 바꾸기·되돌리기·수정 준비 실패는 그 일정 상세로 돌아간다. */-->
+    <p th:if="${backUrl != null}"><a th:href="@{${backUrl}}">← 이전 화면으로</a></p>
     <p><a th:href="@{/my/itineraries}">내 일정 목록으로 가기</a></p>
     <a th:href="@{/travel/conditions}">여행 조건 다시 입력하기</a>
 </main>

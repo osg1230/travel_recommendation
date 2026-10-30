@@ -10,6 +10,8 @@
 <main class="travel">
     <h1>즐겨찾기를 처리하지 못했어요</h1>
     <p class="intro" role="alert" th:text="${message}"></p>
+    <!--/* 장소 후보·일정 상세에서 누르다 실패했으면 그 화면(보던 항목 위치)으로 돌아간다. */-->
+    <p th:if="${backUrl != null}"><a th:href="@{${backUrl}}">← 이전 화면으로</a></p>
     <p><a th:href="@{/my/favorites}">즐겨찾기 목록으로 가기</a></p>
     <a th:href="@{/travel/conditions}">여행 조건 다시 입력하기</a>
 </main>

@@ -15,7 +15,8 @@
     <a class="back-link" th:href="@{/my/itineraries}">← 내 일정 목록</a>
     <p class="eyebrow">내 여행 · 저장한 일정</p>
     <h1 th:text="${itinerary.summary.title}"></h1>
-    <p role="status" class="status-ok" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
+    <!--/* 일정 항목에서 평가하고 돌아온 안내는 그 항목 옆(ratingAnchor)에 보여 주고, 여기에는 저장·수정·이름 바꾸기 안내를 보여 준다. */-->
+    <p role="status" class="status-ok" th:if="${savedMessage != null and ratingAnchor == null}" th:text="${savedMessage}"></p>
     <p th:text="${itinerary.summary.destination + ' · ' + itinerary.summary.startDate + ' ~ ' + itinerary.summary.endDate
         + ' (' + itinerary.summary.dayCount + '일) · 이동수단 ' + itinerary.transportName}"></p>
     <p class="guide-note">저장할 때의 일정 초안이에요. 체류시간은 계획값이고 이동시간은 저장 당시의 예상값이에요. 영업시간·휴무일·예산·예약 가능 여부는 방문 전에 각 장소의 출처에서 확인해 주세요.</p>
@@ -78,13 +79,29 @@
                        th:href="@{/my/reservations/{rid}(rid=${b.activeReservationId})}">내 예약 보기</a>
                 </th:block>
                 <a th:if="${!#strings.isEmpty(item.mapUrl) and (item.type != 'TRANSIT' or routeLink == null)}" th:href="${item.mapUrl}" target="_blank" rel="noopener noreferrer">위치 보기<span class="visually-hidden"> (새 창)</span></a>
+                <!--/* 이미 평가한 장소는 내 별점을 보여 주고, 평가하고 나면 이 항목 위치(#stop-일차-순번)로 돌아온다. */-->
                 <a th:if="${item.placeId != null and (item.type == 'VISIT' or item.type == 'MEAL' or item.type == 'STAY')}"
-                   th:href="@{/my/ratings/{placeId}(placeId=${item.placeId},returnTo=${'/my/itineraries/' + itinerary.summary.id})}">이 장소 평가하기</a>
+                   th:href="@{/my/ratings/{placeId}(placeId=${item.placeId},returnTo=${'/my/itineraries/' + itinerary.summary.id + '#stop-' + day.number + '-' + st.index})}"
+                   th:text="${myRatingScores.get(item.placeId) != null ? '내 평가 ★' + myRatingScores.get(item.placeId) + ' · 바꾸기' : '이 장소 평가하기'}">이 장소 평가하기</a>
                 <a th:if="${routeLink != null}" th:href="${routeLink}"
                    target="_blank" rel="noopener noreferrer">길찾기<span class="visually-hidden"> · 카카오맵 (새 창)</span></a>
                 <a th:if="${item.type != 'TRANSIT' and !#strings.isEmpty(item.sourceUrl)}" th:href="${item.sourceUrl}"
                    target="_blank" rel="noopener noreferrer">출처<span class="visually-hidden"> 확인 (새 창)</span></a>
             </div>
+            <!--/* 관광지·숙소는 일정 상세에서도 즐겨찾기에 넣거나 뺄 수 있다(음식점은 즐겨찾기 대상이 아니다). 누른 뒤 이 항목 위치로 돌아온다. */-->
+            <form th:if="${item.placeId != null and (item.type == 'VISIT' or item.type == 'STAY')}" method="post"
+                  th:with="registered=${registeredPlaceIds.contains(item.placeId)}"
+                  th:action="${registered} ? @{/my/favorites/{p}/delete(p=${item.placeId})} : @{/my/favorites}"
+                  th:attr="data-submit-loading=${registered ? '삭제하는 중…' : '추가하는 중…'}">
+                <input type="hidden" name="placeId" th:value="${item.placeId}">
+                <input type="hidden" name="returnTo" th:value="${'/my/itineraries/' + itinerary.summary.id + '#stop-' + day.number + '-' + st.index}">
+                <button type="submit" class="button-quiet button-small" th:text="${registered ? '즐겨찾기 삭제' : '즐겨찾기 추가'}"></button>
+            </form>
+            <!--/* 즐겨찾기·평가를 바꾸고 이 항목으로 돌아오면 바로 옆에 결과를 알려 준다. */-->
+            <th:block th:with="anchor=${'stop-' + day.number + '-' + st.index}">
+                <p role="status" class="status-ok" th:if="${favoriteMessage != null and favoriteAnchor == anchor}" th:text="${favoriteMessage}"></p>
+                <p role="status" class="status-ok" th:if="${savedMessage != null and ratingAnchor == anchor}" th:text="${savedMessage}"></p>
+            </th:block>
             </div>
         </article>
     </section>
@@ -146,8 +163,10 @@
             <p class="help">장소를 빼거나 바꾸고 더하거나, AI에게 문장으로 요청해 수정안을 만들어요. 수정안을 확인하고 '이 일정에 적용하기'를 눌러야 바뀌며, 그 전까지 이 일정은 그대로예요. 적용한 뒤에도 바로 전 일정으로 되돌릴 수 있어요.</p>
             <div class="form-actions"><a class="button" th:href="@{/travel/recommendations/itineraries/{id}/edit(id=${itinerary.editableJobId})}">수정안 만들러 가기</a></div>
         </th:block>
-        <form th:if="${itinerary.editableJobId == null}" method="post" th:action="@{/my/itineraries/{id}/edit(id=${itinerary.summary.id})}">
-            <p class="help">원래 초안의 보관 기간이 지났거나 추천 이력을 삭제해서, 저장한 일정으로 수정할 초안을 다시 만들어요. 교체할 관광지 후보는 지금 기준으로 다시 확인하느라 잠시 걸릴 수 있어요. 처음 일정을 만들 때 정한 필수 방문 장소 설정은 이어지지 않아요.</p>
+        <!--/* 카카오에서 관광지 후보를 다시 확인하느라 수십 초가 걸릴 수 있어 누르면 버튼을 잠그고 진행 중임을 보여 준다. */-->
+        <form th:if="${itinerary.editableJobId == null}" method="post" th:action="@{/my/itineraries/{id}/edit(id=${itinerary.summary.id})}"
+              data-submit-loading="수정을 준비하는 중… (최대 1분)">
+            <p class="help">원래 초안의 보관 기간이 지났거나 추천 이력을 삭제해서, 저장한 일정으로 수정할 초안을 다시 만들어요. 교체할 관광지 후보는 지금 기준으로 다시 확인하느라 최대 1분쯤 걸릴 수 있어요. 처음 정한 필수 방문 장소 같은 조건은 이어지지만, 예전에 저장한 일정은 일부 조건이 이어지지 않을 수 있어요.</p>
             <div class="form-actions"><button type="submit">수정 준비하기</button></div>
         </form>
     </section>

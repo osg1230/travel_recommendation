@@ -5,6 +5,7 @@
     <title th:text="${form.place.name + ' 평가 | 다녀올게'}">장소 평가 | 다녀올게</title>
     <link rel="stylesheet" th:href="@{/css/app.css}">
     <script defer th:src="@{/js/rating-form.js}"></script>
+    <script defer th:src="@{/js/submit-loading.js}"></script>
 </head>
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
@@ -15,9 +16,11 @@
     <h1>장소 평가</h1>
     <p class="intro">다녀온 장소에 별점과 태그를 남겨 다른 사람이 여행을 고를 때 참고할 수 있게 해 주세요.</p>
     <p role="status" class="status-ok" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
+    <!--/* 저장에 실패해 돌아왔을 때의 안내. 방금 적은 별점·태그·한줄평은 아래 입력칸에 다시 채워 둔다. */-->
+    <p role="alert" class="notice" th:if="${ratingError != null}" th:text="${ratingError}"></p>
 
-    <!--/* 한 카드 안에 평가할 장소(위)와 별점·태그 입력(아래)을 둔다. */-->
-    <form class="card rating-form" method="post" th:action="@{/my/ratings/{id}(id=${form.place.placeId})}">
+    <!--/* 한 카드 안에 평가할 장소(위)와 별점·태그 입력(아래)을 둔다. 입력칸은 draft(방금 적은 값 또는 내 기존 평가)로 채운다. */-->
+    <form class="card rating-form" method="post" th:action="@{/my/ratings/{id}(id=${form.place.placeId})}" data-submit-loading="저장하는 중…">
         <input type="hidden" name="returnTo" th:value="${returnTo}" th:if="${returnTo != null}">
         <div class="rating-place">
             <!--/* 관광공사 사진은 출처 표시 조건(공공누리)에 따라 사진 아래에 출처를 적는다. */-->
@@ -29,36 +32,50 @@
                 <h2><span th:text="${form.place.name}"></span> <span class="type-chip" th:text="${form.place.typeName}"></span></h2>
                 <p class="help" th:text="${form.place.address}"></p>
                 <p class="rating-summary" th:if="${form.summary.count > 0}"
-                   th:text="${'★ ' + form.summary.average + ' · 평가 ' + form.summary.count + '개' + (form.summary.topTags.isEmpty() ? '' : ' · 많이 고른 태그: ' + #strings.listJoin(form.summary.topTags.![name], ', '))}"></p>
+                   th:text="${'★ ' + form.summary.average + ' · 평가 ' + form.summary.count + '개' + (form.summary.topTags.isEmpty() ? '' : ' · 많이 고른 태그: ' + form.summary.topTagText())}"></p>
                 <p class="help" th:unless="${form.summary.count > 0}">아직 이 장소의 평가가 없어요.</p>
+                <p class="place-links">
+                    <a th:href="${form.place.mapUrl}" target="_blank" rel="noopener noreferrer">위치 보기<span class="visually-hidden"> (새 창)</span></a>
+                    <a th:if="${!#strings.isEmpty(form.place.sourceUrl)}" th:href="${form.place.sourceUrl}" target="_blank" rel="noopener noreferrer">출처<span class="visually-hidden"> 확인 (새 창)</span></a>
+                </p>
             </div>
         </div>
+        <!--/* 더 이상 확인되지 않는(비활성) 장소는 새로 평가하거나 바꿀 수 없고, 아래에서 내 평가를 삭제만 할 수 있다. */-->
+        <th:block th:unless="${form.place.active}">
+            <p class="notice">이 장소는 지금 확인되지 않아 평가를 새로 남기거나 바꿀 수 없어요. 아래 '내 평가 삭제'로 내 평가를 지울 수 있어요.</p>
+            <div class="form-actions"><a class="button button-quiet" th:href="${returnTo != null ? returnTo : '/my/ratings'}">돌아가기</a></div>
+        </th:block>
+        <th:block th:if="${form.place.active}">
         <p class="notice" th:if="${form.mine != null}" th:text="${'이미 평가한 장소예요. 저장하면 이전 평가(' + form.mine.score + '점)를 새 선택으로 바꿔요.'}"></p>
         <fieldset class="star-input">
             <legend>1. 별점 (필수)</legend>
             <!--/* 고른 점수를 별 옆에 숫자로도 보여 준다(rating-form.js). 별 뒤에 보이도록 마크업에서는 맨 앞에 둔다. */-->
-            <output class="star-score" aria-live="polite" th:text="${form.mine != null ? form.mine.score + ' / 5' : '- / 5'}"></output>
+            <output class="star-score" aria-live="polite" th:text="${draft != null and draft.score != null ? draft.score + ' / 5' : '- / 5'}"></output>
             <th:block th:each="n : ${#numbers.sequence(5,1,-1)}">
-                <input type="radio" name="score" th:id="${'score-' + n}" th:value="${n}" th:checked="${form.mine != null and form.mine.score == n}" required>
+                <input type="radio" name="score" th:id="${'score-' + n}" th:value="${n}" th:checked="${draft != null and draft.score == n}" required>
                 <label th:for="${'score-' + n}" th:title="${n + '점'}"><span aria-hidden="true">★</span><span class="visually-hidden" th:text="${n + '점'}"></span></label>
             </th:block>
         </fieldset>
         <fieldset class="tag-choices" th:attr="data-max-tags=${maxTags}">
             <legend th:text="${'2. 태그 (선택, 최대 ' + maxTags + '개)'}"></legend>
+            <!--/* 내 평가에 사용 중지된 태그가 있으면 체크칸이 없어 다시 저장할 때 빠진다는 것을 미리 알린다. */-->
+            <p class="help" th:if="${!form.droppedTags.isEmpty()}"
+               th:text="${'내 평가의 ‘' + #strings.listJoin(form.droppedTags, '’, ‘') + '’ 태그는 지금 고를 수 없는 태그라 저장하면 빠져요.'}"></p>
             <label th:each="t : ${form.tags}"><input type="checkbox" name="tags" th:value="${t.id}"
-                   th:checked="${form.mine != null and form.mine.tagIds.contains(t.id)}"><span th:text="${t.name}"></span></label>
+                   th:checked="${draft != null and draft.tagIds.contains(t.id)}"><span th:text="${t.name}"></span></label>
         </fieldset>
         <!--/* 한줄평은 선택 입력이다. 글자 수 제한은 서버에서도 다시 검사하고, 앞뒤 공백을 지운 뒤 비어 있으면 저장하지 않는다. */-->
         <div class="comment-input">
             <label for="comment" th:text="${'3. 한줄평 (선택, 최대 ' + maxCommentLength + '자)'}"></label>
             <input type="text" id="comment" name="comment" th:maxlength="${maxCommentLength}" aria-describedby="comment-help"
-                   th:value="${form.mine != null ? form.mine.comment : ''}" placeholder="예: 해 질 무렵에 가면 더 좋아요">
+                   th:value="${draft != null ? draft.comment : ''}" placeholder="예: 해 질 무렵에 가면 더 좋아요">
             <p class="help" id="comment-help">별점·태그와 함께 다른 사람에게 보여요. 연락처나 개인정보는 적지 말아 주세요.</p>
         </div>
         <div class="form-actions form-actions-end">
             <a class="button button-quiet" th:href="${returnTo != null ? returnTo : '/my/ratings'}">취소</a>
             <button type="submit" th:text="${form.mine == null ? '평가 등록' : '평가 바꾸기'}"></button>
         </div>
+        </th:block>
     </form>
     <div class="guide-note">
         <p><strong>안내</strong></p>
@@ -66,8 +83,10 @@
         <p>긴 글이나 제목은 남기지 않아요. 등록한 평가는 다시 들어와 바꾸거나 삭제할 수 있어요.</p>
         <p>다른 사람에게는 평균 별점·많이 고른 태그와 최근 평가(별점·태그·한줄평)가 보여요. 닉네임은 앞 글자만 보이고(예: 김**) 나머지는 가려져요.</p>
     </div>
+    <!--/* 삭제한 뒤에도 보던 화면(returnTo)으로 돌아간다. */-->
     <form th:if="${form.mine != null}" method="post" th:action="@{/my/ratings/{id}/delete(id=${form.place.placeId})}"
           onsubmit="return confirm('이 장소 평가를 삭제할까요?');">
+        <input type="hidden" name="returnTo" th:value="${returnTo}" th:if="${returnTo != null}">
         <div class="form-actions"><button type="submit" class="button-quiet">내 평가 삭제</button></div>
     </form>
 </main>

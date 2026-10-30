@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <body>
-<!-- 장소별 평가 요약 한 줄과 다른 회원의 최근 평가(접어 둔 목록). 장소 후보 화면과 저장 일정 상세가 함께 쓴다. summary가 null이면 아무것도 보여 주지 않는다. -->
+<!-- 장소별 평가 요약 한 줄과 다른 회원의 최근 평가(접어 둔 목록). 장소 후보 화면과 저장 일정 상세가 함께 쓴다. summary가 null이면 아무것도 보여 주지 않는다.
+     많이 고른 태그는 고른 사람 수와 함께 보여 준다(예: 경치가 좋아요 3명, SFR-10-02). -->
 <th:block th:fragment="summary(summary)" th:if="${summary != null}">
     <p class="rating-summary"
-       th:text="${'★ ' + summary.average + ' · 평가 ' + summary.count + '개' + (summary.topTags.isEmpty() ? '' : ' · ' + #strings.listJoin(summary.topTags.![name], ', '))}"></p>
+       th:text="${'★ ' + summary.average + ' · 평가 ' + summary.count + '개' + (summary.topTags.isEmpty() ? '' : ' · ' + summary.topTagText())}"></p>
     <details class="rating-recent" th:unless="${summary.recent.isEmpty()}">
         <summary th:text="${'최근 평가 ' + summary.recent.size() + '건 보기'}"></summary>
         <th:block th:replace="~{fragments/rating :: recentList(${summary.recent})}"></th:block>

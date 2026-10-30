@@ -24,6 +24,13 @@
         <p th:if="${!r.tags.isEmpty()}" th:text="${#strings.listJoin(r.tags, ' · ')}"></p>
         <p class="rating-comment" th:if="${r.comment != null}" th:text="${r.comment}"></p>
         <p class="help" th:text="${'최근 수정: ' + @timeText.dateTime(r.updatedAt)}"></p>
+        <!--/* 더 이상 확인되지 않는 장소는 평가를 바꿀 수 없고 삭제만 할 수 있다. */-->
+        <p class="notice" th:unless="${r.place.active}">이 장소는 지금 확인되지 않아요. 평가는 바꿀 수 없고 장소 이름을 눌러 삭제할 수 있어요.</p>
+        <!--/* 목록에서 장소 위치를 바로 다시 볼 수 있게 한다. */-->
+        <div class="place-links">
+            <a th:href="${r.place.mapUrl}" target="_blank" rel="noopener noreferrer">위치 보기<span class="visually-hidden"> (새 창)</span></a>
+            <a th:if="${!#strings.isEmpty(r.place.sourceUrl)}" th:href="${r.place.sourceUrl}" target="_blank" rel="noopener noreferrer">출처<span class="visually-hidden"> 확인 (새 창)</span></a>
+        </div>
     </article>
 </main>
 </body>
