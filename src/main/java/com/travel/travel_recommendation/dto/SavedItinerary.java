@@ -24,16 +24,30 @@ public final class SavedItinerary {
      * pricesCheckedAt은 참고 가격을 조회한 시각(한국 시간 문자열)이며 가격을 찾지 않았으면 null이다.
      */
     public record Detail(Summary summary, String transportName, List<Day> days, java.util.UUID editableJobId, String version,
-                         List<Check> checks, List<ItineraryPlan.PriceQuote> prices, String pricesCheckedAt) {
+                         List<Check> checks, List<ItineraryPlan.PriceQuote> prices, String pricesCheckedAt, LastChange lastChange) {
         public Detail(Summary summary, String transportName, List<Day> days) { this(summary, transportName, days, null, null); }
         public Detail(Summary summary, String transportName, List<Day> days, java.util.UUID editableJobId, String version) {
             this(summary, transportName, days, editableJobId, version, List.of(), List.of(), null);
+        }
+        public Detail(Summary summary, String transportName, List<Day> days, java.util.UUID editableJobId, String version,
+                      List<Check> checks, List<ItineraryPlan.PriceQuote> prices, String pricesCheckedAt) {
+            this(summary, transportName, days, editableJobId, version, checks, prices, pricesCheckedAt, null);
+        }
+        /** 바뀐 뒤 일정에서 이 항목 옆에 붙일 표시(새로 넣음·시간 바뀜 등). 없으면 null이다. */
+        public String changeMark(int day, int index) {
+            return lastChange==null?null:lastChange.comparison().mark(day, index);
         }
         /** 식사·숙소 항목 옆에 보여 줄 저장 당시 참고 가격. */
         public ItineraryPlan.PriceQuote price(Long placeId) {
             return placeId==null?null:prices.stream().filter(q->placeId.equals(q.placeId())).findFirst().orElse(null);
         }
     }
+    /**
+     * 가장 최근의 수정안 적용이나 되돌리기로 바뀐 내용. 이 일정은 그 직전 한 단계만 남겨 되돌릴 수 있다(SFR-08-04).
+     * undone=true면 되돌리기로 바뀐 것이라 한 번 더 누르면 되돌리기를 취소한다. changedAt은 바뀐 시각(한국 시간)이다.
+     */
+    public record LastChange(boolean undone, String changedAt,
+                             com.travel.travel_recommendation.service.ItineraryChanges.Comparison comparison) {}
     /** 수정안을 덮어쓸 수 있는 저장 일정. */
     public record Target(Long id, String title, String version) {}
 }

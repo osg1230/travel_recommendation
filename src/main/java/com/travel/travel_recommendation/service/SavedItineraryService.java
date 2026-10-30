@@ -15,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
 
-/** 임시 일정 초안을 회원의 내 일정으로 저장하고 조회·제목 수정·삭제를 처리한다. */
+/** 임시 일정 초안을 회원의 내 일정으로 저장하고 조회·제목 수정·삭제와 수정안 적용·되돌리기를 처리한다. */
 @Service
 @Profile({"sqlserver","sqlserver-windows"})
 @RequiredArgsConstructor
@@ -99,13 +99,82 @@ public class SavedItineraryService {
             var unmet=report.checks().stream().filter(c->c.status()==ItineraryConditionReport.Status.UNMET).findFirst().orElseThrow();
             throw new ResponseStatusException(HttpStatus.CONFLICT,"조건을 충족하지 못한 항목이 있어 적용할 수 없어요. "+unmet.name()+": "+unmet.detail());
         }
+        // 덮어쓰기 전 일정을 조건 스냅샷의 previous에 한 단계만 남겨 되돌릴 수 있게 한다(테이블 변경 없음).
+        var previous=savedVersion(itinerary,items.findByItineraryIdOrderByDayNoAscSequenceNoAsc(itinerary.getId()),"APPLY");
         items.deleteByItineraryId(itinerary.getId());
         items.flush();
+        var snapshot=snapshot(jobId,input,result,report);
+        snapshot.put("previous",previous);
         // 저장한 일정에서 다시 만든 초안은 추천 이력과 연결되지 않으므로 기존 이력 연결을 유지한다.
         itinerary.applyRevision(job.getRequestId()!=null?job.getRequestId():itinerary.getRequestId(),result.days().getFirst().date(),result.days().getLast().date(),
-            transportation(input),mapper.writeValueAsString(snapshot(jobId,input,result,report)));
+            transportation(input),mapper.writeValueAsString(snapshot));
         itineraries.flush();
         writeItems(itinerary.getId(),result);
+    }
+
+    /**
+     * 가장 최근의 수정안 적용을 되돌린다(SFR-08-04). previous에 남긴 직전 일정과 지금 일정을 맞바꾸므로,
+     * 한 번 더 누르면 되돌리기를 취소한다. 화면을 연 뒤 다른 곳에서 먼저 바뀐 일정은 바꾸지 않는다.
+     * 돌려주는 값은 수정 전으로 되돌렸으면 true, 되돌리기를 취소했으면 false다.
+     */
+    @Transactional(timeout=10)
+    public boolean undo(Long id, String version, String loginId) {
+        var itinerary=itineraries.lockByIdAndUserId(id,member(loginId))
+            .orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"저장한 일정을 찾을 수 없어요."));
+        if(version==null || !version.equals(itinerary.getUpdatedAt().toString()))
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"다른 화면에서 이 일정을 먼저 바꿨어요. 내 일정에서 최신 내용을 확인한 뒤 다시 시도해 주세요.");
+        var previous=mapper.readTree(itinerary.getConditionsSnapshotJson()).path("previous");
+        if(!previous.isObject() || !previous.path("snapshot").isObject())
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"되돌릴 수정 내역이 없어요.");
+        boolean undoing=!"UNDO".equals(previous.path("replacedBy").asText(""));
+        // 지금 일정을 새 previous로 남기고, 직전 일정의 스냅샷·항목을 다시 쓴다.
+        var current=savedVersion(itinerary,items.findByItineraryIdOrderByDayNoAscSequenceNoAsc(id),undoing?"UNDO":"APPLY");
+        var restoredItems=previousItems(id,previous);
+        var restored=(tools.jackson.databind.node.ObjectNode)previous.path("snapshot").deepCopy();
+        restored.set("previous",mapper.valueToTree(current));
+        items.deleteByItineraryId(id);
+        items.flush();
+        // 추천 이력 연결은 바꾸지 않는다. 그 사이 이력을 지웠으면 끊긴 연결을 되살리지 않기 위해서다.
+        itinerary.applyRevision(itinerary.getRequestId(),LocalDate.parse(previous.path("startDate").asText()),
+            LocalDate.parse(previous.path("endDate").asText()),previous.path("transportation").asText(),mapper.writeValueAsString(restored));
+        itineraries.flush();
+        items.saveAll(restoredItems);
+        items.flush();
+        return undoing;
+    }
+    // 지금 일정 한 벌(조건 스냅샷·기간·이동수단·항목)을 되돌리기용으로 남긴다. 스냅샷 안의 previous는 빼서 한 단계만 남긴다.
+    private Map<String,Object> savedVersion(Itinerary itinerary, List<ItineraryItem> savedItems, String replacedBy) {
+        var snapshot=(tools.jackson.databind.node.ObjectNode)mapper.readTree(itinerary.getConditionsSnapshotJson());
+        snapshot.remove("previous");
+        var version=new LinkedHashMap<String,Object>();
+        version.put("replacedBy",replacedBy);
+        version.put("replacedAt",KoreaTime.now().toString());
+        version.put("startDate",itinerary.getStartDate().toString());
+        version.put("endDate",itinerary.getEndDate().toString());
+        version.put("transportation",itinerary.getTransportation());
+        version.put("snapshot",snapshot);
+        var savedRows=new ArrayList<Map<String,Object>>();
+        for(var item:savedItems) {
+            var row=new LinkedHashMap<String,Object>();
+            row.put("dayNo",item.getDayNo()); row.put("sequenceNo",item.getSequenceNo());
+            row.put("itemType",item.getItemType()); row.put("placeId",item.getPlaceId());
+            row.put("startAt",item.getStartAt().toString()); row.put("endAt",item.getEndAt().toString());
+            row.put("activity",item.getActivity()); row.put("travelMinutes",item.getTravelMinutes());
+            row.put("placeSnapshotJson",item.getPlaceSnapshotJson());
+            savedRows.add(row);
+        }
+        version.put("items",savedRows);
+        return version;
+    }
+    // previous에 남긴 항목을 저장 항목으로 되살린다. 화면 비교와 되돌리기에 같이 쓴다.
+    private List<ItineraryItem> previousItems(Long itineraryId, tools.jackson.databind.JsonNode previous) {
+        var restored=new ArrayList<ItineraryItem>();
+        for(var row:previous.path("items")) restored.add(new ItineraryItem(itineraryId,row.path("dayNo").asInt(),row.path("sequenceNo").asInt(),
+            row.path("itemType").asText(),row.path("placeId").isNumber()?row.path("placeId").asLong():null,
+            LocalDateTime.parse(row.path("startAt").asText()),LocalDateTime.parse(row.path("endAt").asText()),row.path("activity").asText(),
+            row.path("travelMinutes").isNumber()?row.path("travelMinutes").asInt():null,
+            row.path("placeSnapshotJson").isTextual()?row.path("placeSnapshotJson").asText():null));
+        return restored;
     }
 
     /** 이 수정안을 덮어쓸 수 있는 저장 일정 목록. 수정안이 아니면 비어 있다. */
@@ -167,12 +236,7 @@ public class SavedItineraryService {
     @Transactional(readOnly=true,timeout=10)
     public SavedItinerary.Detail detail(Long id, String loginId) {
         var itinerary=owned(id,loginId);
-        var days=new ArrayList<SavedItinerary.Day>();
-        for(var item:items.findByItineraryIdOrderByDayNoAscSequenceNoAsc(id)) {
-            if(days.isEmpty() || days.getLast().number()!=item.getDayNo())
-                days.add(new SavedItinerary.Day(item.getDayNo(),item.getStartAt().toLocalDate(),new ArrayList<>()));
-            days.getLast().items().add(view(item));
-        }
+        var days=days(items.findByItineraryIdOrderByDayNoAscSequenceNoAsc(id));
         var snapshot=mapper.readTree(itinerary.getConditionsSnapshotJson());
         // 저장 당시 확인한 조건 결과와 참고 가격. 예전 형식의 일정에는 없어서 비어 있다.
         var checks=new ArrayList<SavedItinerary.Check>();
@@ -183,7 +247,45 @@ public class SavedItineraryService {
         var prices=snapshot.path("prices").isObject()?mapper.treeToValue(snapshot.path("prices"),Prices.class):null;
         return new SavedItinerary.Detail(summary(itinerary),transportName(itinerary.getTransportation()),days,
             editable(itinerary,loginId),itinerary.getUpdatedAt().toString(),List.copyOf(checks),
-            prices==null?List.of():prices.quotes(),prices==null?null:koreanTime(prices.checkedAt()));
+            prices==null?List.of():prices.quotes(),prices==null?null:koreanTime(prices.checkedAt()),lastChange(itinerary,snapshot,days));
+    }
+    private List<SavedItinerary.Day> days(List<ItineraryItem> savedItems) {
+        var days=new ArrayList<SavedItinerary.Day>();
+        for(var item:savedItems) {
+            if(days.isEmpty() || days.getLast().number()!=item.getDayNo())
+                days.add(new SavedItinerary.Day(item.getDayNo(),item.getStartAt().toLocalDate(),new ArrayList<>()));
+            days.getLast().items().add(view(item));
+        }
+        return days;
+    }
+    // 직전 일정(previous)이 있으면 지금 일정과 비교한다. 수정안을 적용한 적 없는 일정은 null이다.
+    private SavedItinerary.LastChange lastChange(Itinerary itinerary, tools.jackson.databind.JsonNode snapshot, List<SavedItinerary.Day> days) {
+        var previous=snapshot.path("previous");
+        if(!previous.isObject() || !previous.path("snapshot").isObject()) return null;
+        var before=days(previousItems(itinerary.getId(),previous));
+        var settings=new ArrayList<String>();
+        ItineraryChanges.setting(settings,"여행 날짜",previous.path("startDate").asText()+" ~ "+previous.path("endDate").asText(),
+            itinerary.getStartDate()+" ~ "+itinerary.getEndDate());
+        ItineraryChanges.setting(settings,"이동수단",transportName(previous.path("transportation").asText()),transportName(itinerary.getTransportation()));
+        var beforeSchedule=previous.path("snapshot").path("schedule"); var afterSchedule=snapshot.path("schedule");
+        ItineraryChanges.setting(settings,"하루 일정 시간",dayHours(beforeSchedule),dayHours(afterSchedule));
+        ItineraryChanges.setting(settings,"관광지 체류시간",visitMinutes(beforeSchedule),visitMinutes(afterSchedule));
+        ItineraryChanges.setting(settings,"집 출발·귀가 시각",homeHours(previous.path("snapshot").path("home")),homeHours(snapshot.path("home")));
+        var comparison=ItineraryChanges.compare(ItineraryChanges.fromSaved(before),ItineraryChanges.fromSaved(days),settings);
+        var changedAt=previous.path("replacedAt").isTextual()
+            ?previous.path("replacedAt").asText().replace('T',' ').substring(0,16):null;
+        return new SavedItinerary.LastChange("UNDO".equals(previous.path("replacedBy").asText("")),changedAt,comparison);
+    }
+    private static String dayHours(tools.jackson.databind.JsonNode schedule) {
+        return schedule.path("dayStart").isTextual() && schedule.path("dayEnd").isTextual()
+            ?schedule.path("dayStart").asText()+"~"+schedule.path("dayEnd").asText():null;
+    }
+    private static String homeHours(tools.jackson.databind.JsonNode home) {
+        return home.path("departAt").isTextual() && home.path("arriveBy").isTextual()
+            ?home.path("departAt").asText()+" 출발 · "+home.path("arriveBy").asText()+" 귀가":null;
+    }
+    private static String visitMinutes(tools.jackson.databind.JsonNode schedule) {
+        return schedule.path("visitMinutes").isNumber()?schedule.path("visitMinutes").asInt()+"분":null;
     }
 
     @Transactional(timeout=10)

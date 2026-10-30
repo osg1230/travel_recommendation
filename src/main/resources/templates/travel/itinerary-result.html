@@ -24,13 +24,21 @@
 <p th:text="${'뺀 관광지: ' + #strings.listJoin(rev.replaced.![name], ', ') + ' (뺀 시간은 다른 곳으로 채우지 않았어요)'}"></p>
 <p th:unless="${rev.added.isEmpty()}" th:text="${'더한 관광지: ' + #strings.listJoin(rev.added.![name], ', ')}"></p>
 </th:block>
-<p th:if="${rev.added.isEmpty() and rev.replaced.isEmpty()}">관광지는 그대로 두고 시간·이동수단·식당·숙소 같은 조건만 바꾼 수정안이에요.</p>
+<p th:if="${rev.added.isEmpty() and rev.replaced.isEmpty()}">관광지는 바꾸지 않고 시간·이동수단·식당·숙소 같은 조건만 바꾼 수정안이에요. 바뀐 조건에 맞춰 다시 배치하느라 일부 관광지가 빠지거나 더해질 수 있어요.</p>
 <p th:text="${'유지한 관광지: ' + #strings.listJoin(rev.kept.![name], ', ') + ' (장소만 유지하고 방문 시각은 다시 계산해요)'}"></p>
 <p th:if="${rev.reason != null and rev.reason != 'DIRECT' and rev.request == null}" th:text="${'교체 이유: ' + T(com.travel.travel_recommendation.service.ItineraryJobService.ReplaceReason).valueOf(rev.reason).label}"></p>
 <p th:if="${rev.request != null}" th:text="${'요청한 내용: ' + rev.request}"></p>
 <p th:if="${rev.explanation != null}" th:text="${'AI 설명: ' + rev.explanation + ' (배치와 조건 확인은 다시 했어요)'}"></p>
 <p class="notice" th:unless="${rev.missingPlaces().isEmpty()}"
    th:text="${'참고: 요청한 ''' + #strings.listJoin(rev.missingPlaces(), ''', ''') + '''은(는) 확인된 교체 후보에 없어서 비슷한 곳으로 바꿨어요. 원하는 장소가 있다면 장소 목록에서 ''카카오에서 장소 더 찾아보기''로 후보를 늘린 뒤 다시 요청해 보세요.'}"></p>
+<!--/* 원래 초안과 비교해 실제로 바뀐 관광지·식당·숙소와 시각(SFR-08-04). 원래 초안이 만료됐으면 보여 주지 않는다. */-->
+<th:block th:if="${revisionChanges != null}">
+<p th:if="${revisionChanges.empty()}">원래 초안과 비교하면 관광지·식당·숙소와 방문 시각은 그대로예요.</p>
+<th:block th:unless="${revisionChanges.empty()}">
+<p><strong>원래 초안과 달라진 부분</strong> · 아래 일정표에도 표시했어요. 이동·자유 시간은 비교하지 않아요.</p>
+<th:block th:replace="~{fragments/itinerary-changes :: list(${revisionChanges})}"></th:block>
+</th:block>
+</th:block>
 <p>원래 초안은 바뀌지 않았어요. <a th:href="@{/travel/recommendations/itineraries/{id}(id=${rev.sourceJobId})}">원래 초안 보기</a> · 이 수정안이 마음에 들면 저장해서 적용해 주세요.</p>
 </div>
 <div role="status" data-poll-seconds="120" th:attr="data-job-pending=${job.pending},data-status-url=@{/travel/recommendations/itineraries/{id}/status(id=${job.id})}">
@@ -93,6 +101,10 @@
 <div class="schedule-body">
 <!--/* 종류 이름은 저장 일정 화면(SavedItineraryService.typeName)과 같은 말을 쓴다. */-->
 <p class="schedule-type" th:text="${item.type == 'VISIT' ? (#strings.startsWith(item.note, '저녁 관광') ? '저녁 관광' : '관광') : (item.type == 'MEAL' ? '식사' : (item.type == 'STAY' ? '숙소' : (item.type == 'TRANSIT' ? '이동' : '자유 시간')))}"></p>
+<!--/* 수정안이면 원래 초안에서 새로 넣었거나 시간·날짜가 바뀐 곳을 표시한다. */-->
+<th:block th:if="${revisionChanges != null}" th:with="mark=${revisionChanges.mark(day.number, st.index)}">
+<p class="change-mark" th:if="${mark != null}"><span class="change-badge" th:text="${mark}"></span></p>
+</th:block>
 <th:block th:if="${item.type == 'VISIT' and item.placeId != null and photoByPlace.get(item.placeId) != null}">
 <!--/* 관광공사 대표 사진. 출처 표시 조건(공공누리)에 따라 사진 아래에 출처를 적는다. */-->
 <figure class="place-photo"><img th:src="${photoByPlace.get(item.placeId).url}" th:alt="${item.name + ' 사진'}" loading="lazy" referrerpolicy="no-referrer">
@@ -398,7 +410,7 @@
 
 <section class="condition-section" th:if="${job.result != null and !applyTargets.isEmpty()}" aria-labelledby="apply-title">
 <h2 id="apply-title">저장한 일정에 적용</h2>
-<p class="help">이 수정안은 아래 저장 일정에서 이어졌어요. 적용하면 저장한 일정의 시각·장소·순서가 이 수정안으로 바뀌고 이름은 그대로예요. 적용 전까지 저장한 일정은 바뀌지 않아요.</p>
+<p class="help">이 수정안은 아래 저장 일정에서 이어졌어요. 적용하면 저장한 일정의 시각·장소·순서가 이 수정안으로 바뀌고 이름은 그대로예요. 적용 전까지 저장한 일정은 바뀌지 않고, 적용한 뒤에도 내 일정에서 바로 전 일정으로 되돌릴 수 있어요.</p>
 <p role="alert" th:unless="${report.complete}">미충족 조건이 있어 적용할 수 없어요.</p>
 <form th:if="${report.complete}" th:each="target : ${applyTargets}" th:action="@{/my/itineraries/{id}/apply(id=${target.id})}" method="post" data-submit-loading="적용하는 중…">
 <input type="hidden" name="jobId" th:value="${job.id}"><input type="hidden" name="version" th:value="${target.version}">

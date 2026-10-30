@@ -119,7 +119,15 @@ public class SavedItineraryController {
     @PostMapping("/{id}/apply")
     String apply(@PathVariable long id, @RequestParam UUID jobId, @RequestParam String version, Principal principal, RedirectAttributes redirect) {
         service().apply(id,jobId,version,login(principal));
-        redirect.addFlashAttribute("savedMessage","수정안을 이 일정에 적용했어요.");
+        redirect.addFlashAttribute("savedMessage","수정안을 이 일정에 적용했어요. 바뀐 부분은 아래에서 확인하고, 마음에 들지 않으면 수정 전으로 되돌릴 수 있어요.");
+        return "redirect:/my/itineraries/"+id;
+    }
+
+    /** 가장 최근에 적용한 수정을 되돌린다. 되돌린 뒤 한 번 더 누르면 되돌리기를 취소한다. */
+    @PostMapping("/{id}/undo")
+    String undo(@PathVariable long id, @RequestParam String version, Principal principal, RedirectAttributes redirect) {
+        boolean undone=service().undo(id,version,login(principal));
+        redirect.addFlashAttribute("savedMessage",undone?"수정 전 일정으로 되돌렸어요.":"되돌리기를 취소하고 수정한 일정으로 돌아왔어요.");
         return "redirect:/my/itineraries/"+id;
     }
 

@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<body>
+<!--/* 일정 수정 전후 비교 목록(SFR-08-04, 수정안 초안 화면과 저장 일정 상세에서 같이 쓴다). comparison은 ItineraryChanges.Comparison이다.
+       설정과 장소 변경은 바로 보여 주고, 방문 시각만 바뀐 곳은 접어 둔다(장소·설정 변경이 없으면 펼친다). */-->
+<th:block th:fragment="list(comparison)">
+<ul class="report-issues" th:unless="${comparison.settings.isEmpty() and comparison.places().isEmpty()}">
+<li th:each="line : ${comparison.settings}"><span class="change-badge change-setting">설정</span><span th:text="${line}"></span></li>
+<li th:each="c : ${comparison.places()}"><span class="change-badge" th:classappend="${'change-' + #strings.toLowerCase(c.kind)}" th:text="${c.label}"></span><span th:text="${c.text}"></span></li>
+</ul>
+<details class="report-details" th:unless="${comparison.times().isEmpty()}" th:open="${comparison.settings.isEmpty() and comparison.places().isEmpty()}">
+<summary><span class="details-title" th:text="${'방문 시각만 바뀐 곳 ' + comparison.times().size() + '곳'}"></span></summary>
+<ul class="report-issues">
+<li th:each="c : ${comparison.times()}"><span class="change-badge change-time" th:text="${c.label}"></span><span th:text="${c.text}"></span></li>
+</ul>
+</details>
+</th:block>
+</body>
+</html>

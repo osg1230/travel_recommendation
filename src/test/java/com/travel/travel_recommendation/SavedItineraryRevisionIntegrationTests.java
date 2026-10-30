@@ -115,6 +115,78 @@ class SavedItineraryRevisionIntegrationTests {
         assertThat(firstStart()).isEqualTo(LocalTime.of(11,0));
     }
 
+    // 적용하면 바뀐 부분을 보여 주고, 직전 일정으로 되돌렸다가 한 번 더 누르면 되돌리기를 취소한다(직전 한 단계만).
+    @Test void undoRestoresPreviousVersionAndUndoAgainRedoes() {
+        var before=saved.detail(itineraryId,owner.getLoginId());
+        assertThat(before.lastChange()).isNull();
+        assertThatThrownBy(()->saved.undo(itineraryId,before.version(),owner.getLoginId()))
+            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("되돌릴 수정 내역이 없어요");
+
+        var revised=revision(original,LocalTime.of(10,0));
+        saved.apply(itineraryId,revised,saved.targets(revised,owner.getLoginId()).getFirst().version(),owner.getLoginId());
+        em.flush(); em.clear();
+        var applied=saved.detail(itineraryId,owner.getLoginId());
+        assertThat(applied.lastChange().undone()).isFalse();
+        assertThat(applied.lastChange().changedAt()).isNotNull();
+        assertThat(applied.lastChange().comparison().settings()).contains("하루 일정 시간: 09:00~18:00 → 10:00~19:00");
+        assertThat(applied.lastChange().comparison().changes()).isNotEmpty();
+
+        assertThat(saved.undo(itineraryId,applied.version(),owner.getLoginId())).isTrue();
+        assertThat(firstStart()).isEqualTo(LocalTime.of(9,0));
+        var undone=saved.detail(itineraryId,owner.getLoginId());
+        assertThat(undone.days()).isEqualTo(before.days());
+        assertThat(undone.editableJobId()).isEqualTo(original);
+        assertThat(undone.summary().title()).isEqualTo(before.summary().title());
+        assertThat(undone.lastChange().undone()).isTrue();
+        assertThat(undone.lastChange().comparison().settings()).contains("하루 일정 시간: 10:00~19:00 → 09:00~18:00");
+        // 되돌린 일정에는 수정 전 조건 결과가 다시 남는다.
+        assertThat(undone.checks()).isEqualTo(before.checks());
+
+        assertThat(saved.undo(itineraryId,undone.version(),owner.getLoginId())).isFalse();
+        assertThat(firstStart()).isEqualTo(LocalTime.of(10,0));
+        var redone=saved.detail(itineraryId,owner.getLoginId());
+        assertThat(redone.days()).isEqualTo(applied.days());
+        assertThat(redone.editableJobId()).isEqualTo(revised);
+        assertThat(redone.lastChange().undone()).isFalse();
+        // 오래된 화면 버전으로는 되돌리지 않는다.
+        assertThatThrownBy(()->saved.undo(itineraryId,undone.version(),owner.getLoginId()))
+            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("먼저 바꿨어요");
+        // 되돌리기 취소 뒤에도 그 일정에서 만든 수정안을 이어서 적용할 수 있다.
+        var next=revision(revised,LocalTime.of(11,0));
+        saved.apply(itineraryId,next,saved.targets(next,owner.getLoginId()).getFirst().version(),owner.getLoginId());
+        assertThat(firstStart()).isEqualTo(LocalTime.of(11,0));
+    }
+
+    @Test void screensShowChangesAndUndo() throws Exception {
+        var revised=revision(original,LocalTime.of(10,0));
+        // 수정안 화면은 원래 초안과 비교해 달라진 부분을 보여 준다.
+        mvc.perform(get("/travel/recommendations/itineraries/"+revised).with(user(owner.getLoginId())))
+            .andExpect(status().isOk()).andExpect(content().string(containsString("원래 초안과 달라진 부분")))
+            .andExpect(content().string(containsString("하루 일정 시간: 09:00~18:00 → 10:00~19:00")));
+        String version=saved.detail(itineraryId,owner.getLoginId()).version();
+        mvc.perform(get("/my/itineraries/"+itineraryId).with(user(owner.getLoginId())))
+            .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.not(containsString("수정 전으로 되돌리기"))));
+        mvc.perform(post("/my/itineraries/"+itineraryId+"/apply").with(user(owner.getLoginId())).with(csrf())
+                .param("jobId",revised.toString()).param("version",version))
+            .andExpect(status().is3xxRedirection());
+        em.flush(); em.clear();
+        mvc.perform(get("/my/itineraries/"+itineraryId).with(user(owner.getLoginId())))
+            .andExpect(status().isOk()).andExpect(content().string(containsString("최근 수정에서 바뀐 부분")))
+            .andExpect(content().string(containsString("수정 전으로 되돌리기")))
+            .andExpect(content().string(containsString("change-badge")));
+        String applied=saved.detail(itineraryId,owner.getLoginId()).version();
+        var other=member();
+        mvc.perform(post("/my/itineraries/"+itineraryId+"/undo").with(user(other.getLoginId())).with(csrf()).param("version",applied))
+            .andExpect(status().isNotFound());
+        mvc.perform(post("/my/itineraries/"+itineraryId+"/undo").with(user(owner.getLoginId())).with(csrf()).param("version",applied))
+            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/my/itineraries/"+itineraryId))
+            .andExpect(flash().attribute("savedMessage","수정 전 일정으로 되돌렸어요."));
+        assertThat(firstStart()).isEqualTo(LocalTime.of(9,0));
+        mvc.perform(get("/my/itineraries/"+itineraryId).with(user(owner.getLoginId())))
+            .andExpect(status().isOk()).andExpect(content().string(containsString("되돌리기로 바뀐 부분")))
+            .andExpect(content().string(containsString("되돌리기 취소하기")));
+    }
+
     @Test void staleRevisionOrVersionCannotOverwriteLatest() {
         var first=revision(original,LocalTime.of(10,0));
         var sibling=revision(original,LocalTime.of(8,0));
