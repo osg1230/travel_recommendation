@@ -94,6 +94,11 @@ public class SavedItineraryController {
         try { if(reservation!=null) bookables=reservation.bookable(id,login(principal),referencePrices); }
         catch(org.springframework.dao.DataAccessException missingTables) { bookables=java.util.List.of(); }
         model.addAttribute("bookables",bookables);
+        // 수정안 적용·장소 변경으로 일정에서 빠진 장소의 예약도 이 화면에서 찾아갈 수 있게 함께 보여 준다.
+        java.util.List<?> leftovers=java.util.List.of();
+        try { if(reservation!=null) leftovers=reservation.leftoverReservations(id,login(principal),bookables); }
+        catch(org.springframework.dao.DataAccessException missingTables) { leftovers=java.util.List.of(); }
+        model.addAttribute("leftoverReservations",leftovers);
         // 일정표의 장소 옆에 예약 버튼을 붙일 수 있게 '일차-장소 ID'로 찾는 표를 함께 넘긴다.
         var bookableByItem=new java.util.HashMap<String,Object>();
         for(var b:bookables) bookableByItem.putIfAbsent(b.dayNo()+"-"+b.itemPlaceId(),b);
