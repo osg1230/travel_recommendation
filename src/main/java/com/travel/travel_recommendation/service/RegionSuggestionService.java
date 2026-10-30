@@ -26,8 +26,6 @@ import tools.jackson.databind.ObjectMapper;
 @RequiredArgsConstructor
 public class RegionSuggestionService {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(RegionSuggestionService.class);
-    /** 배로만 갈 수 있어 지금은 이동시간을 계산할 수 없는 시·군. 여객선 정보를 붙이기 전까지 추가하지 않는다. */
-    static final Set<String> FERRY_ONLY = Set.of("경상북도 울릉군");
     /** 새로 추가한 여행지의 출처. 근거로 쓴 관광공사 정보(대한민국 구석구석)다. */
     static final String SOURCE_URL = "https://korean.visitkorea.or.kr/";
     private final AiJobRepository jobs;
@@ -93,7 +91,6 @@ public class RegionSuggestionService {
         List<Checked> result = new ArrayList<>();
         if (suggestion.categories().isEmpty()) return result;
         for (String region : suggestion.regions()) {
-            if (FERRY_ONLY.contains(region)) continue;
             var existing = task.destinations().stream().filter(d -> sameRegion(d.region(), region)).findFirst();
             try {
                 var profile = existing.isPresent() ? profiles.profile(existing.get().placeId()) : profiles.build(region);

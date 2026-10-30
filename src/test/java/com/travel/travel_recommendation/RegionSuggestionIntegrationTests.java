@@ -78,9 +78,9 @@ class RegionSuggestionIntegrationTests {
         var gangneung=destinations.find("강릉").getFirst();
         assertThat(suggestion.status()).isEqualTo("FOUND");
         assertThat(suggestion.categories()).containsExactly("NA010100");
-        // 울릉군(배로만 감)은 확인하지 않고, 법정동 코드에 없는 지역은 빠진다.
+        // 울릉군도 여객선으로 갈 수 있어 다른 지역처럼 확인한다(모의 응답에 법정동 코드가 없어 빠진다). 법정동 코드에 없는 지역도 빠진다.
         assertThat(suggestion.destinationIds()).containsExactly(added.getId(),gangneung.placeId());
-        verify(tour,never()).regionCodes("경상북도 울릉군");
+        verify(tour).regionCodes("경상북도 울릉군");
         assertThat(added.getPlaceType()).isEqualTo("DESTINATION");
         assertThat(added.getName()).isEqualTo("테스트");
         assertThat(added.getRegion()).isEqualTo(NEW_REGION);

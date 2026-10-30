@@ -130,8 +130,8 @@ class RecommendationJobIntegrationTests {
             .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
     }
     @Test void unmatchedRegionIsExplicitFailureAndRetryCreatesNewJob() throws Exception {
-        // 제주도 이제 지원하므로 여행지로 등록하지 않은 지역(울릉)으로 확인한다.
-        var session=session();session.setAttribute(CONFIRMED_KEY,conditions("울릉"));
+        // 제주·울릉은 여행지가 될 수 있으므로 시·군이 아니어서 여행지로 추가되지 않는 지역(독도)으로 확인한다.
+        var session=session();session.setAttribute(CONFIRMED_KEY,conditions("독도"));
         String location=create(session);UUID id=UUID.fromString(location.substring(location.lastIndexOf('/')+1));
         service.prepare(id);
         mvc.perform(get(location+"/status").session(session)).andExpect(jsonPath("$.errorCode").value("NO_DESTINATIONS"));
