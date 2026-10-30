@@ -483,6 +483,10 @@ public class ItineraryJobService {
         // 지금도 확인된 장소인지 다시 읽어 넣는다. 원본 초안의 옛 정보를 그대로 넣으면 같은 장소가 두 번 들어가 완료 검사에서 실패하거나
         // 24시간이 지나 '장소 정보가 오래됐어요'로 실패했다. 그래서 장소 ID로 비교하고, 확인하지 못한 곳은 빼고 안내한다.
         var choices=changes.choices()==null?original.choices():changes.choices();
+        // 숙소를 따로 고르지 않은 수정안(시간만 바꾸기, 관광지 바꾸기, 숙소를 말하지 않은 문장 수정 등)은 지금 초안의 숙소를 그대로 쓴다.
+        // 처음 만든 초안은 '고른 숙소' 값이 비어 있어, 그대로 두면 시간만 바꿔도 숙소가 말없이 바뀌었다.
+        if(choices.stayPlaceId()==null && originalResult.lodging()!=null && originalResult.lodging().chosenPlaceId()!=null)
+            choices=new Choices(choices.avoidRestaurants(),choices.preferRestaurants(),originalResult.lodging().chosenPlaceId());
         String region=pool.destination().region();
         var choiceNotices=new ArrayList<String>();
         var restaurants=new ArrayList<>(pool.restaurants());

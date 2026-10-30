@@ -189,6 +189,16 @@ public class SavedItineraryService {
             .map(i->new SavedItinerary.Target(i.getId(),i.getTitle(),i.getUpdatedAt().toString())).toList();
     }
 
+    /** 이 초안을 그대로 저장해 둔 내 일정 목록. 이미 저장한 초안에 '저장하기' 대신 '저장한 일정 보기'를 보여 줄 때 쓴다. */
+    @Transactional(readOnly=true,timeout=10)
+    public List<SavedItinerary.Target> savedFrom(UUID jobId, String loginId) {
+        if(loginId==null) return List.of();
+        Long userId=member(loginId);
+        return itineraries.findByUserIdOrderByStartDateDescIdDesc(userId).stream()
+            .filter(i->snapshotJobId(i).equals(jobId.toString()))
+            .map(i->new SavedItinerary.Target(i.getId(),i.getTitle(),i.getUpdatedAt().toString())).toList();
+    }
+
     // 수정안이 어떤 초안에서 이어졌는지 원본 방향으로 따라간다. 같은 회원의 작업만 보고 최대 20단계까지 확인한다.
     private List<String> lineage(UUID jobId, Long userId) {
         var ids=new ArrayList<String>(); UUID next=jobId;

@@ -414,6 +414,8 @@ public class ItineraryController {
         // 수정안이면 이어진 저장 일정에 덮어쓸 수 있게 대상 일정을 함께 보여 준다.
         var saved=savedItineraries.getIfAvailable();
         model.addAttribute("applyTargets",saved==null || job.result()==null || job.input().revision()==null?List.of():saved.targets(id,login(principal)));
+        // 이 초안을 이미 내 일정으로 저장했으면 저장 버튼 대신 저장한 일정으로 가는 링크를 보여 준다(같은 일정이 또 저장된 것처럼 보이지 않게).
+        model.addAttribute("savedAs",saved==null || job.result()==null?List.of():saved.savedFrom(id,login(principal)));
         return "travel/itinerary-result";
     }
     // 비교할 초안(sourceId)이 없거나 만료·삭제됐거나 아직 완성되지 않았으면 비교하지 않는다(null).

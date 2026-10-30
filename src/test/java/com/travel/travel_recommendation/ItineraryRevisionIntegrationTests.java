@@ -306,7 +306,12 @@ class ItineraryRevisionIntegrationTests {
         var revised=schedules.revise(original,null,hash,List.of(),null,LocalTime.of(8,0),LocalTime.of(20,0),120);
         assertThat(attractionIds(revised)).containsExactlyElementsOf(attractionIds(original));
         assertThat(schedules.view(revised,null,hash).input().revision().replaced()).isEmpty();
+        // 숙소를 고르지 않은 수정안은 처음 초안의 숙소를 그대로 이어받는다(시간만 바꿨는데 숙소가 바뀌지 않게).
+        Long stay=schedules.view(original,null,hash).result().lodging().chosenPlaceId();
+        assertThat(stay).isNotNull();
+        assertThat(schedules.view(revised,null,hash).input().choices().stayPlaceId()).isEqualTo(stay);
         finish(revised);
+        assertThat(schedules.view(revised,null,hash).result().lodging().chosenPlaceId()).isEqualTo(stay);
     }
 
     @Test void invalidRequestsDoNotCreateJobs() {
