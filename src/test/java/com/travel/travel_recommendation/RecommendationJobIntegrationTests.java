@@ -130,8 +130,8 @@ class RecommendationJobIntegrationTests {
             .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
     }
     @Test void unmatchedRegionIsExplicitFailureAndRetryCreatesNewJob() throws Exception {
-        // 제주도 이제 지원하므로 여행지로 등록하지 않은 지역(울릉)으로 확인한다.
-        var session=session();session.setAttribute(CONFIRMED_KEY,conditions("울릉"));
+        // 제주·울릉은 여행지가 될 수 있으므로 시·군이 아니어서 여행지로 추가되지 않는 지역(독도)으로 확인한다.
+        var session=session();session.setAttribute(CONFIRMED_KEY,conditions("독도"));
         String location=create(session);UUID id=UUID.fromString(location.substring(location.lastIndexOf('/')+1));
         service.prepare(id);
         mvc.perform(get(location+"/status").session(session)).andExpect(jsonPath("$.errorCode").value("NO_DESTINATIONS"));
@@ -145,8 +145,11 @@ class RecommendationJobIntegrationTests {
         // 전국 여행지는 AI가 한 번에 비교하는 5곳까지만 고른다.
         assertThat(destinations.find("")).hasSize(5);
         assertThat(destinations.find("강원특별자치도 강릉시")).extracting(DestinationCandidate::name).containsExactly("강릉");
-        assertThat(destinations.find("경북")).extracting(DestinationCandidate::name).containsExactly("경주","안동","포항");
-        assertThat(destinations.find("광주")).extracting(DestinationCandidate::name).containsExactly("여수","순천","담양");
+        // 추천 중에 확인해 추가한 여행지(RegionSuggestionService)는 등록 순서상 뒤에 붙을 수 있다. 다른 시·도는 섞이지 않는다.
+        assertThat(destinations.find("경북")).extracting(DestinationCandidate::name).startsWith("경주","안동","포항");
+        assertThat(destinations.find("경북")).allSatisfy(d -> assertThat(Provinces.canonical(d.region().split(" ")[0])).isEqualTo("경북"));
+        assertThat(destinations.find("광주")).extracting(DestinationCandidate::name).startsWith("여수","순천","담양");
+        assertThat(destinations.find("광주")).allSatisfy(d -> assertThat(Provinces.canonical(d.region().split(" ")[0])).isEqualTo("전남광주"));
         assertThat(destinations.find("부산 아닌 서울")).isEmpty();
         assertThat(destinations.find("강릉 부산")).isEmpty();
     }

@@ -131,6 +131,6 @@
     <!--/* 카드마다 반복하던 출처·AI 안내를 화면 끝에 한 번만 적는다. */-->
     <div class="guide-note" th:if="${!job.pending and (!job.candidates.isEmpty() or job.status == 'COMPLETED')}">
         <p>여행지 소개는 공식 관광 사이트에서 확인해 저장한 정보이며 실시간 조회가 아니에요.</p>
-        <p th:if="${job.status == 'COMPLETED'}">추천 이유와 대표 코스는 입력한 조건과 지역 소개를 바탕으로 AI가 썼어요. 대표 코스는 AI가 꼽은 순서라 실제 장소와 동선은 장소 목록·일정 초안에서 확인해요. 목적에 맞는 곳은 이름·주소만 확인했으니 운영·체험 내용과 비용은 방문 전 공식 정보에서 확인해 주세요.</p>
+        <p th:if="${job.status == 'COMPLETED'}">추천 이유와 대표 코스는 입력한 조건과 지역 소개, 한국관광공사에 등록된 그 지역의 장소를 바탕으로 AI가 썼어요. 대표 코스는 AI가 꼽은 순서라 실제 장소와 동선은 장소 목록·일정 초안에서 확인해요. 목적에 맞는 곳은 이름·주소만 확인했으니 운영·체험 내용과 비용은 방문 전 공식 정보에서 확인해 주세요.</p>
     </div>
 </main><script defer th:src="@{/js/recommendation-job.js}"></script></body></html>

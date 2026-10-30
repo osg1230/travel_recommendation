@@ -10,7 +10,8 @@ import org.springframework.stereotype.Service;
 /**
  * 첫날 집 출발·마지막 날 귀가 설정(2026-09-24 결정)을 만든다. 출발지와 돌아갈 곳은 따로 받으며, 돌아갈 곳을 비우면 출발지로 돌아온다.
  * 편도 이동시간은 사용자가 직접 적은 값이 먼저이고, 없으면 자동차는 카카오 길찾기, 대중교통은 카카오 대중교통 길찾기 → 직행 시외·고속버스 순서로 찾는다.
- * 제주처럼 바다를 건너는 여행은 비행기(공항까지 이동 + 공항 대기 + 비행)로 찾는다. 찾지 못하면 추정하지 않고 출발지를 다시 적거나 비우라고 안내한다
+ * 바다를 건너는 여행은 제주는 비행기(공항까지 이동 + 공항 대기 + 비행), 울릉도는 배(항구까지 이동 + 승선 대기 + 운항)로 찾는다.
+ * 찾지 못하면 추정하지 않고 출발지를 다시 적거나 비우라고 안내한다
  * (일정 화면은 편도 시간을 받지 않는다). 좌표는 조회에만 쓰고 저장하지 않는다.
  */
 @Service
@@ -20,6 +21,7 @@ public class HomeTripService {
     private final KakaoMapClient maps;
     private final BusGuideService buses;
     private final FlightGuideService flights;
+    private final FerryGuideService ferries;
 
     /**
      * 일정 입력 화면에서 받은 값. 출발지 좌표는 '내 위치로 찾기'를 눌렀을 때만 오고, minutes는 직접 적은 여행지까지 편도 시간(분)이다.
@@ -83,7 +85,7 @@ public class HomeTripService {
             throw failure("HOME_MINUTES", destination + " 관광지 위치를 확인하지 못해 이동시간을 계산하지 못했어요. "
                 + "출발지를 역이나 시·구 이름으로 다시 적거나, 출발지를 비우면 여행지 도착부터 일정을 짜요.");
         // 제주를 오가는 길은 비행기나 배를 타야 한다. 카카오 자동차 길찾기는 카페리 구간을 넣어 '성공'으로 답하므로 길찾기 대신
-        // 비행기(가까운 공항까지 이동 + 공항 대기 + 오늘 운항편의 비행시간)로 찾는다. 배는 아직 찾지 않는다.
+        // 비행기(가까운 공항까지 이동 + 공항 대기 + 오늘 운항편의 비행시간)로 찾는다. 제주 배편은 찾지 않는다.
         if (onJejuIsland(home.location()) != onJejuIsland(target.location())) {
             var flight = outbound ? flights.fastest(home.location(), target.location(), transport)
                 : flights.fastest(target.location(), home.location(), transport);
@@ -91,6 +93,15 @@ public class HomeTripService {
                 return new Leg(home.label(), flight.get().minutes(), flight.get().basis(), flight.get().checkedAt());
             throw failure("HOME_MINUTES", (outbound ? home.label() + "에서 " + destination : destination + "에서 " + home.label())
                 + "까지는 비행기나 배로 가야 하는데 오늘 운항하는 비행기 편이나 공항까지 가는 길을 찾지 못했어요. 출발지를 비우면 여행지 도착부터 일정을 짜요.");
+        }
+        // 울릉도는 배로만 갈 수 있다. 오늘 운항하는 여객선과 항구까지·항구에서의 길찾기를 더해 찾는다.
+        if (FerryPorts.onUlleung(home.location()) != FerryPorts.onUlleung(target.location())) {
+            var ferry = outbound ? ferries.fastest(home.location(), target.location(), transport)
+                : ferries.fastest(target.location(), home.location(), transport);
+            if (ferry.isPresent() && ferry.get().minutes() <= 600)
+                return new Leg(home.label(), ferry.get().minutes(), ferry.get().basis(), ferry.get().checkedAt());
+            throw failure("HOME_MINUTES", (outbound ? home.label() + "에서 " + destination : destination + "에서 " + home.label())
+                + "까지는 배로 가야 하는데 오늘 운항하는 여객선이나 항구까지 가는 길을 찾지 못했어요. 출발지를 비우면 여행지 도착부터 일정을 짜요.");
         }
         // 여행지 관광지들의 가운데까지 조회한다. 첫 관광지까지와는 조금 다를 수 있다고 일정에 적는다.
         try {

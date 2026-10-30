@@ -166,6 +166,72 @@ public class TourApiClient {
     }
 
     /**
+     * 시·도 안에서 시·군 이름(예: "수원시")의 시·군·구 코드. 수원·전주·포항처럼 일반구가 있는 시는 관광지가 구 코드로 등록돼
+     * 시 코드(예: 110)로는 관광공사 분류 조회·연관 관광지가 0건이므로, 그 아래 구 코드들(예: 111·113·115·117)을 돌려준다.
+     * 구가 없으면 시·군 코드 하나, 이름을 찾지 못하면 빈 목록이다.
+     */
+    public List<String> cityDistrictCodes(String provinceCode, String cityName) {
+        if (provinceCode == null || !provinceCode.matches("[0-9]{2}") || cityName == null || cityName.isBlank() || cityName.length() > 40)
+            return List.of();
+        var data = get(endpoint.resolve("ldongCode2"), 100, "&lDongRegnCd=" + provinceCode);
+        String own = null; List<String> wards = new ArrayList<>();
+        for (var item : data.path("items").path("item")) {
+            String code = item.path("code").asText(""), name = item.path("name").asText("");
+            if (!code.matches("[0-9]{3}")) continue;
+            if (name.equals(cityName)) own = code;
+            else if (name.startsWith(cityName + " ")) wards.add(code);
+        }
+        if (!wards.isEmpty()) return List.copyOf(wards);
+        return own == null ? List.of() : List.of(own);
+    }
+
+    /** 시·도 코드와 그 안의 시·군·구 코드들. districts가 비어 있으면 시·도 전체(광역시·제주·세종)다. */
+    public record RegionCodes(String province, List<String> districts) {}
+
+    /**
+     * 여행지 지역 이름을 법정동 코드로 바꾼다. "강원특별자치도 속초시" → 51·[210], "경기도 수원시" → 41·[111, 113, 115, 117](일반구),
+     * "부산광역시" → 26·[], "세종특별자치시" → 36110·[]. 찾지 못하면 비어 있다.
+     */
+    public Optional<RegionCodes> regionCodes(String region) {
+        if (region == null || region.isBlank()) return Optional.empty();
+        String[] parts = region.strip().split("\\s+");
+        var province = districtCode(null, parts[0]).orElse(null);
+        if (province == null) return Optional.empty();
+        if (parts.length < 2) return Optional.of(new RegionCodes(province, List.of()));
+        var districts = cityDistrictCodes(province, parts[1]);
+        return districts.isEmpty() ? Optional.empty() : Optional.of(new RegionCodes(province, districts));
+    }
+
+    /** 관광공사에 등록된 장소 하나의 이름과 새 분류체계 소분류 코드(예: "NA040100" 국립공원). */
+    public record ClassifiedPlace(String name, String category) {}
+    static final int CLASS_ROWS = 1000;
+
+    /**
+     * 지역(시·도 또는 시·군·구)에 등록된 장소 중 새 분류체계 대분류(topClass, 예: "NA" 자연관광·"HS" 역사관광)에 속한 곳의
+     * 이름과 소분류를 받는다. 여행지마다 "할 수 있는 것"(소분류별 장소 수)을 세는 데 쓴다. 한 쪽 CLASS_ROWS행씩 maxPages쪽까지 읽는다.
+     */
+    public List<ClassifiedPlace> placesInClass(String provinceCode, String districtCode, String topClass, int maxPages) {
+        if (provinceCode == null || !provinceCode.matches("[0-9]{2,5}") || topClass == null || !topClass.matches("[A-Z]{2}") || maxPages < 1)
+            throw failure("TOUR_INPUT", "지역 코드와 분류를 확인해 주세요.");
+        String extra = "&lclsSystm1=" + topClass + "&lDongRegnCd=" + provinceCode
+            + (districtCode != null && districtCode.matches("[0-9]{3}") ? "&lDongSignguCd=" + districtCode : "");
+        List<ClassifiedPlace> result = new ArrayList<>();
+        for (int page = 1; page <= maxPages; page++) {
+            var data = get(endpoint.resolve("areaBasedList2"), page, CLASS_ROWS, extra);
+            for (var item : data.path("items").path("item")) {
+                try {
+                    String name = text(item, "title"), category = text(item, "lclsSystm3");
+                    if (!name.isBlank() && name.length() <= 100 && category.matches("[A-Z]{2}[0-9]{6}")) result.add(new ClassifiedPlace(name, category));
+                } catch (RecommendationException ignored) {
+                    // 한 항목의 형식 오류로 다른 장소까지 잃지 않는다.
+                }
+            }
+            if ((long) page * CLASS_ROWS >= data.path("totalCount").asLong(0)) break;
+        }
+        return List.copyOf(result);
+    }
+
+    /**
      * 관광공사 '관광지별 연관 관광지 정보'(티맵 내비게이션 이동 데이터)의 한 행. center는 시·군·구의 중심 관광지,
      * name은 중심 관광지에 간 차량이 함께 많이 간 곳, rank는 그 순위(1이 가장 많음)다. large·middle·small은 대·중·소 분류다.
      */

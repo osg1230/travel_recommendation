@@ -12,7 +12,8 @@ class HomeTripServiceTests {
     private final KakaoMapClient maps = mock(KakaoMapClient.class);
     private final BusGuideService buses = mock(BusGuideService.class);
     private final FlightGuideService flights = mock(FlightGuideService.class);
-    private final HomeTripService service = new HomeTripService(maps, buses, flights);
+    private final FerryGuideService ferries = mock(FerryGuideService.class);
+    private final HomeTripService service = new HomeTripService(maps, buses, flights, ferries);
     private final KakaoMapClient.Origin songpa = new KakaoMapClient.Origin("서울특별시 송파구", "서울",
         new KakaoMapClient.Location("서울특별시 송파구", 127.1, 37.5, Instant.now()));
 
@@ -125,6 +126,32 @@ class HomeTripServiceTests {
         when(maps.travelTime(any(), any(), eq(KakaoMapClient.Transport.CAR)))
             .thenReturn(new KakaoMapClient.TravelTime(KakaoMapClient.Transport.CAR, 60 * 60, 45000, Instant.now()));
         assertThat(service.resolve(request("제주시", null), jeju, KakaoMapClient.Transport.CAR).minutes()).isEqualTo(60);
+    }
+
+    // 울릉도는 배로만 가므로 여객선(항구 이동 + 승선 대기 + 운항)으로 찾고, 찾지 못하면 출발지를 비우라고 안내한다.
+    @Test void ulleungTripUsesFerriesOrAsksToClearOrigin() {
+        var attraction = new PlaceCandidate(3L, "나리분지", "경북 울릉군 북면 나리", "여행 > 관광,명소", "", "https://place.map.kakao.com/3",
+            "", LocalDateTime.of(2026, 9, 1, 0, 0), 130.87, 37.52, "KAKAO", null);
+        var ulleung = new PlaceCandidateView(UUID.randomUUID(), new DestinationCandidate(11L, "울릉", "경북", "", "https://www.ulleung.go.kr/",
+            LocalDateTime.of(2026, 9, 1, 0, 0)), 3, true, List.of(attraction), List.of(), List.of());
+        when(maps.findOrigin("송파구")).thenReturn(songpa);
+        when(ferries.fastest(eq(songpa.location()), any(), eq(KakaoMapClient.Transport.CAR)))
+            .thenReturn(Optional.of(new FerryGuideService.Leg(480, "배 · 포항여객선터미널 → 울릉(도동)여객선터미널 약 140분(오늘 운항 기준)", Instant.now())));
+        when(ferries.fastest(any(), eq(songpa.location()), eq(KakaoMapClient.Transport.CAR)))
+            .thenReturn(Optional.of(new FerryGuideService.Leg(500, "배 · 울릉(도동)여객선터미널 → 포항여객선터미널 약 140분(오늘 운항 기준)", Instant.now())));
+        var home = service.resolve(request("송파구", null), ulleung, KakaoMapClient.Transport.CAR);
+        assertThat(home.minutes()).isEqualTo(480);
+        assertThat(home.basis()).startsWith("배 · 포항여객선터미널");
+        assertThat(home.returnMinutes()).isEqualTo(500);
+        verify(maps, never()).travelTime(any(), any(), any());
+        verifyNoInteractions(flights);
+
+        when(ferries.fastest(any(), any(), any())).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.resolve(request("송파구", null), ulleung, KakaoMapClient.Transport.CAR))
+            .isInstanceOfSatisfying(RecommendationException.class, e -> {
+                assertThat(e.getCode()).isEqualTo("HOME_MINUTES");
+                assertThat(e.getMessage()).contains("배로").contains("출발지를 비우면");
+            });
     }
 
     @Test void missingTimesOrOriginAreAskedFor() {

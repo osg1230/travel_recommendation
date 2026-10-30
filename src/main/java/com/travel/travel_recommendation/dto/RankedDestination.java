@@ -31,6 +31,9 @@ public record RankedDestination(int rank, DestinationCandidate destination, Stri
     public RankedDestination withFestivalPlaces(Map<String, Long> placeIds) {
         return new RankedDestination(rank, destination, reason, centerPlaces, festivals, placeIds, direction);
     }
+    public RankedDestination withReason(String text) {
+        return new RankedDestination(rank, destination, text, centerPlaces, festivals, festivalPlaceIds, direction);
+    }
     public RankedDestination withDirection(String chosen) {
         return new RankedDestination(rank, destination, reason, centerPlaces, festivals, festivalPlaceIds, chosen);
     }

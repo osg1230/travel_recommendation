@@ -39,6 +39,16 @@ public final class Provinces {
         return null;
     }
 
+    /**
+     * 지금 쓰는 정식 시·도 이름. 관광공사 법정동 코드·여행지 지역 이름과 같은 표기다. 시·도 이름이 아니면 null이다.
+     * 예) "전라북도" → "전북특별자치도", "전라남도"·"광주" → "전남광주통합특별시", "경북" → "경상북도".
+     */
+    public static String officialName(String name) {
+        String key = canonical(name);
+        if (key == null) return null;
+        return "전남광주".equals(key) ? "전남광주통합특별시" : NAMES.get(key).getLast();
+    }
+
     /** 대표 이름으로 같은 시·도를 뜻하는 이름 목록을 얻는다. */
     public static List<String> names(String canonical) {
         return NAMES.getOrDefault(canonical, List.of());

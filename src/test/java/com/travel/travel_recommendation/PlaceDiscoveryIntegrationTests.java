@@ -38,6 +38,7 @@ class PlaceDiscoveryIntegrationTests {
     @Autowired RecommendationJobService recommendations;
     @Autowired PlaceCandidateService candidates;
     @Autowired PlaceDiscoveryService discovery;
+    @Autowired DestinationProfileService profiles;
     @Autowired ItineraryJobService schedules;
     @Autowired PlaceRepository places;
     @Autowired AiJobRepository jobs;
@@ -180,8 +181,7 @@ class PlaceDiscoveryIntegrationTests {
         var localTemple=new KakaoPlace("9200000000000002","ATTRACTION","동네 절",region,"강원 강릉시 대표로 2","문화,예술 > 종교 > 불교 > 절,사찰",
             128.85,37.75,"https://place.map.kakao.com/9200000000000002",KoreaTime.now().withNano(0));
         when(tour.configured()).thenReturn(true);
-        when(tour.districtCode(null,"강원특별자치도")).thenReturn(Optional.of("51"));
-        when(tour.districtCode("51","강릉시")).thenReturn(Optional.of("150"));
+        when(tour.regionCodes(region)).thenReturn(Optional.of(new TourApiClient.RegionCodes("51",List.of("150"))));
         when(tour.relatedPlaces(eq("51150"),any(),anyInt())).thenReturn(List.of(
             new TourApiClient.RelatedPlace("경포대","인기 관광지","51150","관광지","쇼핑","시장",1),
             new TourApiClient.RelatedPlace("경포대","강릉역","51150","관광지","기타관광","교통시설",2),
@@ -248,6 +248,30 @@ class PlaceDiscoveryIntegrationTests {
         assertThat(input.reserve()).extracting(PlaceCandidate::placeId).doesNotContainAnyElementsOf(visited);
         assertThat(input.evening()).extracting(PlaceCandidate::placeId).doesNotContainAnyElementsOf(visited);
         assertThat(schedules.view(first,null,hash).status()).isEqualTo("COMPLETED");
+    }
+    // 여행지 "할 수 있는 것" 목록은 관광공사 대분류마다 한 번씩 받아 소분류로 세고, 여행지 행에 보관해 다시 세지 않는다.
+    // 관광공사 오류로 일부만 받았으면 보관하지 않고 빈 목록을 돌려준다.
+    @Test void destinationProfileCountsSubcategoriesOnceAndReusesIt() {
+        when(tour.configured()).thenReturn(true);
+        when(tour.regionCodes(region)).thenReturn(Optional.of(new TourApiClient.RegionCodes("51",List.of("150"))));
+        when(tour.placesInClass(eq("51"),eq("150"),anyString(),anyInt())).thenReturn(List.of());
+        when(tour.placesInClass(eq("51"),eq("150"),eq("NA"),anyInt())).thenReturn(List.of(
+            new TourApiClient.ClassifiedPlace("오대산 소금강계곡","NA010400"),new TourApiClient.ClassifiedPlace("경포해수욕장","NA020900"),
+            new TourApiClient.ClassifiedPlace("안목해변","NA020900")));
+        var profile=profiles.profile(destination);
+        assertThat(DestinationProfile.count(profile,List.of("NA020900"))).isEqualTo(2);
+        assertThat(DestinationProfile.names(profile,List.of("NA010400"),3)).containsExactly("오대산 소금강계곡");
+        em.flush();
+        assertThat(places.findById(destination).orElseThrow().getDetailsJson()).contains("\"profile\"","안목해변");
+        assertThat(profiles.profile(destination)).isEqualTo(profile);
+        // 대분류 6개(자연·역사·문화·체험·레저·쇼핑)를 한 번씩만 불렀다.
+        verify(tour,times(6)).placesInClass(anyString(),any(),anyString(),anyInt());
+
+        jdbc.update("UPDATE dbo.places SET details_json=NULL WHERE place_id=?",destination); em.clear();
+        when(tour.placesInClass(eq("51"),eq("150"),eq("HS"),anyInt())).thenThrow(new RecommendationException("TOUR_QUOTA","한도"));
+        assertThat(profiles.profile(destination)).isEmpty();
+        em.flush();
+        assertThat(places.findById(destination).orElseThrow().getDetailsJson()).isNull();
     }
     @Test void sameTypeAndBuildingAddressAreNotDuplicated() {
         var seed=candidates.find(parent,destination,null,hash).attractions().getFirst();
