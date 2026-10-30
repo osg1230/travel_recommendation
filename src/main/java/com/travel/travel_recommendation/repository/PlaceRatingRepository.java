@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.*;
 
 public interface PlaceRatingRepository extends JpaRepository<PlaceRating,Long> {
     Optional<PlaceRating> findByUserIdAndPlaceId(Long userId, Long placeId);
+    List<PlaceRating> findByUserIdInAndPlaceIdIn(Collection<Long> userIds, Collection<Long> placeIds);
     // 갱신·삭제는 같은 평가를 동시에 바꾸지 않도록 행을 잠그고 처리한다.
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select r from PlaceRating r where r.userId=:userId and r.placeId=:placeId")

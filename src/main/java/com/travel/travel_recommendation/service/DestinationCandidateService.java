@@ -27,8 +27,11 @@ public class DestinationCandidateService {
         "daejeontour.co.kr","www.visitjeju.net",
         // 한국관광공사 대한민국 구석구석. 추천 중에 관광공사 정보로 확인해 추가한 여행지(RegionSuggestionService)의 출처다.
         "korean.visitkorea.or.kr");
+    /** 비슷한 조건 회원 기록 가점의 상한. 인기 있는 여행지만 계속 남지 않게 한다. */
+    static final int MEMBER_BONUS_CAP=2;
     private final PlaceRepository places;
     private final ObjectMapper mapper;
+    private final SimilarMemberService similarMembers;
 
     @Transactional(readOnly=true, timeout=10)
     public List<DestinationCandidate> find(String region) {
@@ -53,13 +56,32 @@ public class DestinationCandidateService {
     /** 추천 조건 그대로 후보를 고른다. 후보 준비와 추천 저장 직전 재확인이 같은 기준을 쓰도록 이 메서드를 쓴다. */
     @Transactional(readOnly=true, timeout=10)
     public List<DestinationCandidate> find(com.travel.travel_recommendation.dto.ConfirmedTravelConditions c) {
+        return find(c,null);
+    }
+
+    /** userId는 비슷한 조건 회원 기록에서 본인 기록을 빼는 데 쓴다(비회원은 null). */
+    @Transactional(readOnly=true, timeout=10)
+    public List<DestinationCandidate> find(com.travel.travel_recommendation.dto.ConfirmedTravelConditions c,Long userId) {
         var matched=matched(c.region(),c.excludedRegions());
         // AI가 근거를 보고 고른 여행지, 그다음 AI가 제안하고 서버가 확인한 여행지를 맨 앞에 둔다.
         var preferred=java.util.stream.Stream.concat(c.pickedDestinationIds().stream(),c.suggestedDestinationIds().stream()).distinct().toList();
         // 원하는 여행의 분류가 있으면 그 분류로, 없으면 고른 여행 취향(바다·자연 등)의 분류로 여행지마다 근거를 센다.
         var codes=!c.wishCategories().isEmpty()?c.wishCategories():WishCategories.codesFor(c.themeNames());
-        return pick(matched,c.themeNames(),blank(c.region()),preferred,c.purposeDestinationIds(),c.purposeThemes(),evidence(matched,codes))
+        return pick(matched,c.themeNames(),blank(c.region()),preferred,c.purposeDestinationIds(),c.purposeThemes(),evidence(matched,codes),
+                memberBonus(c,userId,matched))
             .stream().map(DestinationCandidateService::candidate).toList();
+    }
+
+    /**
+     * 여행지마다 비슷한 조건으로 여행한 회원이 저장·즐겨찾기·높게 평가한 수(상한 2). 줄일 필요가 없으면(5곳 이하) 세지 않는다.
+     * 기록이 없으면 빈 값이라 지금 순서 그대로다.
+     */
+    private Map<Long,Integer> memberBonus(com.travel.travel_recommendation.dto.ConfirmedTravelConditions c,Long userId,List<Place> matched) {
+        if(matched.size()<=MAX_CANDIDATES) return Map.of();
+        Map<Long,Integer> bonus=new HashMap<>();
+        similarMembers.destinations(c,userId,matched.stream().map(Place::getId).toList())
+            .forEach((id,stats)->bonus.put(id,Math.min(MEMBER_BONUS_CAP,stats.saved()+stats.favorited()+stats.ratedHigh())));
+        return bonus;
     }
 
     /** 조건의 지역에 맞는 여행지 전체(5곳으로 줄이기 전). AI가 근거를 보고 후보를 고를 때(DestinationPickService) 쓴다. */
@@ -145,10 +167,20 @@ public class DestinationCandidateService {
      */
     static List<Place> pick(List<Place> matched,List<String> themes,boolean nationwide,List<Long> preferredDestinationIds,
                             List<Long> purposeDestinationIds,List<String> purposeThemes,Map<Long,Integer> evidence) {
+        return pick(matched,themes,nationwide,preferredDestinationIds,purposeDestinationIds,purposeThemes,evidence,Map.of());
+    }
+
+    /**
+     * memberBonus는 비슷한 조건으로 여행한 회원이 저장·즐겨찾기·높게 평가한 수(상한 2)다.
+     * 여행 취향 점수가 같은 여행지끼리만 먼저 두고, 근거 가짓수보다 앞에 본다. 가점일 뿐이라 취향·목적으로 고르는 기준은 그대로다.
+     */
+    static List<Place> pick(List<Place> matched,List<String> themes,boolean nationwide,List<Long> preferredDestinationIds,
+                            List<Long> purposeDestinationIds,List<String> purposeThemes,Map<Long,Integer> evidence,Map<Long,Integer> memberBonus) {
         if(matched.size()<=MAX_CANDIDATES) return matched;
         var ranked=new ArrayList<>(matched);
         ranked.sort(Comparator.comparingInt((Place p)->purposeDestinationIds.contains(p.getId())?0:1)
-            .thenComparingInt(p->-themeScore(p,themes)).thenComparingInt(p->-evidence.getOrDefault(p.getId(),0))
+            .thenComparingInt(p->-themeScore(p,themes)).thenComparingInt(p->-memberBonus.getOrDefault(p.getId(),0))
+            .thenComparingInt(p->-evidence.getOrDefault(p.getId(),0))
             .thenComparingInt(p->-themeScore(p,purposeThemes)).thenComparing(Place::getId));
         List<Place> chosen=new ArrayList<>(); Set<String> provinces=new HashSet<>();
         for(Long id:preferredDestinationIds) for(var place:matched)

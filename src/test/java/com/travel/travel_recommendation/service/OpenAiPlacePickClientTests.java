@@ -56,6 +56,16 @@ class OpenAiPlacePickClientTests {
         assertThat(request.get()).contains("정동진 해변","해수욕장·해변","강릉").doesNotContain("private-original-input","private-summary");
     }
 
+    // 비슷한 조건 회원 기록이 있는 관광지에만 회원 수를 붙여 보낸다.
+    @Test void memberCountsAreSentOnlyForPlacesWithRecords() {
+        var withMembers=List.of(new Candidate(1,"정동진 해변","해수욕장·해변",18,false,new MemberStats(1,0,2)),
+            new Candidate(2,"오죽헌","유적지",3,true),new Candidate(3,"인월사","절·사찰",5,false),new Candidate(4,"경포해수욕장","해수욕장·해변",0,false));
+        client("test-key",Duration.ofSeconds(2)).pick(conditions(),"강릉","CAR",withMembers);
+        var sent=mapper.readTree(mapper.readTree(request.get()).path("input").asText()).path("candidates");
+        assertThat(sent.get(0).path("members").toString()).isEqualTo("{\"saved\":1,\"favorited\":0,\"ratedHigh\":2}");
+        assertThat(sent.get(1).has("members")).isFalse();
+    }
+
     // 후보에 없는 ID와 중복은 버리고, 갈 만한 곳에 적었거나 사용자가 넣기로 한 곳(fixed)은 뺄 곳에서 뺀다.
     @Test void dropsUnknownDuplicateAndFixedIds() {
         output("{\"order\":[4,99,4,1],\"skip\":[1,2,3,77]}");

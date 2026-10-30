@@ -118,6 +118,19 @@ class OpenAiRecommendationClientTests {
         assertThat(client("test-key",Duration.ofSeconds(2)).recommend(conditions(),pool).getFirst().reason()).isEqualTo("바다와 커피");
         assertThat(calls.get()).isEqualTo(6);
     }
+    // 비슷한 조건 회원 기록은 회원 수만 보내고, 결과에는 서버가 센 수를 그대로 붙인다. 기록이 없는 후보에는 보내지 않는다.
+    @Test void memberCountsAreSentAndAttachedToTheResult() {
+        var members=Map.of(1L,new MemberStats(2,1,0));
+        var result=client("test-key",Duration.ofSeconds(2)).recommend(conditions(),pool,Map.of(),Map.of(),members);
+        assertThat(result.getFirst().members()).isEqualTo(new MemberStats(2,1,0));
+        assertThat(result.getFirst().members().text()).isEqualTo("비슷한 조건으로 여행한 회원 기록 · 일정 저장 2명 · 즐겨찾기 1명");
+        var body=mapper.readTree(request.get());
+        assertThat(mapper.readTree(body.path("input").asText()).path("candidates").get(0).path("members").toString())
+            .isEqualTo("{\"saved\":2,\"favorited\":1,\"ratedHigh\":0}");
+        assertThat(body.path("instructions").asText()).contains("회원 수는 화면에 따로 보여 주므로 reason에 쓰지 않는다.");
+        client("test-key",Duration.ofSeconds(2)).recommend(conditions(),pool);
+        assertThat(mapper.readTree(mapper.readTree(request.get()).path("input").asText()).path("candidates").get(0).has("members")).isFalse();
+    }
     @Test void hedgeSentencesAreFoundAndRemoved() {
         assertThat(ReasonHedges.found("등산로는 확인되지 않았습니다.")).isTrue();
         assertThat(ReasonHedges.found("설악산 국립공원이 있어 등산하기 좋습니다.")).isFalse();
