@@ -367,8 +367,11 @@ public class ItineraryJobService {
         var kept=new ArrayList<PlaceCandidate>();
         for(var place:placed) {
             if(chosen.contains(place.placeId())) continue;
-            kept.add(pool.attractions().stream().filter(p->p.placeId().equals(place.placeId())).findFirst().orElseThrow(()->
-                new ResponseStatusException(HttpStatus.CONFLICT,"유지한 관광지 '"+place.name()+"'의 정보가 바뀌었어요. 장소 목록에서 다시 조회해 주세요.")));
+            // 후보 수 제한·순서 변경으로 목록에서 밀려났을 뿐 지금도 확인된 장소면 그대로 유지한다.
+            kept.add(pool.attractions().stream().filter(p->p.placeId().equals(place.placeId())).findFirst()
+                .or(()->candidates.usableAttraction(place.placeId(),pool.destination().region())).orElseThrow(()->
+                new ResponseStatusException(HttpStatus.CONFLICT,"관광지 '"+place.name()+"'의 장소 정보를 지금 다시 확인하지 못했어요. "
+                    +"'일정 직접 수정하기'에서 이 관광지를 바꾸거나 빼고 다시 시도해 주세요.")));
         }
         // 새로 넣을 후보에서는 원본 초안이 쓰려던 관광지를 모두 뺀다. 시간·거리 때문에 빠졌던 곳(섬 등)을 다시 넣지 않는다.
         var tried=tried(original,originalResult);

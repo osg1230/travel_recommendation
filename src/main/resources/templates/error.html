@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>요청을 처리하지 못했어요 | 다녀올게</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body>
+<!--/* 화면마다 따로 처리하지 못한 오류에 쓰는 공통 화면. 내부 오류 내용(예외 메시지·스택)은 보여 주지 않는다. */-->
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="account">
+    <h1>요청을 처리하지 못했어요</h1>
+    <p class="intro" th:if="${status != null and status >= 500}">일시적인 문제로 처리하지 못했어요. 저장하거나 바꾸려던 내용은 반영되지 않았을 수 있으니, 잠시 뒤 해당 화면을 다시 열어 확인해 주세요.</p>
+    <p class="intro" th:unless="${status != null and status >= 500}">요청 내용을 확인하지 못했어요. 이전 화면으로 돌아가 다시 시도해 주세요.</p>
+    <a class="button" th:href="@{/}">처음으로 돌아가기</a>
+    <a class="button button-quiet" th:href="@{/my/itineraries}">내 일정 보기</a>
+</main>
+</body>
+</html>

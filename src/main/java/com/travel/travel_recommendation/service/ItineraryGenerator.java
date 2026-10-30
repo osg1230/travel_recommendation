@@ -76,7 +76,7 @@ public class ItineraryGenerator {
                 options.removeIf(o->o.placeId().equals(chosenStay));
                 var all=rankLodging(places,locations,null);
                 all.options().stream().filter(o->o.placeId().equals(chosenStay)).findFirst().ifPresent(o->options.addFirst(o));
-                lodging=new Lodging(chosenStay,"수정 요청에서 고른 숙소예요.",options.subList(0,Math.min(3,options.size())));
+                lodging=new Lodging(chosenStay,"고른 숙소를 그대로 써요.",options.subList(0,Math.min(3,options.size())));
             }
             if(lodging==null) throw lastError!=null?lastError:failure("INSUFFICIENT_PLACES","숙소 후보의 위치를 확인하지 못했어요. 다른 지역을 선택해 주세요.");
             Long chosen=lodging.chosenPlaceId();

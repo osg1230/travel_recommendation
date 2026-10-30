@@ -132,6 +132,16 @@ public class PlaceCandidateService {
         return front;
     }
 
+    /**
+     * 후보 목록(개수 제한) 밖이어도 지금 확인된 이 지역 관광지면 일정 후보 형식으로 돌려준다.
+     * 수정안이 유지하는 관광지는 후보 순서가 바뀌어 상위 N곳에서 밀려났을 뿐이면 그대로 쓴다.
+     */
+    @Transactional(readOnly = true, timeout = 10)
+    public Optional<PlaceCandidate> usableAttraction(long placeId, String region) {
+        return places.findById(placeId).filter(place -> "ATTRACTION".equals(place.getPlaceType()))
+            .filter(place -> usable(place, region)).map(this::candidate);
+    }
+
     private boolean usable(Place place, String region) {
         return place.isActive() && region.equals(place.getRegion())
             && place.getName() != null && !place.getName().isBlank()
