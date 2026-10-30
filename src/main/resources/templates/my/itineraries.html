@@ -39,7 +39,7 @@
                 <a class="button button-quiet button-small" th:href="@{/my/itineraries/{id}(id=${itinerary.id})}">상세보기</a>
                 <a class="button button-quiet button-small" th:href="@{/my/itineraries/{id}(id=${itinerary.id})} + '#edit-title'">수정</a>
                 <form th:action="@{/my/itineraries/{id}/delete(id=${itinerary.id})}" method="post"
-                      onsubmit="return confirm('저장한 일정을 삭제할까요? 삭제하면 되돌릴 수 없어요.');">
+                      onsubmit="return confirm('저장한 일정을 삭제할까요? 삭제하면 되돌릴 수 없어요. 연결된 예약은 취소되지 않고 ‘예약’ 메뉴에 남아요.');">
                     <button type="submit" class="button-small button-danger">삭제</button>
                 </form>
             </div>
