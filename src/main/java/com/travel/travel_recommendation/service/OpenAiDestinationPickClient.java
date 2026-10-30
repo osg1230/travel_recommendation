@@ -26,10 +26,9 @@ public class OpenAiDestinationPickClient {
     private final URI endpoint;
     private final Duration timeout;
 
-    /** 근거 한 줄: 분류 이름, 등록 장소 수, 대표 이름 몇 개. */
-    public record Evidence(String category, int count, List<String> names) {}
-    /** GPT에 보내는 여행지 하나. facilities는 여행 목적으로 찾은 그 지역의 시설 이름이다. */
-    public record Option(long id, String name, String region, String description, List<Evidence> evidence, List<String> facilities) {}
+    /** GPT에 보내는 여행지 하나. evidence는 관광공사 등록 장소 근거, facilities는 여행 목적으로 찾은 그 지역의 시설 이름이다. */
+    public record Option(long id, String name, String region, String description, List<DestinationProfile.Evidence> evidence,
+                         List<String> facilities) {}
 
     @Autowired
     public OpenAiDestinationPickClient(OpenAiProperties properties, ObjectMapper mapper) {

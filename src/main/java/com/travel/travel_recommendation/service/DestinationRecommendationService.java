@@ -25,6 +25,7 @@ public class DestinationRecommendationService {
     private final DestinationCandidateService places;
     private final OpenAiRecommendationClient client;
     private final DestinationFestivalService festivals;
+    private final DestinationProfileService profiles;
     private final ObjectMapper mapper;
 
     public record Work(UUID jobId,int attempt,ConfirmedTravelConditions conditions,List<DestinationCandidate> candidates) {}
@@ -62,8 +63,25 @@ public class DestinationRecommendationService {
 
     // 이 메서드에는 트랜잭션을 두지 않는다. API를 기다리는 동안 DB 연결·행 잠금을 점유하지 않는다.
     // 후보 여행지의 축제를 먼저 찾아 추천 이유에 반영한다. 사용자가 축제를 고르지 않아도 여행 시기의 축제를 알려 주기 위해서다.
+    // 후보마다 "할 수 있는 것" 근거(관광공사 등록 장소)도 함께 넘겨, 추천 이유가 확인을 미루지 않고 근거 장소로 맞는 점을 쓰게 한다.
     public List<RankedDestination> generate(Work work) {
-        return client.recommend(work.conditions(),work.candidates(),festivals.find(work.conditions(),work.candidates()));
+        return client.recommend(work.conditions(),work.candidates(),festivals.find(work.conditions(),work.candidates()),evidence(work));
+    }
+
+    /** 이유에 쓰는 근거 분류 수와 분류마다의 대표 이름 수. 원하는 여행의 분류(최대 6개)는 모두 담긴다. */
+    static final int EVIDENCE_CATEGORIES=6, EVIDENCE_NAMES=3;
+
+    /**
+     * 후보 여행지마다 원하는 여행의 분류(지역 제안), 없으면 고른 여행 취향의 분류에서 장소가 많은 근거를 고른다.
+     * 취향도 없으면 장소가 많은 분류를 고른다. 보관한 목록만 읽는다(관광공사를 새로 부르지 않음).
+     */
+    private Map<Long,List<DestinationProfile.Evidence>> evidence(Work work) {
+        var c=work.conditions();
+        var codes=!c.wishCategories().isEmpty()?c.wishCategories():WishCategories.codesFor(c.themeNames());
+        Map<Long,List<DestinationProfile.Evidence>> result=new HashMap<>();
+        profiles.saved(work.candidates().stream().map(DestinationCandidate::placeId).toList())
+            .forEach((id,profile)->result.put(id,DestinationProfile.evidence(profile,codes,EVIDENCE_CATEGORIES,EVIDENCE_NAMES)));
+        return result;
     }
 
     @Transactional(timeout=10)

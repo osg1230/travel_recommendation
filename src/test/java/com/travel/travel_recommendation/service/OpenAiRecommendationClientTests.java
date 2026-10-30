@@ -82,22 +82,48 @@ class OpenAiRecommendationClientTests {
         assertThatThrownBy(()->client.recommend(conditions(),List.of(pool.getFirst(),second))).isInstanceOf(RecommendationException.class);
     }
     @Test void promptFieldNamesInReasonAreReplacedWithReadableWords() {
-        output("{\"recommendations\":[{\"placeId\":1,\"reason\":\"purposePlaces에 야경 명소 정보가 없어 `travelPurpose`와 THEME 연결은 확인이 필요합니다.\",\"places\":[]}]}");
+        output("{\"recommendations\":[{\"placeId\":1,\"reason\":\"purposePlaces의 야경 명소가 있어 `travelPurpose`와 THEME에 맞습니다.\",\"places\":[]}]}");
         var result=client("test-key",Duration.ofSeconds(2)).recommend(conditions(),pool);
         assertThat(result.getFirst().reason())
-            .isEqualTo("목적 시설 검색 결과에 야경 명소 정보가 없어 여행 목적과 여행 취향 연결은 확인이 필요합니다.");
+            .isEqualTo("목적 시설 검색 결과의 야경 명소가 있어 여행 목적과 여행 취향에 맞습니다.");
         var body=mapper.readTree(request.get());
         assertThat(body.path("instructions").asText()).contains("입력 필드 이름을 쓰지 말고");
         // 지시문의 예시(예: 상어 관람)가 다른 목적의 추천 이유에 새어 나오지 않도록 구체적 대상을 쓰지 않는다.
         assertThat(body.path("instructions").asText()).doesNotContain("상어").contains("travelPurpose에 없는 목적을 언급하지 않는다");
-        // 추천 이유가 "소개에 명시되어" 같은 말로 입력 자료를 가리키지 않고, 확인하지 못한 점은 여행지에 대한 문장으로 쓰게 한다.
-        assertThat(body.path("instructions").asText()).contains("주어진 데이터를 가리키지 않는다").contains("방문 전 확인이 필요합니다");
+        // 추천 이유가 "소개에 명시되어" 같은 말로 입력 자료를 가리키지 않고, 확인을 미루는 말 대신 근거로 맞는 점을 쓰게 한다.
+        assertThat(body.path("instructions").asText()).contains("주어진 데이터를 가리키지 않는다").contains("확인을 미루는 말은 쓰지 않는다")
+            .doesNotContain("확인하지 못했다고 쓴다");
         assertThat(OpenAiRecommendationClient.readable("THEMES와 purposePlacesX는 필드가 아니에요."))
             .isEqualTo("THEMES와 purposePlacesX는 필드가 아니에요.");
         assertThat(OpenAiRecommendationClient.readable("partySize가 없고 COMPANION는 연인, purposeKeywords로 찾았고 budgetKrw를 몰라요."))
             .isEqualTo("인원이 없고 동행자는 연인, 목적 검색어로 찾았고 예산을 몰라요.");
         assertThat(OpenAiRecommendationClient.readable("travelPurpose이나 THEME에 맞춰"))
             .isEqualTo("여행 목적이나 여행 취향에 맞춰");
+    }
+    // 근거 장소를 함께 보내고, 확인을 미루는 이유는 한 번만 다시 요청한 뒤 남은 그런 문장을 뺀다.
+    @Test void evidenceIsSentAndHedgedReasonIsRetriedOnceThenTrimmed() {
+        var evidence=Map.of(1L,List.of(new DestinationProfile.Evidence("해변·해수욕장",12,List.of("경포해변","강문해변","안목해변"))));
+        output("{\"recommendations\":[{\"placeId\":1,\"reason\":\"경포해변이 있어 바다를 보기 좋습니다. 다만 운영 시간은 방문 전 확인이 필요합니다.\",\"places\":[]}]}");
+        var result=client("test-key",Duration.ofSeconds(2)).recommend(conditions(),pool,Map.of(),evidence);
+        assertThat(calls.get()).isEqualTo(2);
+        assertThat(result.getFirst().reason()).isEqualTo("경포해변이 있어 바다를 보기 좋습니다.");
+        var body=mapper.readTree(request.get());
+        assertThat(body.path("instructions").asText()).startsWith("이전 답의 reason에 확인을 미루는 말이 있었다.");
+        assertThat(mapper.readTree(body.path("input").asText()).path("candidates").get(0).path("evidence").get(0).path("names").toString())
+            .isEqualTo("[\"경포해변\",\"강문해변\",\"안목해변\"]");
+        // 모든 문장이 확인을 미루면 근거 장소로, 근거도 없으면 여행지 소개로 바꾼다.
+        output("{\"recommendations\":[{\"placeId\":1,\"reason\":\"바다를 볼 만한 장소는 찾지 못했습니다.\",\"places\":[]}]}");
+        assertThat(client("test-key",Duration.ofSeconds(2)).recommend(conditions(),pool,Map.of(),evidence).getFirst().reason())
+            .isEqualTo("경포해변·강문해변 등 해변·해수욕장을 둘러볼 수 있는 곳이에요.");
+        assertThat(client("test-key",Duration.ofSeconds(2)).recommend(conditions(),pool).getFirst().reason()).isEqualTo("바다와 커피");
+        assertThat(calls.get()).isEqualTo(6);
+    }
+    @Test void hedgeSentencesAreFoundAndRemoved() {
+        assertThat(ReasonHedges.found("등산로는 확인되지 않았습니다.")).isTrue();
+        assertThat(ReasonHedges.found("설악산 국립공원이 있어 등산하기 좋습니다.")).isFalse();
+        assertThat(ReasonHedges.without("설악산이 있어 좋습니다. 숙박은 확인이 필요합니다. 가을 단풍도 아름답습니다."))
+            .isEqualTo("설악산이 있어 좋습니다. 가을 단풍도 아름답습니다.");
+        assertThat(ReasonHedges.without("상어 전시는 알 수 없습니다.")).isEmpty();
     }
     @Test void errorsRefusalAndIncompleteAreSafeWithoutAutomaticRetry() {
         var client=client("test-key",Duration.ofSeconds(2));

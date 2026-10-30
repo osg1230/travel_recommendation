@@ -20,11 +20,11 @@ class OpenAiDestinationPickClientTests {
     private final ConfirmedTravelConditions autumn = new ConfirmedTravelConditions("TEXT", "단풍 보러 산에 가고 싶어요", "", null, null, 2, null, 2,
         true, null, List.of(), "", true, "단풍 등산");
     private final List<OpenAiDestinationPickClient.Option> options = List.of(
-        option(1, "서울", new OpenAiDestinationPickClient.Evidence("산·오름·봉우리", 30, List.of("북한산"))),
-        option(2, "정읍", new OpenAiDestinationPickClient.Evidence("국립공원", 1, List.of("내장산국립공원"))),
+        option(1, "서울", new DestinationProfile.Evidence("산·오름·봉우리", 30, List.of("북한산"))),
+        option(2, "정읍", new DestinationProfile.Evidence("국립공원", 1, List.of("내장산국립공원"))),
         option(3, "구례"), option(4, "속초"), option(5, "인제"), option(6, "단양"));
 
-    private static OpenAiDestinationPickClient.Option option(long id, String name, OpenAiDestinationPickClient.Evidence... evidence) {
+    private static OpenAiDestinationPickClient.Option option(long id, String name, DestinationProfile.Evidence... evidence) {
         return new OpenAiDestinationPickClient.Option(id, name, "지역 " + name, "", List.of(evidence), List.of());
     }
 

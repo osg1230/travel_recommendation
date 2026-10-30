@@ -65,4 +65,20 @@ public final class DestinationProfile {
         return codes.stream().flatMap(code -> profile.getOrDefault(code, new Category(0, List.of())).names().stream())
             .distinct().limit(limit).toList();
     }
+
+    /** AI에게 근거로 보내는 한 줄: 분류 이름, 등록 장소 수, 대표 이름 몇 개. */
+    public record Evidence(String category, int count, List<String> names) {}
+
+    /**
+     * AI에게 보낼 근거. codes(원하는 여행의 분류) 중 장소가 있는 분류를, codes가 비어 있으면 원하는 여행 분류 전체(WishCategories)에서
+     * 장소가 있는 분류를 장소가 많은 순으로 limit개 고른다. 분류마다 대표 이름은 nameLimit개다.
+     */
+    public static List<Evidence> evidence(Map<String, Category> profile, List<String> codes, int limit, int nameLimit) {
+        var candidates = codes.isEmpty() ? WishCategories.NAMES.keySet() : codes;
+        return candidates.stream().filter(code -> WishCategories.NAMES.containsKey(code) && profile.containsKey(code))
+            .sorted(Comparator.comparingInt((String code) -> profile.get(code).count()).reversed()).limit(limit)
+            .map(code -> new Evidence(WishCategories.NAMES.get(code), profile.get(code).count(),
+                profile.get(code).names().stream().limit(nameLimit).toList()))
+            .toList();
+    }
 }

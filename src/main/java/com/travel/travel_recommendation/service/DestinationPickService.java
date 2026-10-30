@@ -73,11 +73,8 @@ public class DestinationPickService {
         List<OpenAiDestinationPickClient.Option> options = new ArrayList<>();
         for (var d : matching) {
             var profile = profiles.getOrDefault(d.placeId(), Map.of());
-            var codes = !wish.isEmpty() ? wish : profile.entrySet().stream().filter(e -> WishCategories.NAMES.containsKey(e.getKey()))
-                .sorted(Map.Entry.<String, DestinationProfile.Category>comparingByValue(Comparator.comparingInt(DestinationProfile.Category::count)).reversed())
-                .limit(GENERAL_EVIDENCE).map(Map.Entry::getKey).toList();
-            var evidence = codes.stream().filter(profile::containsKey).map(code -> new OpenAiDestinationPickClient.Evidence(
-                WishCategories.NAMES.get(code), profile.get(code).count(), profile.get(code).names().stream().limit(NAMES).toList())).toList();
+            // 원하는 여행의 분류는 모두(최대 6개), 없으면 장소가 많은 분류 몇 개를 보낸다.
+            var evidence = DestinationProfile.evidence(profile, wish, wish.isEmpty() ? GENERAL_EVIDENCE : wish.size(), NAMES);
             var facilities = c.purposeSearch() == null ? List.<String>of()
                 : c.purposeSearch().placesIn(d.placeId()).stream().map(PurposeSearch.PurposePlace::name).toList();
             options.add(new OpenAiDestinationPickClient.Option(d.placeId(), d.name(), d.region(), Objects.toString(d.description(), ""),

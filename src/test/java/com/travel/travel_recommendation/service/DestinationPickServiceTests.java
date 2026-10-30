@@ -29,11 +29,11 @@ class DestinationPickServiceTests {
 
         assertThat(options).extracting(OpenAiDestinationPickClient.Option::id).containsExactly(7L, 2L, 1L, 9L);
         var jeongeup = options.get(1);
-        assertThat(jeongeup.evidence()).containsExactly(new OpenAiDestinationPickClient.Evidence("국립공원", 1, List.of("내장산국립공원")),
-            new OpenAiDestinationPickClient.Evidence("산·오름·봉우리", 5, List.of("내장산", "입암산")));
+        assertThat(jeongeup.evidence()).containsExactly(new DestinationProfile.Evidence("산·오름·봉우리", 5, List.of("내장산", "입암산")),
+            new DestinationProfile.Evidence("국립공원", 1, List.of("내장산국립공원")));
         assertThat(jeongeup.facilities()).containsExactly("내장산 케이블카");
         // 원하는 여행과 상관없는 분류(박물관)는 보내지 않고, 대표 이름은 3개까지다.
-        assertThat(options.get(2).evidence()).containsExactly(new OpenAiDestinationPickClient.Evidence("산·오름·봉우리", 30, List.of("북한산", "인왕산", "도봉산")));
+        assertThat(options.get(2).evidence()).containsExactly(new DestinationProfile.Evidence("산·오름·봉우리", 30, List.of("북한산", "인왕산", "도봉산")));
         assertThat(options.get(3).evidence()).isEmpty();
     }
 
@@ -42,7 +42,7 @@ class DestinationPickServiceTests {
         var profile = Map.of("NA020900", category(12, "경포해변"), "VE010100", category(99, "기타"), "NA010100", category(8, "괘방산"),
             "SH060200", category(5, "중앙시장"), "HS030100", category(3, "보현사"), "VE070100", category(1, "참소리박물관"));
         var options = DestinationPickService.options(hiking, List.of(destination(1, "강릉")), Map.of(1L, profile));
-        assertThat(options.getFirst().evidence()).extracting(OpenAiDestinationPickClient.Evidence::category)
+        assertThat(options.getFirst().evidence()).extracting(DestinationProfile.Evidence::category)
             .containsExactly("해변·해수욕장", "산·오름·봉우리", "전통시장", "사찰");
 
         // 여행지가 많으면 MAX_OPTIONS곳까지만 보내되, 제안 여행지는 등록 순서가 뒤여도 남긴다.
