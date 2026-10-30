@@ -55,9 +55,10 @@
 </th:block>
 <p th:if="${revisionChanges != null and revisionChanges.empty()}">이전 초안과 비교하면 관광지·식당·숙소와 방문 시각은 그대로예요. 다른 후보가 부족했을 수 있어요.</p>
 </div>
-<div role="status" data-poll-seconds="120" th:attr="data-job-pending=${job.pending},data-status-url=@{/travel/recommendations/itineraries/{id}/status(id=${job.id})}">
+<!--/* 상태 확인 시간 420초 = 앞선 요청 대기 제한 5분 + 일정 처리 제한 2분(RecommendationJobService.WAIT_LIMIT, ItineraryJobService.complete). */-->
+<div role="status" data-poll-seconds="420" th:attr="data-job-pending=${job.pending},data-status-url=@{/travel/recommendations/itineraries/{id}/status(id=${job.id})}">
 <p data-job-message th:text="${job.message}"></p></div>
-<p th:if="${job.pending}">최대 약 2분 정도 걸릴 수 있어요. 이 화면에서 처리 상태를 확인할 수 있어요.</p>
+<p th:if="${job.pending}">처리를 시작하면 최대 약 2분 걸려요. 앞선 요청이 많으면 시작까지 더 기다릴 수 있어요. 이 화면에서 처리 상태를 확인할 수 있어요.</p>
 <a th:if="${job.pending}" th:href="@{/travel/recommendations/itineraries/{id}(id=${job.id})}">상태 새로고침</a>
 <th:block th:if="${job.result != null}">
 <p th:text="${'이동수단: ' + (job.result.transport.name() == 'CAR' ? '자동차' : '대중교통')}"></p>
