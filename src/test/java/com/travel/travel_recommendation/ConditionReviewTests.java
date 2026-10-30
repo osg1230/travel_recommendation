@@ -32,6 +32,7 @@ class ConditionReviewTests {
     @Autowired TravelConditionOptions options;
     @MockitoBean OpenAiConditionClient client;
     private ObjectNode result;
+    private static String day(int daysFromToday) { return java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).plusDays(daysFromToday).toString(); }
 
     @BeforeEach void response() throws Exception {
         result = (ObjectNode) mapper.readTree(new ClassPathResource("ai/valid-conditions.json").getContentAsString(StandardCharsets.UTF_8));
@@ -150,9 +151,18 @@ class ConditionReviewTests {
         // 중복과, 가고 싶다고 한 지역(강릉)과 같은 값은 버린다.
         assertThat(analysis.form().getExcludedRegions()).containsExactly("부산");
         assertThat(service.confirm(analysis.form(), source, "", options.getChoices()).excludedRegions()).containsExactly("부산");
+        // 지역 이름이 아닌 값은 뺄 지역만 비우고 알린다. 다른 조건은 그대로 쓴다.
         var malformed = result.deepCopy();
         malformed.putArray("excludedRegions").add("<b>부산</b>");
         when(client.analyze(anyString(), anyMap())).thenReturn(malformed);
+        var cleared = service.analyze(source, options.getChoices());
+        assertThat(cleared.form().getExcludedRegions()).isEmpty();
+        assertThat(cleared.form().getRegion()).isEqualTo("강릉");
+        assertThat(cleared.notices()).containsExactly("추천에서 뺄 지역은 해석하지 못해 비워 두었어요.");
+        // 문자열이 아닌 값은 응답 형식이 틀린 것이라 전체를 반영하지 않는다.
+        var wrongType = result.deepCopy();
+        wrongType.putArray("excludedRegions").add(3);
+        when(client.analyze(anyString(), anyMap())).thenReturn(wrongType);
         assertThatThrownBy(() -> service.analyze(source, options.getChoices())).isInstanceOf(ConditionAnalysisException.class);
     }
     @Test void userPurposeIsKeptEvenWhenAiAlsoSuggestsConcept() {
@@ -170,16 +180,104 @@ class ConditionReviewTests {
             when(client.analyze(anyString(), anyMap())).thenReturn(mapper.readTree(invalidJson));
             assertThatThrownBy(() -> service.analyze(source, options.getChoices())).isInstanceOf(ConditionAnalysisException.class);
         }
+        // 응답 형식(자료형·항목)이 틀리거나 여행 문장이 아니면 전체를 반영하지 않는다.
         ObjectNode[] invalid = new ObjectNode[]{result.deepCopy().put("durationDays", "3"),
-                result.deepCopy().put("partySize", -1), result.deepCopy().put("extra", "unexpected"),
-                result.deepCopy().put("season", "허용되지 않음"), result.deepCopy().put("budget", -1),
-                result.deepCopy().put("startDate", "2026-10-01").put("endDate", "2026-10-02"),
-                result.deepCopy().put("startDate", "2026-02-30").put("endDate", "2026-03-01"),
-                result.deepCopy().put("isTravel", false), result.deepCopy().put("includeNearby", "true")};
+                result.deepCopy().put("extra", "unexpected"), result.deepCopy().put("isTravel", false),
+                result.deepCopy().put("includeNearby", "true"), result.deepCopy().put("travelPurpose", 3)};
         for (ObjectNode value : invalid) {
             when(client.analyze(anyString(), anyMap())).thenReturn(value);
             assertThatThrownBy(() -> service.analyze(source, options.getChoices())).isInstanceOf(ConditionAnalysisException.class);
         }
+    }
+    /** 형식은 맞지만 값이 맞지 않는 칸은 그 칸만 비우고 안내한 뒤 나머지 조건으로 진행한다. */
+    @Test void invalidAiValuesClearOnlyThatFieldWithNotice() {
+        TravelConditionForm source = new TravelConditionForm();
+        source.setOriginalText("강릉 여행");
+        when(client.analyze(anyString(), anyMap())).thenReturn(result.deepCopy().put("partySize", -1).put("budget", -1));
+        var analysis = service.analyze(source, options.getChoices());
+        assertThat(analysis.form().getPartySize()).isEmpty();
+        assertThat(analysis.form().getBudget()).isEmpty();
+        assertThat(analysis.form().getRegion()).isEqualTo("강릉");
+        assertThat(analysis.form().getDurationDays()).isEqualTo("3");
+        assertThat(analysis.notices()).containsExactlyInAnyOrder("전체 인원은 해석하지 못해 비워 두었어요.", "예산은 해석하지 못해 비워 두었어요.");
+
+        // 일정은 최대 7일까지라 10일은 비우고 알린다.
+        when(client.analyze(anyString(), anyMap())).thenReturn(result.deepCopy().put("durationDays", 10));
+        analysis = service.analyze(source, options.getChoices());
+        assertThat(analysis.form().getDurationDays()).isEmpty();
+        assertThat(analysis.notices()).contains("여행 일수는 7일까지만 정할 수 있어 비워 두었어요. 일정은 최대 7일까지 만들어요.");
+
+        // 지난 출발일과 없는 날짜는 여행 날짜만 비운다.
+        when(client.analyze(anyString(), anyMap())).thenReturn(result.deepCopy().put("startDate", day(-5)).put("endDate", day(-3)));
+        analysis = service.analyze(source, options.getChoices());
+        assertThat(analysis.form().getStartDate()).isEmpty();
+        assertThat(analysis.form().getEndDate()).isEmpty();
+        assertThat(analysis.form().getDurationDays()).isEqualTo("3");
+        assertThat(analysis.notices()).contains("출발일이 이미 지난 날짜라 여행 날짜를 비워 두었어요.");
+        when(client.analyze(anyString(), anyMap())).thenReturn(result.deepCopy().put("startDate", "2026-02-30").put("endDate", "2026-03-01"));
+        analysis = service.analyze(source, options.getChoices());
+        assertThat(analysis.form().getStartDate()).isEmpty();
+        assertThat(analysis.notices()).contains("여행 날짜는 해석하지 못해 비워 두었어요.");
+
+        // 날짜와 일수가 다르면 날짜를 기준으로 일수를 다시 계산한다.
+        when(client.analyze(anyString(), anyMap())).thenReturn(result.deepCopy().put("startDate", day(10)).put("endDate", day(11)));
+        analysis = service.analyze(source, options.getChoices());
+        assertThat(analysis.form().getStartDate()).isEqualTo(day(10));
+        assertThat(analysis.form().getDurationDays()).isEqualTo("2");
+        assertThat(analysis.notices()).contains("여행 일수가 날짜와 달라 날짜를 기준으로 다시 계산했어요.");
+
+        // 목록에 없는 계절은 출발일(없으면 오늘)의 계절로 다시 정한다.
+        when(client.analyze(anyString(), anyMap())).thenReturn(result.deepCopy().put("season", "허용되지 않음"));
+        analysis = service.analyze(source, options.getChoices());
+        assertThat(analysis.form().getSeason()).isEqualTo(ConditionReviewService.seasonName(java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).getMonthValue()));
+        assertThat(analysis.notices()).containsExactly("계절은 해석하지 못해 출발일(없으면 오늘) 기준으로 다시 정했어요.");
+    }
+    /** 여행 목적의 숫자는 "100대 명산"처럼 쓸 수 있고, 계좌·전화번호처럼 6자리 이상 이어진 숫자만 막는다. */
+    @Test void purposeAllowsShortNumbersButClearsLongNumbers() {
+        TravelConditionForm source = new TravelConditionForm();
+        source.setOriginalText("100대 명산 오르기");
+        when(client.analyze(anyString(), anyMap())).thenReturn(result.deepCopy().put("travelPurpose", "100대 명산 오르기"));
+        var analysis = service.analyze(source, options.getChoices());
+        assertThat(analysis.form().getTravelPurpose()).isEqualTo("100대 명산 오르기");
+        assertThat(analysis.notices()).isEmpty();
+        when(client.analyze(anyString(), anyMap())).thenReturn(result.deepCopy().put("travelPurpose", "1234567 번호로 연락하기"));
+        analysis = service.analyze(source, options.getChoices());
+        assertThat(analysis.form().getTravelPurpose()).isEmpty();
+        assertThat(analysis.form().getRegion()).isEqualTo("강릉");
+        assertThat(analysis.notices()).containsExactly("여행 목적은 해석하지 못해 비워 두었어요.");
+    }
+    /** 조건 보완 화면에서 여행 목적을 고치면 AI 제안 표시를 지우고, 체크를 푼 뺄 지역은 추천 조건에서 빠진다. */
+    @Test void reviewCanEditPurposeAndRemoveExcludedRegions() throws Exception {
+        var vague = result.deepCopy().put("travelPurpose", "").put("suggestedConcept", "시원한 계곡 물놀이");
+        vague.putArray("excludedRegions").add("부산").add("속초");
+        when(client.analyze(anyString(), anyMap())).thenReturn(vague);
+        MockHttpSession session = new MockHttpSession();
+        ConditionReviewForm form = analyze(session);
+        assertThat(form.isPurposeSuggested()).isTrue();
+        // 제안 그대로 확정하면 제안 표시가 남는다.
+        mvc.perform(post("/travel/conditions/confirm").with(csrf()).session(session).param("revision", form.getRevision())
+                        .param("region", "강릉").param("travelPurpose", "시원한 계곡 물놀이").param("excludedRegions", "부산", "속초"))
+                .andExpect(redirectedUrl("/travel/conditions/confirmed"));
+        var confirmed = (ConfirmedTravelConditions) session.getAttribute("confirmedTravelConditions");
+        assertThat(confirmed.purposeSuggested()).isTrue();
+        assertThat(confirmed.excludedRegions()).containsExactly("부산", "속초");
+        // 목적을 고치고 속초 체크를 풀면 사용자 목적으로 바뀌고 속초는 다시 후보에 들어간다. 화면에서 새 지역을 더할 수는 없다.
+        form = (ConditionReviewForm) mvc.perform(get("/travel/conditions/review").session(session))
+                .andExpect(content().string(containsString("부산 빼기")))
+                .andReturn().getModelAndView().getModel().get("reviewForm");
+        mvc.perform(post("/travel/conditions/confirm").with(csrf()).session(session).param("revision", form.getRevision())
+                        .param("region", "강릉").param("travelPurpose", "바다 보며 쉬기").param("excludedRegions", "부산", "제주"))
+                .andExpect(redirectedUrl("/travel/conditions/confirmed"));
+        confirmed = (ConfirmedTravelConditions) session.getAttribute("confirmedTravelConditions");
+        assertThat(confirmed.travelPurpose()).isEqualTo("바다 보며 쉬기");
+        assertThat(confirmed.purposeSuggested()).isFalse();
+        assertThat(confirmed.excludedRegions()).containsExactly("부산");
+        // 주소·긴 숫자가 들어간 목적은 고쳐 달라고 한다.
+        form = (ConditionReviewForm) mvc.perform(get("/travel/conditions/review").session(session))
+                .andReturn().getModelAndView().getModel().get("reviewForm");
+        mvc.perform(post("/travel/conditions/confirm").with(csrf()).session(session).param("revision", form.getRevision())
+                        .param("travelPurpose", "https://example.com"))
+                .andExpect(status().isOk()).andExpect(model().attributeHasFieldErrors("reviewForm", "travelPurpose"));
     }
     @Test void failureRetainsSourceAndAllowsExplicitRetry() throws Exception {
         MockHttpSession session = new MockHttpSession();

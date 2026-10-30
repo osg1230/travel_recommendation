@@ -27,6 +27,23 @@ public class RecommendationJobService {
     private final ObjectMapper mapper;
     @Value("${travel.jobs.retention-hours:24}") private int retentionHours;
 
+    /**
+     * 실행기가 처리를 시작하기 전까지 기다릴 수 있는 시간(후보 찾기·순위 만들기 대기 모두).
+     * 실행기는 요청을 차례로 처리하므로 앞선 요청이 많으면 기다리게 된다. 그 때문에 바로 실패하지 않게 처리 제한과 따로 넉넉히 둔다.
+     */
+    public static final Duration WAIT_LIMIT=Duration.ofMinutes(5);
+    /** 후보 찾기 처리 제한. 지역 제안·목적 시설 검색·후보 고르기(AI 호출 포함)가 들어가므로 실행기가 시작한 시각부터 2분이다. */
+    static final Duration SEARCH_LIMIT=Duration.ofMinutes(2);
+    /** 결과 화면이 상태를 확인하는 시간(초). 대기 제한과 후보 찾기 처리 제한을 더한 만큼 기다린다. */
+    public static final long POLL_SECONDS=WAIT_LIMIT.plus(SEARCH_LIMIT).toSeconds();
+    public static final String WAIT_MESSAGE="요청이 많아 처리하지 못했어요. 다시 요청해 주세요.";
+    /** 대기 중이라고 알리기까지의 시간. 실행기는 1초마다 확인하므로 몇 초가 지나도 시작하지 않았으면 앞선 요청을 처리하는 중이다. */
+    private static final Duration WAITING_NOTICE_AFTER=Duration.ofSeconds(3);
+    /** 같은 조건으로 다시 시도하면 될 수 있는 일시적인 실패. 지역에 맞는 여행지가 없거나 만료된 요청은 다시 해도 같아 뺀다. */
+    static final Set<String> RETRY_CODES=Set.of("TIMEOUT","LOOKUP_FAILED","SERVER_RESTART","AI_TIMEOUT","AI_UNAVAILABLE","AI_RATE_LIMIT");
+    /** 다시 시도해도 AI 순위를 받을 수 없는 실패. 이때는 AI 이유 없이 보이는 후보로 계속할 수 있게 한다. */
+    static final Set<String> AI_STOPPED_CODES=Set.of("AI_QUOTA","AI_AUTH","AI_NOT_CONFIGURED");
+
     @Transactional(timeout=10)
     public UUID create(ConfirmedTravelConditions conditions, String loginId, byte[] guestHash) {
         Long userId=activeUser(loginId);
@@ -61,9 +78,55 @@ public class RecommendationJobService {
         List<DestinationCandidate> result=job.getResultJson()==null || completed?List.of():
             Arrays.asList(mapper.readValue(job.getResultJson(),DestinationCandidate[].class));
         List<RankedDestination> ranked=completed?Arrays.asList(mapper.readValue(job.getResultJson(),RankedDestination[].class)):List.of();
-        return new RecommendationJobView(id,job.getStatus(),job.getMessage(),job.getErrorCode(),result,
+        boolean failed="FAILED".equals(job.getStatus());
+        boolean canRecommend=job.getAttemptCount()<3 && ("CANDIDATES_READY".equals(job.getStatus()) || (failed && job.getResultJson()!=null));
+        // 후보는 있는데 AI 순위를 더 받을 수 없으면(시도를 다 썼거나 AI 한도·설정 문제) 보이는 후보로 계속할 수 있다.
+        boolean canContinue=failed && job.getResultJson()!=null
+            && (job.getAttemptCount()>=3 || AI_STOPPED_CODES.contains(job.getErrorCode()));
+        // '추천 다시 받기'를 쓸 수 없는 일시적인 실패만 같은 조건으로 새로 요청하게 한다.
+        boolean canRetry=failed && !canRecommend && RETRY_CODES.contains(job.getErrorCode());
+        return new RecommendationJobView(id,job.getStatus(),waiting(job)?"앞선 요청을 처리하고 있어요. 차례가 되면 바로 시작해요.":job.getMessage(),
+            job.getErrorCode(),result,
             Set.of("QUEUED","ANALYZING_CONDITIONS","SEARCHING_CANDIDATES","RECOMMENDATION_QUEUED","RANKING_CANDIDATES").contains(job.getStatus()),
-            ranked,job.getAttemptCount()<3 && ("CANDIDATES_READY".equals(job.getStatus()) || ("FAILED".equals(job.getStatus()) && job.getResultJson()!=null)),job.getAttemptCount());
+            ranked,canRecommend,job.getAttemptCount(),canContinue,canRetry);
+    }
+
+    /** 실행기가 아직 이 요청을 시작하지 않은 채 몇 초가 지났는지. 그동안은 앞선 요청을 처리하고 있다. */
+    private boolean waiting(AiJob job) {
+        LocalDateTime noticeAfter=now().minus(WAITING_NOTICE_AFTER);
+        if("QUEUED".equals(job.getStatus())) return job.getStartedAt()==null && job.getCreatedAt().isBefore(noticeAfter);
+        // 순위 만들기를 기다리는 동안 startedAt은 기다리기 시작한 시각이다(AiJob.queueRecommendation).
+        return "RECOMMENDATION_QUEUED".equals(job.getStatus()) && job.getStartedAt()!=null && job.getStartedAt().isBefore(noticeAfter);
+    }
+
+    /**
+     * 일시적인 이유(시간 초과·조회 실패·서버 재시작 등)로 실패한 요청을 그 요청의 조건(requestJson) 그대로 다시 요청한다.
+     * 새 작업을 만들고 실패한 작업은 그대로 둔다. 다른 화면에서 바꾼 조건이 섞이지 않는다.
+     */
+    @Transactional(timeout=10)
+    public UUID retry(UUID id,String loginId,byte[] guestHash) {
+        var view=view(id,loginId,guestHash); // 조회와 같은 소유권·만료 검사
+        if(!view.canRetry()) throw new ResponseStatusException(HttpStatus.CONFLICT,"이 요청은 같은 조건으로 다시 시도할 수 없어요. 조건을 확인하고 새로 요청해 주세요.");
+        var conditions=mapper.readValue(owned(id,loginId,guestHash,"RECOMMENDATION").getRequestJson(),ConfirmedTravelConditions.class);
+        return create(conditions,loginId,guestHash);
+    }
+
+    /**
+     * 작업을 만들기 전에 지역 조건에 맞는 여행지가 있는지 확인한다. 있으면 null, 없으면 지역 칸에 보여 줄 안내다.
+     * 목록에 없는 세부 지역(예: "제주 우도")이면 첫 단어("제주")로 찾은 여행지를 함께 제안한다. 지역을 억지로 넓혀 추천하지는 않는다.
+     */
+    @Transactional(readOnly=true, timeout=10)
+    public String regionProblem(ConfirmedTravelConditions c) {
+        if(!candidates.matching(c).isEmpty()) return null;
+        String region=c.region()==null?"":c.region().strip();
+        if(region.isEmpty()) return "제외한 지역을 빼면 추천할 수 있는 여행지가 없어요. 제외할 지역을 줄여 주세요.";
+        String first=region.split("\\s+")[0];
+        var found=first.equals(region)?List.<DestinationCandidate>of()
+            :candidates.find(first,List.of(),List.of(),List.of(),c.excludedRegions());
+        if(found.isEmpty())
+            return "'"+region+"'에 맞는 여행지를 찾지 못했어요. 시·도 이름(예: 강원, 전북)이나 시·군 이름으로 적거나, 지역을 비워 두세요.";
+        return "'"+region+"'에 맞는 여행지를 찾지 못했어요. 대신 '"+first+"' 지역의 "
+            +String.join(", ",found.stream().map(DestinationCandidate::name).toList())+"에서 찾을 수 있어요. 지역 칸을 '"+first+"'처럼 고쳐 주세요.";
     }
 
     @Transactional(readOnly=true, timeout=10)
@@ -96,13 +159,32 @@ public class RecommendationJobService {
         return jobs.findTop5ByJobTypeAndStatusOrderByCreatedAtAsc("RECOMMENDATION","QUEUED").stream().map(AiJob::getId).toList();
     }
 
+    /**
+     * 실행기가 이 요청의 후보 찾기를 시작할 때 부른다. 처리할 수 있으면 시작 시각을 남기고 true를 돌려준다.
+     * 시작하기 전에 대기 제한을 넘겼으면 요청이 많아 처리하지 못했다고 끝내고 false를 돌려준다.
+     */
+    @Transactional(timeout=10)
+    public boolean begin(UUID id) {
+        AiJob job=jobs.lockById(id).orElse(null);
+        if(job==null || !"RECOMMENDATION".equals(job.getJobType()) || !"QUEUED".equals(job.getStatus())) return false;
+        if(waitedTooLong(job)) { job.fail("TIMEOUT",WAIT_MESSAGE); return false; }
+        job.beginSearch();
+        return true;
+    }
+    // 아직 시작하지 않은 요청은 만든 시각부터 대기 제한을 잰다.
+    private boolean waitedTooLong(AiJob job) {
+        return job.getStartedAt()==null && job.getCreatedAt().isBefore(now().minus(WAIT_LIMIT));
+    }
+
     @Transactional(timeout=15)
     public void prepare(UUID id) {
         AiJob job=jobs.lockById(id).orElse(null);
         if(job==null || !"RECOMMENDATION".equals(job.getJobType()) || !"QUEUED".equals(job.getStatus())) return;
         if(!job.getExpiresAt().isAfter(now())) { job.fail("EXPIRED","요청이 만료됐어요. 조건을 확인하고 다시 요청해 주세요."); return; }
-        if(job.getCreatedAt().isBefore(now().minusSeconds(60))) {
-            job.fail("TIMEOUT","요청 대기 시간이 초과됐어요. 잠시 후 다시 요청해 주세요."); return;
+        if(waitedTooLong(job)) { job.fail("TIMEOUT",WAIT_MESSAGE); return; }
+        // 처리 시간 제한은 실행기가 시작한 시각(begin)부터 잰다. 앞선 요청을 기다린 시간은 넣지 않는다.
+        if(job.getStartedAt()!=null && job.getStartedAt().isBefore(now().minus(SEARCH_LIMIT))) {
+            job.fail("TIMEOUT","여행지 후보를 찾는 데 시간이 너무 오래 걸렸어요. 잠시 후 다시 요청해 주세요."); return;
         }
         if(job.getUserId()!=null && users.findById(job.getUserId()).filter(u->u.getStatus()==UserStatus.ACTIVE).isEmpty()) {
             job.fail("ACCOUNT_UNAVAILABLE","현재 계정으로 요청을 처리할 수 없어요."); return;

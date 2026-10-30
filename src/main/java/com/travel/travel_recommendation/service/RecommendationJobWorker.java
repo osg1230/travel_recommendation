@@ -33,11 +33,16 @@ public class RecommendationJobWorker {
     @EventListener(ApplicationReadyEvent.class)
     public void start() { service.recover(); service.cleanup(); ready=true; }
 
-    // 단일 서버의 단일 실행기로 후보 조회와 추천을 순차 처리한다. 작업 생성 응답은 이 처리를 기다리지 않는다.
+    // 추천(후보 조회·순위)과 일정 만들기를 각자의 실행기에서 처리한다. 한쪽이 오래 걸려도 다른 쪽 요청이 기다리지 않게
+    // 두 메서드로 나누고, 동시에 돌 수 있도록 spring.task.scheduling.pool.size를 늘려 두었다(application.properties).
+    // 각 실행기 안에서는 요청을 차례로 처리한다. 작업 생성 응답은 이 처리를 기다리지 않는다.
     @Scheduled(fixedDelay=1000)
-    public void runQueued() {
+    public void runRecommendations() {
         if(!ready) return;
         for(UUID id:service.queued()) {
+            // 앞선 요청 때문에 너무 오래 기다린 요청은 여기서 끝낸다. 시작한 요청은 이때부터 처리 시간을 잰다.
+            try { if(!service.begin(id)) continue; }
+            catch(RuntimeException e) { log.warn("후보 찾기 시작을 기록하지 못함 job={} ({})",id,e.toString()); continue; }
             // 지역을 정하지 않고 원하는 여행을 말했으면 그 여행을 할 수 있는 여행지를 먼저 확인해 둔다(새 시·군은 여행지로 추가).
             // 그다음 구체적 목적의 시설을 찾아 둔다. 새로 추가한 여행지도 시설 검색 대상이 된다. 실패해도 추천은 그대로 진행한다.
             try { regions.enrich(id); } catch(RuntimeException e) { log.warn("지역 제안을 건너뜀 job={} ({})",id,e.toString()); }
@@ -70,6 +75,11 @@ public class RecommendationJobWorker {
             catch(RecommendationException e) { recommendations.fail(work,e.getCode(),e.getMessage()); }
             catch(RuntimeException e) { recommendations.fail(work,"RECOMMENDATION_FAILED","추천 결과를 저장하지 못했어요. 잠시 후 다시 시도해 주세요."); }
         }
+    }
+
+    @Scheduled(fixedDelay=1000)
+    public void runItineraries() {
+        if(!ready) return;
         for(UUID id:itineraries.queued()) {
             // 관광지 후보를 AI가 갈 만한 순서로 정하면 그 순서로 다시 고른다. 실패해도 서버 규칙으로 고른 관광지로 일정을 만든다.
             try { placePicks.enrich(id); } catch(RuntimeException e) { log.warn("AI 관광지 순서 정하기를 건너뜀 job={} ({})",id,e.toString()); }

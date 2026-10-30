@@ -51,6 +51,8 @@ public class FestivalController {
         form.setRegion(regionValue(selected.regionName()));
         form.setStartDate(start.toString());
         form.setEndDate(start.plusDays(1).toString());
+        // 입력 화면의 '1박 2일'이 선택된 상태로 보이도록 여행 일수도 날짜와 같게 채운다.
+        form.setDurationDays("2");
         synchronized (session) {
             // 미리 채운 값일 뿐이며 조건 입력에서 다시 제출해 검증을 거쳐야 초안이 된다.
             session.setAttribute(TravelConditionController.PREFILL_KEY, form);

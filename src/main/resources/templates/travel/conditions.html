@@ -67,9 +67,9 @@
                     <div class="choice-chips" role="group" aria-label="여행 일수 빠른 선택">
                         <button type="button" data-days="1">당일</button><button type="button" data-days="2">1박 2일</button><button type="button" data-days="3">2박 3일</button><button type="button" data-days="4">3박 4일</button>
                     </div>
-                    <div class="day-input"><input type="number" th:field="*{durationDays}" min="1" max="32767" step="1" placeholder="직접 입력" aria-describedby="days-help days-error" th:attr="aria-invalid=${#fields.hasErrors('durationDays')}"><span>일</span></div>
+                    <div class="day-input"><input type="number" th:field="*{durationDays}" min="1" max="7" step="1" placeholder="직접 입력" aria-describedby="days-help days-error" th:attr="aria-invalid=${#fields.hasErrors('durationDays')}"><span>일</span></div>
                 </div>
-                <p class="help" id="days-help">2박 3일이면 3일이에요. 날짜와 일수 모두 미정이어도 괜찮아요.</p>
+                <p class="help" id="days-help">2박 3일이면 3일이에요. 일정은 최대 7일까지 만들 수 있어요. 날짜와 일수 모두 미정이어도 괜찮아요.</p>
                 <p class="field-error" id="days-error" th:errors="*{durationDays}"></p>
                 <!--/* 마지막 날은 묻지 않는다. 출발일과 여행 일수로 서버가 계산하고, 화면에는 계산한 날짜를 안내만 한다. */-->
                 <div class="condition-block start-date-field">
