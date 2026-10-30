@@ -70,6 +70,8 @@ class FestivalControllerTests {
         assertThat(form.getRegion()).isEqualTo("경북");
         assertThat(form.getStartDate()).isEqualTo(today.toString());
         assertThat(form.getEndDate()).isEqualTo(today.plusDays(1).toString());
+        // 여행 일수도 1박 2일(2일)로 채워 입력 화면의 일수 칸이 비지 않게 한다.
+        assertThat(form.getDurationDays()).isEqualTo("2");
 
         mvc.perform(post("/travel/conditions/festival").with(csrf()).param("province", "47").param("festivalId", "1"))
             .andExpect(redirectedUrl("/?festivalRegion=47#festivals"))

@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>여행지 추천 안내 | 다녀올게</title><link rel="stylesheet" th:href="@{/css/app.css}"></head>
+<body><header th:replace="~{fragments/layout :: header}"></header>
+<!--/* 여행지 추천 화면에서 처리하지 못한 오류(찾을 수 없는 요청, DB 오류 등). 내부 오류 내용은 보여 주지 않는다. */-->
+<main class="travel">
+    <h1>여행지 추천을 열 수 없어요</h1>
+    <p class="intro" role="alert" th:text="${message}"></p>
+    <th:block th:if="${notFound}"><p th:replace="~{fragments/guest-session :: expired}"></p></th:block>
+    <div class="form-actions"><a class="button" th:href="@{/travel/conditions}">여행 조건 다시 입력하기</a><a class="button button-quiet" th:href="@{/}">홈으로</a></div>
+</main></body></html>

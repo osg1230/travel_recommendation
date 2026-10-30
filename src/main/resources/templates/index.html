@@ -15,7 +15,7 @@
     <div class="hero-inner">
         <p role="status" class="hero-status" th:if="${param.logout}">로그아웃되었습니다.</p>
         <p role="status" class="hero-status" th:if="${param.withdrawn}">탈퇴가 완료되었습니다. 그동안 이용해 주셔서 감사합니다.</p>
-        <p class="eyebrow">전국 28개 여행지 · 국내 여행 일정 만들기</p>
+        <p class="eyebrow">전국 여행지 추천 · 국내 여행 일정 만들기</p>
         <h1 id="hero-title">떠나고 싶은 마음만 알려 주세요.<br>여행지와 하루 일정은 같이 짜 드릴게요.</h1>
         <form class="hero-search" th:action="@{/travel/conditions/recommend}" method="post" data-analysis-form>
             <input type="hidden" name="inputMode" value="TEXT">
@@ -25,7 +25,7 @@
                    placeholder="예) 바다 보면서 이틀 쉬고 싶어요, 사람 많은 곳은 피하고 싶어요">
             <button type="submit">이 문장으로 여행지 추천받기</button>
         </form>
-        <p class="hero-help" role="status" data-analysis-status hidden>문장을 분석하고 여행지를 찾고 있어요. 10초쯤 걸릴 수 있어요.</p>
+        <p class="hero-help" role="status" data-analysis-status hidden>문장을 분석하고 여행지를 찾고 있어요. 최대 30초 안팎 걸릴 수 있어요.</p>
         <p class="hero-help">입력한 문장은 조건 분석을 위해 OpenAI로 보내요. 이름·연락처 같은 개인정보는 빼고 적어 주세요.</p>
     </div>
 </section>

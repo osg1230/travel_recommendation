@@ -1023,8 +1023,12 @@ public class ItineraryJobService {
     public Work claim(UUID id) {
         var job=jobs.lockById(id).orElse(null);
         if(job==null || !"ITINERARY".equals(job.getJobType()) || !"QUEUED".equals(job.getStatus())) return null;
-        if(!available(job) || job.getCreatedAt().isBefore(now().minusMinutes(2))) {
+        if(!available(job)) {
             job.fail("SCHEDULE_UNAVAILABLE","요청이 만료됐거나 처리할 수 없어요. 조건을 확인해 다시 요청해 주세요."); return null;
+        }
+        // 대기 제한(5분)은 처리 제한(시작 후 2분, complete)과 따로 잰다. 앞선 요청이 많아 오래 기다렸을 때만 여기서 끝낸다.
+        if(job.getCreatedAt().isBefore(now().minus(RecommendationJobService.WAIT_LIMIT))) {
+            job.fail("TIMEOUT",RecommendationJobService.WAIT_MESSAGE); return null;
         }
         job.generatingSchedule(); return new Work(id,mapper.readValue(job.getRequestJson(),Input.class));
     }

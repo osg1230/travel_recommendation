@@ -25,7 +25,18 @@ public class ConditionReviewService {
             "durationDays", "season", "companion", "themes", "budget", "transportation", "partySize",
             "accommodationNeeded", "includeNearby", "summary", "travelPurpose", "suggestedConcept", "excludedRegions");
 
-    public record Analysis(ConditionReviewForm form, String summary) {}
+    /** notices는 해석하지 못해 비운 칸의 안내다(예: "여행 목적은 해석하지 못해 비워 두었어요."). 없으면 비어 있다. */
+    public record Analysis(ConditionReviewForm form, String summary, List<String> notices) {
+        public Analysis(ConditionReviewForm form, String summary) { this(form, summary, List.of()); }
+    }
+
+    /** 칸 이름과 안내에 붙일 말. 해석하지 못한 칸을 비울 때 "○○은 해석하지 못해 비워 두었어요"로 알린다. */
+    private static final Map<String, String> FIELD_LABELS = Map.ofEntries(
+            Map.entry("region", "여행 지역은"), Map.entry("startDate", "여행 날짜는"), Map.entry("endDate", "여행 날짜는"),
+            Map.entry("durationDays", "여행 일수는"), Map.entry("season", "계절은"), Map.entry("companion", "동행자는"),
+            Map.entry("themes", "여행 취향은"), Map.entry("budget", "예산은"), Map.entry("transportation", "이동수단은"),
+            Map.entry("partySize", "전체 인원은"), Map.entry("accommodationNeeded", "숙박 여부는"),
+            Map.entry("includeNearby", "주변 지역 포함 여부는"), Map.entry("travelPurpose", "여행 목적은"));
 
     public Analysis analyze(TravelConditionForm draft, Map<String, List<TravelKeyword>> choices) {
         if (draft.getOriginalText().isBlank() || draft.getOriginalText().length() > 2000) throw invalid();
@@ -49,21 +60,35 @@ public class ConditionReviewService {
         if (form.getAccommodationNeeded().isEmpty() && draft.getOriginalText().matches("(?s).*[1-9][0-9]?\\s*박.*"))
             form.setAccommodationNeeded("true");
         form.setIncludeNearby(bool(result, "includeNearby"));
-        String purpose = purposeText(result, "travelPurpose", 200);
-        String concept = purposeText(result, "suggestedConcept", 100);
+        // 응답 형식(자료형·항목)이 틀리면 전체를 반영하지 않지만, 값만 맞지 않는 칸은 그 칸만 비우고 안내한 뒤 진행한다.
+        List<String> notices = new ArrayList<>();
+        String purpose = purposeText(result, "travelPurpose");
+        String concept = purposeText(result, "suggestedConcept");
+        boolean purposeSaid = !purpose.isEmpty();
+        if (purposeSaid && !validPurpose(purpose, 200)) {
+            purpose = "";
+            notices.add(FIELD_LABELS.get("travelPurpose") + " 해석하지 못해 비워 두었어요.");
+        }
+        // 제안 방향은 사용자가 말한 내용이 아니므로 맞지 않으면 알리지 않고 쓰지 않는다.
+        if (!validPurpose(concept, 100)) concept = "";
         // 사용자가 하고 싶은 것을 말하지 않았을 때만 AI가 제안한 여행 방향을 목적 자리에 넣고, 제안이라는 표시를 남긴다.
-        boolean suggested = purpose.isEmpty() && !concept.isEmpty();
+        boolean suggested = !purposeSaid && !concept.isEmpty();
         form.setTravelPurpose(suggested ? concept : purpose);
         form.setPurposeSuggested(suggested);
         // "부산 말고"처럼 가지 않겠다고 한 지역. 한글 지역 이름만 받고, 가고 싶다고 한 지역과 같으면 모순이라 버린다.
         JsonNode excluded = result.get("excludedRegions");
-        if (!excluded.isArray() || excluded.size() > 5) throw invalid();
+        if (!excluded.isArray()) throw invalid();
         List<String> excludedRegions = new ArrayList<>();
+        boolean excludedValid = excluded.size() <= 5;
         for (JsonNode name : excluded) {
             if (!name.isTextual()) throw invalid();
             String value = name.asText().replaceAll("\\s+", "");
-            if (!value.matches("[가-힣]{2,20}")) throw invalid();
-            if (!value.equals(form.getRegion().replaceAll("\\s+", "")) && !excludedRegions.contains(value)) excludedRegions.add(value);
+            if (!value.matches("[가-힣]{2,20}")) excludedValid = false;
+            else if (!value.equals(form.getRegion().replaceAll("\\s+", "")) && !excludedRegions.contains(value)) excludedRegions.add(value);
+        }
+        if (!excludedValid) {
+            excludedRegions.clear();
+            notices.add("추천에서 뺄 지역은 해석하지 못해 비워 두었어요.");
         }
         form.setExcludedRegions(excludedRegions);
         JsonNode budget = result.get("budget");
@@ -77,15 +102,17 @@ public class ConditionReviewService {
             themeValues.add(theme.asText());
         }
         form.setThemes(themeValues);
-        // 계절을 말하지 않았으면 여행 시작일(없으면 오늘)의 계절로 채운다. 날짜 계산이라 AI에 맡기지 않는다.
-        fillSeasonFromStartDate(form, choices, true);
         if (!result.get("summary").isTextual()) throw invalid();
         String summary = result.get("summary").asText().strip();
         if (summary.length() > 1000) throw invalid();
+        // 지원하지 않는 값(8일 이상, 지난 출발일, 목록에 없는 선택지 등)은 그 칸만 비우고 안내한다.
+        clearInvalidFields(form, choices, notices);
+        // 계절을 말하지 않았으면 여행 시작일(없으면 오늘)의 계절로 채운다. 날짜 계산이라 AI에 맡기지 않는다.
+        fillSeasonFromStartDate(form, choices, true);
         var errors = new BeanPropertyBindingResult(form, "reviewForm");
         validate(form, errors, choices);
         if (errors.hasErrors()) {
-            // 원문이나 응답값을 남기지 않고 검증에 실패한 필드 이름만 기록한다.
+            // 칸을 비운 뒤에도 맞지 않으면 반영하지 않는다. 원문이나 응답값을 남기지 않고 필드 이름만 기록한다.
             log.warn("여행 조건 분석 검증 실패 필드: {}", errors.getFieldErrors().stream()
                     .map(org.springframework.validation.FieldError::getField).distinct().toList());
             throw invalid();
@@ -95,7 +122,76 @@ public class ConditionReviewService {
             form.setDurationDays(String.valueOf(ChronoUnit.DAYS.between(
                     LocalDate.parse(form.getStartDate()), LocalDate.parse(form.getEndDate())) + 1));
         }
-        return new Analysis(form, summary);
+        return new Analysis(form, summary, List.copyOf(notices));
+    }
+
+    /**
+     * 검증에 실패한 칸을 비우고 안내를 notices에 더한다. 칸을 비우면 다른 칸이 새로 맞지 않을 수 있어
+     * (예: 일수를 비우면 출발일만 남음) 오류가 없어질 때까지 몇 번 되풀이한다.
+     */
+    private void clearInvalidFields(ConditionReviewForm form, Map<String, List<TravelKeyword>> choices, List<String> notices) {
+        for (int pass = 0; pass < 3; pass++) {
+            var errors = new BeanPropertyBindingResult(form, "reviewForm");
+            validate(form, errors, choices);
+            if (!errors.hasErrors()) return;
+            // 원문이나 응답값을 남기지 않고 비운 칸 이름만 기록한다.
+            log.info("여행 조건 분석에서 비운 칸: {}", errors.getFieldErrors().stream()
+                    .map(org.springframework.validation.FieldError::getField).distinct().toList());
+            for (var error : errors.getFieldErrors()) {
+                String field = error.getField();
+                // 같은 칸에 오류가 여러 개면 한 번만 비우고 한 번만 알린다. 출발일·마지막 날은 함께 비운다.
+                boolean dates = field.equals("startDate") || field.equals("endDate");
+                if (dates ? form.getStartDate().isEmpty() && form.getEndDate().isEmpty() : isEmpty(form, field)) continue;
+                notices.add(notice(field, error.getCode()));
+                clear(form, field);
+            }
+        }
+    }
+
+    private static String notice(String field, String code) {
+        if ("tooLong".equals(code) && field.equals("durationDays")) return "여행 일수는 7일까지만 정할 수 있어 비워 두었어요. 일정은 최대 7일까지 만들어요.";
+        if ("tooLong".equals(code)) return "여행 기간이 7일을 넘어 여행 날짜를 비워 두었어요. 일정은 최대 7일까지 만들어요.";
+        if ("past".equals(code)) return "출발일이 이미 지난 날짜라 여행 날짜를 비워 두었어요.";
+        if ("mismatch".equals(code) && field.equals("durationDays")) return "여행 일수가 날짜와 달라 날짜를 기준으로 다시 계산했어요.";
+        if ("mismatch".equals(code) && field.equals("season")) return "계절이 출발일과 맞지 않아 출발일을 기준으로 다시 정했어요.";
+        // 비운 계절은 바로 뒤에서 출발일(없으면 오늘)의 계절로 다시 채운다.
+        if (field.equals("season")) return "계절은 해석하지 못해 출발일(없으면 오늘) 기준으로 다시 정했어요.";
+        return FIELD_LABELS.getOrDefault(field, "일부 조건은") + " 해석하지 못해 비워 두었어요.";
+    }
+
+    private static boolean isEmpty(ConditionReviewForm form, String field) {
+        return switch (field) {
+            case "themes" -> form.getThemes().isEmpty();
+            case "region" -> form.getRegion().isEmpty();
+            case "durationDays" -> form.getDurationDays().isEmpty();
+            case "season" -> form.getSeason().isEmpty();
+            case "companion" -> form.getCompanion().isEmpty();
+            case "transportation" -> form.getTransportation().isEmpty();
+            case "budget" -> form.getBudget().isEmpty();
+            case "partySize" -> form.getPartySize().isEmpty();
+            case "accommodationNeeded" -> form.getAccommodationNeeded().isEmpty();
+            case "includeNearby" -> form.getIncludeNearby().isEmpty();
+            case "travelPurpose" -> form.getTravelPurpose().isEmpty();
+            default -> false;
+        };
+    }
+
+    private static void clear(ConditionReviewForm form, String field) {
+        switch (field) {
+            case "startDate", "endDate" -> { form.setStartDate(""); form.setEndDate(""); }
+            case "themes" -> form.setThemes(List.of());
+            case "region" -> form.setRegion("");
+            case "durationDays" -> form.setDurationDays("");
+            case "season" -> form.setSeason("");
+            case "companion" -> form.setCompanion("");
+            case "transportation" -> form.setTransportation("");
+            case "budget" -> form.setBudget("");
+            case "partySize" -> form.setPartySize("");
+            case "accommodationNeeded" -> form.setAccommodationNeeded("");
+            case "includeNearby" -> form.setIncludeNearby("");
+            case "travelPurpose" -> { form.setTravelPurpose(""); form.setPurposeSuggested(false); }
+            default -> { }
+        }
     }
 
     /** 월을 계절 키워드 이름으로 바꾼다. 3~5월 봄, 6~8월 여름, 9~11월 가을, 12~2월 겨울. */
@@ -106,13 +202,19 @@ public class ConditionReviewService {
         return "겨울";
     }
 
-    // 목적·제안 문장에는 태그·URL·이메일 형태·긴 숫자열을 허용하지 않는다.
-    private String purposeText(JsonNode result, String field, int maxLength) {
+    // 목적·제안 문장은 문자열이어야 한다(응답 형식). 내용 검사는 validPurpose가 칸별로 한다.
+    private String purposeText(JsonNode result, String field) {
         if (!result.get(field).isTextual()) throw invalid();
-        String value = result.get(field).asText().strip();
-        if (value.length() > maxLength || value.contains("<") || value.contains(">")
-                || value.matches("(?s).*(https?://|@|[0-9]{3,}).*")) throw invalid();
-        return value;
+        return result.get(field).asText().strip();
+    }
+
+    /**
+     * 여행 목적 문장으로 받을 수 있는지. 태그·URL·이메일 형태와 연락처·계좌번호 같은 긴 숫자(6자리 이상)는 받지 않는다.
+     * "100대 명산", "2026 축제"처럼 짧은 숫자는 목적에 흔히 들어가므로 허용한다. 조건 수정 화면에서 고친 목적도 같은 기준이다.
+     */
+    public static boolean validPurpose(String value, int maxLength) {
+        return value.length() <= maxLength && !value.contains("<") && !value.contains(">")
+                && !value.matches("(?s).*(https?://|@|[0-9]{6,}).*");
     }
 
     public ConditionReviewForm fromKeywords(TravelConditionForm draft) {
@@ -187,6 +289,8 @@ public class ConditionReviewService {
             errors.rejectValue("accommodationNeeded", "invalid", "숙박 여부를 화면의 항목에서 선택해 주세요.");
         if (!List.of("", "true", "false").contains(form.getIncludeNearby()))
             errors.rejectValue("includeNearby", "invalid", "주변 지역 포함 여부를 화면의 항목에서 선택해 주세요.");
+        if (!validPurpose(form.getTravelPurpose(), 200))
+            errors.rejectValue("travelPurpose", "invalid", "여행 목적은 200자 이내로 적고, 주소·이메일·긴 숫자는 빼 주세요.");
     }
 
     public ConfirmedTravelConditions confirm(ConditionReviewForm form, TravelConditionForm source,

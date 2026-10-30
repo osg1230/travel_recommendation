@@ -55,11 +55,20 @@ public class DestinationRecommendationService {
         return jobs.findTop5ByStatusOrderByCreatedAtAsc("RECOMMENDATION_QUEUED").stream().map(AiJob::getId).toList();
     }
 
+    /** 순위 만들기 처리 제한. AI 응답(최대 25초, 이유를 다시 받을 때 한 번 더)과 축제 조회가 들어가므로 실행기가 시작한 시각부터 90초다. */
+    static final Duration RANKING_LIMIT=Duration.ofSeconds(90);
+    /** AI 이유 대신 여행지 소개를 넣은 추천 이유의 앞머리. 결과 화면과 추천 이력에서 AI가 쓴 이유가 아님을 알린다. */
+    public static final String NO_AI_REASON="AI 추천 이유 없음";
+
     @Transactional(timeout=10)
     public Work claim(UUID id) {
         var job=jobs.lockById(id).orElse(null);
         if(job==null || !"RECOMMENDATION_QUEUED".equals(job.getStatus())) return null;
-        if(!validOwnerAndTime(job)) return null;
+        if(!validOwnerAndTime(job,null)) return null;
+        // 기다리기 시작한 시각(queueRecommendation)부터 대기 제한을 잰다. 앞선 요청이 많아 오래 기다렸으면 처리하지 않는다.
+        if(job.getStartedAt()==null || job.getStartedAt().isBefore(KoreaTime.now().minus(RecommendationJobService.WAIT_LIMIT))) {
+            job.failRecommendation("TIMEOUT",RecommendationJobService.WAIT_MESSAGE); return null;
+        }
         if(job.getAttemptCount()>=3) { job.failRecommendation("ATTEMPTS_EXHAUSTED","추천 시도 횟수를 모두 사용했어요.");return null; }
         var conditions=mapper.readValue(job.getRequestJson(),ConfirmedTravelConditions.class);
         var pool=pool(job);
@@ -99,7 +108,7 @@ public class DestinationRecommendationService {
     public void complete(Work work,List<RankedDestination> ranked) {
         var job=jobs.lockById(work.jobId()).orElse(null);
         if(!sameAttempt(job,work)) return;
-        if(!validOwnerAndTime(job)) return;
+        if(!validOwnerAndTime(job,RANKING_LIMIT)) return;
         if(!currentPlacesMatch(work.conditions(),work.candidates())) {
             job.failRecommendation("CANDIDATES_CHANGED","여행지 정보가 변경됐어요. 후보를 다시 조회해 주세요.");return;
         }
@@ -125,6 +134,44 @@ public class DestinationRecommendationService {
         jobs.flush();
     }
 
+    /**
+     * AI 순위를 더 받을 수 없을 때(시도를 다 썼거나 AI 한도·연결 설정 문제) 화면에 보이던 후보로 추천을 마친다.
+     * 순위는 서버가 조건에 맞춰 고른 후보 순서이고, 이유 자리에는 공식 관광 사이트에서 확인해 저장한 여행지 소개를
+     * "AI 추천 이유 없음" 표시와 함께 넣는다. AI를 부르지 않으며, 두 번 눌러도 한 번만 마친다.
+     */
+    @Transactional(timeout=10)
+    public void continueWithoutAi(UUID id,String loginId,byte[] guestHash) {
+        var job=jobs.lockById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
+        var view=jobService.view(id,loginId,guestHash); // 조회와 같은 소유권·만료 검사
+        if("COMPLETED".equals(job.getStatus())) return;
+        if(!view.canContinueWithoutAi())
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"지금은 이 후보로 계속할 수 없어요. 화면을 새로 고쳐 상태를 확인해 주세요.");
+        var pool=pool(job);
+        // 보여 준 후보가 지금도 같은 정보로 쓸 수 있는 여행지인지 다시 본다(사용 중지·정보 변경이면 계속하지 않는다).
+        if(!currentPlacesMatch(mapper.readValue(job.getRequestJson(),ConfirmedTravelConditions.class),pool))
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"여행지 정보가 변경됐어요. 조건을 확인하고 다시 요청해 주세요.");
+        List<RankedDestination> ranked=new ArrayList<>();
+        for(var destination:pool) ranked.add(new RankedDestination(ranked.size()+1,destination,reasonWithoutAi(destination)));
+        // 회원이면 추천 이력에도 남긴다(complete와 같은 방식). 후보 행과 COMPLETED는 같은 트랜잭션으로 반영된다.
+        if(job.getUserId()!=null) {
+            var request=requests.findById(job.getRequestId()).orElseThrow(()->new IllegalStateException("Request missing"));
+            if(!job.getUserId().equals(request.getUserId())) throw new IllegalStateException("Owner mismatch");
+            for(var r:ranked) results.save(new RecommendationCandidate(request.getId(),r.destination().placeId(),
+                r.rank(),r.reason(),mapper.writeValueAsString(r.destination())));
+            results.flush();
+        }
+        job.completeWithoutAiReason(mapper.writeValueAsString(ranked));
+        jobs.flush();
+    }
+
+    /** AI 이유 대신 쓰는 이유. 추천 이유 칸(최대 2,000자)에 맞춘다. */
+    static String reasonWithoutAi(DestinationCandidate destination) {
+        String about=destination.description()==null || destination.description().isBlank()
+            ?"이 여행지의 소개가 아직 없어요. 공식 관광 정보에서 확인해 주세요.":destination.description().strip();
+        String reason=NO_AI_REASON+" · "+about;
+        return reason.length()>2000?reason.substring(0,2000):reason;
+    }
+
     @Transactional(timeout=10)
     public void fail(Work work,String code,String safeMessage) {
         jobs.lockById(work.jobId()).filter(j->sameAttempt(j,work)).ifPresent(j->j.failRecommendation(code,safeMessage));
@@ -132,9 +179,11 @@ public class DestinationRecommendationService {
     private boolean sameAttempt(AiJob job,Work work) {
         return job!=null && "RANKING_CANDIDATES".equals(job.getStatus()) && job.getAttemptCount()==work.attempt();
     }
-    private boolean validOwnerAndTime(AiJob job) {
+    /** processLimit이 있으면 실행기가 순위 만들기를 시작한 시각(ranking)부터 그 시간 안에 끝났는지도 본다. */
+    private boolean validOwnerAndTime(AiJob job,Duration processLimit) {
         LocalDateTime now=KoreaTime.now();
-        if(!job.getExpiresAt().isAfter(now) || job.getStartedAt()==null || job.getStartedAt().isBefore(now.minusSeconds(60))) {
+        boolean slow=processLimit!=null && (job.getStartedAt()==null || job.getStartedAt().isBefore(now.minus(processLimit)));
+        if(!job.getExpiresAt().isAfter(now) || slow) {
             job.failRecommendation("RECOMMENDATION_TIMEOUT","추천 처리 시간이 초과되거나 요청이 만료됐어요. 다시 시도해 주세요.");return false;
         }
         if(job.getUserId()!=null && users.findById(job.getUserId()).filter(u->u.getStatus()==UserStatus.ACTIVE).isEmpty()) {

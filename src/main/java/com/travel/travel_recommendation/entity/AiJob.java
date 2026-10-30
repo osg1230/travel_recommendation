@@ -39,7 +39,15 @@ public class AiJob {
         jobType="RECOMMENDATION"; status="QUEUED"; createdAt=KoreaTime.now();
         message="확정 조건으로 여행지 후보를 조회할 준비를 하고 있어요.";
     }
-    public void searching() { status="SEARCHING_CANDIDATES"; startedAt=KoreaTime.now(); }
+    /**
+     * 실행기가 이 요청의 후보 찾기를 시작했다. 상태는 QUEUED로 두어 지역 제안·목적 시설 검색이 요청을 보완할 수 있게 하고,
+     * 처리 시간 제한은 이 시각(startedAt)부터 잰다. 이미 시작한 요청(서버 재시작 등)은 처음 시작한 시각을 그대로 둔다.
+     */
+    public void beginSearch() {
+        if(startedAt==null) startedAt=KoreaTime.now();
+        message="여행지 후보를 찾고 있어요.";
+    }
+    public void searching() { status="SEARCHING_CANDIDATES"; startedAt=KoreaTime.now(); message="여행지 후보를 찾고 있어요."; }
     public static AiJob itinerary(AiJob parent, String input) {
         var job=new AiJob(parent.userId,parent.guestTokenHash,parent.requestId,input,parent.expiresAt);
         job.jobType="ITINERARY";
@@ -94,16 +102,27 @@ public class AiJob {
     }
     public void queueRecommendation() {
         status="RECOMMENDATION_QUEUED"; errorCode=null; completedAt=null;
+        // 순위 만들기를 기다리기 시작한 시각. 실행기가 시작하면(ranking) 처리 시작 시각으로 바뀐다.
         startedAt=KoreaTime.now();
         message="여행지 추천 요청을 접수했어요.";
     }
     public void ranking() {
-        status="RANKING_CANDIDATES"; attemptCount++;
+        // 처리 시간 제한은 대기 시간을 빼고 실행기가 순위 만들기를 시작한 이 시각부터 잰다.
+        status="RANKING_CANDIDATES"; attemptCount++; startedAt=KoreaTime.now();
         message="확정한 조건에 맞춰 여행지를 비교하고 있어요.";
     }
     public void completeRecommendation(String json) {
         status="COMPLETED"; resultJson=json; errorCode=null;
         completedAt=KoreaTime.now(); message="여행지 추천이 준비됐어요.";
+    }
+    /**
+     * AI 순위·이유 없이 서버가 고른 후보 순서로 추천을 마친다(AI 한도·설정 문제나 시도 횟수를 다 쓴 경우).
+     * 오류가 아니지만 error_code에 AI_REASON_SKIPPED를 남겨 결과 화면이 AI가 쓴 이유가 아니라고 알리게 한다.
+     */
+    public void completeWithoutAiReason(String json) {
+        completeRecommendation(json);
+        errorCode="AI_REASON_SKIPPED";
+        message="AI 추천 이유 없이 후보를 조건에 맞춘 순서대로 보여 드려요. 여행지 소개를 보고 골라 주세요.";
     }
     public void failRecommendation(String code, String safeMessage) {
         // 재시도에는 같은 후보를 사용한다. 실패한 AI 원문은 저장하지 않는다.

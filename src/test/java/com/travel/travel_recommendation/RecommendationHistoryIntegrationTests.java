@@ -147,6 +147,62 @@ class RecommendationHistoryIntegrationTests {
         assertThat(history.list(owner.getLoginId())).isEmpty();
     }
 
+    @Test void sameConditionsCanBeRecommendedAgainOrFixedFirstWhenOutdated() throws Exception {
+        var job=completed(owner,"다시 추천받을 요청");
+        Long request=requestId(job);
+        assertThat(history.detail(request,owner.getLoginId()).repeatable()).isTrue();
+        mvc.perform(get("/my/recommendations/"+request).with(user(owner.getLoginId()))).andExpect(status().isOk())
+            .andExpect(content().string(containsString("같은 조건으로 다시 추천받기")));
+        // 지금도 쓸 수 있는 조건이면 새 추천을 바로 요청하고, 새 이력으로 남긴다.
+        var session=new org.springframework.mock.web.MockHttpSession();
+        String location=mvc.perform(post("/my/recommendations/"+request+"/again").session(session).with(user(owner.getLoginId())).with(csrf()))
+            .andExpect(status().is3xxRedirection()).andReturn().getResponse().getRedirectedUrl();
+        assertThat(location).startsWith("/travel/recommendations/");
+        UUID again=UUID.fromString(location.substring(location.lastIndexOf('/')+1));
+        assertThat(again).isNotEqualTo(job);
+        var c=recommendations.conditions(again,owner.getLoginId(),null);
+        assertThat(c.region()).isEqualTo("강릉");
+        assertThat(c.originalText()).isEqualTo("다시 추천받을 요청");
+        assertThat(c.directRecommendation()).isTrue();
+        assertThat(requestId(again)).isNotEqualTo(request);
+
+        // 지난 출발일처럼 지금은 쓸 수 없는 값이 있으면 새 추천을 만들지 않고 조건 수정 화면에서 고치게 한다.
+        var start=LocalDate.now().minusDays(3);
+        var past=recommendations.create(new ConfirmedTravelConditions("TEXT","지난 여행","강릉",start,start.plusDays(1),2,null,2,true,false,List.of(),""),owner.getLoginId(),null);
+        em.flush();
+        long jobsBefore=jobs.count();
+        var other=new org.springframework.mock.web.MockHttpSession();
+        var flash=mvc.perform(post("/my/recommendations/"+requestId(past)+"/again").session(other).with(user(owner.getLoginId())).with(csrf()))
+            .andExpect(redirectedUrl("/travel/conditions/review")).andReturn().getFlashMap();
+        assertThat(jobs.count()).isEqualTo(jobsBefore);
+        mvc.perform(get("/travel/conditions/review").session(other).with(user(owner.getLoginId())).flashAttrs(flash))
+            .andExpect(status().isOk())
+            .andExpect(model().attributeHasFieldErrors("reviewForm","startDate"))
+            .andExpect(content().string(containsString("출발일은 오늘이나 그 이후 날짜로 골라 주세요.")))
+            .andExpect(content().string(containsString("지난 여행")));
+        // 다른 회원의 이력으로는 다시 추천할 수 없다.
+        mvc.perform(post("/my/recommendations/"+request+"/again").with(user(member().getLoginId())).with(csrf()))
+            .andExpect(status().isNotFound());
+    }
+
+    /** 일정 만들기 요청도 앞선 요청을 기다리는 시간(5분)과 처리 시간을 따로 잰다. 3분 기다린 요청은 처리하고 6분 기다린 요청은 다시 요청하게 한다. */
+    @Test void itineraryRequestsWaitUpToFiveMinutesBeforeTimingOut() {
+        var first=completed(owner,"일정 대기 확인");
+        var destination=recommendations.view(first,owner.getLoginId(),null).recommendations().getFirst().destination().placeId();
+        var waited=schedules.create(first,destination,owner.getLoginId(),null,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90);
+        em.flush();
+        em.createNativeQuery("UPDATE dbo.ai_jobs SET created_at=DATEADD(minute,-3,SYSDATETIME()) WHERE job_id=?").setParameter(1,waited.toString()).executeUpdate(); em.clear();
+        assertThat(schedules.claim(waited)).isNotNull();
+        var second=completed(owner,"오래 기다린 일정");
+        var late=schedules.create(second,destination,owner.getLoginId(),null,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90);
+        em.flush();
+        em.createNativeQuery("UPDATE dbo.ai_jobs SET created_at=DATEADD(minute,-6,SYSDATETIME()) WHERE job_id=?").setParameter(1,late.toString()).executeUpdate(); em.clear();
+        assertThat(schedules.claim(late)).isNull();
+        var failed=jobs.findById(late).orElseThrow();
+        assertThat(failed.getErrorCode()).isEqualTo("TIMEOUT");
+        assertThat(failed.getMessage()).isEqualTo(RecommendationJobService.WAIT_MESSAGE);
+    }
+
     @Test void screensRequireLoginAndRenderListDetailAndDelete() throws Exception {
         var job=completed(owner,"화면 확인");
         Long request=requestId(job);
