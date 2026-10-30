@@ -194,21 +194,6 @@ class TourApiClientTests {
         assertThat(client("key").districtCodes("2")).isEmpty();
         assertThat(calls.get()).isEqualTo(before);
     }
-    // 새 분류체계 소분류 하나의 등록 장소 수와 이름을 받는다. 대·중분류는 소분류 코드 앞자리로 채우고, 시·군·구가 없으면 시·도 전체에서 센다.
-    @Test void categoryPlacesCountsOneClassificationInsideRegion() {
-        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":1,\"items\":{\"item\":["
-            + "{\"title\":\"설악산 국립공원(외설악)\",\"contentid\":\"1\"}]}}}}");
-        var found = client("key").categoryPlaces("51", "210", "NA040100");
-        assertThat(found.count()).isEqualTo(1);
-        assertThat(found.names()).containsExactly("설악산 국립공원(외설악)");
-        assertThat(query.get()).contains("lclsSystm1=NA", "lclsSystm2=NA04", "lclsSystm3=NA040100", "lDongRegnCd=51", "lDongSignguCd=210");
-        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":0,\"items\":\"\"}}}");
-        assertThat(client("key").categoryPlaces("26", null, "NA020900").count()).isZero();
-        assertThat(query.get()).contains("lDongRegnCd=26").doesNotContain("lDongSignguCd");
-        int before = calls.get();
-        assertCode("TOUR_INPUT", () -> client("key").categoryPlaces("51", "210", "산"));
-        assertThat(calls.get()).isEqualTo(before);
-    }
     // 일반구가 있는 시는 구 코드들을, 구가 없는 시·군은 그 코드 하나를 돌려준다. 관광지는 구 코드로 등록돼 있기 때문이다.
     @Test void cityDistrictCodesUseWardsWhenTheCityHasThem() {
         body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":4,\"items\":{\"item\":["
@@ -218,5 +203,25 @@ class TourApiClientTests {
         assertThat(client("key").cityDistrictCodes("41", "강릉시")).containsExactly("150");
         assertThat(client("key").cityDistrictCodes("41", "없는시")).isEmpty();
         assertThat(query.get()).contains("lDongRegnCd=41");
+    }
+    // 지역 이름을 시·도 코드와 시·군(일반구면 구) 코드로 바꾸고, 광역시처럼 한 단어면 시·도 코드만 쓴다.
+    @Test void regionCodesResolveProvinceAndCity() {
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":3,\"items\":{\"item\":["
+            + "{\"code\":\"51\",\"name\":\"강원특별자치도\"},{\"code\":\"26\",\"name\":\"부산광역시\"},{\"code\":\"210\",\"name\":\"속초시\"}]}}}}");
+        assertThat(client("key").regionCodes("강원특별자치도 속초시")).contains(new TourApiClient.RegionCodes("51", java.util.List.of("210")));
+        assertThat(client("key").regionCodes("부산광역시")).contains(new TourApiClient.RegionCodes("26", java.util.List.of()));
+        assertThat(client("key").regionCodes("강원특별자치도 없는시")).isEmpty();
+        assertThat(client("key").regionCodes(" ")).isEmpty();
+    }
+    // 대분류 하나의 장소를 이름과 소분류 코드로 받는다. 소분류가 형식에 맞지 않는 항목은 버린다.
+    @Test void placesInClassReadsNamesAndSubcategories() {
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":2,\"items\":{\"item\":["
+            + "{\"title\":\"설악산 국립공원(외설악)\",\"lclsSystm3\":\"NA040100\"},{\"title\":\"분류 없음\",\"lclsSystm3\":\"\"}]}}}}");
+        assertThat(client("key").placesInClass("51", "210", "NA", 3))
+            .containsExactly(new TourApiClient.ClassifiedPlace("설악산 국립공원(외설악)", "NA040100"));
+        assertThat(query.get()).contains("lclsSystm1=NA", "lDongRegnCd=51", "lDongSignguCd=210", "numOfRows=1000", "pageNo=1");
+        int before = calls.get();
+        assertCode("TOUR_INPUT", () -> client("key").placesInClass("51", "210", "자연", 3));
+        assertThat(calls.get()).isEqualTo(before);
     }
 }

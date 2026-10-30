@@ -25,6 +25,7 @@ public class RecommendationJobWorker {
     private final NearbyRestaurantService restaurants;
     private final PlacePickService placePicks;
     private final DestinationLandmarkService landmarks;
+    private final DestinationProfileService profiles;
     private volatile boolean ready;
 
     @EventListener(ApplicationReadyEvent.class)
@@ -56,6 +57,9 @@ public class RecommendationJobWorker {
                 // 관광공사를 수십 번 불러 오래 걸리므로, 다른 작업을 처리하는 이 실행기를 붙잡지 않게 별도 스레드에서 돌린다.
                 var destinationIds=ranked.stream().map(r->r.destination().placeId()).toList();
                 Thread.ofVirtual().name("destination-landmarks").start(()->landmarks.prepare(destinationIds));
+                // 여행지마다 "할 수 있는 것" 목록(관광공사 분류별 장소 수)이 없거나 오래됐으면 같은 이유로 별도 스레드에서 채운다.
+                // 처음 한 번은 28곳을 모두 채워 몇 분 걸리고, 이미 채우는 중이면 바로 돌아간다.
+                Thread.ofVirtual().name("destination-profiles").start(profiles::prepareMissing);
             }
             catch(RecommendationException e) { recommendations.fail(work,e.getCode(),e.getMessage()); }
             catch(RuntimeException e) { recommendations.fail(work,"RECOMMENDATION_FAILED","추천 결과를 저장하지 못했어요. 잠시 후 다시 시도해 주세요."); }

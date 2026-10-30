@@ -106,13 +106,11 @@ public class DestinationLandmarkService {
      * "부산광역시"처럼 시·도 전체인 여행지는 그 안의 시·군·구 전부, 세종특별자치시는 [36110]이다.
      */
     private List<String> districtCodes(String region) {
-        if(region==null || region.isBlank()) return List.of();
-        String[] parts=region.strip().split("\\s+");
-        var province=tour.districtCode(null,parts[0]).orElse(null);
-        if(province==null) return List.of();
-        if(province.length()==5) return List.of(province);
-        if(parts.length==2) return tour.cityDistrictCodes(province,parts[1]).stream().map(code->province+code).toList();
-        return tour.districtCodes(province).stream().map(code->province+code).toList();
+        var codes=tour.regionCodes(region).orElse(null);
+        if(codes==null) return List.of();
+        if(!codes.districts().isEmpty()) return codes.districts().stream().map(district->codes.province()+district).toList();
+        if(codes.province().length()==5) return List.of(codes.province());
+        return tour.districtCodes(codes.province()).stream().map(code->codes.province()+code).toList();
     }
 
     /** 같은 여행지를 동시에 저장하지 않도록 여행지 행을 잠그고 쓴다. 다른 details_json 정보는 그대로 둔다. */

@@ -1,6 +1,7 @@
 package com.travel.travel_recommendation;
 
 import com.travel.travel_recommendation.dto.*;
+import com.travel.travel_recommendation.repository.PlaceRepository;
 import com.travel.travel_recommendation.service.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -15,17 +16,21 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import static org.assertj.core.api.Assertions.*;
 
 /**
  * 여행지 추천 품질 측정 보고서. 자연어로 원하는 여행을 말했을 때, 추천된 여행지에서 그 여행을 실제로 할 수 있는지와
  * 추천 이유에 "방문 전 확인이 필요합니다" 같은 말이 얼마나 나오는지를 잰다. 개선 전후를 같은 기준으로 비교하기 위한 도구다.
- * 실제 GPT(조건 분석·목적 검색어·순위)·카카오·관광공사를 호출하므로 RUN_QUALITY_REPORT=true일 때만 실행하고,
- * 테스트 트랜잭션 안에서 돌린 뒤 롤백해 DB에는 남기지 않는다. 보고서는 target/quality/destination-quality-*.md다.
+ * 실제 GPT(조건 분석·목적 검색어·순위)·카카오·관광공사를 호출하므로 RUN_QUALITY_REPORT=true일 때만 실행한다.
+ * 추천 작업은 테스트 트랜잭션 안에서 돌린 뒤 롤백한다. 다만 여행지별 "할 수 있는 것" 목록은 서비스가 30일 보관하는 자료라
+ * 트랜잭션 밖에서 실제로 저장해, 다음 측정과 앱에서 관광공사를 다시 부르지 않게 한다. 보고서는 target/quality/destination-quality-*.md다.
  *
- * '원하는 여행을 할 수 있다'의 기준은 관광공사 새 분류체계(lclsSystm)에서 시나리오마다 정한 소분류에 등록된 장소가
- * 그 여행지(시·군, 광역시·제주는 시·도 전체)에 한 곳 이상 있는지다(예: 등산 → 산·국립공원·도립공원·군립공원).
+ * '원하는 여행을 할 수 있다'의 근거는 여행지 목록({@link DestinationProfile})에서 시나리오마다 정한 관광공사 소분류의 장소 수다
+ * (예: 등산 → 산·국립공원·도립공원·군립공원). 여행지 전체를 이 수로 줄 세워 '근거 상위 5곳'과 추천 5곳이 얼마나 겹치는지도 본다.
  */
 @EnabledIfEnvironmentVariable(named="RUN_QUALITY_REPORT",matches="true")
 @SpringBootTest(properties={"spring.jpa.hibernate.ddl-auto=validate","travel.jobs.enabled=false"})
@@ -38,7 +43,9 @@ class DestinationQualityReportTests {
     @Autowired RecommendationJobService recommendations;
     @Autowired PurposePlaceService purposes;
     @Autowired DestinationRecommendationService ranking;
-    @Autowired TourApiClient tour;
+    @Autowired DestinationProfileService profiles;
+    @Autowired PlaceRepository places;
+    @Autowired PlatformTransactionManager transactions;
 
     /** 측정 시나리오. categories는 그 여행을 할 수 있는 곳으로 보는 관광공사 소분류 코드다. */
     record Scenario(String name, String text, List<String> categories) {}
@@ -60,19 +67,23 @@ class DestinationQualityReportTests {
     /** 추천 이유에서 원하는 여행을 확인하지 못했다고 미루는 표현. */
     static final Pattern HEDGE = Pattern.compile("확인이 필요|확인하지 못|확인되지 않|확인이 어려|알 수 없|찾지 못|확실하지 않|보장할 수 없");
 
-    record Candidate(int rank, String name, String region, int evidence, List<String> evidenceNames, String reason, int hedges) {}
-    record Measured(Scenario scenario, String interpreted, List<Candidate> candidates, String error) {}
+    /** evidenceRank는 여행지 전체를 근거 수로 줄 세웠을 때의 순위(같은 수는 같은 순위)다. */
+    record Candidate(int rank, String name, int evidence, int evidenceRank, List<String> evidenceNames, String reason, int hedges) {}
+    record Measured(Scenario scenario, String interpreted, List<Candidate> candidates, List<String> evidenceTop, String error) {}
 
-    /** 시·도 코드와 그 안의 시·군·구 코드들(광역시·제주처럼 시·도 전체면 빈 목록). */
-    record RegionCodes(String province, List<String> districts) {}
-    private final Map<String, RegionCodes> regionCodes = new HashMap<>();
-    private final Map<String, TourApiClient.CategoryPlaces> counted = new HashMap<>();
+    /** 여행지 이름 → "할 수 있는 것" 목록. */
+    private final Map<String, Map<String, DestinationProfile.Category>> profileByName = new LinkedHashMap<>();
 
     @Test void writesDestinationQualityReport() throws Exception {
+        // 서비스가 30일 보관하는 여행지 목록은 테스트 롤백과 상관없이 저장한다(이미 있으면 관광공사를 부르지 않는다).
+        var outside = new TransactionTemplate(transactions);
+        outside.setPropagationBehavior(TransactionDefinition.PROPAGATION_NOT_SUPPORTED);
+        outside.executeWithoutResult(status -> profiles.prepareMissing());
+        for (var destination : places.findDestinations()) profileByName.put(destination.getName(), profiles.profile(destination.getId()));
         List<Measured> measured = new ArrayList<>();
         for (var scenario : SCENARIOS) {
             try { measured.add(measure(scenario)); }
-            catch (Exception error) { measured.add(new Measured(scenario, "", List.of(), error.toString())); }
+            catch (Exception error) { measured.add(new Measured(scenario, "", List.of(), List.of(), error.toString())); }
         }
         var file = writeReport(measured);
         System.out.println("여행지 추천 품질 보고서: " + file.toAbsolutePath());
@@ -98,75 +109,60 @@ class DestinationQualityReportTests {
             + " · 취향 " + (conditions.themeNames().isEmpty() ? "없음" : String.join("·", conditions.themeNames()))
             + " · 목적 " + (blank(conditions.travelPurpose()) ? "없음" : conditions.travelPurpose())
             + (conditions.purposeSearch() == null ? "" : " · 목적 검색어 " + String.join("·", conditions.purposeSearch().keywords()));
+        // 여행지 전체를 이 시나리오의 근거 수로 줄 세운다.
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        profileByName.forEach((name, profile) -> counts.put(name, DestinationProfile.count(profile, s.categories())));
+        var top = counts.entrySet().stream().sorted(Map.Entry.<String, Integer>comparingByValue().reversed()).limit(5)
+            .map(e -> e.getKey() + "(" + e.getValue() + ")").toList();
         List<Candidate> candidates = new ArrayList<>();
         for (var ranked : recommendations.view(id, null, hash).recommendations()) {
-            var d = ranked.destination();
-            var evidence = evidence(d.region(), s.categories());
-            candidates.add(new Candidate(ranked.rank(), d.name(), d.region(), evidence.count(), evidence.names(), ranked.reason(),
+            String name = ranked.destination().name();
+            int evidence = counts.getOrDefault(name, 0);
+            int evidenceRank = 1 + (int) counts.values().stream().filter(c -> c > evidence).count();
+            var names = DestinationProfile.names(profileByName.getOrDefault(name, Map.of()), s.categories(), 4);
+            candidates.add(new Candidate(ranked.rank(), name, evidence, evidenceRank, names, ranked.reason(),
                 (int) HEDGE.matcher(ranked.reason() == null ? "" : ranked.reason()).results().count()));
         }
-        return new Measured(s, interpreted, candidates, null);
-    }
-
-    /** 여행지 안에서 시나리오 소분류들에 등록된 관광공사 장소 수(합)와 이름 몇 개. 같은 여행지·분류는 한 번만 조회한다. */
-    private TourApiClient.CategoryPlaces evidence(String region, List<String> categories) {
-        var codes = regionCodes.computeIfAbsent(region, this::codesOf);
-        if (codes == null) return new TourApiClient.CategoryPlaces(0, List.of());
-        // 시·도 전체면 시·군·구 없이 한 번, 아니면 시·군(일반구가 있으면 구마다)별로 세어 더한다.
-        List<String> districts = codes.districts().isEmpty() ? Collections.singletonList(null) : codes.districts();
-        int count = 0; List<String> names = new ArrayList<>();
-        for (String category : categories) for (String district : districts) {
-            var found = counted.computeIfAbsent(region + ":" + district + ":" + category,
-                key -> tour.categoryPlaces(codes.province(), district, category));
-            count += found.count();
-            found.names().stream().limit(2).filter(n -> names.size() < 4).forEach(names::add);
-        }
-        return new TourApiClient.CategoryPlaces(count, List.copyOf(names));
-    }
-
-    /** "강원특별자치도 속초시" → 51·[210], "경기도 수원시" → 41·[111, 113, 115, 117], "부산광역시" → 26·[]. 찾지 못하면 null이다. */
-    private RegionCodes codesOf(String region) {
-        String[] parts = region.strip().split("\\s+");
-        var province = tour.districtCode(null, parts[0]).orElse(null);
-        if (province == null) return null;
-        if (parts.length < 2) return new RegionCodes(province, List.of());
-        var districts = tour.cityDistrictCodes(province, parts[1]);
-        return districts.isEmpty() ? null : new RegionCodes(province, districts);
+        return new Measured(s, interpreted, candidates, top, null);
     }
 
     private Path writeReport(List<Measured> measured) throws Exception {
         var now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
         var out = new StringBuilder();
         out.append("# 여행지 추천 품질 측정 (").append(now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))).append(")\n\n")
-            .append("자연어 한 문장으로 추천받은 결과다. '근거 있는 후보'는 그 여행의 관광공사 소분류 장소가 여행지에 한 곳 이상 있는 후보다. ")
-            .append("'확인 필요 문구'는 추천 이유에 나온 '확인이 필요·확인하지 못·찾지 못' 같은 표현 수다.\n\n")
-            .append("| 시나리오 | 근거 있는 후보 | 1순위 근거 | 1~3순위 근거 | 확인 필요 문구(이유 수) | 추천 순위 |\n|---|---|---|---|---|---|\n");
-        int hedgedReasons = 0, reasons = 0, withEvidence = 0, candidates = 0;
+            .append("자연어 한 문장으로 추천받은 결과다. 근거는 여행지별 관광공사 소분류 장소 수다. '근거 상위 5와 겹침'은 여행지 ")
+            .append(profileByName.size()).append("곳을 근거 수로 줄 세운 상위 5곳과 추천 5곳이 겹치는 수, '1순위 근거 순위'는 1순위 여행지가 ")
+            .append("그 줄에서 몇 위인지다. '확인 필요 문구'는 추천 이유의 '확인이 필요·확인하지 못·찾지 못' 같은 표현 수다.\n\n")
+            .append("| 시나리오 | 근거 상위 5와 겹침 | 1순위 근거 순위 | 근거 있는 후보 | 확인 필요 문구(이유 수) | 추천 순위 (근거 수) |\n|---|---|---|---|---|---|\n");
+        int overlap = 0, hedgedReasons = 0, reasons = 0, withEvidence = 0;
         for (var m : measured) {
             if (m.error() != null) { out.append("| ").append(m.scenario().name()).append(" | 실패: ").append(m.error().replace("|", "/")).append(" |||||\n"); continue; }
             var c = m.candidates();
+            var topNames = m.evidenceTop().stream().map(t -> t.substring(0, t.indexOf('('))).collect(Collectors.toSet());
+            long hit = c.stream().filter(x -> topNames.contains(x.name())).count();
             long ok = c.stream().filter(x -> x.evidence() > 0).count();
-            long top3 = c.stream().filter(x -> x.rank() <= 3 && x.evidence() > 0).count();
             long hedged = c.stream().filter(x -> x.hedges() > 0).count();
-            hedgedReasons += hedged; reasons += c.size(); withEvidence += ok; candidates += c.size();
+            overlap += hit; withEvidence += ok; hedgedReasons += hedged; reasons += c.size();
             out.append("| ").append(m.scenario().name())
+                .append(" | ").append(hit).append("/5")
+                .append(" | ").append(c.stream().filter(x -> x.rank() == 1).findFirst().map(x -> x.evidenceRank() + "위").orElse("-"))
                 .append(" | ").append(ok).append("/").append(c.size())
-                .append(" | ").append(c.stream().filter(x -> x.rank() == 1).findFirst().map(x -> x.evidence() > 0 ? "있음" : "없음").orElse("-"))
-                .append(" | ").append(top3).append("/").append(Math.min(3, c.size()))
                 .append(" | ").append(c.stream().mapToInt(Candidate::hedges).sum()).append(" (").append(hedged).append("/").append(c.size()).append(")")
-                .append(" | ").append(c.stream().map(x -> x.rank() + "." + x.name() + (x.evidence() > 0 ? "" : "✗")).collect(Collectors.joining(" "))).append(" |\n");
+                .append(" | ").append(c.stream().map(x -> x.rank() + "." + x.name() + "(" + x.evidence() + ")").collect(Collectors.joining(" "))).append(" |\n");
         }
-        out.append("\n합계: 근거 있는 후보 ").append(withEvidence).append("/").append(candidates)
-            .append(", 확인 필요 문구가 있는 이유 ").append(hedgedReasons).append("/").append(reasons).append(". ✗는 근거 없는 후보다.\n");
+        out.append("\n합계: 근거 상위 5와 겹침 ").append(overlap).append("/").append(measured.stream().filter(m -> m.error() == null).count() * 5)
+            .append(", 근거 있는 후보 ").append(withEvidence).append("/").append(reasons)
+            .append(", 확인 필요 문구가 있는 이유 ").append(hedgedReasons).append("/").append(reasons).append(".\n");
         for (var m : measured) {
             if (m.error() != null) continue;
             out.append("\n## ").append(m.scenario().name()).append("\n\n")
                 .append("- 입력: ").append(m.scenario().text()).append("\n")
                 .append("- 해석: ").append(m.interpreted()).append("\n")
-                .append("- 근거 분류: ").append(String.join(", ", m.scenario().categories())).append("\n");
+                .append("- 근거 분류: ").append(String.join(", ", m.scenario().categories())).append("\n")
+                .append("- 근거 상위 5: ").append(String.join(" · ", m.evidenceTop())).append("\n");
             for (var c : m.candidates())
-                out.append("- ").append(c.rank()).append(". ").append(c.name()).append(" — 근거 ").append(c.evidence()).append("곳")
-                    .append(c.evidenceNames().isEmpty() ? "" : "(" + String.join("·", c.evidenceNames()) + ")")
+                out.append("- ").append(c.rank()).append(". ").append(c.name()).append(" — 근거 ").append(c.evidence()).append("곳(전체 ")
+                    .append(c.evidenceRank()).append("위)").append(c.evidenceNames().isEmpty() ? "" : " " + String.join("·", c.evidenceNames()))
                     .append(c.hedges() > 0 ? " · 확인 필요 문구 " + c.hedges() : "").append("\n  - 이유: ").append(c.reason()).append("\n");
         }
         var folder = Path.of("target", "quality");

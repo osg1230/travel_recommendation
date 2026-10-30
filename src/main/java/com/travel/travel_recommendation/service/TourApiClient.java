@@ -185,28 +185,50 @@ public class TourApiClient {
         return own == null ? List.of() : List.of(own);
     }
 
-    /** 분류 하나에 든 관광공사 등록 장소 수와 앞쪽 이름 몇 개. */
-    public record CategoryPlaces(int count, List<String> names) {}
-    static final int CATEGORY_NAMES = 5;
+    /** 시·도 코드와 그 안의 시·군·구 코드들. districts가 비어 있으면 시·도 전체(광역시·제주·세종)다. */
+    public record RegionCodes(String province, List<String> districts) {}
 
     /**
-     * 관광공사 새 분류체계(lclsSystm) 소분류 하나에 등록된 장소 수와 이름 몇 개를 받는다. 예) "NA040100"(국립공원),
-     * 속초 → 1곳 "설악산 국립공원(외설악)". 여행지에서 원하는 여행을 실제로 할 수 있는지 확인된 근거로 쓴다.
-     * districtCode가 없으면 시·도 전체(부산·제주 등)에서 센다.
+     * 여행지 지역 이름을 법정동 코드로 바꾼다. "강원특별자치도 속초시" → 51·[210], "경기도 수원시" → 41·[111, 113, 115, 117](일반구),
+     * "부산광역시" → 26·[], "세종특별자치시" → 36110·[]. 찾지 못하면 비어 있다.
      */
-    public CategoryPlaces categoryPlaces(String provinceCode, String districtCode, String category) {
-        if (provinceCode == null || !provinceCode.matches("[0-9]{2,5}") || category == null || !category.matches("[A-Z]{2}[0-9]{6}"))
+    public Optional<RegionCodes> regionCodes(String region) {
+        if (region == null || region.isBlank()) return Optional.empty();
+        String[] parts = region.strip().split("\\s+");
+        var province = districtCode(null, parts[0]).orElse(null);
+        if (province == null) return Optional.empty();
+        if (parts.length < 2) return Optional.of(new RegionCodes(province, List.of()));
+        var districts = cityDistrictCodes(province, parts[1]);
+        return districts.isEmpty() ? Optional.empty() : Optional.of(new RegionCodes(province, districts));
+    }
+
+    /** 관광공사에 등록된 장소 하나의 이름과 새 분류체계 소분류 코드(예: "NA040100" 국립공원). */
+    public record ClassifiedPlace(String name, String category) {}
+    static final int CLASS_ROWS = 1000;
+
+    /**
+     * 지역(시·도 또는 시·군·구)에 등록된 장소 중 새 분류체계 대분류(topClass, 예: "NA" 자연관광·"HS" 역사관광)에 속한 곳의
+     * 이름과 소분류를 받는다. 여행지마다 "할 수 있는 것"(소분류별 장소 수)을 세는 데 쓴다. 한 쪽 CLASS_ROWS행씩 maxPages쪽까지 읽는다.
+     */
+    public List<ClassifiedPlace> placesInClass(String provinceCode, String districtCode, String topClass, int maxPages) {
+        if (provinceCode == null || !provinceCode.matches("[0-9]{2,5}") || topClass == null || !topClass.matches("[A-Z]{2}") || maxPages < 1)
             throw failure("TOUR_INPUT", "지역 코드와 분류를 확인해 주세요.");
-        String extra = "&lclsSystm1=" + category.substring(0, 2) + "&lclsSystm2=" + category.substring(0, 4) + "&lclsSystm3=" + category
-            + "&lDongRegnCd=" + provinceCode;
-        if (districtCode != null && districtCode.matches("[0-9]{3}")) extra += "&lDongSignguCd=" + districtCode;
-        var data = get(endpoint.resolve("areaBasedList2"), CATEGORY_NAMES, extra);
-        List<String> names = new ArrayList<>();
-        for (var item : data.path("items").path("item")) {
-            try { String title = text(item, "title"); if (!title.isBlank() && title.length() <= 100) names.add(title); }
-            catch (RecommendationException ignored) { /* 한 항목의 형식 오류로 다른 이름까지 잃지 않는다. */ }
+        String extra = "&lclsSystm1=" + topClass + "&lDongRegnCd=" + provinceCode
+            + (districtCode != null && districtCode.matches("[0-9]{3}") ? "&lDongSignguCd=" + districtCode : "");
+        List<ClassifiedPlace> result = new ArrayList<>();
+        for (int page = 1; page <= maxPages; page++) {
+            var data = get(endpoint.resolve("areaBasedList2"), page, CLASS_ROWS, extra);
+            for (var item : data.path("items").path("item")) {
+                try {
+                    String name = text(item, "title"), category = text(item, "lclsSystm3");
+                    if (!name.isBlank() && name.length() <= 100 && category.matches("[A-Z]{2}[0-9]{6}")) result.add(new ClassifiedPlace(name, category));
+                } catch (RecommendationException ignored) {
+                    // 한 항목의 형식 오류로 다른 장소까지 잃지 않는다.
+                }
+            }
+            if ((long) page * CLASS_ROWS >= data.path("totalCount").asLong(0)) break;
         }
-        return new CategoryPlaces(data.path("totalCount").asInt(0), List.copyOf(names));
+        return List.copyOf(result);
     }
 
     /**
