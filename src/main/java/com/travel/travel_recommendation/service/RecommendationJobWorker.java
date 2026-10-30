@@ -20,6 +20,7 @@ public class RecommendationJobWorker {
     private final DestinationRecommendationService recommendations;
     private final ItineraryJobService itineraries;
     private final PurposePlaceService purposes;
+    private final RegionSuggestionService regions;
     private final FestivalPlaceService festivalPlaces;
     private final PlacePhotoService photos;
     private final NearbyRestaurantService restaurants;
@@ -36,7 +37,9 @@ public class RecommendationJobWorker {
     public void runQueued() {
         if(!ready) return;
         for(UUID id:service.queued()) {
-            // 구체적 목적이 있으면 후보를 고르기 전에 목적 시설을 찾아 둔다. 실패해도 추천은 그대로 진행한다.
+            // 지역을 정하지 않고 원하는 여행을 말했으면 그 여행을 할 수 있는 여행지를 먼저 확인해 둔다(새 시·군은 여행지로 추가).
+            // 그다음 구체적 목적의 시설을 찾아 둔다. 새로 추가한 여행지도 시설 검색 대상이 된다. 실패해도 추천은 그대로 진행한다.
+            try { regions.enrich(id); } catch(RuntimeException e) { log.warn("지역 제안을 건너뜀 job={} ({})",id,e.toString()); }
             try { purposes.enrich(id); } catch(RuntimeException e) { log.warn("목적 시설 검색을 건너뜀 job={} ({})",id,e.toString()); }
             try { service.prepare(id); }
             catch(RuntimeException e) { service.fail(id); }

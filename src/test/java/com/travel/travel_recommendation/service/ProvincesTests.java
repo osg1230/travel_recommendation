@@ -15,6 +15,17 @@ class ProvincesTests {
         assertThat(Provinces.canonical("광주시")).isNull();
     }
 
+    // AI가 옛 이름·줄임말로 쓴 시·도도 여행지 지역명과 같은 정식 이름으로 바꾼다.
+    @Test void officialNameIsTheCurrentFullName() {
+        assertThat(Provinces.officialName("전라북도")).isEqualTo("전북특별자치도");
+        assertThat(Provinces.officialName("전라남도")).isEqualTo("전남광주통합특별시");
+        assertThat(Provinces.officialName("광주")).isEqualTo("전남광주통합특별시");
+        assertThat(Provinces.officialName("강원도")).isEqualTo("강원특별자치도");
+        assertThat(Provinces.officialName("경북")).isEqualTo("경상북도");
+        assertThat(Provinces.officialName("부산")).isEqualTo("부산광역시");
+        assertThat(Provinces.officialName("어딘가")).isNull();
+    }
+
     // 카카오 주소 표기(경기·충북·전남광주통합특별시)와 DB 지역명(경기도·충청북도)을 같은 형태로 맞춘다.
     @Test void addressesFromDifferentSourcesCompareEqual() {
         assertThat(Provinces.normalizeAddress("경기도 수원시 팔달구")).isEqualTo(Provinces.normalizeAddress("경기  수원시 팔달구"));

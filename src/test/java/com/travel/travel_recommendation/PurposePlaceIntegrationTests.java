@@ -108,7 +108,7 @@ class PurposePlaceIntegrationTests {
         when(tour.searchFacilities("갯벌 체험장")).thenReturn(List.of());
         when(tour.searchFacilities("갯벌체험장")).thenReturn(List.of(
             new TourApiClient.SearchPlace("2001","12","여수 갯벌 노을마을",YEOSU+" 서부로 785-24",127.568,34.790),
-            new TourApiClient.SearchPlace("2002","12","보령 갯벌체험장","충청남도 보령시 해안로 607-5",126.52,36.33)));
+            new TourApiClient.SearchPlace("2002","12","테스트시 갯벌체험장","충청남도 테스트시 해안로 607-5",126.52,36.33)));
         when(maps.findNear(eq("여수 갯벌 노을마을"),anyDouble(),anyDouble(),eq(YEOSU))).thenReturn(Optional.of(new KakaoPlace(TIDAL,
             "ATTRACTION","여수갯벌노을마을",YEOSU,YEOSU+" 소라면 사곡리 1223","여행 > 체험여행 > 정보화,체험마을",127.568,34.790,
             "https://place.map.kakao.com/"+TIDAL,KoreaTime.now().withNano(0))));
@@ -120,8 +120,8 @@ class PurposePlaceIntegrationTests {
         assertThat(search.places()).singleElement().satisfies(p->{
             assertThat(p.destinationName()).isEqualTo("여수"); assertThat(p.name()).isEqualTo("여수갯벌노을마을"); });
         assertThat(places.findBySourceProviderAndSourcePlaceId("KAKAO",TIDAL)).isPresent();
-        // 보령은 서비스 여행지가 아니라 카카오로 맞추지 않는다.
-        verify(maps,never()).findNear(eq("보령 갯벌체험장"),anyDouble(),anyDouble(),anyString());
+        // 서비스 여행지가 아닌 곳(실제로 추가될 수 없는 가상 시)의 시설은 카카오로 맞추지 않는다.
+        verify(maps,never()).findNear(eq("테스트시 갯벌체험장"),anyDouble(),anyDouble(),anyString());
         var second=request("갯벌 체험");
         purposes.enrich(second);
         assertThat(recommendations.conditions(second,null,hash).purposeSearch().places()).hasSize(1);

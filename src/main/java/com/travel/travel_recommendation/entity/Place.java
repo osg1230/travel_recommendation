@@ -21,6 +21,17 @@ public class Place {
         place.placeType=data.type(); place.region=data.region(); place.active=true; place.createdAt=data.checkedAt();
         place.refreshKakao(data); return place;
     }
+    /**
+     * 추천 중에 관광공사 법정동 코드·등록 장소로 확인해 추가하는 여행지(시·군). 기존 여행지처럼 주소·좌표는 두지 않는다.
+     * sourcePlaceId는 "REGION_" + 지역 이름이라 같은 시·군을 두 번 넣지 않는다.
+     */
+    public static Place verifiedDestination(String name, String region, String subtype, String description, String sourceUrl,
+                                            LocalDateTime checkedAt) {
+        var place=new Place(); place.placeType="DESTINATION"; place.sourceProvider="TOURAPI"; place.sourcePlaceId="REGION_"+region;
+        place.name=name; place.region=region; place.subtype=subtype; place.description=description; place.sourceUrl=sourceUrl;
+        place.active=true; place.verifiedAt=checkedAt; place.createdAt=checkedAt; place.updatedAt=checkedAt;
+        return place;
+    }
     public void refreshKakao(com.travel.travel_recommendation.dto.KakaoPlace data) {
         if(!"KAKAO".equals(sourceProvider) || !sourcePlaceId.equals(data.sourceId()) || !region.equals(data.region())
                 || !placeType.equals(data.type())) throw new IllegalArgumentException("Place identity mismatch");

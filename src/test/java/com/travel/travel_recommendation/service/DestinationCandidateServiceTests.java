@@ -67,4 +67,11 @@ class DestinationCandidateServiceTests {
         // 같은 조건이면 늘 같은 결과다.
         assertThat(DestinationCandidateService.pick(all, List.of("맛집"), true)).isEqualTo(DestinationCandidateService.pick(all, List.of("맛집"), true));
     }
+
+    // AI가 제안하고 근거를 확인한 여행지는 시·도가 겹쳐도(속초·강릉) 제안 순서대로 먼저 넣고, 남는 자리는 다른 시·도에서 채운다.
+    @Test void suggestedDestinationsComeFirstEvenInTheSameProvince() {
+        var all = List.of(gangneung, busan, gyeongju, sokcho, yeosu, jeonju, jeju);
+        var picked = DestinationCandidateService.pick(all, List.of(), true, List.of(sokcho.getId(), gangneung.getId()), List.of(jeju.getId()), List.of());
+        assertThat(names(picked)).containsExactly("속초", "강릉", "제주", "부산", "경주");
+    }
 }

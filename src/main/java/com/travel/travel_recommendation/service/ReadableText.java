@@ -36,7 +36,7 @@ final class ReadableText {
         return text;
     }
 
-    private static String particle(String word, String particle) {
+    static String particle(String word, String particle) {
         if (particle == null) return "";
         char last = word.charAt(word.length() - 1);
         int coda = last >= '가' && last <= '힣' ? (last - '가') % 28 : 0;

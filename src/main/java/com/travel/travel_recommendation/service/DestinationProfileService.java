@@ -60,8 +60,11 @@ public class DestinationProfileService {
         finally { preparing.set(false); }
     }
 
-    /** 지역의 시·도(또는 시·군·구마다)에서 대분류별 장소를 받아 소분류로 센다. 지역 코드를 찾지 못하면 빈 목록이다. */
-    private Map<String,DestinationProfile.Category> build(String region) {
+    /**
+     * 지역의 시·도(또는 시·군·구마다)에서 대분류별 장소를 받아 소분류로 센다. 지역 코드를 찾지 못하면 빈 목록이다.
+     * 아직 여행지가 아닌 시·군을 확인할 때도 쓴다(RegionSuggestionService). 관광공사 오류면 RecommendationException을 던진다.
+     */
+    public Map<String,DestinationProfile.Category> build(String region) {
         var codes=tour.regionCodes(region).orElse(null);
         if(codes==null) return Map.of();
         List<String> districts=codes.districts().isEmpty()?Collections.singletonList(null):codes.districts();

@@ -1,7 +1,7 @@
 package com.travel.travel_recommendation;
 
 import com.travel.travel_recommendation.dto.*;
-import com.travel.travel_recommendation.repository.PlaceRepository;
+import com.travel.travel_recommendation.repository.*;
 import com.travel.travel_recommendation.service.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -42,6 +42,9 @@ class DestinationQualityReportTests {
     @Autowired ConditionReviewService reviews;
     @Autowired RecommendationJobService recommendations;
     @Autowired PurposePlaceService purposes;
+    @Autowired RegionSuggestionService regions;
+    @Autowired AiJobRepository jobs;
+    @Autowired tools.jackson.databind.ObjectMapper mapper;
     @Autowired DestinationRecommendationService ranking;
     @Autowired DestinationProfileService profiles;
     @Autowired PlaceRepository places;
@@ -100,7 +103,12 @@ class DestinationQualityReportTests {
         var conditions = reviews.confirm(analysis.form(), source, analysis.summary(), choices).forDirectRecommendation();
         byte[] hash = MessageDigest.getInstance("SHA-256").digest(UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8));
         UUID id = recommendations.create(conditions, null, hash);
+        // 서비스 작업 실행기와 같은 순서다. 지역 제안이 새로 추가한 여행지는 서비스처럼 실제로 저장된다(테스트 롤백과 무관).
+        try { regions.enrich(id); } catch (RuntimeException skipped) { /* 서비스처럼 지역 제안 없이 계속한다. */ }
         try { purposes.enrich(id); } catch (RuntimeException skipped) { /* 서비스처럼 목적 시설 없이 계속한다. */ }
+        for (var destination : places.findDestinations())
+            profileByName.computeIfAbsent(destination.getName(), name -> profiles.profile(destination.getId()));
+        var enriched = mapper.readValue(jobs.findById(id).orElseThrow().getRequestJson(), ConfirmedTravelConditions.class);
         recommendations.prepare(id);
         var work = ranking.claim(id);
         if (work == null) throw new IllegalStateException("추천 작업을 시작하지 못했어요: " + recommendations.view(id, null, hash).status());
@@ -108,7 +116,11 @@ class DestinationQualityReportTests {
         String interpreted = "지역 " + (blank(conditions.region()) ? "없음" : conditions.region())
             + " · 취향 " + (conditions.themeNames().isEmpty() ? "없음" : String.join("·", conditions.themeNames()))
             + " · 목적 " + (blank(conditions.travelPurpose()) ? "없음" : conditions.travelPurpose())
-            + (conditions.purposeSearch() == null ? "" : " · 목적 검색어 " + String.join("·", conditions.purposeSearch().keywords()));
+            + (enriched.purposeSearch() == null ? "" : " · 목적 검색어 " + String.join("·", enriched.purposeSearch().keywords()))
+            + (enriched.regionSuggestion() == null ? "" : " · 지역 제안 " + enriched.regionSuggestion().status() + " "
+                + enriched.regionSuggestion().destinationIds().stream().map(destinationId -> places.findById(destinationId).map(p -> p.getName()
+                    + ("TOURAPI".equals(p.getSourceProvider()) ? "(추가)" : "")).orElse("?")).collect(Collectors.joining("·"))
+                + " 분류 " + String.join("·", enriched.regionSuggestion().categories()));
         // 여행지 전체를 이 시나리오의 근거 수로 줄 세운다.
         Map<String, Integer> counts = new LinkedHashMap<>();
         profileByName.forEach((name, profile) -> counts.put(name, DestinationProfile.count(profile, s.categories())));
