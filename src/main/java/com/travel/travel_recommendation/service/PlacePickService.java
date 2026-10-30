@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation.service;
 
+import com.travel.travel_recommendation.dto.MemberStats;
 import com.travel.travel_recommendation.dto.PlaceCandidate;
 import com.travel.travel_recommendation.dto.ItineraryPlan.Input;
 import com.travel.travel_recommendation.repository.AiJobRepository;
@@ -29,8 +30,12 @@ public class PlacePickService {
     private final ItineraryGenerator generator;
     private final ObjectMapper mapper;
     private final ObjectProvider<PlacePickService> self;
+    private final SimilarMemberService similarMembers;
 
-    public record Task(UUID jobId, String requestJson, Input input) {}
+    /** members는 관광지 ID별로 비슷한 조건으로 여행한 다른 회원의 기록이다. 기록이 없으면 비어 있다. */
+    public record Task(UUID jobId, String requestJson, Input input, Map<Long,MemberStats> members) {
+        public Task(UUID jobId, String requestJson, Input input) { this(jobId,requestJson,input,Map.of()); }
+    }
 
     /** 대기 중인 일정 작업의 관광지를 AI 순서로 다시 고른다. 이미 골랐거나 후보가 없으면 요청을 바꾸지 않는다. */
     public void enrich(UUID jobId) {
@@ -38,7 +43,7 @@ public class PlacePickService {
         var task=self.getObject().task(jobId);
         if(task==null) return;
         var input=task.input();
-        var picks=client.pick(input.conditions(),input.places().destination().name(),input.transport().name(),candidates(input));
+        var picks=client.pick(input.conditions(),input.places().destination().name(),input.transport().name(),candidates(input,task.members()));
         self.getObject().save(task,picks);
     }
 
@@ -49,11 +54,18 @@ public class PlacePickService {
         var input=mapper.readValue(job.getRequestJson(),Input.class);
         // 처음 만드는 초안만 다시 고른다. 수정안은 사용자가 본 초안의 장소를 유지해야 한다.
         if(input.revision()!=null || input.picking()==null || input.picking().byAi() || input.picking().pool().isEmpty()) return null;
-        return new Task(jobId,job.getRequestJson(),input);
+        // 순서를 정할 때 참고할 비슷한 조건 회원 기록. 본인 기록은 뺀다.
+        var members=similarMembers.places(input.conditions(),job.getUserId(),input.picking().pool().stream().map(PlaceCandidate::placeId).toList());
+        return new Task(jobId,job.getRequestJson(),input,members);
     }
 
-    /** GPT에 보낼 후보. 필수·중심 장소는 fixed로 표시하고, 중심 장소(없으면 후보들의 가운데)에서의 직선거리를 함께 준다. */
-    static List<OpenAiPlacePickClient.Candidate> candidates(Input input) {
+    static List<OpenAiPlacePickClient.Candidate> candidates(Input input) { return candidates(input,Map.of()); }
+
+    /**
+     * GPT에 보낼 후보. 필수·중심 장소는 fixed로 표시하고, 중심 장소(없으면 후보들의 가운데)에서의 직선거리를 함께 준다.
+     * 비슷한 조건 회원 기록이 있는 관광지에는 회원 수도 붙인다.
+     */
+    static List<OpenAiPlacePickClient.Candidate> candidates(Input input,Map<Long,MemberStats> members) {
         var pool=input.picking().pool();
         var c=input.constraints();
         Set<Long> fixed=new HashSet<>();
@@ -66,7 +78,7 @@ public class PlacePickService {
         return pool.stream().map(p->new OpenAiPlacePickClient.Candidate(p.placeId(),p.name(),p.subtypeLabel(),
             p.latitude()==null || p.longitude()==null || from.isEmpty()?null
                 :(int)Math.round(from.stream().mapToDouble(center->kilometers(center,p)).min().orElse(0)),
-            fixed.contains(p.placeId()))).toList();
+            fixed.contains(p.placeId()),members.get(p.placeId()))).toList();
     }
 
     /**

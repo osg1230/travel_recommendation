@@ -26,8 +26,15 @@ public class OpenAiPlacePickClient {
 
     /** order는 갈 만한 순서의 장소 ID, skip은 일부러 찾아갈 이유가 적다고 본 장소 ID다. 둘 다 후보에 있는 ID만 담는다. */
     public record Picks(List<Long> order, List<Long> skip) {}
-    /** GPT에 보내는 후보 한 곳. km는 일정의 중심에서 떨어진 직선거리(모르면 null), fixed는 사용자가 넣기로 정한 곳이다. */
-    public record Candidate(long placeId, String name, String category, Integer km, boolean fixed) {}
+    /**
+     * GPT에 보내는 후보 한 곳. km는 일정의 중심에서 떨어진 직선거리(모르면 null), fixed는 사용자가 넣기로 정한 곳이다.
+     * members는 비슷한 조건으로 여행한 다른 회원 중 이 관광지를 일정에 넣거나 즐겨찾기·높게 평가한 회원 수다(없으면 null).
+     */
+    public record Candidate(long placeId, String name, String category, Integer km, boolean fixed, MemberStats members) {
+        public Candidate(long placeId, String name, String category, Integer km, boolean fixed) {
+            this(placeId, name, category, km, fixed, null);
+        }
+    }
 
     @Autowired
     public OpenAiPlacePickClient(OpenAiProperties properties,ObjectMapper mapper) {
@@ -57,6 +64,8 @@ public class OpenAiPlacePickClient {
                 fixed가 true인 곳은 사용자가 이미 넣기로 한 곳이므로 skip에 넣지 않는다.
                 km는 일정의 중심에서 떨어진 직선거리다. 먼 곳(대략 30km 이상)은 그만큼 갈 만할 때만 앞에 둔다.
                 같은 종류만 이어지지 않게 하되, 그 지역이 그 종류로 잘 알려져 있으면(예: 바다 여행의 해변) 여러 곳을 앞에 두어도 된다.
+                members는 비슷한 조건으로 여행한 다른 회원 중 그곳을 일정에 넣은(saved)·즐겨찾기한(favorited)·4점 이상으로 평가한(ratedHigh) 회원 수다.
+                여행 조건과 맞는 정도가 비슷하면 members가 많은 곳을 앞에 둘 수 있지만, members만 보고 조건과 맞지 않는 곳을 앞에 두지 않는다.
                 모든 후보를 order와 skip 중 한 곳에 한 번씩만 적는다.
                 """,
                 "input",mapper.writeValueAsString(promptInput(conditions,destination,transport,candidates)),
@@ -126,6 +135,9 @@ public class OpenAiPlacePickClient {
             item.put("placeId",p.placeId());item.put("name",p.name());item.put("category",p.category());
             if(p.km()!=null) item.put("km",p.km());
             item.put("fixed",p.fixed());
+            // 다른 회원 기록은 회원 수만 보낸다(누구인지는 보내지 않는다).
+            if(p.members()!=null && !p.members().empty())
+                item.put("members",p.members().counts());
             return item; }).toList());
         return prompt;
     }

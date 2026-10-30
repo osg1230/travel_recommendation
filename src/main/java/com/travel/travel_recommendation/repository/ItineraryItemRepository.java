@@ -6,4 +6,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface ItineraryItemRepository extends JpaRepository<ItineraryItem,Long> {
     List<ItineraryItem> findByItineraryIdOrderByDayNoAscSequenceNoAsc(Long itineraryId);
     void deleteByItineraryId(Long itineraryId);
+    List<ItineraryItem> findByItineraryIdInAndItemType(java.util.Collection<Long> itineraryIds, String itemType);
 }

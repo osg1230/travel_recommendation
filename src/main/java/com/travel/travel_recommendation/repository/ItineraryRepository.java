@@ -18,4 +18,6 @@ public interface ItineraryRepository extends JpaRepository<Itinerary,Long> {
     int detachRequest(Long requestId, Long userId);
     // 같은 일정 초안을 두 번 저장했는지 확인할 때 후보를 좁힌다.
     List<Itinerary> findByUserIdAndDestinationPlaceIdAndStartDate(Long userId, Long destinationPlaceId, LocalDate startDate);
+    // 비슷한 조건의 추천 요청에서 이어진 저장 일정(SimilarMemberService).
+    List<Itinerary> findByRequestIdIn(Collection<Long> requestIds);
 }

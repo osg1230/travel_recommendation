@@ -26,9 +26,16 @@ public class DestinationRecommendationService {
     private final OpenAiRecommendationClient client;
     private final DestinationFestivalService festivals;
     private final DestinationProfileService profiles;
+    private final SimilarMemberService similarMembers;
     private final ObjectMapper mapper;
 
-    public record Work(UUID jobId,int attempt,ConfirmedTravelConditions conditions,List<DestinationCandidate> candidates) {}
+    /** members는 후보 여행지별로 비슷한 조건으로 여행한 다른 회원의 기록이다. 기록이 없으면 비어 있다. */
+    public record Work(UUID jobId,int attempt,ConfirmedTravelConditions conditions,List<DestinationCandidate> candidates,
+                       Map<Long,MemberStats> members) {
+        public Work(UUID jobId,int attempt,ConfirmedTravelConditions conditions,List<DestinationCandidate> candidates) {
+            this(jobId,attempt,conditions,candidates,Map.of());
+        }
+    }
 
     @Transactional(timeout=10)
     public void enqueue(UUID id,String loginId,byte[] guestHash,int expectedAttempt) {
@@ -58,14 +65,18 @@ public class DestinationRecommendationService {
         var pool=pool(job);
         if(!currentPlacesMatch(conditions,pool)) { job.failRecommendation("CANDIDATES_CHANGED","여행지 정보가 변경됐어요. 조건에서 후보를 다시 조회해 주세요."); return null; }
         job.ranking();
-        return new Work(id,job.getAttemptCount(),conditions,pool);
+        // 순위 AI에 함께 넘길 비슷한 조건 회원 기록. 본인 기록은 뺀다.
+        var members=similarMembers.destinations(conditions,job.getUserId(),pool.stream().map(DestinationCandidate::placeId).toList());
+        return new Work(id,job.getAttemptCount(),conditions,pool,members);
     }
 
     // 이 메서드에는 트랜잭션을 두지 않는다. API를 기다리는 동안 DB 연결·행 잠금을 점유하지 않는다.
     // 후보 여행지의 축제를 먼저 찾아 추천 이유에 반영한다. 사용자가 축제를 고르지 않아도 여행 시기의 축제를 알려 주기 위해서다.
     // 후보마다 "할 수 있는 것" 근거(관광공사 등록 장소)도 함께 넘겨, 추천 이유가 확인을 미루지 않고 근거 장소로 맞는 점을 쓰게 한다.
+    // 비슷한 조건으로 여행한 회원 기록은 순위에 참고하도록 넘기고, 결과에도 서버가 센 수를 그대로 붙인다.
     public List<RankedDestination> generate(Work work) {
-        return client.recommend(work.conditions(),work.candidates(),festivals.find(work.conditions(),work.candidates()),evidence(work));
+        return client.recommend(work.conditions(),work.candidates(),festivals.find(work.conditions(),work.candidates()),evidence(work),
+            work.members());
     }
 
     /** 이유에 쓰는 근거 분류 수와 분류마다의 대표 이름 수. 원하는 여행의 분류(최대 6개)는 모두 담긴다. */
@@ -96,10 +107,12 @@ public class DestinationRecommendationService {
         var validated=client.validate(mapper.valueToTree(Map.of("recommendations",ranked.stream().map(r->
             Map.of("placeId",r.destination().placeId(),"reason",r.reason(),"places",r.centerPlaces())).toList())),work.candidates())
             // 축제는 서버가 관광공사에서 찾은 값이고 제안 방향은 추천 때 이미 목록과 대조한 값이라 검증한 결과에 그대로 다시 붙인다.
+            // 회원 기록도 서버가 센 값이라 그대로 붙인다.
             .stream().map(v->{ var source=ranked.stream().filter(r->r.destination().placeId().equals(v.destination().placeId())).findFirst();
                 return v.withFestivals(source.map(RankedDestination::festivals).orElse(List.of()))
                     .withFestivalPlaces(source.map(RankedDestination::festivalPlaceIds).orElse(Map.of()))
-                    .withDirection(source.map(RankedDestination::direction).orElse(null)); }).toList();
+                    .withDirection(source.map(RankedDestination::direction).orElse(null))
+                    .withMembers(source.map(RankedDestination::members).orElse(null)); }).toList();
         if(job.getUserId()!=null) {
             var request=requests.findById(job.getRequestId()).orElseThrow(()->new IllegalStateException("Request missing"));
             if(!job.getUserId().equals(request.getUserId())) throw new IllegalStateException("Owner mismatch");

@@ -82,4 +82,17 @@ class DestinationCandidateServiceTests {
         var picked = DestinationCandidateService.pick(all, List.of("자연"), true, List.of(), List.of(), List.of(), evidence);
         assertThat(names(picked)).containsExactly("경주", "제주", "강릉", "여수", "부산");
     }
+
+    // 비슷한 조건 회원 가점은 취향 점수가 같은 곳끼리 근거 가짓수보다 먼저 본다.
+    // 취향이 맞지 않는 여수는 가점이 있어도 취향이 맞는 곳보다 앞서지 않고, 취향이 같이 맞지 않는 부산보다만 앞선다.
+    @Test void memberBonusOrdersBeforeEvidenceWithinTheSameThemeScore() {
+        var all = List.of(gangneung, busan, gyeongju, sokcho, yeosu, jeonju, jeju);
+        var evidence = Map.of(gyeongju.getId(), 3, jeju.getId(), 1);
+        var bonus = Map.of(sokcho.getId(), 2, yeosu.getId(), 2);
+        // 가점이 없을 때(위 테스트와 같은 기준)는 속초가 강릉과 같은 강원이라 빠진다.
+        assertThat(names(DestinationCandidateService.pick(all, List.of("자연"), true, List.of(), List.of(), List.of(), evidence)))
+            .containsExactly("경주", "제주", "강릉", "부산", "여수");
+        var picked = DestinationCandidateService.pick(all, List.of("자연"), true, List.of(), List.of(), List.of(), evidence, bonus);
+        assertThat(names(picked)).containsExactly("속초", "경주", "제주", "여수", "부산");
+    }
 }

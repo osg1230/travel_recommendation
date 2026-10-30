@@ -49,19 +49,30 @@ public class OpenAiRecommendationClient {
      */
     public List<RankedDestination> recommend(ConfirmedTravelConditions conditions,List<DestinationCandidate> candidates,
                                              Map<Long,List<RegionalFestival>> festivals,Map<Long,List<DestinationProfile.Evidence>> evidence) {
+        return recommend(conditions,candidates,festivals,evidence,Map.of());
+    }
+
+    /**
+     * members는 여행지 ID별로 비슷한 조건으로 여행한 다른 회원의 기록(저장·즐겨찾기·높은 평가 회원 수)이다.
+     * 순위에 참고하도록 넘기고, 결과에는 서버가 센 수를 그대로 붙인다(화면에 따로 보여 주므로 이유 문장에는 쓰지 않게 한다).
+     */
+    public List<RankedDestination> recommend(ConfirmedTravelConditions conditions,List<DestinationCandidate> candidates,
+                                             Map<Long,List<RegionalFestival>> festivals,Map<Long,List<DestinationProfile.Evidence>> evidence,
+                                             Map<Long,MemberStats> members) {
         if(!configured()) throw failure("AI_NOT_CONFIGURED","추천 연결 설정을 확인해야 해요. 잠시 후 다시 이용해 주세요.");
         if(candidates.isEmpty() || candidates.size()>5) throw invalid();
         long started=System.nanoTime();
-        var ranked=request(conditions,candidates,festivals,evidence,false);
+        var ranked=request(conditions,candidates,festivals,evidence,members,false);
         if(ranked.stream().anyMatch(r->ReasonHedges.found(r.reason()))
                 && Duration.ofNanos(System.nanoTime()-started).compareTo(RETRY_WITHIN)<0) {
             log.info("추천 이유에 확인을 미루는 문장이 있어 한 번 다시 요청함");
-            try { ranked=request(conditions,candidates,festivals,evidence,true); }
+            try { ranked=request(conditions,candidates,festivals,evidence,members,true); }
             catch(RecommendationException e) { log.warn("다시 요청하지 못해 첫 결과를 씀 ({})",e.getCode()); }
         }
         long hedged=ranked.stream().filter(r->ReasonHedges.found(r.reason())).count();
         if(hedged>0) log.info("추천 이유 {}개에서 확인을 미루는 문장을 뺌",hedged);
-        return ranked.stream().map(r->r.withReason(withoutHedges(r,evidence.getOrDefault(r.destination().placeId(),List.of())))).toList();
+        return ranked.stream().map(r->r.withReason(withoutHedges(r,evidence.getOrDefault(r.destination().placeId(),List.of())))
+            .withMembers(members.get(r.destination().placeId()))).toList();
     }
 
     /** 첫 요청이 이 시간 안에 끝났을 때만 다시 요청한다. 다시 요청해도 추천 처리 제한(60초) 안에 끝나게 한다. */
@@ -84,7 +95,7 @@ public class OpenAiRecommendationClient {
 
     private List<RankedDestination> request(ConfirmedTravelConditions conditions,List<DestinationCandidate> candidates,
                                             Map<Long,List<RegionalFestival>> festivals,Map<Long,List<DestinationProfile.Evidence>> evidence,
-                                            boolean retry) {
+                                            Map<Long,MemberStats> members,boolean retry) {
         var directions=directions(conditions);
         try {
             Map<String,Object> body=properties.requestBase(); body.putAll(Map.of("max_output_tokens",1800,
@@ -136,13 +147,12 @@ public class OpenAiRecommendationClient {
                 '알 수 없습니다', '방문 전 확인'처럼 확인을 미루는 말은 쓰지 않는다. 운영·요금·전시 내용처럼 확인하지 않은 점은
                 화면에서 따로 안내하므로 reason에서 다루지 않는다. 근거가 없는 점은 언급하지 않는다.
                 순위가 낮은 후보도 조건과 맞는 점을 쓴다.
+                후보의 members는 비슷한 조건으로 여행한 다른 회원 중 그 지역으로 일정을 저장한(saved)·즐겨찾기한(favorited)·
+                4점 이상으로 평가한(ratedHigh) 회원 수다. 여행 조건과 맞는 정도가 비슷한 후보끼리는 members가 많은 쪽을 앞에 둘 수 있다.
+                조건과 맞지 않는 후보를 members 때문에 앞에 두지 않는다. 회원 수는 화면에 따로 보여 주므로 reason에 쓰지 않는다.
                 """,
                 "input",mapper.writeValueAsString(Map.of("conditions",promptConditions(conditions),
-                    "candidates",candidates.stream().map(c->Map.of("placeId",c.placeId(),"name",c.name(),
-                        "region",c.region(),"description",Objects.toString(c.description(),""),
-                        "purposePlaces",purposePlaces(conditions,c),"evidence",evidence.getOrDefault(c.placeId(),List.of()),
-                        "festivals",festivals.getOrDefault(c.placeId(),List.of()).stream()
-                            .map(f->Map.of("title",f.title(),"period",f.period())).toList())).toList())),
+                    "candidates",candidates.stream().map(c->promptCandidate(conditions,c,festivals,evidence,members)).toList())),
                 "text",Map.of("format",Map.of("type","json_schema","name","destination_recommendations","strict",true,
                     "schema",schema(candidates,directions)))));
             HttpRequest request=HttpRequest.newBuilder(endpoint).timeout(timeout)
@@ -191,6 +201,20 @@ public class OpenAiRecommendationClient {
         catch(RuntimeException e) { log.warn("추천 응답 처리 실패: {}",e.toString()); throw invalid(); }
     }
 
+    // 후보 한 곳의 입력. 비슷한 조건 회원 기록은 있을 때만 넣는다(없으면 지금과 같은 입력).
+    private Map<String,Object> promptCandidate(ConfirmedTravelConditions conditions,DestinationCandidate c,
+                                               Map<Long,List<RegionalFestival>> festivals,Map<Long,List<DestinationProfile.Evidence>> evidence,
+                                               Map<Long,MemberStats> members) {
+        Map<String,Object> item=new LinkedHashMap<>();
+        item.put("placeId",c.placeId()); item.put("name",c.name()); item.put("region",c.region());
+        item.put("description",Objects.toString(c.description(),""));
+        item.put("purposePlaces",purposePlaces(conditions,c)); item.put("evidence",evidence.getOrDefault(c.placeId(),List.of()));
+        item.put("festivals",festivals.getOrDefault(c.placeId(),List.of()).stream().map(f->Map.of("title",f.title(),"period",f.period())).toList());
+        var stats=members.get(c.placeId());
+        if(stats!=null && !stats.empty()) item.put("members",stats.counts());
+        return item;
+    }
+
     List<RankedDestination> validate(JsonNode root,List<DestinationCandidate> candidates) {
         JsonNode items=root.path("recommendations");
         if(!root.isObject() || root.size()!=1 || !items.isArray() || items.size()!=candidates.size()) throw invalid();
@@ -235,6 +259,7 @@ public class OpenAiRecommendationClient {
         names.put("budgetKrw","예산");names.put("partySize","인원");names.put("accommodationNeeded","숙박 여부");
         names.put("includeNearby","주변 지역 포함 여부");names.put("startDate","출발일");names.put("endDate","도착일");
         names.put("THEME","여행 취향");names.put("SEASON","계절");names.put("COMPANION","동행자");
+        names.put("members","비슷한 조건으로 여행한 회원 기록");names.put("ratedHigh","높은 평가");names.put("favorited","즐겨찾기");
         names.put("TRANSPORTATION","이동수단");
         return names;
     }
