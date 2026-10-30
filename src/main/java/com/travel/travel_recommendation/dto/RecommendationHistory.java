@@ -11,7 +11,8 @@ public final class RecommendationHistory {
                           List<String> destinations, String status) {}
     public record Condition(String label, String value) {}
     public record Destination(int rank, String name, String region, String reason, String sourceUrl) {}
-    /** resultJobId는 아직 만료되지 않은 추천 결과 화면이며, 없으면 다시 볼 수 없다. */
+    /** resultJobId는 아직 만료되지 않은 추천 결과 화면이며, 없으면 다시 볼 수 없다. repeatable은 같은 조건으로 다시 추천할 수 있는지(그때 확정한 조건이 남아 있는지)다. */
     public record Detail(Summary summary, String originalText, String interpretationSummary,
-                         List<Condition> conditions, List<Destination> destinations, UUID resultJobId) {}
+                         List<Condition> conditions, List<Destination> destinations, UUID resultJobId,
+                         boolean repeatable) {}
 }

@@ -8,6 +8,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -59,7 +60,7 @@ class LoginIntegrationTests {
         mvc.perform(post("/logout").with(csrf()).session(session)).andExpect(redirectedUrl("/?logout"))
                 .andExpect(unauthenticated());
         assertThat(session.isInvalid()).isTrue();
-        mvc.perform(get("/admin")).andExpect(redirectedUrl("/login"));
+        mvc.perform(get("/admin")).andExpect(redirectedUrl("/login?required"));
     }
 
     @Test
@@ -75,10 +76,71 @@ class LoginIntegrationTests {
 
         MockHttpSession other = new MockHttpSession();
         mvc.perform(get("/login").param("next", "https://example.com/travel/recommendations/itineraries/x").session(other));
-        mvc.perform(get("/login").param("next", "/my/account").session(other));
+        mvc.perform(get("/login").param("next", "/admin/members").session(other));
         mvc.perform(post("/login").servletPath("/login").with(csrf()).session(other)
                 .param("loginId", user.getLoginId()).param("password", "Travel123!"))
                 .andExpect(redirectedUrl("/"));
+    }
+
+    @Test
+    void protectedPageExplainsLoginAndReturnsThereAfterward() throws Exception {
+        // 로그인 없이 회원 화면을 열면 이유를 알리는 로그인 화면으로 가고, 로그인하면 그 화면으로 돌아온다.
+        var user = member();
+        MockHttpSession session = new MockHttpSession();
+        mvc.perform(get("/my/itineraries?page=2").accept(MediaType.TEXT_HTML).session(session))
+                .andExpect(redirectedUrl("/login?required"));
+        mvc.perform(get("/login").param("required", "").session(session))
+                .andExpect(content().string(containsString("로그인이 필요하거나 로그인 시간이 지났어요")));
+        mvc.perform(post("/login").servletPath("/login").with(csrf()).session(session)
+                .param("loginId", user.getLoginId()).param("password", "Travel123!"))
+                .andExpect(redirectedUrl("/my/itineraries?page=2"));
+        // 화면 안에서 부르는 데이터 주소(HTML이 아닌 요청)는 돌아갈 곳으로 기억하지 않는다.
+        MockHttpSession fetch = new MockHttpSession();
+        mvc.perform(get("/my/itineraries/7/day-paths").param("day", "1").accept(MediaType.APPLICATION_JSON).session(fetch))
+                .andExpect(redirectedUrl("/login?required"));
+        mvc.perform(post("/login").servletPath("/login").with(csrf()).session(fetch)
+                .param("loginId", user.getLoginId()).param("password", "Travel123!"))
+                .andExpect(redirectedUrl("/"));
+    }
+
+    @Test
+    void sessionEndsWhenRestrictedWithdrawnOrPasswordChangedElsewhere() throws Exception {
+        // 관리자가 이용 제한하면 다음 요청에서 로그아웃되고 이유를 본다(SFR-15-03).
+        var user = member();
+        var restricted = login(user);
+        em.createNativeQuery("UPDATE dbo.users SET status='RESTRICTED' WHERE user_id=:id").setParameter("id", user.getId()).executeUpdate();
+        em.clear();
+        mvc.perform(get("/account").session(restricted)).andExpect(redirectedUrl("/login?restricted")).andExpect(unauthenticated());
+        assertThat(restricted.isInvalid()).isTrue();
+        mvc.perform(get("/login").param("restricted", "")).andExpect(content().string(containsString("이용이 제한된 계정")));
+
+        // 다른 기기에서 비밀번호를 바꾸면 이 기기의 세션은 끝난다(SFR-01-04). CSS 같은 정적 파일은 확인하지 않는다.
+        var other = member();
+        var oldDevice = login(other);
+        mvc.perform(get("/account").session(oldDevice)).andExpect(status().isOk());
+        em.createNativeQuery("UPDATE dbo.users SET password_hash=:hash WHERE user_id=:id")
+                .setParameter("hash", encoder.encode("NewTravel123!")).setParameter("id", other.getId()).executeUpdate();
+        em.clear();
+        mvc.perform(get("/css/app.css").session(oldDevice));
+        assertThat(oldDevice.isInvalid()).isFalse();
+        mvc.perform(get("/").session(oldDevice)).andExpect(redirectedUrl("/login?changed"));
+        assertThat(oldDevice.isInvalid()).isTrue();
+
+        // 탈퇴한 계정의 다른 세션도 끝난다(SFR-01-05).
+        var third = member();
+        var device = login(third);
+        em.createNativeQuery("UPDATE dbo.users SET status='WITHDRAWN', withdrawn_at=SYSDATETIME() WHERE user_id=:id")
+                .setParameter("id", third.getId()).executeUpdate();
+        em.clear();
+        mvc.perform(post("/logout").with(csrf()).session(device)).andExpect(redirectedUrl("/?withdrawn"));
+        assertThat(device.isInvalid()).isTrue();
+    }
+
+    private MockHttpSession login(User user) throws Exception {
+        var result = mvc.perform(post("/login").servletPath("/login").with(csrf())
+                .param("loginId", user.getLoginId()).param("password", "Travel123!"))
+                .andExpect(authenticated()).andReturn();
+        return (MockHttpSession) result.getRequest().getSession(false);
     }
 
     @Autowired com.travel.travel_recommendation.service.RecommendationJobService recommendations;
@@ -115,32 +177,44 @@ class LoginIntegrationTests {
     }
 
     @Test
-    void wrongUnknownRestrictedAndWithdrawnUseSameFailureRedirect() throws Exception {
+    void restrictedIsToldOnlyWithCorrectPasswordAndOtherFailuresShareOneMessage() throws Exception {
         var user = member();
         mvc.perform(post("/login").servletPath("/login").with(csrf()).param("loginId", user.getLoginId())
                 .param("password", "Wrong123!")).andExpect(redirectedUrl("/login?error")).andExpect(unauthenticated());
         mvc.perform(post("/login").servletPath("/login").with(csrf()).param("loginId", "missing_" + UUID.randomUUID().toString().replace("-", ""))
                 .param("password", "Travel123!")).andExpect(redirectedUrl("/login?error")).andExpect(unauthenticated());
-        for (String state : new String[]{"RESTRICTED", "WITHDRAWN"}) {
-            em.createNativeQuery("UPDATE dbo.users SET status=:state, withdrawn_at=CASE WHEN :state='WITHDRAWN' THEN SYSDATETIME() ELSE NULL END WHERE user_id=:id")
-                    .setParameter("state", state).setParameter("id", user.getId()).executeUpdate();
-            em.clear();
-            mvc.perform(post("/login").servletPath("/login").with(csrf()).param("loginId", user.getLoginId())
-                    .param("password", "Travel123!")).andExpect(redirectedUrl("/login?error")).andExpect(unauthenticated());
-        }
+        // 이용 제한 계정은 비밀번호가 맞을 때만 따로 알린다(SFR-01-02 A2). 틀리면 공통 문구다.
+        em.createNativeQuery("UPDATE dbo.users SET status='RESTRICTED' WHERE user_id=:id").setParameter("id", user.getId()).executeUpdate();
+        em.clear();
+        mvc.perform(post("/login").servletPath("/login").with(csrf()).param("loginId", user.getLoginId())
+                .param("password", "Wrong123!")).andExpect(redirectedUrl("/login?error")).andExpect(unauthenticated());
+        mvc.perform(post("/login").servletPath("/login").with(csrf()).param("loginId", user.getLoginId())
+                .param("password", "Travel123!")).andExpect(redirectedUrl("/login?restricted")).andExpect(unauthenticated());
+        // 탈퇴 계정은 아이디가 있는지 드러나지 않게 공통 문구를 쓴다.
+        em.createNativeQuery("UPDATE dbo.users SET status='WITHDRAWN', withdrawn_at=SYSDATETIME() WHERE user_id=:id")
+                .setParameter("id", user.getId()).executeUpdate();
+        em.clear();
+        mvc.perform(post("/login").servletPath("/login").with(csrf()).param("loginId", user.getLoginId())
+                .param("password", "Travel123!")).andExpect(redirectedUrl("/login?error")).andExpect(unauthenticated());
     }
 
     @Test
     void csrfIsRequiredForLoginAndLogoutAndGetDoesNotLogout() throws Exception {
-        mvc.perform(post("/login").servletPath("/login")).andExpect(status().isForbidden());
-        mvc.perform(post("/logout")).andExpect(status().isForbidden());
+        // 토큰이 없으면 로그인·로그아웃은 되지 않지만, 403 화면 대신 다시 할 수 있는 화면으로 보낸다(UC-03 A1).
+        mvc.perform(post("/login").servletPath("/login")).andExpect(redirectedUrl("/login?expired")).andExpect(unauthenticated());
+        mvc.perform(post("/logout")).andExpect(redirectedUrl("/?logout"));
         var user = member();
         var result = mvc.perform(post("/login").servletPath("/login").with(csrf()).param("loginId", user.getLoginId())
                 .param("password", "Travel123!")).andReturn();
         var session = (MockHttpSession)result.getRequest().getSession(false);
         mvc.perform(get("/logout").session(session)).andExpect(authenticated());
         assertThat(session.isInvalid()).isFalse();
-        mvc.perform(post("/signup").session(session).with(csrf())).andExpect(status().isForbidden());
+        // 로그인한 상태의 로그아웃은 토큰이 맞아야만 한다. 로그인 상태도 그대로다.
+        mvc.perform(post("/logout").session(session)).andExpect(status().isForbidden());
+        assertThat(session.isInvalid()).isFalse();
+        // 로그인한 상태에서 회원가입을 열면 403 대신 시작 화면으로 보낸다.
+        mvc.perform(post("/signup").session(session).with(csrf())).andExpect(redirectedUrl("/"));
+        mvc.perform(get("/signup").session(session)).andExpect(redirectedUrl("/"));
     }
 
     @Test

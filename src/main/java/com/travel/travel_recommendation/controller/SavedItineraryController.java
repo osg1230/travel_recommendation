@@ -23,6 +23,7 @@ public class SavedItineraryController {
     private final ObjectProvider<SavedItineraryService> services;
     private final ObjectProvider<com.travel.travel_recommendation.service.SavedItineraryEditService> edits;
     private final ObjectProvider<com.travel.travel_recommendation.service.PlaceRatingService> ratings;
+    private final ObjectProvider<com.travel.travel_recommendation.service.FavoriteService> favorites;
     private final ObjectProvider<com.travel.travel_recommendation.service.VirtualReservationService> reservations;
     private final ObjectProvider<com.travel.travel_recommendation.service.PlacePhotoService> photos;
     private final ObjectProvider<com.travel.travel_recommendation.service.TransitRouteService> transitRoutes;
@@ -72,9 +73,15 @@ public class SavedItineraryController {
         if(!"자동차".equals(itinerary.transportName())) model.addAttribute("dayPathsUrl","/my/itineraries/"+id+"/day-paths");
         // 다녀온 장소마다 평가 요약과 평가하기 링크를 보여 준다(SFR-10).
         var rating=ratings.getIfAvailable();
-        model.addAttribute("ratingSummaries",rating==null?java.util.Map.of():rating.summaries(itinerary.days().stream()
+        var ratedPlaceIds=itinerary.days().stream()
             .flatMap(d->d.items().stream()).filter(i->i.placeId()!=null && java.util.Set.of("VISIT","MEAL","STAY").contains(i.type()))
-            .map(com.travel.travel_recommendation.dto.SavedItinerary.Item::placeId).toList()));
+            .map(com.travel.travel_recommendation.dto.SavedItinerary.Item::placeId).toList();
+        model.addAttribute("ratingSummaries",rating==null?java.util.Map.of():rating.summaries(ratedPlaceIds));
+        // 이미 평가한 장소는 '평가하기' 대신 '내 평가 ★4 · 바꾸기'로 보여 준다.
+        model.addAttribute("myRatingScores",rating==null?java.util.Map.of():rating.myScores(ratedPlaceIds,login(principal)));
+        // 관광지·숙소는 이 화면에서도 즐겨찾기에 넣거나 뺄 수 있게 등록 여부를 넘긴다(SFR-09, 음식점은 대상이 아니다).
+        var favorite=favorites.getIfAvailable();
+        model.addAttribute("registeredPlaceIds",favorite==null?java.util.Set.of():favorite.registeredPlaceIds(login(principal)));
         // 초안을 만들 때 찾아 둔 관광지 사진(관광공사). 조회하지 못해도 일정 상세는 그대로 보여 준다.
         var visitIds=itinerary.days().stream().flatMap(d->d.items().stream()).filter(i->"VISIT".equals(i.type()) && i.placeId()!=null)
             .map(com.travel.travel_recommendation.dto.SavedItinerary.Item::placeId).toList();
@@ -94,6 +101,11 @@ public class SavedItineraryController {
         try { if(reservation!=null) bookables=reservation.bookable(id,login(principal),referencePrices); }
         catch(org.springframework.dao.DataAccessException missingTables) { bookables=java.util.List.of(); }
         model.addAttribute("bookables",bookables);
+        // 수정안 적용·장소 변경으로 일정에서 빠진 장소의 예약도 이 화면에서 찾아갈 수 있게 함께 보여 준다.
+        java.util.List<?> leftovers=java.util.List.of();
+        try { if(reservation!=null) leftovers=reservation.leftoverReservations(id,login(principal),bookables); }
+        catch(org.springframework.dao.DataAccessException missingTables) { leftovers=java.util.List.of(); }
+        model.addAttribute("leftoverReservations",leftovers);
         // 일정표의 장소 옆에 예약 버튼을 붙일 수 있게 '일차-장소 ID'로 찾는 표를 함께 넘긴다.
         var bookableByItem=new java.util.HashMap<String,Object>();
         for(var b:bookables) bookableByItem.putIfAbsent(b.dayNo()+"-"+b.itemPlaceId(),b);
@@ -104,7 +116,7 @@ public class SavedItineraryController {
     /** 저장한 대중교통 일정 지도의 '실제 경로 보기'(SFR-11-03). 본인 일정만 조회하며, 경로는 저장하지 않고 요청 때마다 조회한다. */
     @GetMapping("/{id}/day-paths")
     @ResponseBody
-    org.springframework.http.ResponseEntity<?> dayPaths(@PathVariable long id, @RequestParam int day, Principal principal) {
+    org.springframework.http.ResponseEntity<?> dayPaths(@PathVariable long id, @RequestParam int day, Principal principal, HttpSession session) {
         var itinerary=service().detail(id,login(principal));
         if("자동차".equals(itinerary.transportName()))
             return org.springframework.http.ResponseEntity.badRequest().cacheControl(org.springframework.http.CacheControl.noStore())
@@ -112,6 +124,9 @@ public class SavedItineraryController {
         var route=com.travel.travel_recommendation.service.TripMap.route(itinerary.days().stream()
             .map(d->new com.travel.travel_recommendation.service.TripMap.Day(d.number(),d.items().stream()
                 .map(i->new com.travel.travel_recommendation.service.TripMap.Stop(i.type(),i.name(),i.mapUrl())).toList())).toList(),false);
+        // 초안 화면과 같은 세션 쿨다운(10초)을 써서 카카오 경로 조회가 연달아 나가지 않게 한다.
+        var wait=ItineraryController.dayPathsCooldown(session);
+        if(wait!=null) return wait;
         return ItineraryController.dayPathsOf(route,day,transitRoutes.getIfAvailable());
     }
 
@@ -156,14 +171,32 @@ public class SavedItineraryController {
         return "redirect:/my/itineraries";
     }
 
-    @ExceptionHandler({ResponseStatusException.class,DataAccessException.class})
-    String error(RuntimeException error, HttpServletResponse response, Model model) {
+    @ExceptionHandler({ResponseStatusException.class,DataAccessException.class,org.springframework.transaction.TransactionException.class})
+    String error(RuntimeException error, jakarta.servlet.http.HttpServletRequest request, HttpServletResponse response, Model model) {
         int status=400; String message;
         if(error instanceof ResponseStatusException e) { status=e.getStatusCode().value(); message=e.getReason(); }
         else { status=503; message="저장한 일정을 불러오지 못했어요. 잠시 후 다시 시도해 주세요."; }
         response.setStatus(status); response.setHeader("Cache-Control","no-store");
         model.addAttribute("message",message);
+        // 찾을 수 없음(404)은 돌아가도 같은 오류가 나므로 '이전 화면으로' 링크를 두지 않는다.
+        model.addAttribute("backUrl",status==404?null:backUrl(request));
         return "my/itinerary-error";
+    }
+    private static final java.util.regex.Pattern ITINERARY_ACTION=java.util.regex.Pattern.compile("^/my/itineraries/(\\d+)/(apply|title|undo|edit)$");
+    /**
+     * 실패한 요청에 따라 '이전 화면으로' 돌아갈 주소를 정한다.
+     * 일정 저장·수정안 적용은 그 초안 화면, 이름 바꾸기·되돌리기·수정 준비는 그 일정 상세로 돌아간다. 그 밖에는 없다(null).
+     */
+    static String backUrl(jakarta.servlet.http.HttpServletRequest request) {
+        String path=request.getRequestURI().substring(request.getContextPath().length());
+        var action=ITINERARY_ACTION.matcher(path);
+        boolean matched=action.matches();
+        if(path.equals("/my/itineraries") || (matched && action.group(2).equals("apply"))) {
+            // 초안 번호(jobId)가 올바른 형식일 때만 주소를 만든다.
+            try { return "/travel/recommendations/itineraries/"+UUID.fromString(request.getParameter("jobId")); }
+            catch(RuntimeException badJobId) { return null; }
+        }
+        return matched?"/my/itineraries/"+action.group(1):null;
     }
     private SavedItineraryService service() {
         var service=services.getIfAvailable();

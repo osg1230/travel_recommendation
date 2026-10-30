@@ -20,15 +20,17 @@
 
     <h2>이름과 표시 순서</h2>
     <p class="help">조건 입력 화면의 질문 문구와 순서는 화면에 고정돼 있어, 카테고리 이름과 표시 순서는 키워드 관리 목록에만 반영됩니다.</p>
+    <!--/* 저장이 거절되면 이유를 보이고, 적었던 값을 다시 채운다. */-->
+    <p class="notice" role="alert" th:if="${keywordError != null}" th:text="${keywordError}"></p>
     <form th:action="@{/admin/keywords/categories/{id}(id=${category.id})}" method="post">
         <div class="field">
             <label for="name">이름 (필수)</label>
-            <input id="name" name="name" required maxlength="50" th:value="${category.name}">
+            <input id="name" name="name" required maxlength="50" th:value="${inputName != null ? inputName : category.name}">
         </div>
         <div class="field">
             <label for="sortOrder">표시 순서 (필수)</label>
             <input id="sortOrder" name="sortOrder" type="number" required min="0" max="999" inputmode="numeric"
-                   th:value="${category.sortOrder}" aria-describedby="order-help">
+                   th:value="${inputSortOrder != null ? inputSortOrder : category.sortOrder}" aria-describedby="order-help">
             <p id="order-help" class="help">0~999 사이 숫자이며 작은 숫자가 목록 앞에 보입니다.</p>
         </div>
         <button type="submit">저장</button>

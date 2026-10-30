@@ -17,6 +17,9 @@ public class LoginInputFilter extends OncePerRequestFilter {
             String password = request.getParameter("password");
             if (loginId == null || !loginId.strip().matches("[a-zA-Z0-9_]{4,50}")
                     || password == null || !password.matches("[!-~]{8,64}")) {
+                // 다른 로그인 실패와 같이 기록하고 아이디만 다시 채운다.
+                SecurityConfig.logDenied(request, "LOGIN_INVALID_INPUT", loginId);
+                SecurityConfig.keepLoginId(request, response);
                 response.sendRedirect(request.getContextPath() + "/login?error");
                 return;
             }

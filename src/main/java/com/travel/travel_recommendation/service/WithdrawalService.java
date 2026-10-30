@@ -25,6 +25,15 @@ public class WithdrawalService {
     private final JdbcTemplate jdbc;
     private final VirtualReservationService reservations;
 
+    /** 탈퇴하면 취소되는 진행 중 예약(결제 대기·예약 확정) 건수. 내 정보 화면의 탈퇴 안내에 보여 준다. */
+    @Transactional(readOnly=true, timeout=10)
+    public int countActiveReservations(String loginId) {
+        Integer count=jdbc.queryForObject("""
+            SELECT COUNT(*) FROM dbo.virtual_reservations r JOIN dbo.users u ON u.user_id=r.user_id
+            WHERE u.login_id=? AND r.status IN ('PENDING','CONFIRMED')""",Integer.class,loginId);
+        return count==null?0:count;
+    }
+
     @Transactional(timeout=15)
     public void withdraw(String loginId, String currentPassword, boolean confirmed) {
         User user=users.findForUpdateByLoginId(loginId).orElseThrow(()->new AccessDeniedException("Account unavailable"));

@@ -10,7 +10,9 @@
 <main class="travel">
     <h1>예약을 처리하지 못했어요</h1>
     <p class="intro" role="alert" th:text="${message}"></p>
-    <p><a th:href="@{/my/reservations}">예약 목록으로 가기</a></p>
+    <!--/* '이전 화면으로': 예약 상세의 작업이면 그 상세, 신청이면 신청 화면(열지 못했으면 일정)으로 돌아간다. */-->
+    <a class="button" th:if="${backUrl != null}" th:href="@{${backUrl}}">이전 화면으로</a>
+    <a class="button button-quiet" th:href="@{/my/reservations}">예약 목록으로 가기</a>
 </main>
 </body>
 </html>

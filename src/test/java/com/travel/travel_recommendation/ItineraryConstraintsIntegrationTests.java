@@ -165,9 +165,14 @@ class ItineraryConstraintsIntegrationTests {
             .andExpect(status().isSeeOther()).andReturn().getResponse().getHeader("Location");
         // 09:00~13:00·체류 90분이면 하루 약 1곳이라 선호 4곳은 2곳(2일 × 1곳)으로 줄여 반영한다.
         assertThat(schedules.view(jobFrom(location),null,hash).input().places().attractions()).hasSize(2);
+        // 후보 목록에 없고 다시 확인할 수도 없는 장소는 일정을 만들지 않고 입력 화면에서 이유를 보여 준다.
+        long before=jobs.count();
         mvc.perform(post(formUrl()).session(session).with(csrf()).param("submissionToken",token())
                 .param("start","09:00").param("end","18:00").param("transport","CAR").param("visitMinutes","90").param("required","999999"))
-            .andExpect(status().isBadRequest());
+            .andExpect(status().isSeeOther()).andExpect(header().string("Location",formUrl()));
+        assertThat(jobs.count()).isEqualTo(before);
+        mvc.perform(get(formUrl()).session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("장소 정보를 지금 다시 확인하지 못했어요")));
         mvc.perform(post(formUrl()).session(session).with(csrf()).param("submissionToken",token())
                 .param("start","09:00").param("end","18:00").param("transport","CAR").param("visitMinutes","90").param("dailyMode","SOMETIMES"))
             .andExpect(status().isBadRequest());

@@ -34,11 +34,13 @@
         <h2 th:text="${item.place.name}"></h2>
         <p class="help" th:text="${item.place.address}"></p>
         <p class="rating-summary"
-           th:text="${'★ ' + item.summary.average + ' · 평가 ' + item.summary.count + '개' + (item.summary.topTags.isEmpty() ? '' : ' · ' + #strings.listJoin(item.summary.topTags.![name], ', '))}"></p>
+           th:text="${'★ ' + item.summary.average + ' · 평가 ' + item.summary.count + '개' + (item.summary.topTags.isEmpty() ? '' : ' · ' + item.summary.topTagText())}"></p>
         <div class="rating-recent">
             <th:block th:replace="~{fragments/rating :: recentList(${item.summary.recent})}"></th:block>
         </div>
-        <p class="place-links"><a th:href="@{/my/ratings/{id}(id=${item.place.placeId},returnTo='/my/ratings/browse')}">이 장소 평가하기</a></p>
+        <!--/* 평가하고 돌아올 때 검색어(q)를 그대로 두어 같은 검색 결과로 돌아온다. */-->
+        <p class="place-links"><a th:href="@{/my/ratings/{id}(id=${item.place.placeId},returnTo=${'/my/ratings/browse'
+            + (#strings.isEmpty(keyword) ? '' : '?q=' + #uris.escapeQueryParam(keyword))})}">이 장소 평가하기</a></p>
     </article>
 </main>
 </body>

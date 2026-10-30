@@ -60,6 +60,37 @@ class AdminMemberIntegrationTests {
             .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
     }
 
+    @Test void searchTreatsLikeWildcardsAsPlainLetters() {
+        // 검색어의 _ 와 % 는 '아무 글자'가 아니라 글자 그대로 찾는다.
+        String suffix=UUID.randomUUID().toString().replace("-","").substring(0,12);
+        var underscore=users.saveAndFlush(new User("test_u"+suffix,encoder.encode("Travel123!"),"밑줄_"+suffix));
+        users.saveAndFlush(new User("test_x"+suffix,encoder.encode("Travel123!"),"밑줄X"+suffix));
+        var percent=users.saveAndFlush(new User("test_p"+suffix,encoder.encode("Travel123!"),"할인%"+suffix));
+        em.clear();
+        var found=members.search("밑줄_"+suffix,null,0,admin.getLoginId());
+        assertThat(found.members()).extracting(m->m.id()).containsExactly(underscore.getId());
+        assertThat(found.keyword()).isEqualTo("밑줄_"+suffix);
+        assertThat(members.search("%"+suffix,null,0,admin.getLoginId()).members()).extracting(m->m.id()).containsExactly(percent.getId());
+        // SQL Server는 [ ]를 글자 묶음으로 보므로 이것도 글자 그대로 찾는다. 그렇지 않으면 '밑줄_'이 걸린다.
+        assertThat(members.search("[줄]_"+suffix,null,0,admin.getLoginId()).totalCount()).isZero();
+    }
+
+    @Test void reasonLineBreaksAreCountedLikeTheScreenAndRejectedChangeKeepsReason() throws Exception {
+        // 화면 maxlength는 줄바꿈을 1자로 센다. 브라우저가 보내는 \r\n도 1자로 세어 1000자까지 받는다.
+        String reason="가".repeat(500)+"\r\n"+"나".repeat(499);
+        members.changeStatus(member.getId(),"RESTRICTED",reason,admin.getLoginId());
+        em.clear();
+        assertThat(logs.findTop10ByTargetTypeAndTargetIdOrderByIdDesc("USER",member.getId()).getFirst().getReason())
+            .isEqualTo("가".repeat(500)+"\n"+"나".repeat(499));
+        // 거절되면 회원 화면으로 돌아가 이유를 알리고 사유를 다시 채운다.
+        mvc.perform(post("/admin/members/"+member.getId()+"/status")
+                .with(user(admin.getLoginId()).roles("ADMIN")).with(csrf())
+                .param("status","RESTRICTED").param("reason","다시 제한"))
+            .andExpect(redirectedUrl("/admin/members/"+member.getId()))
+            .andExpect(flash().attribute("statusError","이미 같은 상태예요."))
+            .andExpect(flash().attribute("statusReason","다시 제한"));
+    }
+
     @Test void changesStatusAndRecordsReasonInSameTransaction() throws Exception {
         mvc.perform(post("/admin/members/"+member.getId()+"/status")
                 .with(user(admin.getLoginId()).roles("ADMIN")).with(csrf())

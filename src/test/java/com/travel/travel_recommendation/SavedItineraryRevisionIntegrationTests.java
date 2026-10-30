@@ -39,6 +39,7 @@ class SavedItineraryRevisionIntegrationTests {
     @Autowired ItineraryJobService schedules;
     @Autowired SavedItineraryService saved;
     @Autowired SavedItineraryEditService edits;
+    @Autowired PlaceCandidateService placeCandidates;
     @Autowired RecommendationHistoryService histories;
     @Autowired ItineraryRepository itineraries;
     @Autowired AiJobRepository jobs;
@@ -300,6 +301,51 @@ class SavedItineraryRevisionIntegrationTests {
         assertThat(view.input().places().restaurants()).extracting(PlaceCandidate::placeId).contains(restaurant);
         assertThat(ItineraryConditionReport.evaluate(view.input(),view.result()).checks())
             .extracting(ItineraryConditionReport.Check::status).doesNotContain(ItineraryConditionReport.Status.UNMET);
+    }
+
+    /**
+     * 저장한 관광지가 후보 순서가 바뀌어 지금 후보 상위 N곳에서 밀려났어도, 지금 확인된 장소면 시간만 바꾼 수정안을 만들 수 있다.
+     * 저장한 뒤에 늘어난 조건 항목(purposeSuggested)이 없는 예전 저장 기록도 읽고, 저장한 숙소는 수정안에서 그대로 쓴다.
+     * 2026-10-31 실제 앱에서 "유지한 관광지의 정보가 바뀌었어요"(밀려난 관광지)와 500 오류(예전 저장 기록)로 막혔던 경우다.
+     */
+    @Test void restoredDraftKeepsPlacesOutsideCurrentCandidatesAndSavedStay() {
+        // 이름순으로 앞서는 확인된 관광지 16곳(후보 수 상한)을 넣어, 저장한 관광지를 후보 목록 밖으로 밀어낸다.
+        // 종류(subtype)를 모두 달리해 같은 종류를 뒤로 보내는 규칙에 걸리지 않게 한다.
+        for(int i=1;i<=TripConstraints.candidateLimit(2);i++) insertAttraction("TEST_PUSH_"+i,100+i,"가테스트관광지"+String.format("%02d",i),"테스트분류"+i);
+        Long pushed=insertAttraction("TEST_PUSHED",200,"힣테스트관광지","테스트밀린분류");
+        Long visit=((Number)em.createNativeQuery("""
+            SELECT TOP 1 item_id FROM dbo.itinerary_items WHERE itinerary_id=?1 AND item_type='VISIT' ORDER BY day_no,sequence_no""")
+            .setParameter(1,itineraryId).getSingleResult()).longValue();
+        em.createNativeQuery("UPDATE dbo.itinerary_items SET place_id=?1 WHERE item_id=?2").setParameter(1,pushed).setParameter(2,visit).executeUpdate();
+        em.createNativeQuery("UPDATE dbo.itineraries SET conditions_snapshot_json=JSON_MODIFY(conditions_snapshot_json,'$.conditions.purposeSuggested',NULL) WHERE itinerary_id=?1")
+            .setParameter(1,itineraryId).executeUpdate();
+        Long stay=((Number)em.createNativeQuery("SELECT TOP 1 place_id FROM dbo.itinerary_items WHERE itinerary_id=?1 AND item_type='STAY'")
+            .setParameter(1,itineraryId).getSingleResult()).longValue();
+        expireJobs();
+
+        var draft=edits.prepare(itineraryId,owner.getLoginId());
+        em.flush(); em.clear();
+        assertThat(draft.missingPlaces()).isEmpty();
+        var view=schedules.view(draft.jobId(),owner.getLoginId(),null);
+        // 저장한 관광지가 정말 지금 후보 목록 밖인지 확인한다(안에 있으면 이 테스트가 보려는 상황이 아니다).
+        assertThat(placeCandidates.findForSchedule(view.input().recommendationId(),view.input().places().destination().placeId(),
+                owner.getLoginId(),null,view.input().conditions()).attractions()).extracting(PlaceCandidate::placeId).doesNotContain(pushed);
+        assertThat(view.input().choices().stayPlaceId()).isEqualTo(stay);
+        assertThat(ItineraryConditionReport.evaluate(view.input(),view.result()).checks())
+            .extracting(ItineraryConditionReport.Check::status).doesNotContain(ItineraryConditionReport.Status.UNMET);
+
+        var revised=revision(draft.jobId(),LocalTime.of(10,0));
+        var result=schedules.view(revised,owner.getLoginId(),null);
+        assertThat(result.input().places().attractions()).extracting(PlaceCandidate::placeId).contains(pushed);
+        assertThat(result.result().days().getFirst().items()).filteredOn(item->"STAY".equals(item.type()))
+            .extracting(ItineraryPlan.Item::placeId).containsOnly(stay);
+    }
+    private Long insertAttraction(String sourceId,int number,String name,String subtype) {
+        em.createNativeQuery("""
+            INSERT INTO dbo.places(place_type,source_provider,source_place_id,place_name,region,address,subtype,description,source_url,verified_at)
+            VALUES('ATTRACTION','SYSTEM',?1,?2,N'강원특별자치도 강릉시',?3,?4,N'테스트 관광지',N'https://www.gn.go.kr/',DATEADD(day,-1,SYSDATETIME()))""")
+            .setParameter(1,sourceId).setParameter(2,name).setParameter(3,"강원특별자치도 강릉시 테스트로 "+number).setParameter(4,subtype).executeUpdate();
+        return ((Number)em.createNativeQuery("SELECT place_id FROM dbo.places WHERE source_place_id=?1").setParameter(1,sourceId).getSingleResult()).longValue();
     }
 
     // 하루 방문 수 같은 사용자 조건은 저장 기록에 남아, 원래 초안이 만료된 뒤 다시 만든 초안에도 이어진다.

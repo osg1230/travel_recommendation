@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>여행 조건 보완 | 다녀올게</title><link rel="stylesheet" th:href="@{/css/app.css}"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>여행 조건 보완 | 다녀올게</title><link rel="stylesheet" th:href="@{/css/app.css}">
+<script defer th:src="@{/js/submit-loading.js}"></script></head>
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
 <main class="travel">
@@ -11,22 +12,43 @@
     <p class="intro" th:unless="${analyzed}">선택한 조건을 확인하고 필요한 내용을 더해 주세요.</p>
     <details th:if="${analyzed}"><summary>입력한 문장과 분석 안내 보기</summary><p class="travel-story" th:text="${originalText}"></p><p th:text="${analysisSummary}"></p></details>
     <p th:if="${choicesUnavailable}" class="notice" role="alert">선택지를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</p>
-    <form th:action="@{/travel/conditions/confirm}" th:object="${reviewForm}" method="post" novalidate>
+    <p th:if="${analysisError != null}" class="notice" role="alert" th:text="${analysisError}"></p>
+    <!--/* 문장 분석에서 지원하지 않는 값(8일 이상, 지난 출발일 등)이나 해석하지 못한 칸은 비우고 여기서 알린다. */-->
+    <div th:if="${analysisNotices != null and !analysisNotices.isEmpty()}" class="notice" role="status">
+        <ul><li th:each="notice : ${analysisNotices}" th:text="${notice}"></li></ul>
+        <p>비운 칸은 필요하면 아래에서 채워 주세요.</p>
+    </div>
+    <!--/* 제출하면 버튼을 잠가 같은 요청이 두 번 가지 않게 한다(submit-loading.js). */-->
+    <form th:action="@{/travel/conditions/confirm}" th:object="${reviewForm}" method="post" novalidate
+          th:attr="data-submit-loading=${directFlow == true ? '추천을 요청하는 중…' : '확정하는 중…'}">
         <input type="hidden" th:field="*{revision}">
         <div th:if="${#fields.hasAnyErrors()}" class="notice" role="alert"><strong>입력한 내용을 다시 확인해 주세요.</strong><ul><li th:each="error : ${#fields.errors('*')}" th:text="${error}"></li></ul></div>
         <p class="help">모두 선택 항목이에요. 정하지 않은 조건은 비워 두어도 괜찮아요.</p>
         <section class="condition-section">
             <label for="region">여행 지역</label><input th:field="*{region}" maxlength="100" placeholder="예: 강릉, 제주 서귀포" aria-describedby="region-help region-error">
             <p id="region-help" class="help">문장에 나온 세부 지역명을 확인해 주세요. 지역을 정하지 않았다면 비워 두세요.</p><p id="region-error" class="field-error" th:errors="*{region}"></p>
+            <!--/* 문장에서 "○○ 말고"처럼 뺀 지역. 체크를 풀면 그 지역도 추천 후보에 넣는다. 새 지역을 더할 수는 없다. */-->
+            <fieldset class="choice-chips condition-block" th:if="${excludedChoices != null and !excludedChoices.isEmpty()}">
+                <legend>추천에서 뺄 지역 <span class="optional">체크를 풀면 다시 포함해요</span></legend>
+                <label th:each="name : ${excludedChoices}"><input type="checkbox" th:field="*{excludedRegions}" th:value="${name}"><span th:text="${name + ' 빼기'}"></span></label>
+            </fieldset>
+        </section>
+        <section class="condition-section">
+            <label for="travelPurpose" th:text="${purposeSuggested == true ? 'AI가 제안한 여행 방향' : '여행 목적'}">여행 목적</label>
+            <input th:field="*{travelPurpose}" maxlength="200" placeholder="예: 바다 보며 쉬기, 아쿠아리움 구경" aria-describedby="purpose-help purpose-error">
+            <p id="purpose-help" class="help" th:text="${purposeSuggested == true
+                ? '하고 싶은 일을 말하지 않아 AI가 계절에 맞춰 제안한 방향이에요. 원하는 여행이 있으면 고쳐 주세요. 고치면 그 목적으로 추천해요.'
+                : '하고 싶은 일이 있으면 적어 주세요. 그에 맞는 장소를 함께 찾아요. 비워 두어도 괜찮아요.'}"></p>
+            <p id="purpose-error" class="field-error" th:errors="*{travelPurpose}"></p>
         </section>
         <section class="condition-section">
             <h2>여행 기간</h2>
-            <!--/* 마지막 날은 묻지 않는다. 출발일과 여행 일수로 서버가 계산한다(조건 입력 화면과 같다). */-->
+            <!--/* 마지막 날은 묻지 않는다. 출발일과 여행 일수로 서버가 계산한다(조건 입력 화면과 같다). 일정은 최대 7일까지 만든다. */-->
             <div class="field-grid">
-                <div><label for="durationDays">여행 일수</label><input type="number" th:field="*{durationDays}" min="1" max="32767" step="1"><p class="field-error" th:errors="*{durationDays}"></p></div>
+                <div><label for="durationDays">여행 일수</label><input type="number" th:field="*{durationDays}" min="1" max="7" step="1"><p class="field-error" th:errors="*{durationDays}"></p></div>
                 <div><label for="startDate">출발일</label><input type="date" th:field="*{startDate}" min="0001-01-01" max="9999-12-31"><p class="field-error" th:errors="*{startDate}"></p><p class="field-error" th:errors="*{endDate}"></p></div>
             </div>
-            <p class="help">2박 3일은 3일이에요. 마지막 날은 출발일과 여행 일수로 자동으로 정해져요.</p>
+            <p class="help">2박 3일은 3일이에요. 일정은 최대 7일까지 만들 수 있어요. 마지막 날은 출발일과 여행 일수로 자동으로 정해져요.</p>
         </section>
         <!--/* 선택지가 적은 조건은 조건 입력 화면과 같은 버튼 모양(choice-chips)으로 보여 준다. 전송되는 이름과 값은 목록 상자일 때와 같다. */-->
         <section class="condition-section">

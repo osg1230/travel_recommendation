@@ -47,6 +47,15 @@ public class ItineraryGenerator {
     static final int RETURN_REST_MINUTES=30;
     /** 이 오류가 나면 그 관광지만 뺀다. 한 구간 2시간 초과(섬 등)와 경로 없음이다. */
     private static final Set<String> UNREACHABLE_CODES=Set.of("TRAVEL_TIME_EXCEEDED","MAP_NO_ROUTE");
+    /**
+     * 카카오 길찾기가 잠시 안 될 때(응답 시간 초과·사용량 제한·연결 실패)의 오류. 이때는 초안 전체를 실패시키지 않고
+     * 그 구간을 직선거리로 추정한다(SFR-04-04). 키가 없거나(MAP_NOT_CONFIGURED) 인증 오류는 설정 문제라 그대로 알린다.
+     */
+    private static final Set<String> MAP_DOWN_CODES=Set.of("MAP_TIMEOUT","MAP_RATE_LIMIT","MAP_UNAVAILABLE");
+    /** 직선거리로 추정한 이동 항목 메모의 시작 문구. 조회 시각이 없는 추정 구간을 검증·조건 확인에서 구분하는 데 쓴다. */
+    static final String ESTIMATE_NOTE_PREFIX="직선거리 추정 ";
+    /** 직선거리 추정에서 실제 길이 돌아가는 만큼 더하는 비율과 평균 속도(km/h). 짧게 잡지 않도록 느린 쪽으로 정했다. */
+    private static final double DETOUR=1.4, CAR_KMH=30, TRANSIT_KMH=15;
 
     public Result generate(Input input) {
         checkInput(input);
@@ -76,7 +85,7 @@ public class ItineraryGenerator {
                 options.removeIf(o->o.placeId().equals(chosenStay));
                 var all=rankLodging(places,locations,null);
                 all.options().stream().filter(o->o.placeId().equals(chosenStay)).findFirst().ifPresent(o->options.addFirst(o));
-                lodging=new Lodging(chosenStay,"수정 요청에서 고른 숙소예요.",options.subList(0,Math.min(3,options.size())));
+                lodging=new Lodging(chosenStay,"고른 숙소를 그대로 써요.",options.subList(0,Math.min(3,options.size())));
             }
             if(lodging==null) throw lastError!=null?lastError:failure("INSUFFICIENT_PLACES","숙소 후보의 위치를 확인하지 못했어요. 다른 지역을 선택해 주세요.");
             Long chosen=lodging.chosenPlaceId();
@@ -87,7 +96,7 @@ public class ItineraryGenerator {
         var foods=RegionalFoods.of(places.destination().name());
         var remaining=new ArrayList<>(places.attractions());
         List<Day> days=new ArrayList<>();
-        Map<String,KakaoMapClient.TravelTime> routes=new HashMap<>();
+        var routes=new RouteBook();
         PlaceCandidate previous=null;
         int dayCount=input.conditions().durationDays();
         var constraints=input.constraints();
@@ -697,8 +706,9 @@ public class ItineraryGenerator {
                 long minutes=Duration.between(item.start(),item.end()).toMinutes();
                 if("TRANSIT".equals(item.type())) {
                     if(transferred || (previous!=null && previous.equals(item.placeId()))) throw invalid();
+                    // 조회 시각이 없는 이동은 길찾기에 연결하지 못해 직선거리로 추정한 구간만 허용한다.
                     if(item.travelSeconds()!=null && (item.travelSeconds()<=0 || item.travelSeconds()>7200
-                            || minutes!=(item.travelSeconds()+59)/60+10 || item.checkedAt()==null)) throw invalid();
+                            || minutes!=(item.travelSeconds()+59)/60+10 || (item.checkedAt()==null && !estimated(item)))) throw invalid();
                     if(item.travelSeconds()==null && minutes!=5) throw invalid();
                     transferred=true; transferDestination=item.placeId();
                 } else {
@@ -781,6 +791,12 @@ public class ItineraryGenerator {
         return stayAt>0 && "TRANSIT".equals(items.get(stayAt-1).type())?stayAt-1:stayAt;
     }
 
+    /** 카카오 길찾기 대신 직선거리로 추정한 장소 사이 이동 항목인지 본다(조회 시각 없음). */
+    static boolean estimated(Item item) {
+        return "TRANSIT".equals(item.type()) && item.placeId()!=null && item.checkedAt()==null
+            && item.note()!=null && item.note().startsWith(ESTIMATE_NOTE_PREFIX);
+    }
+
     /** 첫날 집 출발·마지막 날 귀가 이동 항목(장소 없음)인지 본다. */
     static boolean homeLeg(Item item) {
         return "TRANSIT".equals(item.type()) && item.placeId()==null && item.start()!=null && item.end()!=null && item.end().isAfter(item.start());
@@ -797,16 +813,36 @@ public class ItineraryGenerator {
         return kinds.isEmpty() || kinds.equals(List.of("MEAL")) || kinds.equals(List.of("MEAL","VISIT","STAY"));
     }
 
+    /**
+     * 일정 하나를 만드는 동안 조회한 구간 이동시간. 같은 구간은 다시 조회하지 않는다.
+     * mapDown은 카카오 길찾기가 한 번 안 된 뒤라는 뜻이다. 남은 구간도 실패할 가능성이 커서 다시 부르지 않고 직선거리로 추정한다
+     * (응답 시간 초과면 구간마다 8초씩 기다리다 일정 처리 시간을 넘길 수 있다).
+     */
+    private static final class RouteBook {
+        final Map<String,KakaoMapClient.TravelTime> times=new HashMap<>();
+        boolean mapDown;
+    }
+
+    /**
+     * 카카오 길찾기를 쓸 수 없을 때의 구간 이동 추정. 직선거리에 돌아가는 길 40%를 더해 자동차 시속 30km, 대중교통 시속 15km(기다림 포함)로
+     * 계산한다. 실제 경로를 조회한 값이 아니라 조회 시각(checkedAt)은 비워 두고, 메모에 추정임을 적는다.
+     */
+    static KakaoMapClient.TravelTime straightEstimate(KakaoMapClient.Location a,KakaoMapClient.Location b,KakaoMapClient.Transport transport) {
+        double km=kilometers(a,b)*DETOUR;
+        int seconds=Math.max(60,(int)Math.ceil(km/(transport==KakaoMapClient.Transport.CAR?CAR_KMH:TRANSIT_KMH)*3600));
+        return new KakaoMapClient.TravelTime(transport,seconds,Math.max(1,(int)Math.ceil(km*1000)),null,null,false);
+    }
+
     private class DayBuilder {
         final Input input; final Map<Long,KakaoMapClient.Location> locations;
-        final Map<String,KakaoMapClient.TravelTime> routes; final Instant deadline;
+        final RouteBook routes; final Instant deadline;
         final List<Item> items=new ArrayList<>(); LocalTime time; PlaceCandidate previous; boolean lunch, dinner;
         /** 항목이 끝나야 하는 시각. 보통은 그날 관광을 마치는 시각(end)이고, 숙박하는 날 숙소로 가는 이동부터는 저녁 한도(22시)다. */
         LocalTime limit;
         /** 그날 관광을 마치는 시각. 마지막 날 귀가 시각을 정했으면 집에 제때 도착하도록 앞당겨진다. */
         final LocalTime end;
         final LocalDate date; final Set<Long> usedRestaurants; final Optional<RegionalFoods.Guide> foods;
-        DayBuilder(Input input,Map<Long,KakaoMapClient.Location> locations,Map<String,KakaoMapClient.TravelTime> routes,Instant deadline,
+        DayBuilder(Input input,Map<Long,KakaoMapClient.Location> locations,RouteBook routes,Instant deadline,
                    PlaceCandidate previous,int day,Set<Long> usedRestaurants,Optional<RegionalFoods.Guide> foods) {
             this.input=input; this.locations=locations; this.routes=routes; this.deadline=deadline; this.previous=previous;
             time=input.dayStart(day); end=input.dayEnd(day); limit=end;
@@ -858,15 +894,23 @@ public class ItineraryGenerator {
                 if(a.longitude()==b.longitude() && a.latitude()==b.latitude()) {
                     add("TRANSIT",next,previous.name()+" → "+next.name(),5,"같은 주소 내 이동 여유 5분 · 실제 내부 동선 확인 필요",null,null);
                 } else {
-                    var route=routes.computeIfAbsent(previous.placeId()+":"+next.placeId(),key->maps.travelTime(a,b,input.transport()));
+                    var route=route(previous,next);
                     if(route.minutes()>120) throw failure("TRAVEL_TIME_EXCEEDED","한 구간의 이동시간이 2시간을 넘어요. 다른 지역이나 이동수단을 선택해 주세요.");
-                    // 대중교통이면 탈 노선·환승·요금 요약을 함께 적는다(SFR-06-04). 요약을 못 읽으면 시간만 적는다.
-                    // 가까워서 도보로 추정한 구간은 카카오 예상값이 아니므로 따로 표시한다.
-                    add("TRANSIT",next,previous.name()+" → "+next.name(),route.minutes()+10,
-                        (route.walkingEstimate()?WALK_NOTE_PREFIX:"카카오 예상 ")+route.minutes()+"분 + 이동 여유 10분"
-                            +(route.summary()==null?"":"\n"+route.summary()
-                                +(route.walkingEstimate()?"":" (조회 시점 기준, 배차·요금은 이용 전 확인)")),
-                        route.seconds(),route.checkedAt());
+                    // 카카오 길찾기에 연결하지 못해 직선거리로 추정한 구간은 조회 시각 없이 추정임을 적는다.
+                    if(route.checkedAt()==null) {
+                        add("TRANSIT",next,previous.name()+" → "+next.name(),route.minutes()+10,
+                            ESTIMATE_NOTE_PREFIX+route.minutes()+"분 + 이동 여유 10분"
+                                +"\n카카오 길찾기에 연결하지 못해 직선 약 "+kilometersText(a,b)+" 거리로 어림했어요(추정, 이동시간 확인 필요).",
+                            route.seconds(),null);
+                    } else {
+                        // 대중교통이면 탈 노선·환승·요금 요약을 함께 적는다(SFR-06-04). 요약을 못 읽으면 시간만 적는다.
+                        // 가까워서 도보로 추정한 구간은 카카오 예상값이 아니므로 따로 표시한다.
+                        add("TRANSIT",next,previous.name()+" → "+next.name(),route.minutes()+10,
+                            (route.walkingEstimate()?WALK_NOTE_PREFIX:"카카오 예상 ")+route.minutes()+"분 + 이동 여유 10분"
+                                +(route.summary()==null?"":"\n"+route.summary()
+                                    +(route.walkingEstimate()?"":" (조회 시점 기준, 배차·요금은 이용 전 확인)")),
+                            route.seconds(),route.checkedAt());
+                    }
                 }
             }
             previous=next;
@@ -876,7 +920,29 @@ public class ItineraryGenerator {
             if(from.placeId().equals(to.placeId())) return 0;
             var a=locations.get(from.placeId()); var b=locations.get(to.placeId());
             if(a.longitude()==b.longitude() && a.latitude()==b.latitude()) return 5;
-            return routes.computeIfAbsent(from.placeId()+":"+to.placeId(),key->maps.travelTime(a,b,input.transport())).minutes()+10;
+            return route(from,to).minutes()+10;
+        }
+        /**
+         * 두 장소 사이 이동시간. 처음 보는 구간만 카카오 길찾기로 조회하고, 길찾기가 잠시 안 되면 직선거리로 추정한다(SFR-04-04).
+         * 한 번 안 된 뒤에는 남은 구간도 다시 부르지 않고 추정한다.
+         */
+        KakaoMapClient.TravelTime route(PlaceCandidate from,PlaceCandidate to) {
+            String key=from.placeId()+":"+to.placeId();
+            var found=routes.times.get(key);
+            if(found!=null) return found;
+            var a=locations.get(from.placeId()); var b=locations.get(to.placeId());
+            KakaoMapClient.TravelTime time;
+            if(routes.mapDown) time=straightEstimate(a,b,input.transport());
+            else {
+                try { time=maps.travelTime(a,b,input.transport()); }
+                catch(RecommendationException error) {
+                    if(!MAP_DOWN_CODES.contains(error.getCode())) throw error;
+                    routes.mapDown=true;
+                    time=straightEstimate(a,b,input.transport());
+                }
+            }
+            routes.times.put(key,time);
+            return time;
         }
         void add(String type,PlaceCandidate place,String name,int minutes,String note,Integer seconds,Instant checkedAt) {
             if(minutes<=0 || time.toSecondOfDay()+minutes*60>limit.toSecondOfDay())

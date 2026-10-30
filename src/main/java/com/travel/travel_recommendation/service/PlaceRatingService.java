@@ -16,7 +16,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * 장소 평가 등록·요약·갱신·삭제(SFR-10-01~04). 별점 1~5점, 사전 정의 태그 최대 3개, 선택 입력 한줄평을 받으며,
- * 회원·장소당 한 건이라 다시 평가하면 기존 평가를 갱신한다. 요약의 최근 평가에는 평가자 닉네임을 가린 형태로만 넣는다.
+ * 회원·장소당 한 건이라 다시 평가하면 기존 평가를 갱신한다. 요약의 최근 평가에는 평가자 닉네임을 가린 형태로만 넣고,
+ * 이용 제한·탈퇴 회원의 한줄평은 빼고 보여 준다.
  */
 @Service
 @Profile({"sqlserver","sqlserver-windows"})
@@ -39,10 +40,20 @@ public class PlaceRatingService {
     @Transactional(readOnly=true,timeout=10)
     public Form form(Long placeId, String loginId) {
         Long userId=member(loginId);
-        var place=ratable(placeId);
         var mine=ratings.findByUserIdAndPlaceId(userId,placeId).map(r->new Mine(r.getScore(),
             ratingTags.findByRatingIdOrderBySlot(r.getId()).stream().map(PlaceRatingTag::getTagId).toList(),r.getComment(),r.getUpdatedAt())).orElse(null);
-        return new Form(info(place),mine,activeTags(),summaries(List.of(placeId)).getOrDefault(placeId,Summary.EMPTY));
+        // 더 이상 확인되지 않는(비활성) 장소도 내 평가가 있으면 화면을 열어 삭제할 수 있게 한다. 새 평가·변경은 save()가 막는다.
+        var place=places.findById(placeId).filter(p->RATABLE.containsKey(p.getPlaceType()) && (p.isActive() || mine!=null))
+            .orElseThrow(PlaceRatingService::notRatable);
+        var active=activeTags();
+        // 내 평가에 있지만 지금은 사용 중지된 태그. 화면에 체크칸이 없어 다시 저장하면 빠지므로 미리 알려 준다.
+        var activeIds=active.stream().map(Tag::id).collect(Collectors.toSet());
+        var dropped=new ArrayList<String>();
+        if(mine!=null) {
+            var names=tags.findAllById(mine.tagIds()).stream().collect(Collectors.toMap(RatingTag::getId,RatingTag::getName));
+            for(Long tagId:mine.tagIds()) if(!activeIds.contains(tagId) && names.containsKey(tagId)) dropped.add(names.get(tagId));
+        }
+        return new Form(info(place),mine,active,summaries(List.of(placeId)).getOrDefault(placeId,Summary.EMPTY),List.copyOf(dropped));
     }
 
     /** 새 평가를 등록하거나, 이미 평가한 장소면 별점·태그·한줄평을 새 입력값으로 바꾼다. created=true면 새 평가다. */
@@ -64,8 +75,9 @@ public class PlaceRatingService {
             if(created) rating=ratings.saveAndFlush(new PlaceRating(userId,placeId,score,text));
             else { existing.rescore(score,text); rating=existing; ratingTags.deleteByRating(rating.getId()); }
         } catch(DataIntegrityViolationException duplicate) {
-            // 같은 회원이 다른 창에서 동시에 처음 평가한 경우다. 기존 평가를 덮어쓰지 않고 다시 시도하게 한다.
-            throw new ResponseStatusException(HttpStatus.CONFLICT,"다른 화면에서 방금 이 장소를 평가했어요. 다시 열어 확인해 주세요.");
+            // 같은 회원이 다른 창에서 동시에 처음 평가한 경우다. 기존 평가를 말없이 덮어쓰지 않고,
+            // 컨트롤러가 방금 적은 값을 채운 평가 화면으로 돌려보내 확인한 뒤 다시 저장하게 한다(그때는 기존 평가 갱신이 된다).
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"다른 화면에서 방금 이 장소를 평가했어요. 적은 내용을 다시 채워 두었으니 확인하고 한 번 더 저장해 주세요.");
         }
         int slot=0;
         for(Long tagId:chosen) ratingTags.save(new PlaceRatingTag(rating.getId(),tagId,++slot));
@@ -73,15 +85,35 @@ public class PlaceRatingService {
         return created;
     }
 
-    /** 본인 평가만 지운다. 평가가 없으면 404로 알린다. */
+    /**
+     * 본인 평가만 지운다. 지웠으면 true, 지울 평가가 없으면 false다.
+     * 두 번 누르거나 다른 탭에서 먼저 지운 경우도 결과는 같으므로 오류로 보지 않는다. 비활성 장소의 평가도 지울 수 있다.
+     */
     @Transactional(timeout=10)
-    public void delete(Long placeId, String loginId) {
+    public boolean delete(Long placeId, String loginId) {
         Long userId=member(loginId);
-        var rating=ratings.lockByUserIdAndPlaceId(userId,placeId)
-            .orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"삭제할 내 평가가 없어요."));
+        var rating=ratings.lockByUserIdAndPlaceId(userId,placeId).orElse(null);
+        if(rating==null) return false;
         ratingTags.deleteByRating(rating.getId());
         ratings.delete(rating);
         ratings.flush();
+        return true;
+    }
+
+    /** 저장 일정 상세에서 '내 평가 ★4'를 보여 주려고, 이 회원이 평가한 장소의 별점만 모은다. 비회원·이용 제한 회원은 빈 값이다. */
+    @Transactional(readOnly=true,timeout=10)
+    public Map<Long,Integer> myScores(Collection<Long> placeIds, String loginId) {
+        if(loginId==null || placeIds==null || placeIds.isEmpty()) return Map.of();
+        var user=users.findByLoginId(loginId).filter(u->u.getStatus()==UserStatus.ACTIVE).orElse(null);
+        if(user==null) return Map.of();
+        return ratings.findByUserIdInAndPlaceIdIn(List.of(user.getId()),Set.copyOf(placeIds)).stream()
+            .collect(Collectors.toMap(PlaceRating::getPlaceId,r->(int)r.getScore()));
+    }
+
+    /** 저장·삭제 안내 문구에 넣을 장소 이름. 장소를 찾지 못하면 '장소'라고 쓴다. */
+    @Transactional(readOnly=true,timeout=10)
+    public String placeName(Long placeId) {
+        return places.findById(placeId).map(Place::getName).orElse("장소");
     }
 
     @Transactional(readOnly=true,timeout=10)
@@ -131,7 +163,10 @@ public class PlaceRatingService {
             .map(id->new RatedPlace(info(placeById.get(id)),summaryById.getOrDefault(id,Summary.EMPTY))).toList();
     }
 
-    /** 장소별 최근 평가 최대 RECENT_LIMIT건(별점·태그·한줄평·가린 닉네임). 평가는 최근에 바꾼 순서로 온다. */
+    /**
+     * 장소별 최근 평가 최대 RECENT_LIMIT건(별점·태그·한줄평·가린 닉네임). 평가는 최근에 바꾼 순서로 온다.
+     * 이용 제한·탈퇴 회원의 한줄평은 공개하지 않는다(부적절한 한줄평은 회원 이용 제한으로 대응). 별점·태그는 그대로 보여 주고 집계에도 넣는다.
+     */
     private Map<Long,List<Recent>> recent(List<Long> placeIds, Map<Long,String> tagNames) {
         Map<Long,List<PlaceRating>> byPlace=new HashMap<>();
         for(var rating:ratings.findByPlaceIdInOrderByUpdatedAtDescIdDesc(placeIds)) {
@@ -142,11 +177,15 @@ public class PlaceRatingService {
         if(picked.isEmpty()) return Map.of();
         var tagsByRating=ratingTags.findByRatingIdIn(picked.stream().map(PlaceRating::getId).toList()).stream()
             .sorted(Comparator.comparingInt(PlaceRatingTag::getSlot)).collect(Collectors.groupingBy(PlaceRatingTag::getRatingId));
-        var nicknames=users.findAllById(picked.stream().map(PlaceRating::getUserId).distinct().toList()).stream()
-            .collect(Collectors.toMap(User::getId,User::getNickname));
+        var raters=users.findAllById(picked.stream().map(PlaceRating::getUserId).distinct().toList()).stream()
+            .collect(Collectors.toMap(User::getId,u->u));
         Map<Long,List<Recent>> result=new HashMap<>();
-        byPlace.forEach((placeId,list)->result.put(placeId,list.stream().map(r->new Recent(maskNickname(nicknames.get(r.getUserId())),r.getScore(),
-            tagsByRating.getOrDefault(r.getId(),List.of()).stream().map(t->tagNames.get(t.getTagId())).toList(),r.getComment(),r.getUpdatedAt())).toList()));
+        byPlace.forEach((placeId,list)->result.put(placeId,list.stream().map(r->{
+            var rater=raters.get(r.getUserId());
+            String comment=rater!=null && rater.getStatus()==UserStatus.ACTIVE?r.getComment():null;
+            return new Recent(maskNickname(rater==null?null:rater.getNickname()),r.getScore(),
+                tagsByRating.getOrDefault(r.getId(),List.of()).stream().map(t->tagNames.get(t.getTagId())).toList(),comment,r.getUpdatedAt());
+        }).toList()));
         return result;
     }
 
@@ -172,10 +211,20 @@ public class PlaceRatingService {
     }
     private Place ratable(Long placeId) {
         return places.findById(placeId).filter(p->p.isActive() && RATABLE.containsKey(p.getPlaceType()))
-            .orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"평가할 수 있는 장소를 찾지 못했어요. 관광지·음식점·숙소만 평가할 수 있어요."));
+            .orElseThrow(PlaceRatingService::notRatable);
+    }
+    private static ResponseStatusException notRatable() {
+        return new ResponseStatusException(HttpStatus.NOT_FOUND,"평가할 수 있는 장소를 찾지 못했어요. 관광지·음식점·숙소만 평가할 수 있어요.");
     }
     private static PlaceInfo info(Place p) {
-        return new PlaceInfo(p.getId(),p.getName(),p.getPlaceType(),RATABLE.getOrDefault(p.getPlaceType(),"장소"),p.getAddress());
+        // 지도 주소가 없는 장소는 주소와 이름으로 카카오맵 검색을 연다(확정 위치가 아니라 검색 결과다).
+        String mapUrl=p.getMapUrl();
+        if(mapUrl==null || mapUrl.isBlank()) {
+            String query=((p.getAddress()==null?"":p.getAddress())+" "+p.getName()).strip();
+            mapUrl="https://map.kakao.com/link/search/"+java.net.URLEncoder.encode(query,java.nio.charset.StandardCharsets.UTF_8).replace("+","%20");
+        }
+        return new PlaceInfo(p.getId(),p.getName(),p.getPlaceType(),RATABLE.getOrDefault(p.getPlaceType(),"장소"),p.getAddress(),
+            mapUrl,p.getSourceUrl(),p.isActive());
     }
     private Long member(String loginId) {
         if(loginId==null) throw new AccessDeniedException("Login required");

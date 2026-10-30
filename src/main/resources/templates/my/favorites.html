@@ -4,6 +4,7 @@
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <title>즐겨찾기 | 다녀올게</title>
     <link rel="stylesheet" th:href="@{/css/app.css}">
+    <script defer th:src="@{/js/submit-loading.js}"></script>
 </head>
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
@@ -14,20 +15,36 @@
     <h1>즐겨찾기</h1>
     <p class="intro">여행지·관광지·숙소를 저장해 두고 다음 여행 계획에 참고할 수 있어요. 음식점은 등록할 수 없어요.</p>
     <p role="status" class="status-ok" th:if="${favoriteMessage != null}" th:text="${favoriteMessage}"></p>
+    <!--/* 방금 삭제한 즐겨찾기를 같은 장소로 다시 등록한다. 새로 등록하는 것이라 등록일시는 지금 시각으로 바뀐다. */-->
+    <form th:if="${removedPlaceId != null}" method="post" th:action="@{/my/favorites}" data-submit-loading="되돌리는 중…">
+        <input type="hidden" name="placeId" th:value="${removedPlaceId}">
+        <input type="hidden" name="returnTo" value="/my/favorites">
+        <div class="form-actions"><button type="submit" class="button-quiet button-small">되돌리기</button></div>
+        <p class="help">실수로 지웠다면 되돌릴 수 있어요. 다시 등록하는 것이라 등록일시는 지금으로 바뀌어요.</p>
+    </form>
+    <!--/* 즐겨찾기에서 '평가 보기'로 평가하고 돌아오면 저장 안내를 보여 준다. */-->
+    <p role="status" class="status-ok" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
     <p role="status" th:if="${favorites.isEmpty()}">아직 등록한 즐겨찾기가 없어요. 장소 목록의 <strong>즐겨찾기 추가</strong> 버튼으로 등록할 수 있어요.</p>
     <p th:if="${favorites.isEmpty()}"><a th:href="@{/travel/conditions}">여행 조건 입력하고 장소 살펴보기 →</a></p>
     <article class="place-row" th:each="favorite : ${favorites}">
         <p class="help" th:text="${favorite.typeName + ' · ' + favorite.region}"></p>
         <h2 th:text="${favorite.name}"></h2>
+        <!--/* 더 이상 확인되지 않는(비활성) 장소는 바뀐 정보로 안내하지 않고 삭제만 할 수 있게 한다. */-->
+        <p class="notice" th:unless="${favorite.active}">더 이상 확인되지 않는 장소예요. 정보가 바뀌었거나 운영을 마쳤을 수 있어 즐겨찾기에서 삭제하는 것을 권해요.</p>
+        <th:block th:if="${favorite.active}">
         <p th:if="${!#strings.isEmpty(favorite.address)}" th:text="${favorite.address}"></p>
         <div class="place-links">
             <a th:if="${!#strings.isEmpty(favorite.sourceUrl)}" th:href="${favorite.sourceUrl}"
                target="_blank" rel="noopener noreferrer">출처에서 상세 정보 확인 (새 창)</a>
             <a th:if="${!#strings.isEmpty(favorite.mapUrl)}" th:href="${favorite.mapUrl}"
                target="_blank" rel="noopener noreferrer">지도에서 보기 (새 창)</a>
+            <!--/* 관광지·숙소는 평가 화면으로 이어 준다(여행지는 평가 대상이 아니다). */-->
+            <a th:if="${favorite.placeType == 'ATTRACTION' or favorite.placeType == 'ACCOMMODATION'}"
+               th:href="@{/my/ratings/{id}(id=${favorite.placeId},returnTo='/my/favorites')}">평가 보기</a>
         </div>
+        </th:block>
         <p class="help" th:text="${'등록: ' + @timeText.dateTime(favorite.createdAt)}"></p>
-        <form th:action="@{/my/favorites/{placeId}/delete(placeId=${favorite.placeId})}" method="post">
+        <form th:action="@{/my/favorites/{placeId}/delete(placeId=${favorite.placeId})}" method="post" data-submit-loading="삭제하는 중…">
             <input type="hidden" name="returnTo" value="/my/favorites">
             <button type="submit">즐겨찾기 삭제</button>
         </form>

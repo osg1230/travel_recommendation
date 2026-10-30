@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation;
 
+import com.travel.travel_recommendation.controller.RecommendationJobController;
 import com.travel.travel_recommendation.dto.*;
 import com.travel.travel_recommendation.entity.User;
 import com.travel.travel_recommendation.repository.*;
@@ -174,9 +175,65 @@ class RecommendationJobIntegrationTests {
         jdbc.update("UPDATE dbo.ai_jobs SET status='SEARCHING_CANDIDATES' WHERE job_id=?",id.toString());
         entityManager.clear();service.recover();entityManager.clear();
         assertThat(jobs.findById(id).orElseThrow().getErrorCode()).isEqualTo("SERVER_RESTART");
+        // 시작하지 못한 채 대기 제한(5분)을 넘긴 요청은 요청이 많아 처리하지 못했다고 끝낸다.
         UUID waiting=service.create(conditions("강릉"),null,new byte[32]);
-        jdbc.update("UPDATE dbo.ai_jobs SET created_at=DATEADD(minute,-2,SYSDATETIME()) WHERE job_id=?",waiting.toString());
+        jdbc.update("UPDATE dbo.ai_jobs SET created_at=DATEADD(minute,-6,SYSDATETIME()) WHERE job_id=?",waiting.toString());
         entityManager.clear();service.prepare(waiting);
-        assertThat(jobs.findById(waiting).orElseThrow().getErrorCode()).isEqualTo("TIMEOUT");
+        var timedOut=jobs.findById(waiting).orElseThrow();
+        assertThat(timedOut.getErrorCode()).isEqualTo("TIMEOUT");
+        assertThat(timedOut.getMessage()).isEqualTo(RecommendationJobService.WAIT_MESSAGE);
+        // 2분 기다린 요청은 아직 처리한다(예전에는 60초에 실패했다).
+        UUID slowQueue=service.create(conditions("강릉"),null,new byte[32]);
+        jdbc.update("UPDATE dbo.ai_jobs SET created_at=DATEADD(minute,-2,SYSDATETIME()) WHERE job_id=?",slowQueue.toString());
+        entityManager.clear();service.prepare(slowQueue);
+        assertThat(jobs.findById(slowQueue).orElseThrow().getStatus()).isEqualTo("CANDIDATES_READY");
+    }
+    @Test void waitingJobsSayTheyAreWaitingAndProcessingTimeStartsWhenTheWorkerBegins() {
+        byte[] hash=new byte[32];
+        UUID id=service.create(conditions("강릉"),null,hash);
+        jdbc.update("UPDATE dbo.ai_jobs SET created_at=DATEADD(second,-10,SYSDATETIME()) WHERE job_id=?",id.toString());
+        entityManager.clear();
+        assertThat(service.view(id,null,hash).message()).isEqualTo("앞선 요청을 처리하고 있어요. 차례가 되면 바로 시작해요.");
+        assertThat(service.begin(id)).isTrue();
+        entityManager.flush();entityManager.clear();
+        var started=jobs.findById(id).orElseThrow();
+        assertThat(started.getStartedAt()).isNotNull();
+        assertThat(service.view(id,null,hash).message()).isEqualTo("여행지 후보를 찾고 있어요.");
+        // 시작한 뒤 후보 찾기가 2분을 넘기면 시간 초과로 끝낸다.
+        jdbc.update("UPDATE dbo.ai_jobs SET started_at=DATEADD(minute,-3,SYSDATETIME()) WHERE job_id=?",id.toString());
+        entityManager.clear();service.prepare(id);
+        assertThat(jobs.findById(id).orElseThrow().getMessage()).contains("시간이 너무 오래 걸렸어요");
+        // 5분 넘게 시작하지 못한 요청은 begin에서 끝낸다.
+        UUID late=service.create(conditions("강릉"),null,hash);
+        jdbc.update("UPDATE dbo.ai_jobs SET created_at=DATEADD(minute,-6,SYSDATETIME()) WHERE job_id=?",late.toString());
+        entityManager.clear();
+        assertThat(service.begin(late)).isFalse();
+        entityManager.flush();entityManager.clear();
+        assertThat(jobs.findById(late).orElseThrow().getStatus()).isEqualTo("FAILED");
+    }
+    @Test void temporaryFailureCanBeRetriedWithThatJobsConditions() throws Exception {
+        var session=session();
+        String location=create(session);UUID id=UUID.fromString(location.substring(location.lastIndexOf('/')+1));
+        jdbc.update("UPDATE dbo.ai_jobs SET created_at=DATEADD(minute,-6,SYSDATETIME()) WHERE job_id=?",id.toString());
+        entityManager.clear();service.prepare(id);
+        mvc.perform(get(location+"/status").session(session)).andExpect(jsonPath("$.errorCode").value("TIMEOUT"))
+            .andExpect(jsonPath("$.canRetry").value(true));
+        mvc.perform(get(location).session(session)).andExpect(content().string(containsString("같은 조건으로 다시 찾기")));
+        // 세션의 조건이 바뀌어도 다시 시도는 실패한 요청의 조건(강릉)을 그대로 쓴다.
+        session.setAttribute(CONFIRMED_KEY,conditions("부산"));
+        String retried=mvc.perform(post(location+"/retry").session(session).with(csrf()).accept("application/json"))
+            .andExpect(status().isAccepted()).andReturn().getResponse().getHeader("Location");
+        assertThat(retried).isNotEqualTo(location);
+        UUID newId=UUID.fromString(retried.substring(retried.lastIndexOf('/')+1));
+        assertThat(service.conditions(newId,null,RecommendationJobController.guestHash(session,false)).region()).isEqualTo("강릉");
+        // 다른 세션은 다시 시도할 수 없다.
+        mvc.perform(post(location+"/retry").session(new MockHttpSession()).with(csrf()).accept("application/json"))
+            .andExpect(status().isNotFound()).andExpect(jsonPath("$.message").exists());
+    }
+    @Test void unknownSubRegionIsFoundBeforeCreatingAJob() {
+        assertThat(service.regionProblem(conditions("강릉"))).isNull();
+        assertThat(service.regionProblem(conditions(""))).isNull();
+        assertThat(service.regionProblem(conditions("제주 우도"))).contains("'제주' 지역의").contains("지역 칸을 '제주'처럼 고쳐 주세요.");
+        assertThat(service.regionProblem(conditions("독도"))).contains("시·도 이름(예: 강원, 전북)");
     }
 }

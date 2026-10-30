@@ -10,6 +10,9 @@
 <main class="travel">
     <h1>장소 평가를 처리하지 못했어요</h1>
     <p class="intro" role="alert" th:text="${message}"></p>
+    <!--/* 평가 저장·삭제에 실패했으면 그 장소의 평가 화면으로 돌아간다(돌아갈 화면 정보도 그대로 넘긴다). */-->
+    <p th:if="${backPlaceId != null}"><a th:href="${backReturnTo == null} ? @{/my/ratings/{id}(id=${backPlaceId})}
+        : @{/my/ratings/{id}(id=${backPlaceId},returnTo=${backReturnTo})}">← 이전 화면으로</a></p>
     <p><a th:href="@{/my/ratings}">내 평가 목록으로 가기</a></p>
 </main>
 </body>

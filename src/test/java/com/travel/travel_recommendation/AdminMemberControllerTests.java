@@ -11,6 +11,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.web.server.ResponseStatusException;
 import static org.hamcrest.Matchers.*;
 import static org.mockito.Mockito.*;
@@ -29,7 +30,7 @@ class AdminMemberControllerTests {
     }
 
     @Test void onlyAdminsReachMemberManagement() throws Exception {
-        mvc.perform(get("/admin/members")).andExpect(status().isFound()).andExpect(redirectedUrl("/login"));
+        mvc.perform(get("/admin/members")).andExpect(status().isFound()).andExpect(redirectedUrl("/login?required"));
         mvc.perform(get("/admin/members").with(user("member").roles("MEMBER"))).andExpect(status().isForbidden());
         mvc.perform(post("/admin/members/5/status").with(user("boss").roles("ADMIN"))
                 .param("status","RESTRICTED").param("reason","약관 위반")).andExpect(status().isForbidden());
@@ -71,10 +72,34 @@ class AdminMemberControllerTests {
             .andExpect(redirectedUrl("/admin/members/5"))
             .andExpect(flash().attribute("adminMessage",containsString("기록했어요")));
         verify(service).changeStatus(5L,"RESTRICTED","약관 위반","boss");
-        doThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST,"변경 사유를 1자 이상 1000자 이하로 입력해 주세요."))
-            .when(service).changeStatus(eq(5L),anyString(),eq("  "),anyString());
+        // 거절되면 회원 화면으로 돌아가 이유를 보이고, 적은 사유를 다시 채운다.
+        doThrow(new ResponseStatusException(HttpStatus.CONFLICT,"이미 같은 상태예요."))
+            .when(service).changeStatus(eq(5L),anyString(),eq("다시 제한"),anyString());
         mvc.perform(post("/admin/members/5/status").with(user("boss").roles("ADMIN")).with(csrf())
-                .param("status","RESTRICTED").param("reason","  "))
-            .andExpect(status().isBadRequest()).andExpect(content().string(containsString("변경 사유를")));
+                .param("status","RESTRICTED").param("reason","다시 제한"))
+            .andExpect(redirectedUrl("/admin/members/5"))
+            .andExpect(flash().attribute("statusError","이미 같은 상태예요."))
+            .andExpect(flash().attribute("statusReason","다시 제한"));
+        doThrow(new CannotCreateTransactionException("private details"))
+            .when(service).changeStatus(eq(5L),anyString(),eq("연결 실패"),anyString());
+        mvc.perform(post("/admin/members/5/status").with(user("boss").roles("ADMIN")).with(csrf())
+                .param("status","RESTRICTED").param("reason","연결 실패"))
+            .andExpect(redirectedUrl("/admin/members/5"))
+            .andExpect(flash().attribute("statusError",containsString("잠시 후 다시 시도")));
+        when(service.detail(5L,"boss")).thenReturn(new AdminMember.Detail(summary("traveler01","RESTRICTED","이용 제한"),
+            LocalDateTime.of(2026,9,10,0,0),true,null,List.of()));
+        mvc.perform(get("/admin/members/5").with(user("boss").roles("ADMIN"))
+                .flashAttr("statusError","이미 같은 상태예요.").flashAttr("statusReason","다시 제한"))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("이미 같은 상태예요.")))
+            .andExpect(content().string(matchesRegex("(?s).*<textarea[^>]*>다시 제한</textarea>.*")));
+    }
+
+    @Test void databaseConnectionFailureShowsRetryPage() throws Exception {
+        when(service.detail(5L,"boss")).thenThrow(new CannotCreateTransactionException("private details"));
+        mvc.perform(get("/admin/members/5").with(user("boss").roles("ADMIN")))
+            .andExpect(status().isServiceUnavailable())
+            .andExpect(content().string(containsString("잠시 후 다시 시도")))
+            .andExpect(content().string(not(containsString("private details"))));
     }
 }

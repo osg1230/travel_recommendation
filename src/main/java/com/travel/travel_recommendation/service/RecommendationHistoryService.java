@@ -52,11 +52,29 @@ public class RecommendationHistoryService {
             return new Destination(c.getRank(),snapshot.name(),snapshot.region(),c.getReason(),snapshot.sourceUrl());
         }).toList();
         // 추천 결과 화면은 작업 보관 기간 안에서만 다시 열 수 있다.
-        UUID result=jobs.findByRequestIdAndUserId(id,userId).stream()
+        var requestJobs=jobs.findByRequestIdAndUserId(id,userId);
+        UUID result=requestJobs.stream()
             .filter(j->"RECOMMENDATION".equals(j.getJobType()) && "COMPLETED".equals(j.getStatus()) && j.getExpiresAt().isAfter(now()))
             .map(AiJob::getId).findFirst().orElse(null);
+        // 같은 조건으로 다시 추천하려면 그때 확정한 조건(추천 작업의 요청 내용)이 남아 있어야 한다.
+        boolean repeatable=requestJobs.stream().anyMatch(j->"RECOMMENDATION".equals(j.getJobType()));
         return new Detail(summary(request,ranked,userId),request.getOriginalText(),request.getInterpretationSummary(),
-            conditions(request),destinations,result);
+            conditions(request),destinations,result,repeatable);
+    }
+
+    /**
+     * 이 추천 요청에 쓴 확정 조건(SFR-14-03 같은 조건으로 다시 추천). 본인 이력만 읽는다.
+     * 결과 화면의 보관 기간이 지나도 조건은 남아 있어 다시 추천할 수 있다. 조건이 남아 있지 않으면 404다.
+     */
+    @Transactional(readOnly=true,timeout=10)
+    public ConfirmedTravelConditions conditions(Long id, String loginId) {
+        Long userId=member(loginId);
+        owned(id,userId);
+        var job=jobs.findByRequestIdAndUserId(id,userId).stream().filter(j->"RECOMMENDATION".equals(j.getJobType())).findFirst()
+            .orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"이 추천의 조건을 다시 불러올 수 없어요. 조건을 새로 입력해 주세요."));
+        // 예전 기록에는 나중에 생긴 true/false 항목이 없을 수 있어, 없으면 false로 읽는다.
+        return mapper.readerFor(ConfirmedTravelConditions.class)
+            .without(tools.jackson.databind.DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES).readValue(job.getRequestJson());
     }
 
     /** 이력과 추천 결과·임시 작업을 지운다. 저장한 일정은 남기고 이력 연결만 끊는다. 처리 중인 작업이 있으면 지우지 않는다. */

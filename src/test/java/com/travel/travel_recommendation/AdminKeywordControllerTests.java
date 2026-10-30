@@ -12,6 +12,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.web.server.ResponseStatusException;
 import static org.hamcrest.Matchers.*;
 import static org.mockito.Mockito.*;
@@ -35,7 +36,7 @@ class AdminKeywordControllerTests {
     }
 
     @Test void onlyAdminsReachKeywordManagement() throws Exception {
-        mvc.perform(get("/admin/keywords")).andExpect(status().isFound()).andExpect(redirectedUrl("/login"));
+        mvc.perform(get("/admin/keywords")).andExpect(status().isFound()).andExpect(redirectedUrl("/login?required"));
         mvc.perform(get("/admin/keywords").with(user("member").roles("MEMBER"))).andExpect(status().isForbidden());
         mvc.perform(post("/admin/keywords/40/active").with(user("member").roles("MEMBER")).with(csrf())
                 .param("active","false")).andExpect(status().isForbidden());
@@ -102,17 +103,57 @@ class AdminKeywordControllerTests {
             .andExpect(content().string(containsString("카테고리 사용 중지")));
     }
 
-    @Test void explainsRejectedChanges() throws Exception {
-        when(service.addKeyword(eq(1L),anyString(),anyString(),anyString(),eq("boss")))
-            .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST,LOCKED));
+    @Test void explainsRejectedChangesAndKeepsWhatWasTyped() throws Exception {
+        // 거절되면 원래 화면으로 돌아가 이유를 보이고, 적은 값을 다시 채운다.
+        when(service.addKeyword(eq(4L),anyString(),anyString(),anyString(),eq("boss")))
+            .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT,"같은 카테고리에 이미 있는 코드예요. 다른 코드를 입력해 주세요."));
         mvc.perform(post("/admin/keywords").with(user("boss").roles("ADMIN")).with(csrf())
-                .param("categoryId","1").param("code","MOKPO").param("name","목포"))
-            .andExpect(status().isBadRequest()).andExpect(content().string(containsString("새 키워드를 추가할 수 없어요")))
-            .andExpect(content().string(containsString("이전 화면으로 돌아가기")));
+                .param("categoryId","4").param("code","NIGHT").param("name","밤바다").param("sortOrder","12"))
+            .andExpect(redirectedUrl("/admin/keywords#add-title"))
+            .andExpect(flash().attribute("keywordError",containsString("이미 있는 코드")))
+            .andExpect(flash().attribute("inputName","밤바다"))
+            .andExpect(flash().attribute("inputCode","NIGHT"))
+            .andExpect(flash().attribute("inputCategoryId",4L));
+        when(service.catalog("boss")).thenReturn(catalog());
+        mvc.perform(get("/admin/keywords").with(user("boss").roles("ADMIN")).flashAttr("keywordError","이미 있는 코드예요.")
+                .flashAttr("inputCategoryId",4L).flashAttr("inputCode","NIGHT").flashAttr("inputName","밤바다").flashAttr("inputSortOrder","12"))
+            .andExpect(content().string(containsString("이미 있는 코드예요.")))
+            .andExpect(content().string(containsString("value=\"밤바다\"")))
+            .andExpect(content().string(containsString("value=\"NIGHT\"")))
+            .andExpect(content().string(containsString("value=\"12\"")))
+            .andExpect(content().string(matchesRegex("(?s).*<option value=\"4\" selected=\"selected\">여행 취향</option>.*")));
+        // 동시에 같은 이름을 저장해 DB가 막아도 같은 화면에서 다시 고칠 수 있다.
         when(service.updateKeyword(eq(40L),anyString(),anyString(),eq("boss")))
             .thenThrow(new DataIntegrityViolationException("UQ_keywords_name"));
         mvc.perform(post("/admin/keywords/40").with(user("boss").roles("ADMIN")).with(csrf())
                 .param("name","바다").param("sortOrder","2"))
-            .andExpect(status().isConflict()).andExpect(content().string(containsString("이미 있어요")));
+            .andExpect(redirectedUrl("/admin/keywords/40"))
+            .andExpect(flash().attribute("keywordError",containsString("이미 있어요")))
+            .andExpect(flash().attribute("inputName","바다"))
+            .andExpect(flash().attribute("inputSortOrder","2"));
+        when(service.keyword(40L,"boss")).thenReturn(new AdminKeyword.KeywordDetail(
+            new AdminKeyword.Item(40L,"NIGHT_VIEW","야경",7,true,null),"여행 취향",true,LocalDateTime.of(2026,10,28,9,0)));
+        mvc.perform(get("/admin/keywords/40").with(user("boss").roles("ADMIN"))
+                .flashAttr("keywordError","같은 이름이나 코드가 이미 있어요.").flashAttr("inputName","바다").flashAttr("inputSortOrder","2"))
+            .andExpect(content().string(containsString("같은 이름이나 코드가 이미 있어요.")))
+            .andExpect(content().string(containsString("value=\"바다\"")))
+            .andExpect(content().string(containsString("value=\"2\"")));
+        when(service.updateCategory(eq(4L),anyString(),anyString(),eq("boss")))
+            .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT,"이미 있는 카테고리 이름이에요. 다른 이름을 입력해 주세요."));
+        mvc.perform(post("/admin/keywords/categories/4").with(user("boss").roles("ADMIN")).with(csrf())
+                .param("name","지역").param("sortOrder","4"))
+            .andExpect(redirectedUrl("/admin/keywords/categories/4"))
+            .andExpect(flash().attribute("inputName","지역"));
+    }
+
+    @Test void otherFailuresStillShowTheErrorPage() throws Exception {
+        when(service.catalog("boss")).thenThrow(new CannotCreateTransactionException("private details"));
+        mvc.perform(get("/admin/keywords").with(user("boss").roles("ADMIN")))
+            .andExpect(status().isServiceUnavailable())
+            .andExpect(content().string(containsString("잠시 후 다시 시도")))
+            .andExpect(content().string(not(containsString("private details"))));
+        when(service.keyword(99L,"boss")).thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND,"키워드를 찾을 수 없어요."));
+        mvc.perform(get("/admin/keywords/99").with(user("boss").roles("ADMIN")))
+            .andExpect(status().isNotFound()).andExpect(content().string(containsString("이전 화면으로 돌아가기")));
     }
 }

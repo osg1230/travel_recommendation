@@ -57,7 +57,7 @@ class ProfileIntegrationTests {
                 .andExpect(content().string(not(containsString(originalHash))));
         mvc.perform(update(owner, " 새닉네임 ").param("id", other.getId().toString())
                 .param("loginId", other.getLoginId()).param("role", "ADMIN").param("status", "WITHDRAWN"))
-                .andExpect(redirectedUrl("/account")).andExpect(flash().attribute("profileUpdated", true));
+                .andExpect(redirectedUrl("/account")).andExpect(flash().attribute("profileUpdated", "닉네임을 바꿨어요."));
         em.clear();
         var saved=users.findById(owner.getId()).orElseThrow();
         assertThat(saved.getNickname()).isEqualTo("새닉네임");
@@ -95,14 +95,15 @@ class ProfileIntegrationTests {
     void homeAreaCanBeSetClearedAndIsShownOnTheForm() throws Exception {
         var owner=member();
         mvc.perform(update(owner, owner.getNickname()).param("homeArea", "  서울 송파구 "))
-                .andExpect(redirectedUrl("/account"));
+                .andExpect(redirectedUrl("/account")).andExpect(flash().attribute("profileUpdated", "주로 출발하는 곳을 바꿨어요."));
         em.clear(); assertThat(users.findById(owner.getId()).orElseThrow().getHomeArea()).isEqualTo("서울 송파구");
         mvc.perform(get("/account").with(user(owner.getLoginId())))
                 .andExpect(content().string(containsString("value=\"서울 송파구\"")));
         mvc.perform(update(owner, owner.getNickname()).param("homeArea", "서울 송파구"))
                 .andExpect(content().string(containsString("변경할 내용이 없습니다.")));
-        mvc.perform(update(owner, owner.getNickname()).param("homeArea", ""))
-                .andExpect(redirectedUrl("/account"));
+        mvc.perform(update(owner, "새이름"+owner.getId()).param("homeArea", ""))
+                .andExpect(redirectedUrl("/account"))
+                .andExpect(flash().attribute("profileUpdated", "닉네임, 주로 출발하는 곳(지움)을 바꿨어요."));
         em.clear(); assertThat(users.findById(owner.getId()).orElseThrow().getHomeArea()).isNull();
         mvc.perform(update(owner, owner.getNickname()).param("homeArea", "가".repeat(61)))
                 .andExpect(model().attributeHasFieldErrors("profileForm", "homeArea"));
@@ -136,18 +137,33 @@ class ProfileIntegrationTests {
     }
 
     @Test
+    void newPasswordSameAsCurrentIsExplainedAndNothingIsSaved() throws Exception {
+        var owner=member(); String hash=owner.getPasswordHash(); String before=owner.getNickname();
+        mvc.perform(update(owner, "바뀌면안됨").param("newPassword", "Travel123!").param("newPasswordConfirm", "Travel123!"))
+                .andExpect(status().isOk())
+                .andExpect(model().attributeHasFieldErrors("profileForm", "newPassword"))
+                .andExpect(content().string(containsString("현재 비밀번호와 같아요")))
+                .andExpect(content().string(not(containsString("Travel123!"))));
+        em.clear(); var saved=users.findById(owner.getId()).orElseThrow();
+        assertThat(saved.getPasswordHash()).isEqualTo(hash);
+        assertThat(saved.getNickname()).isEqualTo(before);
+    }
+
+    @Test
     void inactiveAccountCannotReadOrModifyProfileEvenWithOldAuthentication() throws Exception {
         var owner=member();
         em.createNativeQuery("UPDATE dbo.users SET status='RESTRICTED' WHERE user_id=:id").setParameter("id",owner.getId()).executeUpdate();
         em.clear();
-        mvc.perform(get("/account").with(user(owner.getLoginId()))).andExpect(status().isForbidden());
-        mvc.perform(update(owner, "변경차단")).andExpect(status().isForbidden());
+        // 남아 있던 로그인은 다음 요청에서 끝나고, 이유를 알 수 있는 로그인 화면으로 간다.
+        mvc.perform(get("/account").with(user(owner.getLoginId()))).andExpect(redirectedUrl("/login?restricted"));
+        mvc.perform(update(owner, "변경차단")).andExpect(redirectedUrl("/login?restricted"));
+        em.clear(); assertThat(users.findById(owner.getId()).orElseThrow().getNickname()).isEqualTo(owner.getNickname());
     }
 
     @Test
     void anonymousCsrfAndInvalidFieldsAreRejected() throws Exception {
         var owner=member();
-        mvc.perform(get("/account")).andExpect(redirectedUrl("/login"));
+        mvc.perform(get("/account")).andExpect(redirectedUrl("/login?required"));
         mvc.perform(post("/account").with(user(owner.getLoginId()))).andExpect(status().isForbidden());
         mvc.perform(update(owner, "새닉네임").param("newPassword", "NewTravel123!").param("newPasswordConfirm", "Different123!"))
                 .andExpect(model().attributeHasFieldErrors("profileForm", "passwordMatching"));

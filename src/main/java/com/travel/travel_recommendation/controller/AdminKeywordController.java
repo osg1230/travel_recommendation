@@ -9,6 +9,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
+import org.springframework.transaction.TransactionException;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -32,9 +33,16 @@ public class AdminKeywordController {
     String add(@RequestParam(required=false) Long categoryId, @RequestParam(defaultValue="") String code,
                @RequestParam(defaultValue="") String name, @RequestParam(defaultValue="") String sortOrder,
                Principal principal, RedirectAttributes redirect) {
-        Long id=service().addKeyword(categoryId,code,name,sortOrder,login(principal));
-        redirect.addFlashAttribute("adminMessage","키워드를 추가했어요. 조건 입력 화면의 선택지에 바로 나타나요.");
-        return "redirect:/admin/keywords/"+id;
+        try {
+            Long id=service().addKeyword(categoryId,code,name,sortOrder,login(principal));
+            redirect.addFlashAttribute("adminMessage","키워드를 추가했어요. 조건 입력 화면의 선택지에 바로 나타나요.");
+            return "redirect:/admin/keywords/"+id;
+        } catch(ResponseStatusException | DataIntegrityViolationException error) {
+            keepInput(redirect,error,name,sortOrder);
+            redirect.addFlashAttribute("inputCategoryId",categoryId);
+            redirect.addFlashAttribute("inputCode",code);
+            return "redirect:/admin/keywords#add-title";
+        }
     }
 
     @GetMapping("/{id}")
@@ -48,8 +56,12 @@ public class AdminKeywordController {
     @PostMapping("/{id}")
     String update(@PathVariable long id, @RequestParam(required=false) String name,
                   @RequestParam(defaultValue="") String sortOrder, Principal principal, RedirectAttributes redirect) {
-        boolean changed=service().updateKeyword(id,name,sortOrder,login(principal));
-        redirect.addFlashAttribute("adminMessage",changed?"키워드를 고쳤어요. 조건 입력 화면에 바로 반영돼요.":"바뀐 내용이 없어요.");
+        try {
+            boolean changed=service().updateKeyword(id,name,sortOrder,login(principal));
+            redirect.addFlashAttribute("adminMessage",changed?"키워드를 고쳤어요. 조건 입력 화면에 바로 반영돼요.":"바뀐 내용이 없어요.");
+        } catch(ResponseStatusException | DataIntegrityViolationException error) {
+            keepInput(redirect,error,name,sortOrder);
+        }
         return "redirect:/admin/keywords/"+id;
     }
 
@@ -72,8 +84,12 @@ public class AdminKeywordController {
     @PostMapping("/categories/{id}")
     String updateCategory(@PathVariable long id, @RequestParam(defaultValue="") String name,
                           @RequestParam(defaultValue="") String sortOrder, Principal principal, RedirectAttributes redirect) {
-        boolean changed=service().updateCategory(id,name,sortOrder,login(principal));
-        redirect.addFlashAttribute("adminMessage",changed?"카테고리를 고쳤어요.":"바뀐 내용이 없어요.");
+        try {
+            boolean changed=service().updateCategory(id,name,sortOrder,login(principal));
+            redirect.addFlashAttribute("adminMessage",changed?"카테고리를 고쳤어요.":"바뀐 내용이 없어요.");
+        } catch(ResponseStatusException | DataIntegrityViolationException error) {
+            keepInput(redirect,error,name,sortOrder);
+        }
         return "redirect:/admin/keywords/categories/"+id;
     }
 
@@ -86,16 +102,26 @@ public class AdminKeywordController {
         return "redirect:/admin/keywords/categories/"+id;
     }
 
-    @ExceptionHandler({ResponseStatusException.class,DataAccessException.class})
+    // 입력 검증·중복 오류는 원래 화면으로 돌아가 알리고, 적은 값을 다시 채워 고쳐서 보낼 수 있게 한다.
+    private void keepInput(RedirectAttributes redirect, RuntimeException error, String name, String sortOrder) {
+        redirect.addFlashAttribute("keywordError",message(error));
+        redirect.addFlashAttribute("inputName",name);
+        redirect.addFlashAttribute("inputSortOrder",sortOrder);
+    }
+
+    @ExceptionHandler({ResponseStatusException.class,DataAccessException.class,TransactionException.class})
     String error(RuntimeException error, HttpServletResponse response, Model model) {
-        int status; String message;
-        if(error instanceof ResponseStatusException e) { status=e.getStatusCode().value(); message=e.getReason(); }
-        // 미리 중복을 확인해도 동시에 저장하면 DB의 UNIQUE 제약이 막을 수 있다.
-        else if(error instanceof DataIntegrityViolationException) { status=409; message="같은 이름이나 코드가 이미 있어요. 목록을 다시 확인해 주세요."; }
-        else { status=503; message="키워드 정보를 처리하지 못했어요. 잠시 후 다시 시도해 주세요."; }
+        int status=error instanceof ResponseStatusException e?e.getStatusCode().value()
+            :error instanceof DataIntegrityViolationException?409:503;
         response.setStatus(status); response.setHeader("Cache-Control","no-store");
-        model.addAttribute("message",message);
+        model.addAttribute("message",message(error));
         return "admin/keyword-error";
+    }
+    private String message(RuntimeException error) {
+        if(error instanceof ResponseStatusException e) return e.getReason();
+        // 미리 중복을 확인해도 동시에 저장하면 DB의 UNIQUE 제약이 막을 수 있다.
+        if(error instanceof DataIntegrityViolationException) return "같은 이름이나 코드가 이미 있어요. 목록을 다시 확인해 주세요.";
+        return "키워드 정보를 처리하지 못했어요. 잠시 후 다시 시도해 주세요.";
     }
     private AdminKeywordService service() {
         var service=services.getIfAvailable();

@@ -1,6 +1,8 @@
 package com.travel.travel_recommendation;
 
 import com.travel.travel_recommendation.dto.TravelConditionForm;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -17,6 +19,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class TravelConditionControllerTests {
     @Autowired MockMvc mvc;
+
+    // 지난 출발일은 막으므로 오늘(한국 시간)부터 며칠 뒤 날짜로 시험한다.
+    private static String day(int daysFromToday) { return LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(daysFromToday).toString(); }
 
     @Test
     void guestCanOpenFormAndMissingDraftReturnsToInput() throws Exception {
@@ -39,7 +44,7 @@ class TravelConditionControllerTests {
         MockHttpSession session = new MockHttpSession();
         mvc.perform(post("/travel/conditions").session(session).with(csrf())
                         .param("inputMode", "KEYWORD").param("region", " 강원 ")
-                        .param("startDate", "2026-10-01").param("endDate", "2026-10-03")
+                        .param("startDate", day(10)).param("endDate", day(12))
                         .param("themes", "바다", "바다", "휴식").param("budget", "0")
                         .param("originalText", "다른 입력 방법").param("userId", "999").param("role", "ADMIN"))
                 .andExpect(redirectedUrl("/travel/conditions/check"));
@@ -90,19 +95,50 @@ class TravelConditionControllerTests {
 
     @Test
     void datesMustBeCompleteRealAndConsistentWithDuration() throws Exception {
-        mvc.perform(post("/travel/conditions").with(csrf()).param("startDate", "2026-10-01"))
+        mvc.perform(post("/travel/conditions").with(csrf()).param("startDate", day(10)))
                 .andExpect(model().attributeHasFieldErrors("travelForm", "endDate"));
         mvc.perform(post("/travel/conditions").with(csrf()).param("startDate", "2026-02-30").param("endDate", "not-a-date"))
                 .andExpect(model().attributeHasFieldErrors("travelForm", "startDate", "endDate"));
-        mvc.perform(post("/travel/conditions").with(csrf()).param("startDate", "2026-10-03").param("endDate", "2026-10-01"))
+        mvc.perform(post("/travel/conditions").with(csrf()).param("startDate", day(12)).param("endDate", day(10)))
                 .andExpect(model().attributeHasFieldErrors("travelForm", "endDate"));
-        mvc.perform(post("/travel/conditions").with(csrf()).param("startDate", "2026-10-01").param("endDate", "2026-10-03").param("durationDays", "2"))
+        mvc.perform(post("/travel/conditions").with(csrf()).param("startDate", day(10)).param("endDate", day(12)).param("durationDays", "2"))
                 .andExpect(model().attributeHasFieldErrors("travelForm", "durationDays"));
         // 출발일과 여행 일수만 입력하면 마지막 날은 서버가 계산해 채운다.
         MockHttpSession session = new MockHttpSession();
-        mvc.perform(post("/travel/conditions").session(session).with(csrf()).param("startDate", "2026-10-01").param("durationDays", "3"))
+        mvc.perform(post("/travel/conditions").session(session).with(csrf()).param("startDate", day(10)).param("durationDays", "3"))
                 .andExpect(redirectedUrl("/travel/conditions/check"));
-        assertThat(((TravelConditionForm) session.getAttribute("travelConditionDraft")).getEndDate()).isEqualTo("2026-10-03");
+        assertThat(((TravelConditionForm) session.getAttribute("travelConditionDraft")).getEndDate()).isEqualTo(day(12));
+    }
+
+    @Test
+    void tripsLongerThanSevenDaysAndPastStartDatesAreRejected() throws Exception {
+        // 일정은 최대 7일까지 만든다. 7일은 되고 8일은 안 된다.
+        mvc.perform(post("/travel/conditions").with(csrf()).param("durationDays", "7"))
+                .andExpect(redirectedUrl("/travel/conditions/check"));
+        mvc.perform(post("/travel/conditions").with(csrf()).param("durationDays", "8"))
+                .andExpect(model().attributeHasFieldErrorCode("travelForm", "durationDays", "tooLong"))
+                .andExpect(content().string(containsString("7일까지")));
+        mvc.perform(post("/travel/conditions").with(csrf()).param("startDate", day(10)).param("endDate", day(17)))
+                .andExpect(model().attributeHasFieldErrorCode("travelForm", "endDate", "tooLong"));
+        // 오늘 출발은 되고, 어제 출발은 고쳐 달라고 안내한다.
+        mvc.perform(post("/travel/conditions").with(csrf()).param("startDate", day(0)).param("durationDays", "1"))
+                .andExpect(redirectedUrl("/travel/conditions/check"));
+        mvc.perform(post("/travel/conditions").with(csrf()).param("startDate", day(-1)).param("durationDays", "1"))
+                .andExpect(model().attributeHasFieldErrorCode("travelForm", "startDate", "past"))
+                .andExpect(content().string(containsString("출발일은 오늘이나 그 이후 날짜로 골라 주세요.")));
+    }
+
+    @Test
+    void seasonThatDoesNotMatchStartMonthIsRejected() throws Exception {
+        LocalDate start = LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(10);
+        int month = start.getMonthValue();
+        String season = month >= 3 && month <= 5 ? "봄" : month >= 6 && month <= 8 ? "여름" : month >= 9 && month <= 11 ? "가을" : "겨울";
+        String other = "여름".equals(season) ? "겨울" : "여름";
+        mvc.perform(post("/travel/conditions").with(csrf()).param("startDate", start.toString()).param("durationDays", "2").param("season", season))
+                .andExpect(redirectedUrl("/travel/conditions/check"));
+        mvc.perform(post("/travel/conditions").with(csrf()).param("startDate", start.toString()).param("durationDays", "2").param("season", other))
+                .andExpect(model().attributeHasFieldErrorCode("travelForm", "season", "mismatch"))
+                .andExpect(content().string(containsString("출발일(" + month + "월)과 계절(" + other + ")이 맞지 않아요. 둘 중 하나를 고쳐 주세요.")));
     }
 
     @Test

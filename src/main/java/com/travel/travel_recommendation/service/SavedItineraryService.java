@@ -189,6 +189,16 @@ public class SavedItineraryService {
             .map(i->new SavedItinerary.Target(i.getId(),i.getTitle(),i.getUpdatedAt().toString())).toList();
     }
 
+    /** 이 초안을 그대로 저장해 둔 내 일정 목록. 이미 저장한 초안에 '저장하기' 대신 '저장한 일정 보기'를 보여 줄 때 쓴다. */
+    @Transactional(readOnly=true,timeout=10)
+    public List<SavedItinerary.Target> savedFrom(UUID jobId, String loginId) {
+        if(loginId==null) return List.of();
+        Long userId=member(loginId);
+        return itineraries.findByUserIdOrderByStartDateDescIdDesc(userId).stream()
+            .filter(i->snapshotJobId(i).equals(jobId.toString()))
+            .map(i->new SavedItinerary.Target(i.getId(),i.getTitle(),i.getUpdatedAt().toString())).toList();
+    }
+
     // 수정안이 어떤 초안에서 이어졌는지 원본 방향으로 따라간다. 같은 회원의 작업만 보고 최대 20단계까지 확인한다.
     private List<String> lineage(UUID jobId, Long userId) {
         var ids=new ArrayList<String>(); UUID next=jobId;
@@ -324,6 +334,21 @@ public class SavedItineraryService {
     }
 
     /**
+     * 저장한 일정의 관광지 중 지금 확인된 장소가 아닌 곳의 이름. 카카오에서 찾은 장소는 하루가 지나면 확인이 끝난다.
+     * 수정 초안을 다시 만들기 전에 이 이름들로 다시 찾아 확인한다.
+     */
+    @Transactional(readOnly=true,timeout=10)
+    public List<String> unverifiedAttractions(Long id, String loginId, String region) {
+        var itinerary=owned(id,loginId);
+        return items.findByItineraryIdOrderByDayNoAscSequenceNoAsc(itinerary.getId()).stream()
+            .filter(item->"VISIT".equals(item.getItemType()) && item.getPlaceId()!=null)
+            .map(item->item.getPlaceId()).distinct()
+            .filter(placeId->placeCandidates.usableAttraction(placeId,region).isEmpty())
+            .flatMap(placeId->places.findById(placeId).filter(place->place.isActive()).stream())
+            .map(place->place.getName()).toList();
+    }
+
+    /**
      * 원래 초안이 만료·삭제된 저장 일정을, 저장한 조건·항목과 지금 확인된 장소 후보로 수정용 초안으로 다시 만든다.
      * 시각·장소는 저장한 그대로 옮기며, 이 일정이 새 초안을 가리키게 해 이후 수정안 적용 흐름을 그대로 쓴다.
      */
@@ -343,18 +368,27 @@ public class SavedItineraryService {
         var savedItems=items.findByItineraryIdOrderByDayNoAscSequenceNoAsc(id);
         // 방문한 관광지는 지금 확인된 후보에서 찾는다. 후보에 없는 곳은 장소 정보로 넣되 수정안에서 바꾸도록 안내한다.
         var attractions=new ArrayList<PlaceCandidate>(); var missing=new ArrayList<String>();
-        // 숙소 도착 뒤의 방문은 저녁 관광이라 낮 관광지로 되돌리지 않는다(수정안을 만들면 저녁 관광 후보에서 다시 고른다).
-        Set<String> afterStay=new HashSet<>();
+        // 숙소 도착 뒤의 방문은 저녁 관광이라 낮 관광지로 되돌리지 않고 저녁 관광 후보 맨 앞에 둔다.
+        // 저녁 관광 후보에 없으면 다시 만든 초안이 그곳을 '후보에 없는 장소'로 보고 미충족으로 표시한다.
+        Set<String> afterStay=new HashSet<>(); var savedEvening=new ArrayList<PlaceCandidate>();
         for(var item:savedItems) {
             if("STAY".equals(item.getItemType())) afterStay.add(String.valueOf(item.getDayNo()));
-            if(!"VISIT".equals(item.getItemType()) || item.getPlaceId()==null || afterStay.contains(String.valueOf(item.getDayNo()))
-                || attractions.stream().anyMatch(p->p.placeId().equals(item.getPlaceId()))) continue;
-            var current=pool.attractions().stream().filter(p->p.placeId().equals(item.getPlaceId())).findFirst();
-            if(current.isPresent()) { attractions.add(current.get()); continue; }
+            if(!"VISIT".equals(item.getItemType()) || item.getPlaceId()==null
+                || attractions.stream().anyMatch(p->p.placeId().equals(item.getPlaceId()))
+                || savedEvening.stream().anyMatch(p->p.placeId().equals(item.getPlaceId()))) continue;
+            var target=afterStay.contains(String.valueOf(item.getDayNo()))?savedEvening:attractions;
+            // 후보 수 제한에 밀려 목록에 없을 뿐 지금도 확인된 장소면 확인된 후보로 본다.
+            var current=pool.attractions().stream().filter(p->p.placeId().equals(item.getPlaceId())).findFirst()
+                .or(()->placeCandidates.usableAttraction(item.getPlaceId(),pool.destination().region()));
+            if(current.isPresent()) { target.add(current.get()); continue; }
             var place=places.findById(item.getPlaceId()).orElseThrow(()->
                 new ResponseStatusException(HttpStatus.CONFLICT,"저장한 관광지를 찾을 수 없어 수정할 수 없어요."));
-            attractions.add(placeCandidates.candidate(place)); missing.add(place.getName());
+            target.add(placeCandidates.candidate(place)); missing.add(place.getName());
         }
+        var evening=new ArrayList<>(savedEvening);
+        if(pool.accommodationNeeded()) TripConstraints.eveningPlaces(TripConstraints.nearCenterFirst(pool.attractions()),
+                attractions.stream().map(PlaceCandidate::placeId).toList(),conditions.durationDays()==null?0:conditions.durationDays()+1)
+            .stream().filter(p->!evening.contains(p)).forEach(evening::add);
         // 식당·숙소도 지금 후보에 없으면(예: 동선 주변에서 따로 찾은 음식점) 저장한 장소를 후보에 더한다.
         // 더하지 않으면 다시 만든 초안이 그 장소를 '후보에 없는 장소'로 보고 미충족으로 표시한다.
         var restaurants=withSavedPlaces(pool.restaurants(),savedItems,"MEAL");
@@ -365,9 +399,11 @@ public class SavedItineraryService {
         var input=new Input(parentId,candidates,conditions,LocalTime.parse(schedule.path("dayStart").asText()),
             LocalTime.parse(schedule.path("dayEnd").asText()),KakaoMapClient.Transport.valueOf(schedule.path("transport").asText()),
             schedule.path("visitMinutes").asInt(90),null,savedConstraints(snapshot.path("constraints")))
-            .withEvening(pool.accommodationNeeded()?TripConstraints.eveningPlaces(TripConstraints.nearCenterFirst(pool.attractions()),
-                attractions.stream().map(PlaceCandidate::placeId).toList(),conditions.durationDays()==null?0:conditions.durationDays()+1):List.of())
-            .withHome(savedHome(snapshot.path("home")));
+            .withEvening(List.copyOf(evening))
+            .withHome(savedHome(snapshot.path("home")))
+            // 저장한 숙소를 고른 숙소로 이어받아, 시간만 바꾼 수정안에서 숙소가 바뀌지 않게 한다('숙소 바꾸기'를 고르면 그 선택이 우선한다).
+            .withChoices(new Choices(List.of(),List.of(),savedItems.stream().filter(item->"STAY".equals(item.getItemType()) && item.getPlaceId()!=null)
+                .map(ItineraryItem::getPlaceId).findFirst().orElse(null)));
         var result=restoredResult(pool.destination().name(),input.transport(),savedItems);
         var parent=access.owned(parentId,loginId,null,"RECOMMENDATION");
         var job=jobs.saveAndFlush(AiJob.restoredItinerary(parent,mapper.writeValueAsString(input),mapper.writeValueAsString(result)));
@@ -390,7 +426,7 @@ public class SavedItineraryService {
     }
     /** 저장할 때 남긴 사용자 조건(필수 방문 장소·하루 방문 수·예산 기준 등). 조건 없이 만들었거나 예전에 저장한 일정에는 없다. */
     private Constraints savedConstraints(tools.jackson.databind.JsonNode constraints) {
-        return constraints.isObject()?mapper.treeToValue(constraints,Constraints.class):null;
+        return constraints.isObject()?readSaved(constraints,Constraints.class):null;
     }
     /** 저장할 때 남긴 집 출발·귀가 설정. 출발지는 시·구 이름만 있고 좌표는 없다. 예전에 저장한 일정에는 없다. */
     private static HomeTrip savedHome(tools.jackson.databind.JsonNode home) {
@@ -404,7 +440,14 @@ public class SavedItineraryService {
     private ConfirmedTravelConditions savedConditions(tools.jackson.databind.JsonNode snapshot) {
         if(!snapshot.path("conditions").isObject())
             throw new ResponseStatusException(HttpStatus.CONFLICT,"예전 형식으로 저장한 일정이라 수정할 수 없어요. 여행 조건부터 새 일정을 만들어 주세요.");
-        return mapper.treeToValue(snapshot.path("conditions"),ConfirmedTravelConditions.class);
+        return readSaved(snapshot.path("conditions"),ConfirmedTravelConditions.class);
+    }
+    /**
+     * 저장한 일정의 조건은 오래 보관하므로, 저장한 뒤에 늘어난 항목(예: purposeSuggested)이 없을 수 있다.
+     * 없는 true/false·숫자 항목은 false·0으로 읽어 예전에 저장한 일정도 수정할 수 있게 한다.
+     */
+    private <T> T readSaved(tools.jackson.databind.JsonNode node, Class<T> type) {
+        return mapper.readerFor(type).without(tools.jackson.databind.DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES).readValue(node);
     }
     // 저장한 항목을 일정 초안 결과 형식으로 되돌린다. AI 안내·주변 지역·참고 가격은 다시 만들지 않는다.
     private Result restoredResult(String destination, KakaoMapClient.Transport transport, List<ItineraryItem> savedItems) {

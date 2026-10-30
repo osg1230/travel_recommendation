@@ -263,10 +263,17 @@ class ItineraryIntegrationTests {
         mvc.perform(get(resultUrl(id)).session(session)).andExpect(status().isOk()).andExpect(content().string(containsString("명절 부분 휴관")))
             // 완성된 비회원 초안에는 저장 전에 세션 만료 시간을 알린다.
             .andExpect(content().string(containsString("30분 동안 아무 동작이 없거나 브라우저를 닫으면 다시 열 수 없어요")));
+        // 만드는 동안 다른 사람이 장소 상세를 열어 운영정보만 새로 바뀌면 실패시키지 않는다.
+        // 운영시간 판단은 작업 입력에 담긴 운영정보로 이미 했고, 초안에도 그 정보를 보여 준다.
         var second=create(); var secondWork=schedules.claim(second); var secondResult=schedules.generate(secondWork);
         placeRepository.findById(candidate.placeId()).orElseThrow().updateDetails("{}"); em.flush();
         schedules.complete(secondWork,secondResult);
-        assertThat(schedules.view(second,null,hash).status()).isEqualTo("FAILED");
+        assertThat(schedules.view(second,null,hash).status()).isEqualTo("COMPLETED");
+        // 이름처럼 장소 자체가 바뀌면 옛 정보로 만든 초안을 완성하지 않는다.
+        var third=create(); var thirdWork=schedules.claim(third); var thirdResult=schedules.generate(thirdWork);
+        em.flush(); jdbc.update("UPDATE dbo.places SET place_name=place_name+N' (변경)' WHERE place_id=?",candidate.placeId()); em.clear();
+        schedules.complete(thirdWork,thirdResult);
+        assertThat(schedules.view(third,null,hash).status()).isEqualTo("FAILED");
         assertThatThrownBy(()->operating.refresh(parent,destination,candidate.placeId(),null,new byte[32]))
             .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
         verify(tour,times(1)).search(candidate.name());
@@ -455,5 +462,25 @@ class ItineraryIntegrationTests {
         assertThat(schedules.claim(id)).isNull();
         var second=create(); schedules.claim(second); recommendations.recover(); em.clear();
         assertThat(schedules.view(second,null,hash).status()).isEqualTo("FAILED");
+    }
+
+    // 만들지 못한 초안은 같은 조건으로 다시 만들거나, 그 조건을 채운 입력 화면에서 고쳐 다시 만들 수 있다.
+    @Test void failedDraftCanBeRetriedWithSameInput() throws Exception {
+        var failed=create(); var work=schedules.claim(failed);
+        schedules.fail(work,"MAP_TIMEOUT","지도 응답이 늦어요."); em.flush();
+        mvc.perform(get(resultUrl(failed)).session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("같은 조건으로 다시 만들기")))
+            .andExpect(content().string(containsString("schedule?from="+failed)));
+        var location=mvc.perform(post(resultUrl(failed)+"/retry").session(session).with(csrf()))
+            .andExpect(status().is3xxRedirection()).andReturn().getResponse().getRedirectedUrl();
+        var retried=UUID.fromString(location.substring(location.lastIndexOf('/')+1));
+        assertThat(retried).isNotEqualTo(failed);
+        var before=schedules.view(failed,null,hash).input(); var after=schedules.view(retried,null,hash).input();
+        assertThat(after.start()).isEqualTo(before.start()); assertThat(after.end()).isEqualTo(before.end());
+        assertThat(after.transport()).isEqualTo(before.transport()); assertThat(after.visitMinutes()).isEqualTo(before.visitMinutes());
+        // 실패하지 않은 초안은 다시 만들지 않고 이유를 그 화면에 보여 준다. 다른 세션은 찾을 수 없음이다.
+        mvc.perform(post(resultUrl(retried)+"/retry").session(session).with(csrf()))
+            .andExpect(status().is3xxRedirection()).andExpect(flash().attributeExists("retryError"));
+        mvc.perform(post(resultUrl(failed)+"/retry").session(new MockHttpSession()).with(csrf())).andExpect(status().isNotFound());
     }
 }

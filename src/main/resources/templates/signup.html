@@ -13,7 +13,7 @@
     <a class="back-link" th:href="@{/}">← 처음으로</a>
     <h1>회원가입</h1>
     <p class="intro">여행을 준비할 때 사용할 계정을 만들어 주세요.</p>
-    <p class="required-note">모든 항목은 필수입니다.</p>
+    <p class="required-note">주로 출발하는 곳 외에는 모두 필수예요.</p>
     <form id="signup-form" th:action="@{/signup}" th:object="${signupForm}" method="post">
         <div class="notice error" role="alert" th:if="${#fields.hasAnyErrors()}">
             <p>입력 내용을 확인해 주세요. 비밀번호는 다시 입력해 주세요.</p>

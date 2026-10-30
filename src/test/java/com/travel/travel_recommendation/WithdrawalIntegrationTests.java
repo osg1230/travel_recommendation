@@ -98,6 +98,32 @@ class WithdrawalIntegrationTests {
         assertThatThrownBy(()->withdrawals.withdraw(admin.getLoginId(),PASSWORD,true)).isInstanceOf(ProfileUpdateException.class).hasMessageContaining("관리자");
     }
 
+    @Test void accountScreenWarnsAboutActiveReservationsAndAdminsSeeNoForm() throws Exception {
+        // 진행 중(결제 대기·예약 확정) 예약만 센다. 취소된 예약은 세지 않는다.
+        long hotel=placeOf("ACCOMMODATION");
+        // 예약 테스트(2031년)와 겹치지 않는 2032년 구간을 만든다. 테스트가 끝나면 롤백된다.
+        java.time.LocalDateTime start=java.time.LocalDateTime.of(2032,1,1,15,0).plusMinutes(new Random().nextInt(400_000));
+        long stock=jdbc.queryForObject("""
+            INSERT INTO dbo.reservation_stock(place_id, usage_start_at, usage_end_at, total_quantity, remaining_quantity, unit_price, quantity_unit)
+            OUTPUT inserted.stock_id VALUES (?,?,?,3,3,100000,'ROOM')""",Long.class,hotel,start,start.plusHours(21));
+        String insert="""
+            INSERT INTO dbo.virtual_reservations(user_id, stock_id, request_key, quantity, party_size, expected_amount, status, payment_required, booking_snapshot_json, canceled_at)
+            VALUES (?,?,NEWID(),1,2,100000,?,1,'{}',CASE WHEN ?='CANCELED' THEN SYSDATETIME() END)""";
+        for(String status:List.of("PENDING","CONFIRMED","CANCELED")) jdbc.update(insert,member.getId(),stock,status,status);
+        assertThat(withdrawals.countActiveReservations(member.getLoginId())).isEqualTo(2);
+        mvc.perform(get("/account").with(user(member.getLoginId())))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("진행 중인 예약 2건은 탈퇴하면 취소되고, 예약·결제 내역도 삭제돼요.")));
+        // 관리자 계정은 탈퇴 폼 대신 안내를 본다.
+        var admin=account();
+        jdbc.update("UPDATE dbo.users SET role='ADMIN' WHERE user_id=?",admin.getId());
+        clear();
+        mvc.perform(get("/account").with(user(admin.getLoginId()).roles("ADMIN")))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("관리자 계정은 탈퇴할 수 없어요")))
+            .andExpect(content().string(org.hamcrest.Matchers.not(containsString("name=\"confirm\""))));
+    }
+
     @Test void screenWithdrawsLogsOutAndBlocksLoginAfterward() throws Exception {
         var session=new MockHttpSession();
         mvc.perform(post("/login").servletPath("/login").session(session).with(csrf()).param("loginId",member.getLoginId()).param("password",PASSWORD))
