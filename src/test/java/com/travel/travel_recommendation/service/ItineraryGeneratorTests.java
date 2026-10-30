@@ -240,7 +240,7 @@ class ItineraryGeneratorTests {
         assertThat(meals).extracting(Item::placeId).doesNotContain(3L).contains(8L);
         assertThat(meals.stream().filter(m->m.placeId()==8L).findFirst().orElseThrow().note()).contains("수정 요청에서 가고 싶다고 한 식당");
         assertThat(result.lodging().chosenPlaceId()).isEqualTo(40L);
-        assertThat(result.lodging().reason()).contains("수정 요청");
+        assertThat(result.lodging().reason()).contains("고른 숙소");
         generator.validate(input,result);
     }
     // 돌아갈 곳이 출발지와 다르면 마지막 날 그곳까지의 시간(200분)으로 관광을 마치는 시각을 정하고, 마지막 이동도 그곳으로 간다.

@@ -111,7 +111,7 @@ public class SavedItineraryController {
     /** 저장한 대중교통 일정 지도의 '실제 경로 보기'(SFR-11-03). 본인 일정만 조회하며, 경로는 저장하지 않고 요청 때마다 조회한다. */
     @GetMapping("/{id}/day-paths")
     @ResponseBody
-    org.springframework.http.ResponseEntity<?> dayPaths(@PathVariable long id, @RequestParam int day, Principal principal) {
+    org.springframework.http.ResponseEntity<?> dayPaths(@PathVariable long id, @RequestParam int day, Principal principal, HttpSession session) {
         var itinerary=service().detail(id,login(principal));
         if("자동차".equals(itinerary.transportName()))
             return org.springframework.http.ResponseEntity.badRequest().cacheControl(org.springframework.http.CacheControl.noStore())
@@ -119,6 +119,9 @@ public class SavedItineraryController {
         var route=com.travel.travel_recommendation.service.TripMap.route(itinerary.days().stream()
             .map(d->new com.travel.travel_recommendation.service.TripMap.Day(d.number(),d.items().stream()
                 .map(i->new com.travel.travel_recommendation.service.TripMap.Stop(i.type(),i.name(),i.mapUrl())).toList())).toList(),false);
+        // 초안 화면과 같은 세션 쿨다운(10초)을 써서 카카오 경로 조회가 연달아 나가지 않게 한다.
+        var wait=ItineraryController.dayPathsCooldown(session);
+        if(wait!=null) return wait;
         return ItineraryController.dayPathsOf(route,day,transitRoutes.getIfAvailable());
     }
 
