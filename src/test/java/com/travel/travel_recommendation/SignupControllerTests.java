@@ -17,11 +17,13 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.transaction.CannotCreateTransactionException;
 
 import static org.hamcrest.Matchers.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -122,6 +124,25 @@ class SignupControllerTests {
         mvc.perform(validRequest().with(csrf())).andExpect(status().isOk())
                 .andExpect(content().string(containsString("잠시 후 다시 시도")))
                 .andExpect(content().string(not(containsString("private connection details"))));
+        // DB 연결을 못 해 트랜잭션을 시작하지 못해도 Whitelabel 화면 대신 같은 안내를 보인다.
+        doThrow(new CannotCreateTransactionException("private transaction details")).when(users).signup(any());
+        mvc.perform(validRequest().with(csrf())).andExpect(status().isOk())
+                .andExpect(content().string(containsString("잠시 후 다시 시도")))
+                .andExpect(content().string(not(containsString("private transaction details"))));
+    }
+
+    @Test
+    void loggedInMemberIsSentToStartPage() throws Exception {
+        mvc.perform(get("/signup").with(user("test_user"))).andExpect(redirectedUrl("/"));
+        mvc.perform(validRequest().with(user("test_user")).with(csrf())).andExpect(redirectedUrl("/"));
+        mvc.perform(get("/signup").with(user("boss").roles("ADMIN"))).andExpect(redirectedUrl("/admin"));
+        verifyNoInteractions(users);
+    }
+
+    @Test
+    void formExplainsWhichFieldsAreOptional() throws Exception {
+        mvc.perform(get("/signup")).andExpect(content().string(containsString("주로 출발하는 곳 외에는 모두 필수예요")))
+                .andExpect(content().string(not(containsString("모든 항목은 필수입니다"))));
     }
 
     @Test

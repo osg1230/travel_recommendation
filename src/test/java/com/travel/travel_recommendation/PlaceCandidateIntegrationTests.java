@@ -135,7 +135,8 @@ class PlaceCandidateIntegrationTests {
         mvc.perform(get(url).session(session)).andExpect(status().isNotFound());
         jdbc.update("UPDATE dbo.users SET status='RESTRICTED' WHERE user_id=?", owner.getId());
         em.clear();
-        mvc.perform(get(url).with(user(owner.getLoginId()))).andExpect(status().isForbidden());
+        // 이용 제한된 회원의 세션은 계정 확인 필터가 끝내고 로그인 화면으로 보낸다.
+        mvc.perform(get(url).with(user(owner.getLoginId()))).andExpect(redirectedUrl("/login?restricted"));
     }
 
     @Test void unrankedRegionAndPendingJobCannotBeSelected() throws Exception {

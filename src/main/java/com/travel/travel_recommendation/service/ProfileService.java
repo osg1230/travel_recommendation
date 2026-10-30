@@ -38,8 +38,20 @@ public class ProfileService {
                 .map(User::getHomeArea).orElse(null);
     }
 
+    /** 내 정보 저장 결과. 무엇을 바꿨는지 화면에 알려 주는 데 쓴다. */
+    public record UpdateResult(boolean nicknameChanged, boolean homeAreaChanged, boolean homeAreaCleared,
+                               boolean passwordChanged) {
+        /** 예: "닉네임, 주로 출발하는 곳(지움)을 바꿨어요." 비밀번호를 바꾸면 로그인 화면이 따로 알리므로 넣지 않는다. */
+        public String message() {
+            var items = new java.util.ArrayList<String>();
+            if (nicknameChanged) items.add("닉네임");
+            if (homeAreaChanged) items.add(homeAreaCleared ? "주로 출발하는 곳(지움)" : "주로 출발하는 곳");
+            return items.isEmpty() ? "회원 정보를 저장했어요." : String.join(", ", items) + "을 바꿨어요.";
+        }
+    }
+
     @Transactional
-    public boolean update(String authenticatedLoginId, @NotNull @Valid ProfileForm form) {
+    public UpdateResult update(String authenticatedLoginId, @NotNull @Valid ProfileForm form) {
         // 로그인 세션의 아이디만 사용한다. 요청 파라미터로 수정 대상을 받지 않는다.
         User user = users.findForUpdateByLoginId(authenticatedLoginId)
                 .orElseThrow(() -> new AccessDeniedException("Account unavailable"));
@@ -47,12 +59,15 @@ public class ProfileService {
         if (!encoder.matches(form.getCurrentPassword(), user.getPasswordHash())) {
             throw new ProfileUpdateException("currentPassword", "현재 비밀번호가 올바르지 않습니다.");
         }
+        // 현재 비밀번호는 바로 위에서 확인했으므로, 같은 값을 새 비밀번호로 적었는지는 글자로 비교한다.
+        if (!form.getNewPassword().isEmpty() && form.getNewPassword().equals(form.getCurrentPassword())) {
+            throw new ProfileUpdateException("newPassword", "현재 비밀번호와 같아요. 비밀번호를 바꾸지 않으려면 비워 두세요.");
+        }
         if (users.existsByNicknameAndStatusNotAndIdNot(form.getNickname(), UserStatus.WITHDRAWN, user.getId())) {
             throw new ProfileUpdateException("nickname", "이미 사용 중인 닉네임입니다.");
         }
         boolean nicknameChanged = !user.getNickname().equals(form.getNickname());
-        boolean passwordChanged = !form.getNewPassword().isEmpty()
-                && !encoder.matches(form.getNewPassword(), user.getPasswordHash());
+        boolean passwordChanged = !form.getNewPassword().isEmpty();
         String homeArea = form.getHomeArea().isEmpty() ? null : form.getHomeArea();
         boolean homeAreaChanged = !java.util.Objects.equals(user.getHomeArea(), homeArea);
         if (!nicknameChanged && !passwordChanged && !homeAreaChanged) {
@@ -63,7 +78,7 @@ public class ProfileService {
         if (homeAreaChanged) user.changeHomeArea(homeArea);
         if (passwordChanged) user.changePasswordHash(encoder.encode(form.getNewPassword()));
         users.flush();
-        return passwordChanged;
+        return new UpdateResult(nicknameChanged, homeAreaChanged, homeAreaChanged && homeArea == null, passwordChanged);
     }
 
     private void checkActive(User user) {

@@ -32,7 +32,7 @@ class PlaceRatingControllerTests {
     @MockitoBean PlaceRatingService ratings;
 
     @Test void browseRequiresLoginAndListsRecentRatingsByPlace() throws Exception {
-        mvc.perform(get("/my/ratings/browse")).andExpect(status().isFound()).andExpect(redirectedUrl("/login"));
+        mvc.perform(get("/my/ratings/browse")).andExpect(status().isFound()).andExpect(redirectedUrl("/login?required"));
         var place=new PlaceRatingView.PlaceInfo(10L,"경포대","ATTRACTION","관광지","강원특별자치도 강릉시 경포로 365","https://map","https://source",true);
         var summary=new PlaceRatingView.Summary(4.5,2,List.of(new PlaceRatingView.TagCount("경치가 좋아요",2),new PlaceRatingView.TagCount("조용해요",1)),List.of(
             new PlaceRatingView.Recent("라**",4,List.of(),null,LocalDateTime.of(2026,10,28,20,49)),

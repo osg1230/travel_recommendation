@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation.controller;
 
+import com.travel.travel_recommendation.config.SecurityConfig;
 import com.travel.travel_recommendation.dto.SignupForm;
 import com.travel.travel_recommendation.service.DuplicateUserException;
 import com.travel.travel_recommendation.service.KakaoMapClient;
@@ -10,7 +11,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
+import org.springframework.transaction.TransactionException;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.WebDataBinder;
@@ -30,14 +33,17 @@ public class SignupController {
     }
 
     @GetMapping("/signup")
-    public String signupForm(Model model) {
+    public String signupForm(Authentication authentication, Model model) {
+        // 이미 로그인했다면 가입 화면 대신 시작 화면으로 보낸다(로그인 화면과 같은 방식).
+        if (loggedIn(authentication)) return "redirect:" + SecurityConfig.startPage(authentication);
         model.addAttribute("signupForm", new SignupForm());
         return "signup";
     }
 
     @PostMapping("/signup")
     public String signup(@Valid @ModelAttribute SignupForm signupForm, BindingResult result,
-                         RedirectAttributes redirectAttributes) {
+                         Authentication authentication, RedirectAttributes redirectAttributes) {
+        if (loggedIn(authentication)) return "redirect:" + SecurityConfig.startPage(authentication);
         if (!result.hasErrors()) checkHomeArea(signupForm, result);
         if (!result.hasErrors()) {
             try {
@@ -48,7 +54,7 @@ public class SignupController {
                 result.rejectValue(ex.getField(), "duplicate", ex.getMessage());
             } catch (DataIntegrityViolationException ex) {
                 result.reject("signup.conflict", "가입 정보를 저장하지 못했습니다. 아이디나 닉네임이 사용 중인지 확인하고 다시 시도해 주세요.");
-            } catch (DataAccessException ex) {
+            } catch (DataAccessException | TransactionException ex) {
                 result.reject("signup.unavailable", "일시적으로 가입하지 못했습니다. 잠시 후 다시 시도해 주세요.");
             }
         }
@@ -76,5 +82,9 @@ public class SignupController {
     @GetMapping("/signup/complete")
     public String complete(Model model) {
         return Boolean.TRUE.equals(model.getAttribute("signupComplete")) ? "signup-complete" : "redirect:/signup";
+    }
+
+    private boolean loggedIn(Authentication authentication) {
+        return authentication != null && authentication.isAuthenticated();
     }
 }

@@ -30,9 +30,9 @@ class FavoriteControllerTests {
     @MockitoBean FavoriteService service;
 
     @Test void favoritesRequireLoginAndCsrf() throws Exception {
-        mvc.perform(get("/my/favorites")).andExpect(status().isFound()).andExpect(redirectedUrl("/login"));
+        mvc.perform(get("/my/favorites")).andExpect(status().isFound()).andExpect(redirectedUrl("/login?required"));
         mvc.perform(post("/my/favorites").with(csrf()).param("placeId","10"))
-            .andExpect(status().isFound()).andExpect(redirectedUrl("/login"));
+            .andExpect(status().isFound()).andExpect(redirectedUrl("/login?required"));
         mvc.perform(post("/my/favorites").with(user("member")).param("placeId","10"))
             .andExpect(status().isForbidden());
         verifyNoInteractions(service);
