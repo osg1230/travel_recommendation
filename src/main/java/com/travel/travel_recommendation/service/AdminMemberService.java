@@ -27,7 +27,9 @@ public class AdminMemberService {
         admin(adminLoginId);
         String search=keyword==null || keyword.isBlank()?null:keyword.strip();
         var filter=status(status);
-        var found=users.searchMembers(search,filter,
+        // LIKE에서 %와 _는 '아무 글자'라는 뜻이라 앞에 \를 붙여 글자 그대로 찾는다. SQL Server는 [도 특수 문자로 본다.
+        String pattern=search==null?null:search.replace("\\","\\\\").replace("%","\\%").replace("_","\\_").replace("[","\\[");
+        var found=users.searchMembers(pattern,filter,
             PageRequest.of(Math.max(0,page),PAGE_SIZE,Sort.by(Sort.Direction.DESC,"id")));
         return new AdminMember.Page(found.getContent().stream().map(this::summary).toList(),
             found.getNumber(),found.getTotalPages(),found.getTotalElements(),
@@ -47,13 +49,15 @@ public class AdminMemberService {
     @Transactional(timeout=10)
     public void changeStatus(Long userId, String status, String reason, String adminLoginId) {
         var admin=admin(adminLoginId);
-        String trimmed=reason==null?"":reason.strip();
+        // 브라우저는 줄바꿈을 \r\n(2자)으로 보내지만 화면의 maxlength는 1자로 센다. 같은 기준으로 세도록 \n으로 바꾼다.
+        String trimmed=reason==null?"":reason.replace("\r\n","\n").strip();
         if(trimmed.isEmpty() || trimmed.length()>1000)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"변경 사유를 1자 이상 1000자 이하로 입력해 주세요.");
         var target=status(status);
         if(target==null || target==UserStatus.WITHDRAWN)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"바꿀 수 있는 상태는 정상과 이용 제한이에요.");
-        var member=users.findById(userId)
+        // 회원 행을 잠그고 읽는다. 같은 회원의 탈퇴·정보 수정과 겹치면 한쪽이 끝난 뒤 최신 상태로 처리한다.
+        var member=users.findForUpdateById(userId)
             .orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"회원을 찾을 수 없어요."));
         String blocked=changeable(member);
         if(blocked!=null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,blocked);

@@ -1,5 +1,6 @@
 package com.travel.travel_recommendation.controller;
 
+import com.travel.travel_recommendation.config.SecurityConfig;
 import com.travel.travel_recommendation.dto.ProfileForm;
 import com.travel.travel_recommendation.service.KakaoMapClient;
 import com.travel.travel_recommendation.service.ProfileService;
@@ -15,6 +16,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler;
 import org.springframework.stereotype.Controller;
+import org.springframework.transaction.TransactionException;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.WebDataBinder;
@@ -41,12 +43,24 @@ public class ProfileController {
         try {
             form.setNickname(profiles.getNickname(authentication.getName()));
             form.setHomeArea(profiles.getHomeArea(authentication.getName()));
-        } catch (DataAccessException ex) {
+            addWithdrawalInfo(authentication, model);
+        } catch (DataAccessException | TransactionException ex) {
             response.setStatus(503);
             return "account-unavailable";
         }
         model.addAttribute("profileForm", form);
         return "account";
+    }
+
+    // 탈퇴 안내에 쓰는 정보. 관리자 계정은 탈퇴할 수 없으므로 안내만 보이고,
+    // 회원에게는 탈퇴하면 취소되는 진행 중 예약 건수를 보여 준다.
+    private void addWithdrawalInfo(Authentication authentication, Model model) {
+        boolean admin = SecurityConfig.startPage(authentication).equals("/admin");
+        model.addAttribute("adminAccount", admin);
+        var service = withdrawals.getIfAvailable();
+        if (!admin && service != null) {
+            model.addAttribute("activeReservations", service.countActiveReservations(authentication.getName()));
+        }
     }
 
     /** 회원 본인 탈퇴(SFR-01-05). 현재 비밀번호와 동의를 확인한 뒤 처리하고 바로 로그아웃한다. */
@@ -65,7 +79,7 @@ public class ProfileController {
         } catch (ProfileUpdateException ex) {
             redirect.addFlashAttribute("withdrawError", ex.getMessage());
             return "redirect:/account#withdraw-title";
-        } catch (DataAccessException ex) {
+        } catch (DataAccessException | TransactionException ex) {
             redirect.addFlashAttribute("withdrawError", "일시적으로 탈퇴를 처리하지 못했습니다. 계정과 기록은 그대로입니다. 잠시 후 다시 시도해 주세요.");
             return "redirect:/account#withdraw-title";
         }
@@ -81,26 +95,32 @@ public class ProfileController {
         if (!result.hasErrors()) checkHomeArea(profileForm, authentication.getName(), result);
         if (!result.hasErrors()) {
             try {
-                boolean passwordChanged = profiles.update(authentication.getName(), profileForm);
-                if (passwordChanged) {
+                var saved = profiles.update(authentication.getName(), profileForm);
+                if (saved.passwordChanged()) {
                     // 저장이 성공한 뒤 현재 세션을 종료한다. 새 비밀번호로 다시 로그인한다.
                     new SecurityContextLogoutHandler().logout(request, response, authentication);
                     return "redirect:/login?passwordChanged";
                 }
-                redirect.addFlashAttribute("profileUpdated", true);
+                // 무엇이 바뀌었는지 알려 준다. 예) 닉네임, 주로 출발하는 곳(지움)을 바꿨어요.
+                redirect.addFlashAttribute("profileUpdated", saved.message());
                 return "redirect:/account";
             } catch (ProfileUpdateException ex) {
                 if (ex.getField() == null) result.reject("profile.unchanged", ex.getMessage());
                 else result.rejectValue(ex.getField(), "profile.invalid", ex.getMessage());
             } catch (DataIntegrityViolationException ex) {
                 result.reject("profile.conflict", "닉네임이 사용 중이거나 저장할 수 없는 값입니다. 확인 후 다시 시도해 주세요.");
-            } catch (DataAccessException ex) {
+            } catch (DataAccessException | TransactionException ex) {
                 result.reject("profile.unavailable", "일시적으로 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
             }
         }
         profileForm.setCurrentPassword(null);
         profileForm.setNewPassword("");
         profileForm.setNewPasswordConfirm("");
+        try {
+            addWithdrawalInfo(authentication, model);
+        } catch (DataAccessException | TransactionException ignored) {
+            // 저장 오류 안내가 먼저이므로 예약 건수 없이 화면을 보여 준다.
+        }
         return "account";
     }
 
@@ -111,7 +131,7 @@ public class ProfileController {
         if (homeArea.isEmpty()) return;
         try {
             if (homeArea.equals(profiles.getHomeArea(loginId))) return;
-        } catch (DataAccessException ignored) {
+        } catch (DataAccessException | TransactionException ignored) {
             // 저장 단계에서 같은 DB 오류를 안내하므로 여기서는 지도 확인만 이어 간다.
         }
         try {

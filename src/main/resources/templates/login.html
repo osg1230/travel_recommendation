@@ -25,12 +25,18 @@
         <a class="back-link" th:href="@{/}">← 처음으로</a>
         <h1>로그인</h1>
         <p role="status" class="status-ok" th:if="${param.passwordChanged}">비밀번호를 변경했습니다. 새 비밀번호로 다시 로그인해 주세요.</p>
-        <p class="notice" role="alert" th:if="${param.error}">로그인할 수 없습니다. 아이디와 비밀번호를 확인해 주세요. 이용 제한 또는 탈퇴한 계정은 로그인할 수 없습니다.</p>
+        <p class="notice" role="status" th:if="${param.required}">로그인이 필요하거나 로그인 시간이 지났어요. 다시 로그인해 주세요.</p>
+        <p class="notice" role="alert" th:if="${param.expired}">화면을 오래 열어 두어 다시 로그인해 주세요.</p>
+        <p class="notice" role="alert" th:if="${param.changed}">다른 곳에서 비밀번호가 바뀌어 로그아웃됐어요. 새 비밀번호로 다시 로그인해 주세요.</p>
+        <p class="notice" role="alert" th:if="${param.restricted}">이용이 제한된 계정이라 로그인할 수 없어요. 자세한 내용은 운영자에게 문의해 주세요.</p>
+        <p class="notice" role="alert" th:if="${param.error}">로그인할 수 없습니다. 아이디와 비밀번호를 확인해 주세요. 탈퇴한 계정은 로그인할 수 없습니다.</p>
         <p class="notice" role="alert" th:if="${param.unavailable}">일시적으로 로그인하지 못했습니다. 잠시 후 다시 시도해 주세요.</p>
         <form th:action="@{/login}" method="post">
             <div class="field">
                 <label for="loginId">아이디</label>
-                <input id="loginId" name="loginId" type="text" autocomplete="username" required maxlength="50" placeholder="아이디를 입력하세요">
+                <!--/* 로그인에 실패하면 아이디만 다시 채운다(SecurityConfig.keepLoginId). 비밀번호는 채우지 않는다. */-->
+                <input id="loginId" name="loginId" type="text" autocomplete="username" required maxlength="50" placeholder="아이디를 입력하세요"
+                       th:value="${failedLoginId}">
             </div>
             <div class="field">
                 <label for="password">비밀번호</label>

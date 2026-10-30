@@ -48,8 +48,8 @@ class SavedItineraryControllerTests {
     @Test void savingRequiresLoginAndCsrf() throws Exception {
         UUID job=UUID.randomUUID();
         mvc.perform(post("/my/itineraries").with(csrf()).param("jobId",job.toString()))
-            .andExpect(status().isFound()).andExpect(redirectedUrl("/login"));
-        mvc.perform(get("/my/itineraries")).andExpect(status().isFound()).andExpect(redirectedUrl("/login"));
+            .andExpect(status().isFound()).andExpect(redirectedUrl("/login?required"));
+        mvc.perform(get("/my/itineraries")).andExpect(status().isFound()).andExpect(redirectedUrl("/login?required"));
         mvc.perform(post("/my/itineraries").with(user("member")).param("jobId",job.toString()))
             .andExpect(status().isForbidden());
         verifyNoInteractions(service);
@@ -100,7 +100,7 @@ class SavedItineraryControllerTests {
     }
 
     @Test void dayPathsNeedLoginAndTransitItinerary() throws Exception {
-        mvc.perform(get("/my/itineraries/7/day-paths").param("day","1")).andExpect(status().isFound()).andExpect(redirectedUrl("/login"));
+        mvc.perform(get("/my/itineraries/7/day-paths").param("day","1")).andExpect(status().isFound()).andExpect(redirectedUrl("/login?required"));
         var summary=new SavedItinerary.Summary(7L,"강릉 2일 일정","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,
             LocalDateTime.of(2026,9,20,1,0));
         when(service.detail(7L,"member")).thenReturn(new SavedItinerary.Detail(summary,"자동차",List.of()));

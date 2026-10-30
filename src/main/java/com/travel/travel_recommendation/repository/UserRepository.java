@@ -12,10 +12,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByLoginId(String loginId);
 
     // 관리자 회원 관리의 검색이다. 검색어·상태는 비어 있으면 조건에서 제외한다.
+    // 검색어의 %, _, [ 는 AdminMemberService가 \ 를 붙여 넘기고, escape '\' 로 글자 그대로 찾는다.
     @org.springframework.data.jpa.repository.Query("""
         select u from User u
-        where (:keyword is null or lower(u.loginId) like lower(concat('%', :keyword, '%'))
-            or lower(u.nickname) like lower(concat('%', :keyword, '%')))
+        where (:keyword is null or lower(u.loginId) like lower(concat('%', :keyword, '%')) escape '\\'
+            or lower(u.nickname) like lower(concat('%', :keyword, '%')) escape '\\')
           and (:status is null or u.status = :status)
         """)
     org.springframework.data.domain.Page<User> searchMembers(
@@ -32,4 +33,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @org.springframework.data.jpa.repository.Query("select u from User u where u.loginId = :loginId")
     Optional<User> findForUpdateByLoginId(@org.springframework.data.repository.query.Param("loginId") String loginId);
+
+    // 관리자 상태 변경도 같은 잠금을 써서 회원의 탈퇴·정보 수정과 겹쳐도 차례대로 처리한다.
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select u from User u where u.id = :id")
+    Optional<User> findForUpdateById(@org.springframework.data.repository.query.Param("id") Long id);
 }

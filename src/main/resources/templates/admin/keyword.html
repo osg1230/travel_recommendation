@@ -20,10 +20,12 @@
     <p class="notice" th:unless="${detail.categoryActive}">이 키워드의 카테고리가 사용 중지 상태라, 키워드를 사용 중으로 두어도 조건 입력 화면에 보이지 않습니다.</p>
 
     <h2>이름과 표시 순서</h2>
+    <!--/* 저장이 거절되면 이유를 보이고, 적었던 값을 다시 채운다. */-->
+    <p class="notice" role="alert" th:if="${keywordError != null}" th:text="${keywordError}"></p>
     <form th:action="@{/admin/keywords/{id}(id=${detail.keyword.id})}" method="post">
         <div class="field" th:if="${detail.keyword.nameLockReason == null}">
             <label for="name">이름 (필수)</label>
-            <input id="name" name="name" required maxlength="80" th:value="${detail.keyword.name}"
+            <input id="name" name="name" required maxlength="80" th:value="${inputName != null ? inputName : detail.keyword.name}"
                    aria-describedby="name-help">
             <p id="name-help" class="help">조건 입력 화면에 바로 반영됩니다. 이미 저장된 추천 요청·일정에는 그때의 이름이 그대로 남습니다.</p>
         </div>
@@ -34,7 +36,7 @@
         <div class="field">
             <label for="sortOrder">표시 순서 (필수)</label>
             <input id="sortOrder" name="sortOrder" type="number" required min="0" max="999" inputmode="numeric"
-                   th:value="${detail.keyword.sortOrder}" aria-describedby="order-help">
+                   th:value="${inputSortOrder != null ? inputSortOrder : detail.keyword.sortOrder}" aria-describedby="order-help">
             <p id="order-help" class="help">0~999 사이 숫자이며 같은 카테고리 안에서 작은 숫자가 앞에 보입니다.</p>
         </div>
         <button type="submit">저장</button>

@@ -24,10 +24,12 @@ public class LoginUserDetailsService implements UserDetailsService {
         var user = users.findByLoginId(normalized)
                 .orElseThrow(() -> new UsernameNotFoundException("Invalid credentials"));
         // Entity를 세션에 넣지 않는다. 비밀번호 대조와 인증 후 해시 제거는 Security가 맡는다.
+        // 상태는 비밀번호가 맞은 뒤에 확인한다(SecurityConfig.loginManager). 이용 제한은 잠김, 탈퇴는 사용 안 함으로 표시한다.
         return org.springframework.security.core.userdetails.User.withUsername(user.getLoginId())
                 .password(user.getPasswordHash())
                 .roles(user.getRole().name())
-                .disabled(user.getStatus() != UserStatus.ACTIVE)
+                .accountLocked(user.getStatus() == UserStatus.RESTRICTED)
+                .disabled(user.getStatus() == UserStatus.WITHDRAWN)
                 .build();
     }
 }
