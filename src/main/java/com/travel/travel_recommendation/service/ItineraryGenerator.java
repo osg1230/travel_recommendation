@@ -30,6 +30,13 @@ public class ItineraryGenerator {
      * 시간이 남았다는 이유만으로 먼 곳까지 다녀오게 하지 않고, 가까운 곳이 없으면 그 시간은 비워 둔다.
      */
     private static final double SPARE_MAX_KM=10.0;
+    /**
+     * 가까운(SPARE_MAX_KM) 예비 관광지가 없어도 그날 관광을 마칠 때까지 SPARE_WIDE_LEFT분 넘게 남으면, 직선 SPARE_WIDE_KM 안이면서
+     * 가는 데 SPARE_WIDE_MOVE분(이동 여유 10분 포함, 자동차로 대략 30분) 안인 곳까지 찾는다(2026-10-31).
+     * 그보다 오래 가는 곳은 남는 시간을 채우려고 일부러 다녀올 거리가 아니라고 본다(2026-10-05 40분 거리 절 사례).
+     */
+    private static final double SPARE_WIDE_KM=20.0;
+    private static final int SPARE_WIDE_LEFT=120, SPARE_WIDE_MOVE=40;
     /** 하루에 시간이 모자라 넣지 못한 관광지가 이만큼 나오면 그날은 마친다(이동시간 조회를 무한히 늘리지 않게). */
     private static final int MAX_MISSES=3;
     /**
@@ -111,6 +118,8 @@ public class ItineraryGenerator {
         RecommendationException routeError=null;
         // 뺀 관광지 자리를 채울 예비 관광지. 쓸 때 위치를 확인한다.
         var reserve=new ArrayList<>(input.reserve());
+        // '다른 관광지로 다시 만들기'에서 직전 초안에 넣었던 관광지. 예비 관광지에 있어도 다른 곳이 없을 때만 쓴다.
+        Set<Long> lastDraft=input.picking()==null?Set.of():Set.copyOf(input.picking().previous());
         // 직전에 간 관광지 종류(예: 해변). 날이 바뀌어도 이어서 본다.
         String lastKind="";
         // 일정의 중심 장소: 1일차부터 하루에 한 곳씩 그날 첫 관광지로 넣는다. 나머지 관광지는 가장 가까운 중심 장소의 날에 먼저 넣는다.
@@ -141,8 +150,8 @@ public class ItineraryGenerator {
             // 하루 방문 수를 정했으면 낮 관광도 그 수를 넘기지 않는다(저녁 관광으로 채운 날의 남은 관광지가 다음 날로 몰리지 않게).
             if(!fillSpareTime) target=Math.min(target,constraints.dailyVisits());
             PlaceCandidate last=null; int visits=0;
-            // 오늘 넣은 낮 관광지(넣은 순서)와 그중 남는 시간을 채운 예비 관광지.
-            List<PlaceCandidate> placed=new ArrayList<>(); Set<Long> spares=new HashSet<>();
+            // 오늘 넣은 낮 관광지(넣은 순서)와 그중 남는 시간을 채운 예비 관광지의 이유.
+            List<PlaceCandidate> placed=new ArrayList<>(); Map<Long,String> spareNotes=new HashMap<>();
             final int today=day;
             PlaceCandidate dayCenter=day<=centers.size()?centers.get(day-1):null;
             boolean centerTried=false; Set<Long> skipToday=new HashSet<>(); int misses=0;
@@ -150,16 +159,21 @@ public class ItineraryGenerator {
                 // 오늘 몫을 다 넣었거나 남은 관광지가 오늘 시간에 들어가지 않으면, 하루 시간이 남는 한 예비 관광지 중 가까운 곳을 더 넣는다.
                 boolean spare=visits>=target || remaining.stream().allMatch(p->skipToday.contains(p.placeId()));
                 if(spare && (!fillSpareTime || visits==0)) break;
-                // 예비 관광지로 더 채워도 하루 관광지는 TripConstraints.MAX_AUTO_DAILY곳까지다. 남는 시간은 쉬거나 저녁 관광에 쓴다.
-                if(spare && visits>=TripConstraints.MAX_AUTO_DAILY) break;
+                // 예비 관광지로 더 채워도 하루 관광지는 TripConstraints.MAX_AUTO_DAILY곳까지다. 4곳은 한 곳 90분(기본 체류시간) 기준이라,
+                // 짧게 들르는 곳이 많아 그날 체류시간 합이 기본 체류시간 4곳분에 못 미치면 그 안에 들어가는 곳을 한 곳 더 넣는다(2026-10-31).
+                // 남는 시간은 쉬거나 저녁 관광에 쓴다.
+                if(spare && visits>TripConstraints.MAX_AUTO_DAILY) break;
+                final int room=visits<TripConstraints.MAX_AUTO_DAILY?Integer.MAX_VALUE
+                    :TripConstraints.MAX_AUTO_DAILY*input.visitMinutes()-placed.stream().mapToInt(p->VisitMinutes.of(p,input.visitMinutes())).sum();
                 PlaceCandidate anchor=builder.previous; String previousKind=lastKind;
                 List<PlaceCandidate> pool;
                 if(spare) {
                     // 예비 관광지는 수정안에서 바꿔 넣을 후보로도 쓰이므로 SPARE_KEPT곳은 남겨 둔다.
                     var located=locatedReserve(reserve,locations,addresses,deadline);
-                    pool=located.stream().filter(p->!skipToday.contains(p.placeId())
-                        && (anchor==null || kilometers(locations.get(anchor.placeId()),locations.get(p.placeId()))<=SPARE_MAX_KM)).toList();
-                    if(located.size()<=SPARE_KEPT || pool.isEmpty()) break;
+                    if(located.size()<=SPARE_KEPT) break;
+                    pool=sparePool(builder,located.stream().filter(p->!skipToday.contains(p.placeId())
+                        && VisitMinutes.of(p,input.visitMinutes())<=room).toList(),lastDraft);
+                    if(pool.isEmpty()) break;
                 } else {
                     // 오늘 고를 수 있는 곳: 다른 날의 중심 장소는 빼고, 가장 가까운 중심 장소가 오늘인 곳을 먼저 본다.
                     var choices=remaining.stream().filter(p->!skipToday.contains(p.placeId()) && !(centers.contains(p) && !p.equals(dayCenter))).toList();
@@ -183,9 +197,10 @@ public class ItineraryGenerator {
                     .filter(p->!p.equals(next) && previousKind.equals(TripConstraints.kind(p))).isPresent();
                 var mark=builder.mark();
                 boolean hadLunch=builder.lunch;
+                String spareReason=spare?spareNote(locations,next,anchor,lastDraft,visits):null;
                 try {
                     // 가까운 곳부터 고르는 단계라 다음에 갈 곳은 아직 모른다(null).
-                    placeVisit(builder,next,null,stay,visitNote(input,next,spare,centers.contains(next),
+                    placeVisit(builder,next,null,stay,visitNote(input,next,spareReason,centers.contains(next),
                         chosenCenters.contains(next),variedKind?previousKind:null));
                 } catch(RecommendationException error) {
                     // 더 넣어 보던 예비 관광지가 멀면 그곳만 빼고 다른 예비 관광지를 본다.
@@ -196,7 +211,7 @@ public class ItineraryGenerator {
                             throw failure(error.getCode(),"'"+next.name()+"'까지 가는 길이 2시간을 넘거나 경로를 찾지 못했어요. 필수 방문 장소에서 빼거나 이동수단을 바꿔 주세요.");
                         builder.reset(mark); remaining.remove(next); unreachable.add(next); routeError=error;
                         // 빠진 자리는 예비 관광지로 채운다. 이미 일정에 있는 종류와 다른 곳을 먼저 쓴다.
-                        var replacement=takeReserve(reserve,remaining,days,builder,locations,addresses,deadline);
+                        var replacement=takeReserve(reserve,remaining,days,builder,locations,addresses,deadline,lastDraft);
                         if(replacement!=null) remaining.add(replacement);
                         continue;
                     }
@@ -208,7 +223,7 @@ public class ItineraryGenerator {
                 }
                 if(spare) reserve.remove(next); else remaining.remove(next);
                 last=next; visits++; lastKind=TripConstraints.kind(next);
-                placed.add(next); if(spare) spares.add(next.placeId());
+                placed.add(next); if(spare) spareNotes.put(next.placeId(),spareReason);
                 dineIfLate(builder,next,null,stay,dinnerDay,hadLunch);
             }
             // 갈 수 있는 관광지가 남지 않아 하루를 비워 두게 되면 일정을 만들지 않는다.
@@ -221,7 +236,7 @@ public class ItineraryGenerator {
                 var other=new DayBuilder(input,locations,routes,deadline,previous,day,new HashSet<>(restaurantsBefore),foods);
                 if(day==1 && input.home()!=null) other.homeDeparture();
                 // 순서를 바꾸면 '바로 앞 방문지와 같은 종류가 이어지지 않게 골랐다'는 이유가 맞지 않으므로 적지 않는다.
-                boolean placedAll=placeInOrder(other,shorter,stay,dinnerDay,p->visitNote(input,p,spares.contains(p.placeId()),
+                boolean placedAll=placeInOrder(other,shorter,stay,dinnerDay,p->visitNote(input,p,spareNotes.get(p.placeId()),
                     centers.contains(p),chosenCenters.contains(p),null));
                 // 길찾기가 도중에 안 돼 직선거리 추정이 섞이면, 이미 길찾기로 확인한 처음 순서를 쓴다.
                 if(placedAll && routes.mapDown==mapWasDown) {
@@ -261,9 +276,9 @@ public class ItineraryGenerator {
     /**
      * 관광지 항목의 설명. 분류와 함께, 실제로 이 곳을 고르는 데 쓴 기준(필수 방문·여행 목적·취향·중심 장소·종류 섞기)만 이유로 적는다.
      * 거리는 모든 관광지에 공통인 기준이라 이유로 따로 적지 않는다. 해당하는 기준이 없으면 분류만 보여 준다
-     * (취향을 골랐다면 취향 후보가 모자라 채운 곳이라고 알린다).
+     * (취향을 골랐다면 취향 후보가 모자라 채운 곳이라고 알린다). spareNote는 남는 시간을 채운 예비 관광지의 이유이고, 아니면 null이다.
      */
-    private static String visitNote(Input input,PlaceCandidate place,boolean spare,boolean dayCenter,boolean chosenCenter,String avoidedKind) {
+    private static String visitNote(Input input,PlaceCandidate place,String spareNote,boolean dayCenter,boolean chosenCenter,String avoidedKind) {
         var reasons=new ArrayList<String>();
         if(input.constraints()!=null && input.constraints().requiredPlaceIds().contains(place.placeId())) reasons.add("필수 방문 장소로 고른 곳이에요.");
         if(input.revision()!=null && input.revision().added().stream().anyMatch(p->p.placeId().equals(place.placeId())))
@@ -280,7 +295,7 @@ public class ItineraryGenerator {
         if(dayCenter) reasons.add("이 날 일정의 중심으로 고른 곳이에요. 이 날은 이 장소 주변 관광지로 짰어요.");
         else if(chosenCenter) reasons.add("일정의 중심으로 고른 곳이에요. 가까운 중심 장소와 같은 날로 묶었어요.");
         if(avoidedKind!=null) reasons.add("바로 앞 방문지와 같은 종류("+avoidedKind.replace(",","·")+")가 이어지지 않게 골랐어요.");
-        if(spare) reasons.add("하루 시간이 남아 더 넣은 곳이에요.");
+        if(spareNote!=null) reasons.add(spareNote);
         // 취향을 골랐는데 어느 기준에도 해당하지 않으면, 취향에 맞는 후보가 모자라 다른 종류로 채운 곳이다(TripConstraints.aroundCenters 순서).
         // AI가 순서를 정한 일정에서는 분류 글자와 상관없이 갈 만한 곳으로 고른 것이라 이 안내를 붙이지 않는다.
         else if(reasons.isEmpty() && avoidedKind==null && !input.pickedByAi() && !ThemePlaces.placeThemes(conditions.themeNames()).isEmpty())
@@ -578,11 +593,58 @@ public class ItineraryGenerator {
     }
 
     /**
-     * 예비 관광지 하나를 꺼내 위치를 확인한다. 남은 관광지·이미 넣은 관광지와 종류가 다른 곳을 먼저 고른다.
+     * 남는 시간을 채울 예비 관광지 후보(2026-10-31). 직전 방문지에서 SPARE_MAX_KM 안의 곳을 먼저 쓰고, 그런 곳이 없으면
+     * 그날 관광을 마칠 때까지 SPARE_WIDE_LEFT분 넘게 남았을 때만 SPARE_WIDE_KM 안이면서 SPARE_WIDE_MOVE분 안에 갈 수 있는 곳까지 본다.
+     * '다른 관광지로 다시 만들기'에서 직전 초안에 넣었던 곳(lastDraft)은 이렇게 찾아도 다른 곳이 없을 때만 쓴다. 없으면 빈 목록이다.
+     */
+    private List<PlaceCandidate> sparePool(DayBuilder builder,List<PlaceCandidate> candidates,Set<Long> lastDraft) {
+        var anchor=builder.previous;
+        if(anchor==null) return candidates;
+        var fresh=candidates.stream().filter(p->!lastDraft.contains(p.placeId())).toList();
+        var at=builder.locations.get(anchor.placeId());
+        for(var group:fresh.size()==candidates.size()?List.of(candidates):List.of(fresh,candidates)) {
+            var near=group.stream().filter(p->kilometers(at,builder.locations.get(p.placeId()))<=SPARE_MAX_KM).toList();
+            if(!near.isEmpty()) return near;
+            if(Duration.between(builder.time,builder.end).toMinutes()<SPARE_WIDE_LEFT) continue;
+            var wide=group.stream().filter(p->kilometers(at,builder.locations.get(p.placeId()))<=SPARE_WIDE_KM
+                && reachableWithin(builder,anchor,p,SPARE_WIDE_MOVE)).toList();
+            if(!wide.isEmpty()) return wide;
+        }
+        return List.of();
+    }
+
+    /** from에서 to까지 이동 여유를 포함해 minutes분 안에 갈 수 있는지. 경로가 없거나 2시간을 넘는 곳은 갈 수 없다고 본다. */
+    private static boolean reachableWithin(DayBuilder builder,PlaceCandidate from,PlaceCandidate to,int minutes) {
+        try { return builder.travelMinutes(from,to)<=minutes; }
+        catch(RecommendationException error) {
+            if(UNREACHABLE_CODES.contains(error.getCode())) return false;
+            throw error;
+        }
+    }
+
+    /**
+     * 남는 시간을 채운 예비 관광지의 이유. 하루 4곳보다 한 곳 더 넣었거나, 가까운 곳이 없어 조금 먼 곳까지 찾았거나,
+     * 직전 초안에 있던 곳을 다시 넣었으면 그 사정을 덧붙인다.
+     */
+    private static String spareNote(Map<Long,KakaoMapClient.Location> locations,PlaceCandidate place,PlaceCandidate anchor,Set<Long> lastDraft,int visits) {
+        var note=new StringBuilder("하루 시간이 남아 더 넣은 곳이에요.");
+        if(visits>=TripConstraints.MAX_AUTO_DAILY)
+            note.append(" 짧게 들르는 곳이 많아 하루 ").append(TripConstraints.MAX_AUTO_DAILY).append("곳보다 한 곳 더 넣었어요.");
+        if(anchor!=null && kilometers(locations.get(anchor.placeId()),locations.get(place.placeId()))>SPARE_MAX_KM)
+            note.append(" 가까운 예비 관광지가 없어 ").append(anchor.name()).append("에서 직선 약 ")
+                .append(kilometersText(locations.get(anchor.placeId()),locations.get(place.placeId()))).append(" 떨어진 곳까지 찾았어요.");
+        if(lastDraft.contains(place.placeId())) note.append(" 직전 초안에도 있던 곳이지만 다른 예비 관광지가 없어 다시 넣었어요.");
+        return note.toString();
+    }
+
+    /**
+     * 예비 관광지 하나를 꺼내 위치를 확인한다. 남은 관광지·이미 넣은 관광지와 종류가 다른 곳을 먼저 고르고,
+     * 직전 초안에 있던 곳(lastDraft)은 다른 예비 관광지가 없을 때만 고른다.
      * 위치를 확인하지 못한 예비 관광지는 건너뛴다. 쓸 수 있는 예비 관광지가 없으면 null이다.
      */
     private PlaceCandidate takeReserve(List<PlaceCandidate> reserve,List<PlaceCandidate> remaining,List<Day> days,DayBuilder today,
-                                       Map<Long,KakaoMapClient.Location> locations,Map<String,KakaoMapClient.Location> addresses,Instant deadline) {
+                                       Map<Long,KakaoMapClient.Location> locations,Map<String,KakaoMapClient.Location> addresses,Instant deadline,
+                                       Set<Long> lastDraft) {
         Set<String> kinds=new HashSet<>();
         remaining.forEach(p->kinds.add(TripConstraints.kind(p)));
         var visits=new ArrayList<Long>();
@@ -590,7 +652,9 @@ public class ItineraryGenerator {
         today.items.forEach(i->{ if("VISIT".equals(i.type())) visits.add(i.placeId()); });
         today.input.attractionsWithReserve().stream().filter(p->visits.contains(p.placeId())).forEach(p->kinds.add(TripConstraints.kind(p)));
         while(!reserve.isEmpty()) {
-            var pick=reserve.stream().filter(p->!kinds.contains(TripConstraints.kind(p))).findFirst().orElse(reserve.getFirst());
+            // min은 우선순위가 같으면 예비 관광지 순서에서 앞의 곳을 고른다.
+            var pick=reserve.stream().min(Comparator.<PlaceCandidate>comparingInt(p->lastDraft.contains(p.placeId())?1:0)
+                .thenComparingInt(p->kinds.contains(TripConstraints.kind(p))?1:0)).orElseThrow();
             reserve.remove(pick);
             checkDeadline(deadline);
             try { locations.put(pick.placeId(),locate(pick,addresses)); return pick; }

@@ -431,6 +431,50 @@ class ItineraryGeneratorTests {
             new Constraints(List.of(),2,false,null,List.of()),input.reserve());
         assertThat(generator.generate(fixed).days().getFirst().items().stream().filter(i->i.type().equals("VISIT"))).hasSize(2);
     }
+    private PlaceCandidate viewpoint(long id) {
+        return new PlaceCandidate(id,"전망대"+id,"강원 강릉시 경포로 "+id,"여행 > 관광,명소 > 전망대","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+    }
+    // 짧게 들르는 곳(전망대 40분)만으로 4곳을 채우면 체류시간 합이 160분이라 기본 체류시간 4곳분(360분)에 못 미친다.
+    // 그래서 예비 관광지를 한 곳 더(5곳) 넣고 이유를 적는다. 6곳째는 넣지 않는다.
+    @Test void shortVisitsLetTheDayTakeAFifthPlace() {
+        var input=dayTrip(List.of(viewpoint(1),viewpoint(2),viewpoint(3),viewpoint(4)),List.of(place(30)),90,
+            List.of(viewpoint(5),viewpoint(6),viewpoint(7),viewpoint(8),viewpoint(9)));
+        var result=generator.generate(input);
+        var visits=result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).toList();
+        assertThat(visits).hasSize(TripConstraints.MAX_AUTO_DAILY+1);
+        assertThat(visits).filteredOn(i->i.note().contains("하루 시간이 남아 더 넣은 곳이에요."))
+            .singleElement().satisfies(i->assertThat(i.note()).contains("짧게 들르는 곳이 많아 하루 4곳보다 한 곳 더 넣었어요."));
+        generator.validate(input,result);
+    }
+    // 10km 안에 예비 관광지가 없어도 하루가 2시간 넘게 남으면, 20km 안이면서 40분 안에 갈 수 있는 곳까지 찾는다(장소150은 장소2에서 약 13km).
+    // 가는 데 40분이 넘으면 넣지 않는다.
+    @Test void spareTimeLooksFartherWhenNothingIsNearby() {
+        var input=dayTrip(List.of(place(1),place(2)),List.of(place(3)),60,List.of(place(150),place(151),place(152)));
+        var visits=generator.generate(input).days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).toList();
+        assertThat(visits).extracting(Item::placeId).contains(150L);
+        assertThat(visits.stream().filter(i->i.placeId()==150L).findFirst().orElseThrow().note())
+            .contains("가까운 예비 관광지가 없어 장소2에서 직선 약 13.0km 떨어진 곳까지 찾았어요.");
+        // 멀리 떨어진 구간(경도 0.1도 넘게)은 50분이 걸리면 넣지 않는다.
+        when(maps.travelTime(any(),any(),any())).thenAnswer(invocation->{
+            KakaoMapClient.Location a=invocation.getArgument(0), b=invocation.getArgument(1);
+            return new KakaoMapClient.TravelTime(invocation.getArgument(2),Math.abs(a.longitude()-b.longitude())>0.1?3000:601,3000,Instant.now());
+        });
+        var slow=generator.generate(input).days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).toList();
+        assertThat(slow).extracting(Item::placeId).containsExactly(1L,2L);
+    }
+    // '다른 관광지로 다시 만들기'에서 직전 초안에 있던 예비 관광지(장소5)는 다른 예비 관광지가 있으면 쓰지 않고, 없을 때만 이유와 함께 넣는다.
+    @Test void lastDraftPlacesFillSpareTimeOnlyWhenNothingElseFits() {
+        var again=new Picking(List.of(),false,List.of(5L));
+        var fresh=dayTrip(List.of(place(1),place(2)),List.of(place(3)),30,List.of(place(5),place(6),place(7),place(8))).withPicking(again);
+        var visits=generator.generate(fresh).days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).map(Item::placeId).toList();
+        assertThat(visits).containsExactlyInAnyOrder(1L,2L,6L,7L);
+        // 다른 예비 관광지가 모두 40km 넘게 떨어져 있으면 직전 초안의 장소5를 다시 넣는다.
+        var onlyAgain=dayTrip(List.of(place(1),place(2)),List.of(place(3)),30,List.of(place(5),place(500),place(501))).withPicking(again);
+        var result=generator.generate(onlyAgain);
+        var reused=result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT") && i.placeId()==5L).findFirst().orElseThrow();
+        assertThat(reused.note()).contains("직전 초안에도 있던 곳이지만 다른 예비 관광지가 없어 다시 넣었어요.");
+        generator.validate(onlyAgain,result);
+    }
     // 섬(장소 90)이 빠지면 그 자리를 예비 관광지로 채운다. 쓰지 않은 예비 관광지는 결과에 적지 않는다.
     @Test void reservePlaceFillsTheSlotOfAnUnreachableAttraction() {
         when(maps.travelTime(any(),any(),any())).thenAnswer(invocation->{
