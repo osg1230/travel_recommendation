@@ -475,6 +475,20 @@ class ItineraryGeneratorTests {
         assertThat(reused.note()).contains("직전 초안에도 있던 곳이지만 다른 예비 관광지가 없어 다시 넣었어요.");
         generator.validate(onlyAgain,result);
     }
+    // 저녁 관광은 AI가 밤 명소로 꼽은 곳(전망대9)을 식당에서 더 가까운 후보(전망대8)보다 먼저 넣고, AI의 판단이라고 밝힌다.
+    @Test void eveningPrefersAiNightSpot() {
+        var input=input(2,LocalTime.of(18,0)).withEvening(List.of(viewpoint(8),viewpoint(9)))
+            .withPicking(new Picking(List.of(),true,List.of(),null,List.of(9L)));
+        var result=generator.generate(input);
+        var evening=result.days().getFirst().items().stream()
+            .filter(i->i.type().equals("VISIT") && i.placeId()!=null && (i.placeId()==8L || i.placeId()==9L)).toList();
+        assertThat(evening).singleElement().satisfies(i->{
+            assertThat(i.placeId()).isEqualTo(9L);
+            assertThat(i.note()).contains("AI가 이 지역에서 밤에 둘러보기 좋은 곳으로 꼽아, 낮 일정에 넣지 않고 저녁 식사 뒤에 넣었어요.")
+                .contains("밤에도 둘러볼 수 있는지");
+        });
+        generator.validate(input,result);
+    }
     // 섬(장소 90)이 빠지면 그 자리를 예비 관광지로 채운다. 쓰지 않은 예비 관광지는 결과에 적지 않는다.
     @Test void reservePlaceFillsTheSlotOfAnUnreachableAttraction() {
         when(maps.travelTime(any(),any(),any())).thenAnswer(invocation->{

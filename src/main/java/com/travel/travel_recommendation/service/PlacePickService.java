@@ -89,19 +89,9 @@ public class PlacePickService {
     public void save(Task task,OpenAiPlacePickClient.Picks picks) {
         var job=jobs.lockById(task.jobId()).orElse(null);
         if(job==null || !"QUEUED".equals(job.getStatus()) || !task.requestJson().equals(job.getRequestJson())) return;
-        var input=task.input();
-        var c=input.constraints();
-        var ordered=TripConstraints.byPicks(input.picking().pool(),c==null?List.of():c.centerPlaceIds(),picks.order(),picks.skip());
-        // '다른 관광지로 다시 만들기'면 AI 순서에서도 직전 초안의 관광지를 뒤로 보낸다. 필수·중심 장소는 그대로 둔다.
-        Set<Long> keep=new HashSet<>();
-        if(c!=null) { keep.addAll(c.requiredPlaceIds()); keep.addAll(c.centerPlaceIds()); }
-        ordered=TripConstraints.previousLast(ordered,input.picking().previous(),keep,Set.copyOf(picks.skip()));
-        int days=input.conditions().durationDays()==null?1:input.conditions().durationDays();
         Input picked;
         try {
-            var arranged=ItineraryJobService.withoutPreviousEvening(ItineraryJobService.arrange(ordered,Set.copyOf(picks.skip()),true,
-                input.places().accommodationNeeded(),days,input.start(),input.end(),input.visitMinutes(),c),input.picking().previous());
-            picked=input.withPicked(arranged.selected(),arranged.reserve(),arranged.evening());
+            picked=picked(task.input(),picks);
             generator.checkInput(picked);
         } catch(RuntimeException error) {
             log.warn("AI 순서로 관광지를 다시 고르지 못해 기존 선택을 씁니다 job={} ({})",task.jobId(),error.toString());
@@ -109,6 +99,28 @@ public class PlacePickService {
         }
         job.attachItineraryRequest(mapper.writeValueAsString(picked));
         jobs.flush();
+    }
+
+    /**
+     * AI 순서(picks)로 일정에 넣을 관광지·예비 관광지·저녁 관광 후보를 다시 고른 입력. 조건과 맞지 않으면 예외가 난다.
+     * AI가 밤에 둘러보기 좋다고 꼽은 곳은 숙박하는 밤 수만큼 저녁 관광 후보 맨 앞에 두고 그 ID를 남긴다(2026-10-31).
+     */
+    static Input picked(Input input,OpenAiPlacePickClient.Picks picks) {
+        var c=input.constraints();
+        var ordered=TripConstraints.byPicks(input.picking().pool(),c==null?List.of():c.centerPlaceIds(),picks.order(),picks.skip());
+        // '다른 관광지로 다시 만들기'면 AI 순서에서도 직전 초안의 관광지를 뒤로 보낸다. 필수·중심 장소는 그대로 둔다.
+        Set<Long> keep=new HashSet<>();
+        if(c!=null) { keep.addAll(c.requiredPlaceIds()); keep.addAll(c.centerPlaceIds()); }
+        var previous=input.picking().previous();
+        ordered=TripConstraints.previousLast(ordered,previous,keep,Set.copyOf(picks.skip()));
+        int days=input.conditions().durationDays()==null?1:input.conditions().durationDays();
+        // 직전 초안에 있던 밤 명소는 이번에는 아끼지 않는다(다시 만들기는 다른 곳부터 고른다).
+        var night=picks.night().stream().filter(id->!previous.contains(id)).toList();
+        var arranged=ItineraryJobService.withoutPreviousEvening(ItineraryJobService.arrange(ordered,Set.copyOf(picks.skip()),night,true,
+            input.places().accommodationNeeded(),days,input.start(),input.end(),input.visitMinutes(),c),previous);
+        // 저녁 관광 후보에 실제로 들어간 밤 명소만 남겨, 일정 생성이 저녁에 그곳을 먼저 보게 한다.
+        var kept=arranged.evening().stream().map(PlaceCandidate::placeId).filter(night::contains).toList();
+        return input.withPicked(arranged.selected(),arranged.reserve(),arranged.evening(),kept);
     }
 
     private static double kilometers(PlaceCandidate a,PlaceCandidate b) {

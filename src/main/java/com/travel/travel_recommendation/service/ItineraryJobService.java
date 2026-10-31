@@ -302,6 +302,15 @@ public class ItineraryJobService {
      */
     public static Arranged arrange(List<PlaceCandidate> ordered,Set<Long> skips,boolean aiOrdered,boolean stay,int days,
                                    LocalTime start,LocalTime end,int visitMinutes,Constraints constraints) {
+        return arrange(ordered,skips,List.of(),aiOrdered,stay,days,start,end,visitMinutes,constraints);
+    }
+
+    /**
+     * night는 AI가 밤에 둘러보기 좋다고 꼽은 관광지 ID다(2026-10-31). 숙박하는 밤 수만큼 저녁 관광 후보 맨 앞에 두고 낮 관광지에서는 뺀다.
+     * AI 순서에서는 앞쪽을 낮 관광지로 쓰기 때문에, 이렇게 하지 않으면 광안리처럼 밤에 더 좋은 곳이 낮에 먼저 들어가 저녁 후보에서 빠졌다.
+     */
+    public static Arranged arrange(List<PlaceCandidate> ordered,Set<Long> skips,List<Long> night,boolean aiOrdered,boolean stay,int days,
+                                   LocalTime start,LocalTime end,int visitMinutes,Constraints constraints) {
         // 숙박 여행이면 저녁 관광에 어울리는 곳(야경·산책·야시장 등)을 먼저 저녁 몫으로 떼어 두고 나머지로 낮 관광지를 고른다.
         // 필수·중심 장소는 낮 일정에 넣어야 하므로 떼어 두지 않는다.
         List<PlaceCandidate> evening=List.of();
@@ -310,9 +319,13 @@ public class ItineraryJobService {
             if(constraints!=null) { keepForDay.addAll(constraints.requiredPlaceIds()); keepForDay.addAll(constraints.centerPlaceIds()); }
             int daily=constraints!=null && constraints.dailyVisits()!=null?constraints.dailyVisits()
                 :TripConstraints.estimatedDailyCapacity(start,end,visitMinutes);
-            var eveningSource=!aiOrdered?ordered:ordered.stream().skip(Math.min(TripConstraints.MAX_TOTAL,(long)days*daily))
-                .filter(p->!skips.contains(p.placeId())).toList();
-            evening=TripConstraints.eveningPlaces(eveningSource,keepForDay,TripConstraints.eveningShare(ordered.size(),days,daily));
+            int share=TripConstraints.eveningShare(ordered.size(),days,daily);
+            // AI가 꼽은 밤 명소를 먼저 저녁 몫으로 둔다. 숙박하는 밤(일수 - 1)마다 한 곳까지이고, 저녁 몫 안에서만이다.
+            var nightFirst=TripConstraints.nightPlaces(ordered,night,keepForDay,skips,Math.min(days-1,share));
+            var eveningSource=(!aiOrdered?ordered:ordered.stream().skip(Math.min(TripConstraints.MAX_TOTAL,(long)days*daily))
+                .filter(p->!skips.contains(p.placeId())).toList()).stream().filter(p->!nightFirst.contains(p)).toList();
+            var rest=TripConstraints.eveningPlaces(eveningSource,keepForDay,share-nightFirst.size());
+            evening=new ArrayList<>(nightFirst); evening.addAll(rest);
         }
         final var eveningPool=evening;
         var daytimeOrder=ordered.stream().filter(p->!eveningPool.contains(p)).toList();

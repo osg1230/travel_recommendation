@@ -544,12 +544,15 @@ public class ItineraryGenerator {
             try { builder.locations.computeIfAbsent(place.placeId(),id->locate(place,addresses)); choices.add(place); }
             catch(RecommendationException error) { if("SCHEDULE_TIMEOUT".equals(error.getCode())) throw error; }
         }
-        choices.sort(order(builder.date,p->distance(fromAt,builder.locations.get(p.placeId()))));
+        // AI가 밤에 둘러보기 좋다고 꼽아 낮 일정에서 뺀 곳(2026-10-31)을 먼저 보고, 그다음 가까운 곳을 본다. 오가는 시간이 길면 다음 후보로 넘어간다.
+        var night=Set.copyOf(builder.input.nightPlaceIds());
+        choices.sort(Comparator.<PlaceCandidate>comparingInt(p->night.contains(p.placeId())?0:1)
+            .thenComparing(order(builder.date,p->distance(fromAt,builder.locations.get(p.placeId())))));
         for(var place:choices.stream().limit(3).toList()) {
             var mark=builder.mark();
             try {
                 if(builder.travelMinutes(from,place)>EVENING_MAX_MOVE || builder.travelMinutes(place,stay)>EVENING_MAX_MOVE) continue;
-                builder.visit(place,"VISIT",EVENING_MINUTES,eveningNote(place,from));
+                builder.visit(place,"VISIT",EVENING_MINUTES,eveningNote(place,from,night.contains(place.placeId())));
                 builder.visit(stay,"STAY",RETURN_REST_MINUTES,"저녁 관광 뒤 숙소 복귀·휴식");
                 return true;
             } catch(RecommendationException error) {
@@ -561,9 +564,11 @@ public class ItineraryGenerator {
         return false;
     }
 
-    private static String eveningNote(PlaceCandidate place,PlaceCandidate from) {
+    /** night면 AI가 밤에 둘러보기 좋다고 꼽아 낮 일정 대신 저녁에 넣은 곳이다. AI의 판단이라 그렇다고 밝힌다. */
+    private static String eveningNote(PlaceCandidate place,PlaceCandidate from,boolean night) {
         return "저녁 관광"+(place.subtypeLabel().isEmpty()?"":" · "+place.subtypeLabel())
-            +"\n고른 이유: 저녁 식사 뒤 산책·야경을 보기 좋은 종류라 "+from.name()+"에서 가까운 곳으로 골랐어요."
+            +(night?"\n고른 이유: AI가 이 지역에서 밤에 둘러보기 좋은 곳으로 꼽아, 낮 일정에 넣지 않고 저녁 식사 뒤에 넣었어요."
+                :"\n고른 이유: 저녁 식사 뒤 산책·야경을 보기 좋은 종류라 "+from.name()+"에서 가까운 곳으로 골랐어요.")
             +"\n밤에도 둘러볼 수 있는지(개방 시간·조명)는 방문 전 확인해 주세요."
             +(place.religiousSite()?"\n종교 시설이라 행사 중에는 관람이 제한될 수 있어요.":"");
     }
