@@ -35,6 +35,12 @@ import static org.assertj.core.api.Assertions.*;
  * - 다시 만들기 겹침: 첫 초안의 관광지가 '다른 관광지로 다시 만들기'로 만든 두 번째 초안에도 나온 비율
  *   (2026-10-30 3차 측정까지는 버튼이 없어 같은 조건으로 두 번 만든 초안끼리 비교했다)
  * - 인기 음식점 식사·인기 숙소: 첫 초안의 식사·숙소 중 관광공사 연관 관광지의 인기 음식점·숙소로 확인한 곳의 수(5단계)
+ * 배치 지표(2026-10-31 추가, 모두 첫 초안 기준, 좌표는 일정 항목의 지도 링크에서 읽는다)
+ * - 체류시간: 낮 관광지 체류시간의 최소~최대(분). 모든 곳이 같으면 한 값이다
+ * - 동선(실제/최단): 하루 관광지를 실제 순서로 돈 직선거리 ÷ 같은 곳을 가장 짧게 도는 순서의 직선거리(DayRoute).
+ *   숙박하는 날은 숙소에서 끝나고, 다음 날은 숙소에서 시작한다. 1.00이면 가장 짧은 순서다
+ * - 식사 우회: 식사 앞뒤 장소 사이를 바로 갈 때보다 식당을 들르느라 더 가는 직선거리(km, 끼니 평균)
+ * - 남는 시간: 관광을 마친 시각(숙박하는 날은 숙소 도착)부터 하루 종료 시각까지 남는 시간(분, 하루 평균)
  */
 @EnabledIfEnvironmentVariable(named="RUN_QUALITY_REPORT",matches="true")
 @SpringBootTest(properties={"spring.jpa.hibernate.ddl-auto=validate","travel.jobs.enabled=false"})
@@ -70,7 +76,9 @@ class ItineraryQualityReportTests {
     record Visit(String name, String kind, Boolean official, Double longitude, Double latitude) {}
     /** aiOrdered는 GPT가 관광지 순서를 정했는지다. false면 GPT 응답 실패 등으로 서버 규칙 순서를 썼다. */
     record Draft(UUID id, List<Visit> visits, int dailyMoveMinutes, int longestMoveMinutes, boolean aiOrdered,
-                 int meals, int popularMeals, int stays, int popularStays) {}
+                 int meals, int popularMeals, int stays, int popularStays, Arrangement arrangement) {}
+    /** 배치 지표. routeRatios·idleMinutes는 날마다, mealDetours는 끼니마다 하나씩이고, days는 보고서에 적을 날짜별 동선이다. */
+    record Arrangement(int minVisit, int maxVisit, List<Double> routeRatios, List<Double> mealDetours, List<Integer> idleMinutes, List<String> days) {}
     record Measured(Scenario scenario, int candidateCount, Map<String, Long> candidateKinds, Draft first, Draft second, String error) {}
 
     private final Map<Long, Boolean> officialCache = new HashMap<>();
@@ -124,7 +132,8 @@ class ItineraryQualityReportTests {
         // 실제 작업 순서(RecommendationJobWorker)와 같게: AI 관광지 순서 → 주변 음식점 → 일정 생성. 앞의 두 단계는 실패해도 서버 규칙으로 계속한다.
         try { placePicks.enrich(id); } catch (RuntimeException skipped) { /* 서버 규칙으로 고른 관광지를 그대로 쓴다. */ }
         try { restaurants.enrich(id); } catch (RuntimeException skipped) { /* 기존 음식점 후보를 쓴다. */ }
-        var picking = schedules.view(id, null, hash).input().picking();
+        var input = schedules.view(id, null, hash).input();
+        var picking = input.picking();
         boolean aiOrdered = picking != null && picking.byAi();
         var work = schedules.claim(id);
         if (work == null) throw new IllegalStateException("일정 작업을 시작하지 못했어요.");
@@ -152,8 +161,71 @@ class ItineraryQualityReportTests {
                 place.getLatitude() == null ? null : place.getLatitude().doubleValue()));
         }
         return new Draft(id, visits, moveSeconds / 60 / result.days().size(), longestSeconds / 60, aiOrdered,
-            meals, popularMeals, stays.size(), popularStays.size());
+            meals, popularMeals, stays.size(), popularStays.size(), arrangement(input, result));
     }
+
+    /** 배치 지표를 잰다. 저녁 관광(숙소 도착 뒤)은 낮 동선·체류시간에서 뺀다. */
+    static Arrangement arrangement(ItineraryPlan.Input input, ItineraryPlan.Result result) {
+        int minVisit = Integer.MAX_VALUE, maxVisit = 0;
+        List<Double> ratios = new ArrayList<>(), detours = new ArrayList<>();
+        List<Integer> idle = new ArrayList<>();
+        List<String> days = new ArrayList<>();
+        double[] hotel = null;
+        for (var day : result.days()) {
+            var items = day.items();
+            int stayAt = -1;
+            for (int i = 0; i < items.size() && stayAt < 0; i++) if ("STAY".equals(items.get(i).type())) stayAt = i;
+            List<double[]> stops = new ArrayList<>();
+            List<String> names = new ArrayList<>();
+            for (int i = 0; i < (stayAt < 0 ? items.size() : stayAt); i++) {
+                var item = items.get(i);
+                if (!"VISIT".equals(item.type())) continue;
+                stops.add(point(item)); names.add(item.name());
+                int minutes = (int) Duration.between(item.start(), item.end()).toMinutes();
+                minVisit = Math.min(minVisit, minutes); maxVisit = Math.max(maxVisit, minutes);
+            }
+            double[] end = stayAt < 0 ? null : point(items.get(stayAt));
+            double actual = DayRoute.length(stops, hotel, end, ItineraryQualityReportTests::km);
+            double best = DayRoute.length(DayRoute.shortest(stops, hotel, end, ItineraryQualityReportTests::km), hotel, end, ItineraryQualityReportTests::km);
+            ratios.add(best <= 0 ? 1.0 : actual / best);
+            days.add(day.number() + "일차: " + String.join(" → ", names) + String.format(" (직선 %.1fkm, 가장 짧은 순서 %.1fkm)", actual, best));
+            for (int i = 0; i < items.size(); i++) {
+                if (!"MEAL".equals(items.get(i).type())) continue;
+                var before = neighbor(items, i, -1);
+                var after = neighbor(items, i, 1);
+                if (before == null || after == null) continue;
+                var meal = point(items.get(i));
+                detours.add(km(before, meal) + km(meal, after) - km(before, after));
+            }
+            // 숙박하는 날은 숙소에 도착한 시각, 아니면 마지막 장소를 떠나는 시각(귀가 이동 제외)부터 하루 종료까지 남는 시간이다.
+            LocalTime finished = null;
+            if (stayAt >= 0) finished = items.get(stayAt).start();
+            else for (var item : items) if (!"TRANSIT".equals(item.type())) finished = item.end();
+            if (finished != null) idle.add((int) Math.max(0, Duration.between(finished, input.dayEnd(day.number())).toMinutes()));
+            if (stayAt >= 0) hotel = end;
+        }
+        return new Arrangement(minVisit == Integer.MAX_VALUE ? 0 : minVisit, maxVisit, ratios, detours, idle, days);
+    }
+
+    /** 식사 앞(direction=-1)이나 뒤(1)의 장소 좌표. 이동 항목과 같은 식당의 자유시간은 건너뛰고, 집 이동(장소 없음)이나 하루 끝이면 null이다. */
+    private static double[] neighbor(List<ItineraryPlan.Item> items, int at, int direction) {
+        var meal = items.get(at);
+        for (int i = at + direction; i >= 0 && i < items.size(); i += direction) {
+            var item = items.get(i);
+            if (item.mapUrl() == null) return null;
+            if ("TRANSIT".equals(item.type()) || Objects.equals(item.placeId(), meal.placeId())) continue;
+            return point(item);
+        }
+        return null;
+    }
+
+    /** 일정 항목 지도 링크(https://map.kakao.com/link/map/이름,위도,경도)의 {경도, 위도}. 이름은 URL 인코딩돼 쉼표가 없다. */
+    private static double[] point(ItineraryPlan.Item item) {
+        var parts = item.mapUrl().split(",");
+        return new double[]{Double.parseDouble(parts[parts.length - 1]), Double.parseDouble(parts[parts.length - 2])};
+    }
+
+    private static double km(double[] a, double[] b) { return meters(a[0], a[1], b[0], b[1]) / 1000; }
 
     /** 일정 관광지 중 서로 가장 먼 두 곳의 직선거리(km). 작으면 한 동네에 몰린 일정이다. */
     private static String spreadKm(List<Visit> visits) {
@@ -233,19 +305,38 @@ class ItineraryQualityReportTests {
             .append("괄호 안 '확인 못 함'은 관광공사 조회 실패 수다. 관광지 분포는 일정 관광지 중 서로 가장 먼 두 곳의 직선거리다. ")
             .append("AI 순서는 첫/두 번째 초안에서 GPT가 관광지 순서를 정했는지이며, 실패하면 서비스처럼 서버 규칙 순서로 만들었다. ")
             .append("인기 음식점 식사·인기 숙소는 첫 초안의 식사·숙소 중 관광공사 연관 관광지의 인기 음식점·숙소로 확인한 곳의 수다.\n");
+        out.append("\n### 배치 지표 (첫 초안)\n\n")
+            .append("| 시나리오 | 체류시간(분) | 동선 실제/최단 (평균·최대) | 식사 우회(km, 끼니 평균) | 남는 시간(분, 하루 평균) |\n")
+            .append("|---|---|---|---|---|\n");
+        for (var m : measured) {
+            if (m.error() != null) continue;
+            var a = m.first().arrangement();
+            out.append("| ").append(m.scenario().name())
+                .append(" | ").append(a.minVisit() == a.maxVisit() ? String.valueOf(a.minVisit()) : a.minVisit() + "~" + a.maxVisit())
+                .append(" | ").append(String.format("%.2f · %.2f", average(a.routeRatios()), a.routeRatios().stream().mapToDouble(Double::doubleValue).max().orElse(1)))
+                .append(" | ").append(a.mealDetours().isEmpty() ? "-" : String.format("%.1f", average(a.mealDetours())))
+                .append(" | ").append(Math.round(a.idleMinutes().stream().mapToInt(Integer::intValue).average().orElse(0))).append(" |\n");
+        }
+        out.append("\n동선은 직선거리 기준이라 실제 도로 거리와 다를 수 있다. 1.00이면 그날 관광지를 가장 짧게 도는 순서다. ")
+            .append("식사 우회는 식사 앞뒤에 장소가 있는 끼니만 센다(첫 일정 전·숙소로 가기 전 끼니 포함).\n");
         for (var m : measured) {
             if (m.error() != null) continue;
             out.append("\n## ").append(m.scenario().name()).append("\n\n")
                 .append("- 후보 종류 분포: ").append(m.candidateKinds().entrySet().stream().sorted(Map.Entry.<String, Long>comparingByValue().reversed())
                     .map(e -> e.getKey() + " " + e.getValue()).collect(Collectors.joining(", "))).append("\n")
                 .append("- 첫 초안: ").append(visitText(m.first())).append("\n")
-                .append("- 두 번째 초안: ").append(visitText(m.second())).append("\n");
+                .append("- 두 번째 초안: ").append(visitText(m.second())).append("\n")
+                .append("- 첫 초안 동선: ").append(String.join(" / ", m.first().arrangement().days())).append("\n");
         }
         var folder = Path.of("target", "quality");
         Files.createDirectories(folder);
         var file = folder.resolve("itinerary-quality-" + now.format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")) + ".md");
         Files.writeString(file, out.toString(), StandardCharsets.UTF_8);
         return file;
+    }
+
+    private static double average(List<Double> values) {
+        return values.stream().mapToDouble(Double::doubleValue).average().orElse(0);
     }
 
     private static String topKind(Map<String, Long> kinds) {
