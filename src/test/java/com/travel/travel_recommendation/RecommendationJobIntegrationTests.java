@@ -235,5 +235,10 @@ class RecommendationJobIntegrationTests {
         assertThat(service.regionProblem(conditions(""))).isNull();
         assertThat(service.regionProblem(conditions("제주 우도"))).contains("'제주' 지역의").contains("지역 칸을 '제주'처럼 고쳐 주세요.");
         assertThat(service.regionProblem(conditions("독도"))).contains("시·도 이름(예: 강원, 전북)");
+        // 첫 단어로도 찾지 못하는 이름('독도')만 원하는 여행으로 옮길 대상이다. '제주 우도'는 '제주'로 고치게 한다.
+        assertThat(service.regionUnknown(conditions("독도"))).isTrue();
+        assertThat(service.regionUnknown(conditions("제주 우도"))).isFalse();
+        assertThat(service.regionUnknown(conditions("강릉"))).isFalse();
+        assertThat(service.regionUnknown(conditions(""))).isFalse();
     }
 }

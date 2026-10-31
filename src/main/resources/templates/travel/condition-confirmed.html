@@ -6,8 +6,10 @@
 <nav th:replace="~{fragments/layout :: flowSteps(2)}"></nav>
     <p class="eyebrow">여행 준비 · 조건 확정</p><h1>여행 조건을 확정했어요</h1>
     <p class="intro">확정한 조건으로 여행지 후보를 찾아보세요. 전국 시·도의 주요 관광 도시 중에서 찾아요.</p>
+    <p class="notice" role="status" th:if="${regionNotice != null}" th:text="${regionNotice}"></p>
     <dl class="condition-summary">
         <dt>지역</dt><dd th:text="*{region.isEmpty() ? '상관없음' : region}"></dd>
+        <th:block th:if="*{travelPurpose != null and !travelPurpose.isEmpty()}"><dt>원하는 여행</dt><dd th:text="*{travelPurpose}"></dd></th:block>
         <dt>여행 날짜</dt><dd th:text="*{startDate == null ? '아직 미정' : startDate + ' ~ ' + endDate}"></dd>
         <dt>여행 일수</dt><dd th:text="*{durationDays == null ? '아직 미정' : durationDays + '일'}"></dd>
         <dt>계절</dt><dd th:text="*{keywordNames('SEASON').isEmpty() ? '상관없음' : keywordNames('SEASON')}"></dd>

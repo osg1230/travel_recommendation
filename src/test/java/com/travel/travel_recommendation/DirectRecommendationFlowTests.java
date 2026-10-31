@@ -131,6 +131,39 @@ class DirectRecommendationFlowTests {
             .andExpect(redirectedUrl("/travel/recommendations/"+id));
         verify(jobs).create(argThat(value -> "제주".equals(value.region())),nullable(String.class),any());
     }
+    // '속리산'처럼 여행지 목록에 없는 이름은 원하는 여행 앞에 붙이고 지역을 비워 바로 추천한다. 추천 화면에서 옮긴 사실을 알린다.
+    @Test void unknownPlaceNameBecomesThePurposeAndTheRecommendationStarts() throws Exception {
+        analysis.put("region","속리산"); analysis.put("travelPurpose","단풍 구경");
+        when(jobs.regionUnknown(any())).thenAnswer(call->"속리산".equals(((ConfirmedTravelConditions)call.getArgument(0)).region()));
+        var session=new MockHttpSession(); var token=token(session);
+        mvc.perform(post("/travel/conditions/recommend").session(session).with(csrf()).param("inputToken",token)
+            .param("inputMode","TEXT").param("originalText","속리산으로 단풍 구경 가고 싶어"))
+            .andExpect(redirectedUrl("/travel/recommendations/"+id));
+        verify(jobs).create(argThat(value -> (value.region()==null || value.region().isEmpty())
+            && "속리산 단풍 구경".equals(value.travelPurpose()) && !value.purposeSuggested()),nullable(String.class),any());
+        var c=(ConfirmedTravelConditions)session.getAttribute("confirmedTravelConditions");
+        when(jobs.view(eq(id),nullable(String.class),any())).thenReturn(new RecommendationJobView(id,"QUEUED",
+            "앞선 요청을 처리하고 있어요. 차례가 되면 바로 시작해요.",null,List.of(),true,List.of(),false,0,false,false));
+        when(jobs.conditions(eq(id),nullable(String.class),any())).thenReturn(c);
+        mvc.perform(get("/travel/recommendations/"+id).session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("속리산&#39;은(는) 아직 여행지 목록에 없어서 지역 대신 원하는 여행으로 옮겼어요.")));
+    }
+    // 조건 수정 화면에서 지역 칸에 여행지 목록에 없는 시·군('보은')을 적어도 원하는 여행 앞에 붙이고 지역을 비워 추천한다.
+    @Test void unknownRegionTypedOnTheReviewPageAlsoBecomesThePurpose() throws Exception {
+        var session=new MockHttpSession(); submit(session,token(session));
+        var c=(ConfirmedTravelConditions)session.getAttribute("confirmedTravelConditions");
+        when(jobs.conditions(eq(id),nullable(String.class),any())).thenReturn(c);
+        mvc.perform(get("/travel/conditions/edit").session(session).param("recommendationId",id.toString()))
+            .andExpect(redirectedUrl("/travel/conditions/review"));
+        var form=(ConditionReviewForm)mvc.perform(get("/travel/conditions/review").session(session)).andExpect(status().isOk())
+            .andReturn().getModelAndView().getModel().get("reviewForm");
+        when(jobs.regionUnknown(any())).thenAnswer(call->"보은".equals(((ConfirmedTravelConditions)call.getArgument(0)).region()));
+        mvc.perform(post("/travel/conditions/confirm").session(session).with(csrf()).param("revision",form.getRevision())
+                .param("region","보은").param("travelPurpose","상어 관람"))
+            .andExpect(redirectedUrl("/travel/recommendations/"+id));
+        verify(jobs).create(argThat(value -> (value.region()==null || value.region().isEmpty())
+            && "보은 상어 관람".equals(value.travelPurpose())),nullable(String.class),any());
+    }
     @Test void clearedAnalysisFieldsAreShownOnTheRecommendationPage() throws Exception {
         analysis.put("durationDays",10);
         var session=new MockHttpSession(); submit(session,token(session));
