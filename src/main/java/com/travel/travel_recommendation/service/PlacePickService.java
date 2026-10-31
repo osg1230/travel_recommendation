@@ -99,7 +99,7 @@ public class PlacePickService {
         int days=input.conditions().durationDays()==null?1:input.conditions().durationDays();
         Input picked;
         try {
-            var arranged=ItineraryJobService.withoutPrevious(ItineraryJobService.arrange(ordered,Set.copyOf(picks.skip()),true,
+            var arranged=ItineraryJobService.withoutPreviousEvening(ItineraryJobService.arrange(ordered,Set.copyOf(picks.skip()),true,
                 input.places().accommodationNeeded(),days,input.start(),input.end(),input.visitMinutes(),c),input.picking().previous());
             picked=input.withPicked(arranged.selected(),arranged.reserve(),arranged.evening());
             generator.checkInput(picked);

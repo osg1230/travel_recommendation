@@ -244,8 +244,11 @@ class PlaceDiscoveryIntegrationTests {
         var chosen=input.places().attractions().stream().map(PlaceCandidate::placeId).toList();
         assertThat(fresh).isNotEmpty();
         assertThat(chosen.subList(0,Math.min(chosen.size(),fresh.size()))).allMatch(fresh::contains);
-        // 남는 시간을 채우는 예비·저녁 관광 후보에도 직전 초안의 관광지는 넣지 않는다(가깝다는 이유로 다시 들어가지 않게).
-        assertThat(input.reserve()).extracting(PlaceCandidate::placeId).doesNotContainAnyElementsOf(visited);
+        // 예비 관광지에는 직전 초안의 관광지가 들어갈 수 있지만 뒤쪽에만 두고(일정 생성은 다른 예비 관광지가 없을 때만 쓴다),
+        // 저녁 관광 후보에는 넣지 않는다(가깝다는 이유로 다시 들어가지 않게).
+        var reserveIds=input.reserve().stream().map(PlaceCandidate::placeId).toList();
+        int firstAgain=java.util.stream.IntStream.range(0,reserveIds.size()).filter(i->visited.contains(reserveIds.get(i))).findFirst().orElse(reserveIds.size());
+        assertThat(reserveIds.subList(firstAgain,reserveIds.size())).allMatch(visited::contains);
         assertThat(input.evening()).extracting(PlaceCandidate::placeId).doesNotContainAnyElementsOf(visited);
         assertThat(schedules.view(first,null,hash).status()).isEqualTo("COMPLETED");
         // 새 초안은 이전 초안을 기억해 두고, 완성되면 이전 초안으로 가는 길과 달라진 부분을 보여 준다.

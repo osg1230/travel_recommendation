@@ -270,7 +270,7 @@ public class ItineraryJobService {
         ordered=TripConstraints.previousLast(ordered,later,keepInOrder,Set.of());
         Arranged arranged;
         try {
-            arranged=withoutPrevious(arrange(ordered,Set.of(),false,places.accommodationNeeded(),days,start,end,visitMinutes,constraints),later);
+            arranged=withoutPreviousEvening(arrange(ordered,Set.of(),false,places.accommodationNeeded(),days,start,end,visitMinutes,constraints),later);
         } catch(IllegalArgumentException invalid) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"화면에 있는 장소와 값으로 조건을 다시 골라 주세요.");
         }
@@ -322,14 +322,13 @@ public class ItineraryJobService {
     }
 
     /**
-     * '다른 관광지로 다시 만들기'면 직전 초안의 관광지(previous)를 예비·저녁 관광 후보에서 뺀다. 일정 생성은 남는 시간을
-     * "가까운" 예비 관광지로 채우므로, 순서만 뒤로 보내면 직전에 간 곳이 가깝다는 이유로 다시 들어갔다(2026-10-30 브라우저 확인).
-     * 새로 고른 낮 관광지(selected)는 그대로 두며, 채울 곳이 없으면 그 시간은 비워 둔다.
+     * '다른 관광지로 다시 만들기'면 직전 초안의 관광지(previous)를 저녁 관광 후보에서 뺀다. 예비 관광지에는 남겨 두되(후보 순서 맨 뒤라 뒤쪽에 온다)
+     * 일정 생성이 다른 예비 관광지가 없을 때만 쓴다(2026-10-31). 예전에는 예비에서도 빼서, 직전에 간 곳이 가깝다는 이유로 다시 들어가지는
+     * 않았지만(2026-10-30 브라우저 확인) 채울 곳이 없는 날은 관광지가 줄고 시간이 비었다(여수 2일차 1곳, 300분).
      */
-    static Arranged withoutPrevious(Arranged arranged,Collection<Long> previous) {
+    static Arranged withoutPreviousEvening(Arranged arranged,Collection<Long> previous) {
         if(previous.isEmpty()) return arranged;
-        return new Arranged(arranged.selected(),
-            arranged.reserve().stream().filter(p->!previous.contains(p.placeId())).toList(),
+        return new Arranged(arranged.selected(),arranged.reserve(),
             arranged.evening().stream().filter(p->!previous.contains(p.placeId())).toList());
     }
 
