@@ -173,6 +173,32 @@ class TourApiClientTests {
         assertCode("TOUR_RESPONSE", () -> client("key").findPetInfo("129784"));
         assertCode("TOUR_INPUT", () -> client("key").findPetInfo("abc"));
     }
+    // 소개문(detailCommon2 overview)은 HTML 태그·특수문자 표기를 빼고 공백을 정리해 600자까지 받는다. 소개문이 비었거나 장소가 없으면 비어 있다.
+    @Test void readsOverviewAsPlainTextAndCutsItShort() {
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":1,\"items\":{\"item\":[{\"contentid\":\"125906\","
+            + "\"title\":\"보은 법주사\",\"overview\":\"속리산에 있는 절이다.<br>\\n팔상전&nbsp;과 쌍사자석등이 있다.  <br />\"}]}}}}");
+        assertThat(client("key").findOverview("125906")).contains("속리산에 있는 절이다. 팔상전 과 쌍사자석등이 있다.");
+        assertThat(query.get()).contains("contentId=125906", "numOfRows=1");
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":1,\"items\":{\"item\":[{\"contentid\":\"125906\",\"overview\":\""
+            + "가".repeat(700) + "\"}]}}}}");
+        assertThat(client("key").findOverview("125906").orElseThrow()).hasSize(TourApiClient.OVERVIEW_CHARS + 1).endsWith("…");
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":1,\"items\":{\"item\":[{\"contentid\":\"125906\",\"overview\":\"<br>\"}]}}}}");
+        assertThat(client("key").findOverview("125906")).isEmpty();
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"items\":\"\",\"numOfRows\":0,\"pageNo\":1,\"totalCount\":0}}}");
+        assertThat(client("key").findOverview("125906")).isEmpty();
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":1,\"items\":{\"item\":[{\"contentid\":\"999\",\"overview\":\"다른 곳\"}]}}}}");
+        assertCode("TOUR_RESPONSE", () -> client("key").findOverview("125906"));
+        assertCode("TOUR_INPUT", () -> client("key").findOverview("abc"));
+    }
+    // 소개문을 찾을 관광지 검색은 사진이 없는 곳도 받는다(사진 검색은 사진이 있는 곳만 받는다).
+    @Test void attractionSearchKeepsPlacesWithoutPhotos() {
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":2,\"items\":{\"item\":["
+            + "{\"contentid\":\"1\",\"contenttypeid\":\"12\",\"title\":\"정이품송\",\"addr1\":\"충청북도 보은군\",\"mapx\":\"127.78\",\"mapy\":\"36.53\",\"firstimage\":\"\"},"
+            + "{\"contentid\":\"2\",\"contenttypeid\":\"39\",\"title\":\"식당\",\"addr1\":\"충청북도 보은군\",\"mapx\":\"127.78\",\"mapy\":\"36.53\"}]}}}}");
+        assertThat(client("key").searchAttractions("정이품송")).extracting(TourApiClient.SearchPlace::id).containsExactly("1");
+        assertThat(client("key").searchPhotos("정이품송")).isEmpty();
+        assertThat(query.get()).contains("numOfRows=30");
+    }
     // 연관 관광지는 시·군·구 코드 앞 두 자리를 시·도 코드로 보내고, 순위가 숫자가 아닌 행만 버린다. 전체 행이 한 쪽 안이면 다음 쪽을 부르지 않는다.
     @Test void relatedPlacesSendsDistrictCodesAndSkipsBadRows() {
         body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":2,\"items\":{\"item\":["

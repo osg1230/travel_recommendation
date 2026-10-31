@@ -36,6 +36,8 @@ public class ItineraryJobService {
     private final org.springframework.beans.factory.ObjectProvider<PlaceDiscoveryService> discoveries;
     // 반려동물 동반 정보는 SQL Server 프로필에서만 조회한다(장소 상세정보 보관).
     private final org.springframework.beans.factory.ObjectProvider<PlacePetService> pets;
+    // 관광공사 장소 소개문도 장소 상세정보에 보관하므로 SQL Server 프로필에서만 조회한다.
+    private final org.springframework.beans.factory.ObjectProvider<PlaceOverviewService> placeOverviews;
     // 확인 필요 항목 AI 웹 검색. 설정(travel.verification.auto)에 따라 초안을 만들 때 자동으로 돌리거나 버튼으로만 찾는다.
     private final OpenAiVerificationClient verificationClient;
     private final com.travel.travel_recommendation.config.VerificationProperties verification;
@@ -1064,7 +1066,17 @@ public class ItineraryJobService {
             try { draft=draft.withVerifications(verifyNow(work.input(),draft,Instant.now().plusSeconds(40))); }
             catch(RuntimeException error) { log.warn("AI 확인 검색을 건너뜀 job={} ({})",work.id(),error.toString()); }
         }
-        var plan=assistant.assist(work.input(),draft,deadline);
+        // 일정에 들어간 관광지의 관광공사 소개문을 찾아 AI 추천 활동의 근거로 넘긴다(2026-10-31). 최대 12초만 쓰고
+        // AI 안내에 쓸 시간(60초)을 남긴다. 처음 조회한 소개문은 보관해 다음 초안부터는 다시 부르지 않는다. 실패해도 초안은 그대로다.
+        Map<Long,String> overviews=Map.of();
+        var overviewService=placeOverviews.getIfAvailable();
+        var overviewUntil=Instant.now().plusSeconds(12);
+        if(overviewUntil.isAfter(deadline.minusSeconds(60))) overviewUntil=deadline.minusSeconds(60);
+        if(overviewService!=null && Instant.now().isBefore(overviewUntil)) {
+            try { overviews=overviewService.lookup(work.input(),draft,overviewUntil); }
+            catch(RuntimeException error) { log.warn("장소 소개문 조회를 건너뜀 job={} ({})",work.id(),error.toString()); }
+        }
+        var plan=assistant.assist(work.input(),draft,deadline,overviews);
         // 주변 지역 조회는 최대 수십 초가 걸릴 수 있어 남은 시간이 부족하면 건너뛴다. 실패해도 일정 초안은 그대로다.
         if(Instant.now().isAfter(deadline.minusSeconds(40))) return plan;
         try { return plan.withNearby(nearby.recommend(work.input(),plan)); }

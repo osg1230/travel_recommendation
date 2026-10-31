@@ -238,7 +238,10 @@ public final class ItineraryPlan {
     }
     public record Day(int number, LocalDate date, List<Item> items) {}
     /** AI가 작성한 보조 안내. 서버가 만든 시각·장소·순서를 바꾸지 않으며 검증 완료를 뜻하지 않는다. */
-    /** placeReasons는 장소 ID → AI가 쓴 "왜 가 볼 만한지" 한 문장이다. 일정 항목의 '고른 이유'에 반영하며 이전 JSON에는 없다. */
+    /**
+     * placeReasons는 장소 ID → AI가 쓴 한 문장이다. 2026-10-31부터는 관광지에서 해 볼 만한 활동(관광공사 소개문 근거)이고
+     * 관광 항목 메모에 'AI 추천 활동' 줄로 더한다. 그 전 JSON은 "왜 가 볼 만한지" 문장('AI 설명')이며, 더 이전 JSON에는 없다.
+     */
     public record Assist(String summary, List<DayAdvice> days, Instant createdAt, java.util.Map<Long, String> placeReasons) {
         public Assist { placeReasons = placeReasons == null ? java.util.Map.of() : java.util.Map.copyOf(placeReasons); }
         public Assist(String summary, List<DayAdvice> days, Instant createdAt) { this(summary, days, createdAt, null); }
@@ -260,8 +263,9 @@ public final class ItineraryPlan {
     public record BusInfo(LocalDate serviceDate, int trips, LocalTime firstDeparture, LocalTime lastDeparture, Integer minCharge) {}
     public record NearbyAttraction(Long placeId, String name, String subtype, String description, String address, String sourceUrl) {}
     /**
-     * 숙소 추천(SFR-05-02·03). 관광지와의 평균 직선거리가 짧은 순서로 후보를 보여 주고, 첫 후보를 일정의 숙소로 쓴다.
-     * 직선거리는 동선 판단용 근사값이며 실제 이동시간·가격·예약 가능 여부를 뜻하지 않는다.
+     * 숙소 추천(SFR-05-02·03). 관광지와의 평균 직선거리가 짧은 순서로 후보를 보여 주되, 가장 가까운 곳과 2km 안쪽 차이의
+     * 관광공사 인기 숙소가 있으면 그곳을 앞에 둔다. options의 첫 후보가 일정의 숙소이고, reason은 일정이 정해진 뒤 오가는 시간으로 적는다.
+     * 직선거리는 동선 판단용 근사값이며 가격·예약 가능 여부를 뜻하지 않는다.
      */
     public record Lodging(Long chosenPlaceId, String reason, List<StayOption> options) {
         public Lodging { options = options == null ? List.of() : List.copyOf(options); }
