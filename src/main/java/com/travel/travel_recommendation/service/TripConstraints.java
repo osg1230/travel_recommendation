@@ -243,6 +243,17 @@ public final class TripConstraints {
         return EVENING_WORDS.stream().anyMatch(place.name()::contains);
     }
 
+    /**
+     * AI가 밤에 둘러보기 좋다고 꼽은 곳(night, 그 순서) 중 저녁 관광으로 어울리는 분류(eveningSpot)인 곳을 limit곳까지(2026-10-31).
+     * 필수·중심 장소(excluded)와 AI가 뺄 곳(skips)은 쓰지 않는다. AI의 판단은 저녁 관광 분류 안에서 순서만 바꾸며, 야간 개방·조명은 확인한 것이 아니다.
+     */
+    public static List<PlaceCandidate> nightPlaces(List<PlaceCandidate> ordered, List<Long> night, Collection<Long> excluded,
+                                                   Collection<Long> skips, int limit) {
+        return night.stream().map(id -> ordered.stream().filter(p -> p.placeId().equals(id)).findFirst().orElse(null))
+            .filter(p -> p != null && !excluded.contains(p.placeId()) && !skips.contains(p.placeId()) && eveningSpot(p))
+            .limit(Math.max(0, limit)).toList();
+    }
+
     /** 제외할 곳(낮 관광지·필수·중심 장소)을 뺀 후보 중 저녁 관광으로 어울리는 곳을 limit곳까지. 후보 순서(가운데와 가까운 순)를 따른다. */
     public static List<PlaceCandidate> eveningPlaces(List<PlaceCandidate> ordered, Collection<Long> excluded, int limit) {
         return ordered.stream().filter(p -> !excluded.contains(p.placeId()) && eveningSpot(p)).limit(Math.min(limit, MAX_EVENING)).toList();

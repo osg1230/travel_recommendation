@@ -188,6 +188,23 @@ class TripConstraintsTests {
         assertThat(ids(rule.evening())).containsExactly(1L, 8L, 9L);
         assertThat(ids(rule.selected())).containsExactly(2L, 3L, 4L, 5L, 6L, 7L);
     }
+    // AI가 밤 명소로 꼽은 곳은 숙박하는 밤 수만큼 저녁 관광 후보 맨 앞에 두고 낮 관광지에서 뺀다.
+    // 저녁 관광 분류가 아닌 곳(문화유적)과 중심 장소는 밤 명소로 쓰지 않고, 당일 여행은 저녁 관광이 없어 그대로다.
+    @Test void aiNightSpotsGoToTheFrontOfEveningCandidates() {
+        var ordered = new ArrayList<PlaceCandidate>();
+        for (long id = 1; id <= 10; id++)
+            ordered.add(kind(id, "장소" + id, id == 1 || id >= 8 ? "여행 > 관광,명소 > 전망대" : "여행 > 관광,명소 > 문화유적"));
+        var night = ItineraryJobService.arrange(ordered, Set.of(10L), List.of(2L, 1L), true, true, 2, NINE, SIX, 90, null);
+        assertThat(ids(night.evening())).containsExactly(1L, 8L, 9L);
+        assertThat(ids(night.selected())).containsExactly(2L, 3L, 4L, 5L, 6L, 7L);
+        // 2박 3일이면 두 곳까지 둔다(후보 16곳). 중심 장소(8)는 밤 명소로 꼽혀도 낮 일정에 남긴다.
+        var many = new ArrayList<>(ordered);
+        for (long id = 11; id <= 16; id++) many.add(kind(id, "장소" + id, "여행 > 관광,명소 > 문화유적"));
+        var center = new Constraints(List.of(), null, false, null, List.of(), null, List.of(8L));
+        assertThat(ids(ItineraryJobService.arrange(many, Set.of(), List.of(1L, 8L, 9L), true, true, 3, NINE, SIX, 90, center).evening()))
+            .startsWith(1L, 9L).doesNotContain(8L);
+        assertThat(ItineraryJobService.arrange(ordered, Set.of(), List.of(1L), true, false, 1, NINE, SIX, 90, null).evening()).isEmpty();
+    }
     // 다시 만들기: 직전 초안의 관광지는 뒤로 가되 빠지지 않는다. 지킬 장소는 제자리, AI가 뺄 곳은 그보다 더 뒤에 둔다.
     @Test void previousPlacesMoveBehindOthersButBeforeSkipped() {
         var ordered = pool(6);

@@ -80,13 +80,16 @@ public final class ItineraryPlan {
         /**
          * AI가 정한 순서로 다시 고른 관광지·예비 관광지·저녁 관광 후보로 바꾼다. 고르기 전 후보는 더 쓰지 않으므로 비운다.
          * '다른 관광지로 다시 만들기'의 이전 초안 기록(previous·previousJobId)은 결과 화면의 비교에 쓰므로 그대로 둔다.
+         * night는 저녁 관광 후보 맨 앞에 둔 AI 밤 명소의 ID다.
          */
-        public Input withPicked(List<PlaceCandidate> attractions, List<PlaceCandidate> reserve, List<PlaceCandidate> evening) {
+        public Input withPicked(List<PlaceCandidate> attractions, List<PlaceCandidate> reserve, List<PlaceCandidate> evening, List<Long> night) {
             var view = new PlaceCandidateView(places.jobId(), places.destination(), places.durationDays(), places.accommodationNeeded(),
                 attractions, places.accommodations(), places.restaurants());
             return new Input(recommendationId, view, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, choices,
-                new Picking(List.of(), true, picking == null ? List.of() : picking.previous(), picking == null ? null : picking.previousJobId()));
+                new Picking(List.of(), true, picking == null ? List.of() : picking.previous(), picking == null ? null : picking.previousJobId(), night));
         }
+        /** AI가 밤에 둘러보기 좋다고 꼽아 저녁 관광으로 아껴 둔 관광지 ID. 없으면 빈 목록이다. */
+        public List<Long> nightPlaceIds() { return picking == null ? List.of() : picking.night(); }
         /** '다른 관광지로 다시 만들기'로 만든 초안이면 이전 초안의 작업 ID, 아니면 null이다. */
         public UUID previousJobId() { return picking == null ? null : picking.previousJobId(); }
         /** AI가 정한 순서로 관광지를 골랐는지. */
@@ -132,11 +135,17 @@ public final class ItineraryPlan {
      */
     /** previous는 '다른 관광지로 다시 만들기'에서 직전 초안에 넣었던 관광지 ID다. AI가 순서를 정한 뒤에도 뒤로 보낸다. 이전 JSON에는 없다. */
     /** previousJobId는 '다른 관광지로 다시 만들기'의 직전 초안 작업 ID다. 결과 화면에서 이전 초안 링크와 비교에 쓴다. 이전 JSON에는 없다. */
-    public record Picking(List<PlaceCandidate> pool, boolean byAi, List<Long> previous, UUID previousJobId) {
+    /**
+     * night는 AI가 낮보다 밤에 둘러보기 좋다고 꼽아 낮 일정에서 빼고 저녁 관광 후보 맨 앞에 둔 관광지 ID다(2026-10-31).
+     * 일정 생성은 저녁 관광에서 이곳을 먼저 본다. 이전 JSON에는 없다.
+     */
+    public record Picking(List<PlaceCandidate> pool, boolean byAi, List<Long> previous, UUID previousJobId, List<Long> night) {
         public Picking {
             pool = pool == null ? List.of() : List.copyOf(pool);
             previous = previous == null ? List.of() : List.copyOf(previous);
+            night = night == null ? List.of() : List.copyOf(night);
         }
+        public Picking(List<PlaceCandidate> pool, boolean byAi, List<Long> previous, UUID previousJobId) { this(pool, byAi, previous, previousJobId, null); }
         public Picking(List<PlaceCandidate> pool, boolean byAi, List<Long> previous) { this(pool, byAi, previous, null); }
         public Picking(List<PlaceCandidate> pool, boolean byAi) { this(pool, byAi, List.of()); }
     }

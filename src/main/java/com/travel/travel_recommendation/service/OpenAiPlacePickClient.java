@@ -24,8 +24,16 @@ public class OpenAiPlacePickClient {
     private final URI endpoint;
     private final Duration timeout;
 
-    /** order는 갈 만한 순서의 장소 ID, skip은 일부러 찾아갈 이유가 적다고 본 장소 ID다. 둘 다 후보에 있는 ID만 담는다. */
-    public record Picks(List<Long> order, List<Long> skip) {}
+    /**
+     * order는 갈 만한 순서의 장소 ID, skip은 일부러 찾아갈 이유가 적다고 본 장소 ID다. 모두 후보에 있는 ID만 담는다.
+     * night는 낮보다 밤에 둘러보기 좋다고 AI가 꼽은 곳(야경·야간 조명·야시장, 최대 MAX_NIGHT곳)이다(2026-10-31). 확인한 정보가 아니다.
+     */
+    public record Picks(List<Long> order, List<Long> skip, List<Long> night) {
+        public Picks { night = night == null ? List.of() : List.copyOf(night); }
+        public Picks(List<Long> order, List<Long> skip) { this(order, skip, List.of()); }
+    }
+    /** AI가 밤 명소로 꼽을 수 있는 최대 수. 숙박하는 밤마다 한 곳씩 쓰므로 많을 필요가 없다. */
+    static final int MAX_NIGHT=3;
     /**
      * GPT에 보내는 후보 한 곳. km는 일정의 중심에서 떨어진 직선거리(모르면 null), fixed는 사용자가 넣기로 정한 곳이다.
      * members는 비슷한 조건으로 여행한 다른 회원 중 이 관광지를 일정에 넣거나 즐겨찾기·높게 평가한 회원 수다(없으면 null).
@@ -67,6 +75,8 @@ public class OpenAiPlacePickClient {
                 members는 비슷한 조건으로 여행한 다른 회원 중 그곳을 일정에 넣은(saved)·즐겨찾기한(favorited)·4점 이상으로 평가한(ratedHigh) 회원 수다.
                 여행 조건과 맞는 정도가 비슷하면 members가 많은 곳을 앞에 둘 수 있지만, members만 보고 조건과 맞지 않는 곳을 앞에 두지 않는다.
                 모든 후보를 order와 skip 중 한 곳에 한 번씩만 적는다.
+                night에는 order에 적은 곳 중 낮보다 밤에 가 볼 만하다고 널리 알려진 곳(야경·야간 조명·야시장)을 갈 만한 순서대로 최대 3곳 적는다.
+                밤에 문을 닫는 곳(박물관·사찰·숲 등)과 잘 모르는 곳은 적지 않고, 그런 곳이 없으면 빈 배열로 둔다.
                 """,
                 "input",mapper.writeValueAsString(promptInput(conditions,destination,transport,candidates)),
                 "text",Map.of("format",Map.of("type","json_schema","name","place_picks","strict",true,"schema",schema(candidates))));
@@ -102,25 +112,29 @@ public class OpenAiPlacePickClient {
 
     /**
      * 후보에 없는 ID와 두 번 나온 ID는 버린다. order에 있는 곳과 사용자가 넣기로 한 곳(fixed)은 skip에서 뺀다.
+     * night는 order에 있는 곳만 MAX_NIGHT곳까지 받고, 없거나 형식이 다르면 빈 목록으로 본다(밤 명소는 보조 정보다).
      * 갈 만한 곳을 하나도 적지 않았거나 후보의 절반 넘게 빼라고 하면 믿기 어려운 응답으로 보고 쓰지 않는다.
      */
     Picks validate(JsonNode root,List<Candidate> candidates) {
         if(!root.isObject() || !root.path("order").isArray() || !root.path("skip").isArray()) throw invalid();
         Set<Long> allowed=new HashSet<>(); Set<Long> fixed=new HashSet<>();
         for(var c:candidates) { allowed.add(c.placeId()); if(c.fixed()) fixed.add(c.placeId()); }
-        var order=new LinkedHashSet<Long>(); var skip=new LinkedHashSet<Long>();
+        var order=new LinkedHashSet<Long>(); var skip=new LinkedHashSet<Long>(); var night=new LinkedHashSet<Long>();
         for(JsonNode id:root.path("order")) if(id.isIntegralNumber() && allowed.contains(id.longValue())) order.add(id.longValue());
         for(JsonNode id:root.path("skip"))
             if(id.isIntegralNumber() && allowed.contains(id.longValue()) && !order.contains(id.longValue()) && !fixed.contains(id.longValue())) skip.add(id.longValue());
+        for(JsonNode id:root.path("night"))
+            if(night.size()<MAX_NIGHT && id.isIntegralNumber() && order.contains(id.longValue())) night.add(id.longValue());
         if(order.isEmpty() || skip.size()*2>candidates.size()) throw invalid();
-        return new Picks(List.copyOf(order),List.copyOf(skip));
+        return new Picks(List.copyOf(order),List.copyOf(skip),List.copyOf(night));
     }
 
     private Map<String,Object> schema(List<Candidate> candidates) {
         var ids=candidates.stream().map(Candidate::placeId).toList();
         var idList=Map.of("type","array","maxItems",ids.size(),"items",Map.of("type","integer","enum",ids));
-        return Map.of("type","object","additionalProperties",false,"required",List.of("order","skip"),
-            "properties",Map.of("order",idList,"skip",idList));
+        var nightList=Map.of("type","array","maxItems",Math.min(MAX_NIGHT,ids.size()),"items",Map.of("type","integer","enum",ids));
+        return Map.of("type","object","additionalProperties",false,"required",List.of("order","skip","night"),
+            "properties",Map.of("order",idList,"skip",idList,"night",nightList));
     }
 
     private Map<String,Object> promptInput(ConfirmedTravelConditions c,String destination,String transport,List<Candidate> candidates) {

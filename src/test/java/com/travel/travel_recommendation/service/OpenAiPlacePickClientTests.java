@@ -74,6 +74,16 @@ class OpenAiPlacePickClientTests {
         assertThat(picks.skip()).containsExactly(3L);
     }
 
+    // 밤 명소(night)는 order에 적은 곳만 앞에서부터 3곳까지 받는다. 뺄 곳·모르는 ID는 버리고, 없거나 형식이 다르면 빈 목록이다.
+    @Test void readsNightSpotsOnlyFromOrderedPlaces() {
+        output("{\"order\":[4,1,2],\"skip\":[3],\"night\":[4,3,99,4,1,2]}");
+        assertThat(pick().night()).containsExactly(4L,1L,2L);
+        output("{\"order\":[4,1,2],\"skip\":[3]}");
+        assertThat(pick().night()).isEmpty();
+        // 응답 형식에 night를 넣어 요청하고, 밤에 문을 닫는 곳은 적지 말라고 알린다.
+        assertThat(request.get()).contains("\"night\"").contains("야경");
+    }
+
     // 갈 만한 곳이 없거나 후보의 절반 넘게 빼라고 하면 응답을 쓰지 않는다. 호출한 쪽이 서버 규칙으로 고른 관광지를 그대로 쓴다.
     @Test void rejectsEmptyOrderAndTooManySkips() {
         output("{\"order\":[],\"skip\":[3]}");
