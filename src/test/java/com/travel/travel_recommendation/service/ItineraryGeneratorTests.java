@@ -549,6 +549,21 @@ class ItineraryGeneratorTests {
         assertThat(visits.get(0).note()).isEqualTo("관광·관람 · 해수욕장·해변\n고른 이유: 고른 여행 취향(바다)에 맞는 분류예요.");
         assertThat(visits.get(1).note()).isEqualTo("관광·관람 · 전통시장\n고른 이유: 고른 취향에 맞는 관광지 후보가 모자라 이 지역의 다른 종류 관광지로 채운 곳이에요.");
     }
+    // 체류시간은 기본 체류시간(90분)을 장소 종류에 맞춰 바꾼다: 전망대 40분, 아쿠아리움 120분, 분류가 넓은 곳은 90분 그대로.
+    @Test void visitMinutesFollowPlaceKind() {
+        var view=new PlaceCandidate(1L,"전망대1","강원 강릉시 경포로 1","여행 > 관광,명소 > 전망대","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var aquarium=new PlaceCandidate(2L,"아쿠아리움2","강원 강릉시 경포로 2","문화,예술 > 문화시설 > 아쿠아리움","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var input=dayTrip(List.of(view,aquarium,place(5)),List.of(place(3)),90,List.of());
+        var result=generator.generate(input);
+        Map<Long,Long> minutes=new HashMap<>();
+        result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT"))
+            .forEach(i->minutes.put(i.placeId(),Duration.between(i.start(),i.end()).toMinutes()));
+        assertThat(minutes).containsEntry(1L,40L).containsEntry(2L,120L).containsEntry(5L,90L);
+        generator.validate(input,result);
+        // 다른 기본 체류시간(60분: 전망대 30분·아쿠아리움 80분)으로 계산해야 하는 입력에는 이 결과를 받지 않는다.
+        var other=dayTrip(List.of(view,aquarium,place(5)),List.of(place(3)),60,List.of());
+        assertThatThrownBy(()->generator.validate(other,result)).isInstanceOf(RecommendationException.class);
+    }
     @Test void rejectsMissingTransferAndDuplicatedVisitDuringFinalValidation() {
         var input=input(1,LocalTime.of(18,0)); var good=generator.generate(input); var day=good.days().getFirst();
         var items=new ArrayList<>(day.items()); items.removeIf(i->i.type().equals("TRANSIT"));

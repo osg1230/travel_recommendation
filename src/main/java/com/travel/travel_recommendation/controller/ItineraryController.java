@@ -428,7 +428,7 @@ public class ItineraryController {
         var settings=new ArrayList<String>();
         ItineraryChanges.setting(settings,"이동수단",transportName(source.result().transport()),transportName(job.result().transport()));
         ItineraryChanges.setting(settings,"하루 일정 시간",source.input().start()+"~"+source.input().end(),job.input().start()+"~"+job.input().end());
-        ItineraryChanges.setting(settings,"관광지 체류시간",source.input().visitMinutes()+"분",job.input().visitMinutes()+"분");
+        ItineraryChanges.setting(settings,"관광지 기본 체류시간",source.input().visitMinutes()+"분",job.input().visitMinutes()+"분");
         ItineraryChanges.setting(settings,"집 출발·귀가 시각",homeHours(source.input().home()),homeHours(job.input().home()));
         return ItineraryChanges.compare(ItineraryChanges.fromPlan(source.result().days()),ItineraryChanges.fromPlan(job.result().days()),settings);
     }

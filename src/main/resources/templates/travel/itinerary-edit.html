@@ -36,7 +36,7 @@
 </fieldset>
 <div class="field"><label for="edit-start">하루 시작 시간</label><input id="edit-start" name="start" type="time" min="08:00" max="17:00" th:value="${editValues != null and editValues.start != null ? editValues.start : input.start}" required></div>
 <div class="field"><label for="edit-end">하루 종료 시간</label><input id="edit-end" name="end" type="time" min="12:00" max="21:00" th:value="${editValues != null and editValues.end != null ? editValues.end : input.end}" required></div>
-<div class="field"><label for="edit-visit">관광지 체류시간 (분)</label><input id="edit-visit" name="visitMinutes" type="number" min="30" max="180" th:value="${editValues != null and editValues.visitMinutes != null ? editValues.visitMinutes : input.visitMinutes}" required></div>
+<div class="field"><label for="edit-visit">관광지 기본 체류시간 (분)</label><input id="edit-visit" name="visitMinutes" type="number" min="30" max="180" th:value="${editValues != null and editValues.visitMinutes != null ? editValues.visitMinutes : input.visitMinutes}" required></div>
 <div class="form-actions"><button type="submit">이 조건으로 수정안 만들기</button></div>
 </form>
 </section>

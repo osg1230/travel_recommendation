@@ -440,7 +440,7 @@
 <div class="field-grid">
 <div><label for="rev-start">하루 시작 시간</label><input id="rev-start" name="start" type="time" min="08:00" max="17:00" th:value="${timeValues != null ? timeValues.start : job.input.start}" required></div>
 <div><label for="rev-end">하루 종료 시간</label><input id="rev-end" name="end" type="time" min="12:00" max="21:00" th:value="${timeValues != null ? timeValues.end : job.input.end}" required></div>
-<div><label for="rev-visit">관광지 체류시간 (분)</label><input id="rev-visit" name="visitMinutes" type="number" min="30" max="180" th:value="${timeValues != null ? timeValues.visitMinutes : job.input.visitMinutes}" required></div>
+<div><label for="rev-visit">관광지 기본 체류시간 (분)</label><input id="rev-visit" name="visitMinutes" type="number" min="30" max="180" th:value="${timeValues != null ? timeValues.visitMinutes : job.input.visitMinutes}" required></div>
 </div>
 <p class="help">관광지는 되도록 그대로 두고, 바꾼 시간에 맞춰 일정을 다시 배치한 수정안을 만들어요. 하루 시간이 줄면 들어가지 못한 관광지가 빠지고, 늘면 확인된 다른 관광지가 더해질 수 있어요. 식사 시각과 식당도 바뀐 동선에 맞춰 달라질 수 있어요. 이 초안은 그대로 남아요.</p>
 <div class="form-actions"><button type="submit" class="button-quiet">이 시간으로 수정안 만들기</button></div>
@@ -492,7 +492,7 @@
 
 <div class="guide-note" th:if="${job.result != null}">
 <!-- 집 출발·귀가를 정한 초안은 여행 지역까지 오가는 이동도 일정에 넣으므로 안내를 나눈다. -->
-<p th:text="${'체류시간은 입력한 계획값이고 이동시간은 예상값이에요. 최단 경로가 아닐 수 있고, '
+<p th:text="${'체류시간은 기본 ' + job.input.visitMinutes + '분을 장소 종류에 맞춰 줄이거나 늘린 계획값이고(예: 전망대는 짧게, 아쿠아리움은 길게), 이동시간은 예상값이에요. 최단 경로가 아닐 수 있고, '
     + (job.input.home != null ? '집과 여행 지역 사이 이동은 편도 예상 시간으로 넣었어요(도로 상황에 따라 달라져요). ' : '여행 지역까지 오가는 이동은 포함하지 않았어요. ')
     + '영업시간·휴무일·예약은 방문 전 각 장소 출처에서 확인해 주세요.'}"></p>
 <!--/* AI 준비 안내 절 아래에 따로 적던 설명을 화면 끝 안내로 모은다. */-->

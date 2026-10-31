@@ -279,7 +279,7 @@ public class SavedItineraryService {
         ItineraryChanges.setting(settings,"이동수단",transportName(previous.path("transportation").asText()),transportName(itinerary.getTransportation()));
         var beforeSchedule=previous.path("snapshot").path("schedule"); var afterSchedule=snapshot.path("schedule");
         ItineraryChanges.setting(settings,"하루 일정 시간",dayHours(beforeSchedule),dayHours(afterSchedule));
-        ItineraryChanges.setting(settings,"관광지 체류시간",visitMinutes(beforeSchedule),visitMinutes(afterSchedule));
+        ItineraryChanges.setting(settings,"관광지 기본 체류시간",visitMinutes(beforeSchedule),visitMinutes(afterSchedule));
         ItineraryChanges.setting(settings,"집 출발·귀가 시각",homeHours(previous.path("snapshot").path("home")),homeHours(snapshot.path("home")));
         var comparison=ItineraryChanges.compare(ItineraryChanges.fromSaved(before),ItineraryChanges.fromSaved(days),settings);
         var changedAt=previous.path("replacedAt").isTextual()

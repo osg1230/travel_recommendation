@@ -278,7 +278,7 @@ class ItineraryQualityReportTests {
         var now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
         var out = new StringBuilder();
         out.append("# 일정 품질 측정 (").append(now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))).append(")\n\n")
-            .append("조건: 출발 ").append(START).append("(가을 주말), 2명, 자동차, 09:00~18:00, 체류 90분(빠른 일정 기본값). ")
+            .append("조건: 출발 ").append(START).append("(가을 주말), 2명, 자동차, 09:00~18:00, 기본 체류 90분(빠른 일정 기본값). ")
             .append("시나리오마다 초안을 만들고 그 초안에서 '다른 관광지로 다시 만들기'로 한 번 더 만들었다. 표의 값은 첫 초안 기준이다.\n\n")
             .append("| 시나리오 | 후보 관광지 | 후보 최다 종류 | 일정 관광지 | 공식 관광지 | 종류 수 | 같은 종류 최대 | 관광지 분포(km) | 하루 이동(분) | 최장 이동(분) | 다시 만들기 겹침 | AI 순서 | 인기 음식점 식사 | 인기 숙소 |\n")
             .append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");

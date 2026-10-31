@@ -178,7 +178,8 @@ public class ItineraryGenerator {
                     // 점심때가 됐는데 이 관광지를 마치면 너무 늦어지면(예: 12:06~13:36) 점심을 먼저 먹는다.
                     // 하루의 첫 관광지 전(예: 집에서 출발해 12:40 도착)이면 그 관광지 근처에서 먹는다.
                     if(!builder.lunch && lunchFirst(builder,next)) eat(builder,builder.previous==null?next:builder.previous,false);
-                    builder.visit(next,"VISIT",input.visitMinutes(),visitNote(input,next,spare,centers.contains(next),
+                    // 체류시간은 사용자가 정한 기본 체류시간을 장소 종류에 맞춰 늘리거나 줄인 값이다(VisitMinutes).
+                    builder.visit(next,"VISIT",VisitMinutes.of(next,input.visitMinutes()),visitNote(input,next,spare,centers.contains(next),
                         chosenCenters.contains(next),variedKind?previousKind:null));
                     if(!builder.lunch && !builder.time.isBefore(LocalTime.NOON)) eat(builder,next,false);
                     // 이 관광지를 넣어도 남은 점심·숙소 도착까지 하루 종료 시간 안에 끝나는지 미리 확인한다.
@@ -470,8 +471,9 @@ public class ItineraryGenerator {
      */
     private boolean lunchFirst(DayBuilder builder,PlaceCandidate next) {
         if(builder.time.isBefore(LUNCH_FROM)) return false;
-        if(builder.previous==null) return builder.time.plusMinutes(builder.input.visitMinutes()).isAfter(LUNCH_UNTIL);
-        var end=builder.time.plusMinutes(builder.travelMinutes(builder.previous,next)+builder.input.visitMinutes());
+        int visit=VisitMinutes.of(next,builder.input.visitMinutes());
+        if(builder.previous==null) return builder.time.plusMinutes(visit).isAfter(LUNCH_UNTIL);
+        var end=builder.time.plusMinutes(builder.travelMinutes(builder.previous,next)+visit);
         return end.isBefore(builder.time) || end.isAfter(LUNCH_UNTIL);
     }
 
@@ -719,7 +721,13 @@ public class ItineraryGenerator {
                         case "VISIT" -> {
                             // 숙소 도착 뒤의 방문은 저녁 관광이다. 저녁 관광 후보에서만, 정해진 시간만큼 들른다.
                             if(afterStay) { if(!eveningIds.contains(item.placeId()) || !seen.add(item.placeId()) || minutes!=EVENING_MINUTES) throw invalid(); eveningVisits++; }
-                            else { if(!(expected.contains(item.placeId()) || reserveIds.contains(item.placeId())) || !seen.add(item.placeId()) || minutes!=input.visitMinutes()) throw invalid(); visits++; }
+                            else {
+                                if(!(expected.contains(item.placeId()) || reserveIds.contains(item.placeId())) || !seen.add(item.placeId())) throw invalid();
+                                // 낮 관광은 그 장소 종류의 체류시간만큼 머문다(VisitMinutes, 일정을 만들 때와 같은 계산).
+                                var visited=input.attractionsWithReserve().stream().filter(p->p.placeId().equals(item.placeId())).findFirst().orElseThrow(ItineraryGenerator::invalid);
+                                if(minutes!=VisitMinutes.of(visited,input.visitMinutes())) throw invalid();
+                                visits++;
+                            }
                         }
                         case "MEAL" -> {
                             if(input.places().restaurants().stream().noneMatch(p->p.placeId().equals(item.placeId()))) throw invalid();
