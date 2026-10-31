@@ -121,12 +121,29 @@ public class RecommendationJobService {
         String region=c.region()==null?"":c.region().strip();
         if(region.isEmpty()) return "제외한 지역을 빼면 추천할 수 있는 여행지가 없어요. 제외할 지역을 줄여 주세요.";
         String first=region.split("\\s+")[0];
-        var found=first.equals(region)?List.<DestinationCandidate>of()
-            :candidates.find(first,List.of(),List.of(),List.of(),c.excludedRegions());
+        var found=byFirstWord(c);
         if(found.isEmpty())
             return "'"+region+"'에 맞는 여행지를 찾지 못했어요. 시·도 이름(예: 강원, 전북)이나 시·군 이름으로 적거나, 지역을 비워 두세요.";
         return "'"+region+"'에 맞는 여행지를 찾지 못했어요. 대신 '"+first+"' 지역의 "
             +String.join(", ",found.stream().map(DestinationCandidate::name).toList())+"에서 찾을 수 있어요. 지역 칸을 '"+first+"'처럼 고쳐 주세요.";
+    }
+
+    /**
+     * 지역 칸의 이름으로도, 그 첫 단어로도 여행지를 찾지 못하는지(예: 산 이름 '속리산', 아직 여행지가 아닌 시·군 '보은').
+     * 이런 이름은 지역 대신 원하는 여행으로 옮기면, 추천 작업에서 AI가 맞는 시·군을 제안하고 관광공사 등록 장소로 확인해 여행지로 더한다
+     * (RegionSuggestionService). 지역을 비웠거나 찾을 수 있으면 false다(2026-10-31).
+     */
+    @Transactional(readOnly=true, timeout=10)
+    public boolean regionUnknown(ConfirmedTravelConditions c) {
+        String region=c.region()==null?"":c.region().strip();
+        return !region.isEmpty() && candidates.matching(c).isEmpty() && byFirstWord(c).isEmpty();
+    }
+
+    /** 세부 지역(예: "제주 우도")의 첫 단어로 찾은 여행지. 한 단어 지역이면 빈 목록이다. */
+    private List<DestinationCandidate> byFirstWord(ConfirmedTravelConditions c) {
+        String region=c.region()==null?"":c.region().strip();
+        String first=region.split("\\s+")[0];
+        return first.equals(region)?List.of():candidates.find(first,List.of(),List.of(),List.of(),c.excludedRegions());
     }
 
     @Transactional(readOnly=true, timeout=10)

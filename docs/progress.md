@@ -4,6 +4,13 @@
 
 작업 시작 시 이 요약과 Git 상태를 확인한다. 기능별 상세 구현·검증 기록은 [2026-09-22 정리 전 원문](progress-history/2026-09-22-before-cleanup.md)에 있으며, 과거 결정·검증 근거가 필요할 때 해당 부분만 읽는다.
 
+## 2026-10-31 여행지 목록에 없는 지명은 원하는 여행으로 (`fix/unknown-place-as-purpose`, 노트북)
+
+- 배경: 사용자가 "속리산으로 여행 가고 싶다"고 했는데 못 찾았다. 그날 DB에는 속리산 추천 작업이 없었다(23:11 부산 요청만). 문장 분석 지시가 사용자가 말한 지명을 지역 칸에 그대로 두게 해 '속리산'이 지역에 들어가고, 확정 때 `RecommendationJobService.regionProblem`이 여행지를 찾지 못해 작업을 만들지 않았다. 이 PC DB는 시드 여행지 28곳뿐(충북은 단양)이고, AI 지역 제안(`RegionSuggestionService`)은 지역이 비어 있을 때만 돈다.
+- 구현: `RecommendationJobService.regionUnknown`(지역 이름으로도 첫 단어로도 여행지를 못 찾음)이 참이면 `TravelConditionReviewController.regionToPurpose`가 그 이름을 원하는 여행 앞에 붙이고(AI 제안 목적이었으면 이름으로 바꿈, 200자 넘으면 이름만) 지역을 비운 뒤 다시 확정한다. 바로 추천(`start`)과 조건 확정(`confirm`)에 넣었고, 추천 화면(분석 안내 목록)·확정 화면(`regionNotice`)에 옮긴 사실을 알린다. 확정 화면에 원하는 여행 줄을 더했다. '제주 우도'처럼 첫 단어로 찾을 수 있으면 지금처럼 지역 칸을 고치게 한다. 같은 조건으로 다시 추천(`recommendAgain`)은 그대로다.
+- 확인(노트북): `DirectRecommendationFlowTests` 12(새 2개: '속리산'+'단풍 구경' → 지역 비움·원하는 여행 "속리산 단풍 구경"·추천 화면 안내, 조건 수정 화면에서 '보은' → "보은 상어 관람"), SQL Server `RecommendationJobIntegrationTests` 15(`regionUnknown` 검사 추가: 독도 참, 제주 우도·강릉·빈 지역 거짓)·`ConditionReviewTests` 17·`TravelConditionControllerTests` 11·`RegionSuggestionIntegrationTests` 3 통과. 실제 GPT·관광공사로 속리산 문장을 넣어 보지는 않았다(사용자가 켜 둔 웹 서버가 예전 코드로 같은 DB를 쓰고 있었다).
+- 한계: 원하는 여행이 된 지명을 AI가 어느 시·군으로 보는지에 달려 있다(속리산은 보은·괴산·상주에 걸친다). 처음 확인하는 시·군마다 관광공사를 여러 번 불러 그 요청은 더 걸린다.
+
 ## 2026-10-31 밤 명소는 저녁 관광으로 (`feature/night-spots-evening`, 노트북)
 
 - 배경: 일정 품질 제안 ⑤. AI 순서로 관광지를 고를 때는 앞쪽을 낮 관광지로 쓰고 저녁 관광 후보를 뒤쪽에서 골라(`arrange`), 광안리·동궁과월지처럼 밤에 더 좋은 곳이 낮에 먼저 들어가고 저녁에는 덜 알려진 곳이 남았다. 사용자가 진행하자고 했다.

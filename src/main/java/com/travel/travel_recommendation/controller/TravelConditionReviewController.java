@@ -4,6 +4,7 @@ import com.travel.travel_recommendation.dto.*;
 import com.travel.travel_recommendation.service.*;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -107,8 +108,15 @@ public class TravelConditionReviewController {
                 if(draft(session) != source || !inputToken.equals(session.getAttribute("travelInputToken")))
                     return staleStart(form, session, flash);
                 analysis.form().setRevision(UUID.randomUUID().toString());
-                session.setAttribute(REVIEW_KEY, new Review(source.getDraftId(), analysis.form(), analysis.summary(), analysis.notices()));
                 var conditions = service.confirm(analysis.form(), source, analysis.summary(), choices).forDirectRecommendation();
+                // '속리산'처럼 여행지 목록에 없는 이름은 원하는 여행으로 옮겨 AI가 맞는 시·군을 찾게 하고, 추천 화면에서 알린다.
+                var notices = new ArrayList<>(analysis.notices());
+                String moved = regionToPurpose(analysis.form(), conditions);
+                if(moved != null) {
+                    notices.add(moved);
+                    conditions = service.confirm(analysis.form(), source, analysis.summary(), choices).forDirectRecommendation();
+                }
+                session.setAttribute(REVIEW_KEY, new Review(source.getDraftId(), analysis.form(), analysis.summary(), List.copyOf(notices)));
                 // 지역에 맞는 여행지가 없으면 끝까지 처리한 뒤 실패하지 않도록 작업을 만들지 않고, 조건 수정 화면에서 지역을 고치게 한다.
                 String regionProblem = regionProblem(conditions);
                 if(regionProblem != null) {
@@ -119,7 +127,7 @@ public class TravelConditionReviewController {
                 session.setAttribute(CONFIRMATION_TOKEN, UUID.randomUUID().toString());
                 UUID id = jobService().create(conditions, login, RecommendationJobController.guestHash(session, true));
                 session.setAttribute(DIRECT_JOB, new DirectJob(inputToken, login, id));
-                rememberJob(session, id, analysis.notices());
+                rememberJob(session, id, List.copyOf(notices));
                 return "redirect:/travel/recommendations/" + id;
             }
         } catch(ConditionAnalysisException ex) {
@@ -340,6 +348,9 @@ public class TravelConditionReviewController {
             form.setExcludedRegions(review.form().getExcludedRegions().stream().filter(kept::contains)
                 .filter(name -> !name.replaceAll("\\s+", "").equals(region)).toList());
             var confirmed = service.confirm(form, draft, review.summary(), choices);
+            // '속리산'처럼 여행지 목록에 없는 이름은 원하는 여행으로 옮겨 AI가 맞는 시·군을 찾게 한다.
+            String moved = regionToPurpose(form, confirmed);
+            if (moved != null) confirmed = service.confirm(form, draft, review.summary(), choices);
             // 지역에 맞는 여행지가 없으면 확정하지 않고 지역 칸에서 고치게 한다(목록에 없는 세부 지역 등).
             String regionProblem = regionProblem(confirmed);
             if (regionProblem != null) {
@@ -368,7 +379,7 @@ public class TravelConditionReviewController {
                 session.setAttribute(CONFIRMED_KEY, conditions);
                 try {
                     UUID id = jobService().create(conditions, login, RecommendationJobController.guestHash(session, true));
-                    rememberJob(session, id, List.of());
+                    rememberJob(session, id, moved == null ? List.of() : List.of(moved));
                     return "redirect:/travel/recommendations/" + id;
                 } catch(DataAccessException ex) {
                     // 작업을 만들지 못했으면 고친 내용을 그대로 둔 채 다시 보낼 수 있게 한다. 화면은 새 확인 토큰으로 다시 그린다.
@@ -377,6 +388,7 @@ public class TravelConditionReviewController {
                     return "travel/condition-review";
                 }
             }
+            if (moved != null) flash.addFlashAttribute("regionNotice", moved);
         }
         return "redirect:/travel/conditions/confirmed";
     }
@@ -401,6 +413,28 @@ public class TravelConditionReviewController {
         // 제외 지역 체크박스와 목적 안내는 서버가 가진 값으로 그린다. 오류로 다시 그릴 때도 체크를 푼 지역이 목록에서 사라지지 않는다.
         model.addAttribute("excludedChoices", review.form().getExcludedRegions());
         model.addAttribute("purposeSuggested", review.form().isPurposeSuggested());
+    }
+
+    /**
+     * 지역 칸의 이름(예: 산 이름 '속리산', 아직 여행지가 아닌 시·군 '보은')으로도 그 첫 단어로도 여행지를 찾지 못하면,
+     * 그 이름을 원하는 여행(목적) 앞에 붙이고 지역을 비운다(2026-10-31). 지역을 비우고 원하는 여행을 말한 추천은
+     * AI가 맞는 시·군을 제안하고 관광공사 등록 장소로 확인해 여행지로 더하기 때문이다(RegionSuggestionService).
+     * AI가 제안한 목적이었다면 사용자가 말한 이름으로 바꾼다. 옮겼으면 안내 문장을, 아니면 null을 돌려준다.
+     */
+    private String regionToPurpose(ConditionReviewForm form, ConfirmedTravelConditions conditions) {
+        var jobService = jobs.getIfAvailable();
+        if (jobService == null) return null;
+        try { if (!jobService.regionUnknown(conditions)) return null; }
+        catch (DataAccessException ex) { return null; }
+        String place = form.getRegion().strip();
+        String purpose = form.getTravelPurpose() == null ? "" : form.getTravelPurpose().strip();
+        String joined = form.isPurposeSuggested() || purpose.isEmpty() ? place : place + " " + purpose;
+        // 목적 칸은 200자까지라, 넘으면 이름만 둔다.
+        form.setTravelPurpose(joined.length() <= 200 ? joined : place);
+        form.setPurposeSuggested(false);
+        form.setRegion("");
+        return "'" + place + "'은(는) 아직 여행지 목록에 없어서 지역 대신 원하는 여행으로 옮겼어요. "
+            + "AI가 맞는 시·군을 찾아 관광공사에 등록된 장소로 확인한 뒤 추천해요.";
     }
 
     /** 지역에 맞는 여행지가 없을 때의 안내. DB 없이 화면만 확인하는 모드이거나 확인하지 못하면 작업 단계에서 알린다. */
