@@ -91,13 +91,13 @@ public class ItineraryGenerator {
             }
             lodging=rankLodging(places,locations,input.constraints()==null?null:input.constraints().stayTier());
             // 수정 요청으로 숙소를 정했으면(확인된 숙소 후보 중) 그곳을 쓴다. 다른 후보 안내는 거리 순서 그대로 둔다.
+            // 화면은 options의 첫 숙소를 일정의 숙소로 보여 주므로, 가까운 3곳 밖의 숙소를 골랐어도 맨 앞에 둔다.
             Long chosenStay=input.choices().stayPlaceId();
             if(lodging!=null && chosenStay!=null && locations.containsKey(chosenStay)) {
                 var options=new ArrayList<StayOption>(lodging.options());
                 options.removeIf(o->o.placeId().equals(chosenStay));
-                var all=rankLodging(places,locations,null);
-                all.options().stream().filter(o->o.placeId().equals(chosenStay)).findFirst().ifPresent(o->options.addFirst(o));
-                lodging=new Lodging(chosenStay,"고른 숙소를 그대로 써요.",options.subList(0,Math.min(3,options.size())));
+                rankByDistance(places,locations,Integer.MAX_VALUE).stream().filter(o->o.placeId().equals(chosenStay)).findFirst().ifPresent(o->options.addFirst(o));
+                lodging=new Lodging(chosenStay,"수정 요청에서 고른 숙소예요.",options.subList(0,Math.min(3,options.size())));
             }
             if(lodging==null) throw lastError!=null?lastError:failure("INSUFFICIENT_PLACES","숙소 후보의 위치를 확인하지 못했어요. 다른 지역을 선택해 주세요.");
             Long chosen=lodging.chosenPlaceId();
@@ -267,6 +267,12 @@ public class ItineraryGenerator {
         if(!missed.isEmpty())
             throw failure("TIME_OVERLAP","하루 시간 안에 '"+String.join("', '",missed)+"'을(를) 넣지 못했어요. 하루 시간을 늘리거나 관광지 체류시간을 줄여 주세요.");
         var skipped=new ArrayList<>(unreachable); skipped.addAll(remaining);
+        // 숙소를 고른 이유는 일정이 정해진 뒤, 날마다 숙소를 오가는 시간으로 적는다(2026-10-31).
+        if(lodging!=null) {
+            Long stayId=lodging.chosenPlaceId();
+            var option=lodging.options().stream().filter(o->o.placeId().equals(stayId)).findFirst().orElse(lodging.options().getFirst());
+            lodging=new Lodging(stayId,stayReason(days,hotel,option,lodging.reason(),input.transport(),locations),lodging.options());
+        }
         var result=new Result(places.destination().name(),List.copyOf(days),input.transport(),Instant.now()).withLodging(lodging)
             .withSkipped(skipped.stream().map(p->new PlaceRef(p.placeId(),p.name())).toList());
         validate(input,result);
@@ -274,35 +280,39 @@ public class ItineraryGenerator {
     }
 
     /**
-     * 관광지 항목의 설명. 분류와 함께, 실제로 이 곳을 고르는 데 쓴 기준(필수 방문·여행 목적·취향·중심 장소·종류 섞기)만 이유로 적는다.
-     * 거리는 모든 관광지에 공통인 기준이라 이유로 따로 적지 않는다. 해당하는 기준이 없으면 분류만 보여 준다
-     * (취향을 골랐다면 취향 후보가 모자라 채운 곳이라고 알린다). spareNote는 남는 시간을 채운 예비 관광지의 이유이고, 아니면 null이다.
+     * 관광지 항목의 설명. 분류와 함께, 사용자 조건과 직접 이어지는 고른 이유만 짧은 꼬리표로 적는다(2026-10-31):
+     * 필수 방문, 수정 요청으로 추가, 축제 장소, 여행 목적 관련 시설, 일정의 중심, 남는 시간을 채운 곳.
+     * 고른 취향에 맞는 분류·종류 섞기 같은 배치 규칙은 거의 모든 항목에 되풀이돼 적지 않는다(취향 반영은 조건 확인표에 있다).
+     * 이 장소에서 무엇을 할지는 AI 추천 활동 줄이 따로 붙는다(PlaceReasons). spareNote는 남는 시간을 채운 예비 관광지의 꼬리표이고, 아니면 null이다.
      */
     private static String visitNote(Input input,PlaceCandidate place,String spareNote,boolean dayCenter,boolean chosenCenter,String avoidedKind) {
-        var reasons=new ArrayList<String>();
-        if(input.constraints()!=null && input.constraints().requiredPlaceIds().contains(place.placeId())) reasons.add("필수 방문 장소로 고른 곳이에요.");
-        if(input.revision()!=null && input.revision().added().stream().anyMatch(p->p.placeId().equals(place.placeId())))
-            reasons.add("수정 요청에 따라 새로 넣은 곳이에요.");
-        if(input.constraints()!=null && input.constraints().festival()!=null && place.placeId().equals(input.constraints().festival().placeId()))
-            reasons.add("여행 기간에 이곳이나 바로 근처에서 "+input.constraints().festival().title()+"("+input.constraints().festival().period()
-                +") 행사가 열려요. 정확한 행사 장소와 일정은 출발 전에 확인해 주세요.");
+        var tags=new ArrayList<String>();
+        if(input.constraints()!=null && input.constraints().requiredPlaceIds().contains(place.placeId())) tags.add("필수 방문");
+        if(input.revision()!=null && input.revision().added().stream().anyMatch(p->p.placeId().equals(place.placeId()))) tags.add("수정 요청으로 추가");
+        var festival=input.constraints()==null?null:input.constraints().festival();
+        boolean festivalPlace=festival!=null && place.placeId().equals(festival.placeId());
+        if(festivalPlace) tags.add("축제 장소");
         var conditions=input.conditions();
         if(conditions.purposeSearch()!=null && conditions.travelPurpose()!=null && !conditions.travelPurpose().isBlank()
                 && conditions.purposeSearch().places().stream().anyMatch(p->place.placeId().equals(p.placeId())))
-            reasons.add(conditions.purposeLabel()+"('"+conditions.travelPurpose().strip()+"')과 관련된 시설로 찾은 곳이에요.");
-        var themes=ThemePlaces.matched(place.name(),place.subtype(),conditions.themeNames());
-        if(!themes.isEmpty()) reasons.add("고른 여행 취향("+String.join("·",themes)+")에 맞는 분류예요.");
-        if(dayCenter) reasons.add("이 날 일정의 중심으로 고른 곳이에요. 이 날은 이 장소 주변 관광지로 짰어요.");
-        else if(chosenCenter) reasons.add("일정의 중심으로 고른 곳이에요. 가까운 중심 장소와 같은 날로 묶었어요.");
-        if(avoidedKind!=null) reasons.add("바로 앞 방문지와 같은 종류("+avoidedKind.replace(",","·")+")가 이어지지 않게 골랐어요.");
-        if(spareNote!=null) reasons.add(spareNote);
-        // 취향을 골랐는데 어느 기준에도 해당하지 않으면, 취향에 맞는 후보가 모자라 다른 종류로 채운 곳이다(TripConstraints.aroundCenters 순서).
+            tags.add(conditions.purposeLabel()+"("+shortText(conditions.travelPurpose().strip(),20)+") 관련");
+        if(dayCenter || chosenCenter) tags.add("일정의 중심");
+        if(spareNote!=null) tags.add(spareNote);
+        // 취향을 골랐는데 어느 기준에도 해당하지 않고 고른 취향과도 맞지 않으면, 취향에 맞는 후보가 모자라 다른 종류로 채운 곳이다.
         // AI가 순서를 정한 일정에서는 분류 글자와 상관없이 갈 만한 곳으로 고른 것이라 이 안내를 붙이지 않는다.
-        else if(reasons.isEmpty() && avoidedKind==null && !input.pickedByAi() && !ThemePlaces.placeThemes(conditions.themeNames()).isEmpty())
-            reasons.add("고른 취향에 맞는 관광지 후보가 모자라 이 지역의 다른 종류 관광지로 채운 곳이에요.");
+        else if(tags.isEmpty() && avoidedKind==null && !input.pickedByAi() && !ThemePlaces.placeThemes(conditions.themeNames()).isEmpty()
+                && ThemePlaces.matched(place.name(),place.subtype(),conditions.themeNames()).isEmpty())
+            tags.add("취향 후보가 모자라 채운 곳");
         return "관광·관람"+(place.subtypeLabel().isEmpty()?"":" · "+place.subtypeLabel())
-            +(reasons.isEmpty()?"":"\n고른 이유: "+String.join(" ",reasons))
+            +(tags.isEmpty()?"":"\n고른 이유: "+String.join(" · ",tags))
+            +(festivalPlace?"\n축제: 여행 기간에 이곳이나 바로 근처에서 "+festival.title()+"("+festival.period()
+                +") 행사가 열려요. 정확한 행사 장소와 일정은 출발 전에 확인해 주세요.":"")
             +(place.religiousSite()?"\n종교 시설이라 미사·예불 등 행사 중에는 관람이 제한될 수 있어요. 방문 전 관람 가능 시간을 확인해 주세요.":"");
+    }
+
+    /** 꼬리표에 넣을 짧은 글. max자보다 길면 잘라 '…'을 붙인다. */
+    private static String shortText(String text,int max) {
+        return text.length()<=max?text:text.substring(0,max)+"…";
     }
 
     /**
@@ -451,24 +461,25 @@ public class ItineraryGenerator {
         builder.move(restaurant);
         if(!dinner && builder.time.isBefore(LocalTime.NOON) && !builder.end.isBefore(LocalTime.of(13,0)))
             builder.add("FREE",restaurant,"식사 전 자유시간",(int)Duration.between(builder.time,LocalTime.NOON).toMinutes(),"주변 휴식·자유시간",null,null);
-        // 음식 분류와 고른 이유를 적는다(SFR-17-01). 이유는 pickRestaurant가 실제로 쓴 기준(아직 먹지 않은 음식·인기 음식점·지역 대표 음식)만 적고,
-        // 거리는 이유가 아니라 위치 정보로 함께 보여 준다. 지역 대표 음식 안내(SFR-17-02)는 끼니마다 반복하지 않고 여행의 첫 식사에만 적는다.
+        // 음식 분류와 고른 이유를 짧은 꼬리표로 적는다(SFR-17-01, 2026-10-31부터 꼬리표). 이유는 pickRestaurant가 실제로 쓴 기준
+        // (아직 먹지 않은 음식·인기 음식점·지역 대표 음식·다음 장소 방향)만 적고, 거리는 이유가 아니라 위치 정보로 함께 보여 준다.
+        // 지역 대표 음식 안내(SFR-17-02)는 끼니마다 반복하지 않고 여행의 첫 식사에만 적는다.
         boolean firstMeal=builder.usedRestaurants.size()==1 && fresh;
         String kind=restaurant.subtypeLabel();
         var reasons=new ArrayList<String>();
-        if(builder.input.choices().preferRestaurants().contains(restaurant.placeId())) reasons.add("수정 요청에서 가고 싶다고 한 식당이에요.");
-        if(restaurant.popular()) reasons.add("한국관광공사 연관 관광지 정보에서 이 지역 여행자들이 함께 많이 찾은 음식점이에요.");
-        regionalFood(builder,restaurant).ifPresent(food->reasons.add("상호나 분류에 이 지역 대표 음식("+food+")이 들어간 곳이에요."));
+        if(builder.input.choices().preferRestaurants().contains(restaurant.placeId())) reasons.add("수정 요청에서 고른 식당");
+        if(restaurant.popular()) reasons.add("관광공사 인기 음식점");
+        regionalFood(builder,restaurant).ifPresent(food->reasons.add("지역 대표 음식("+food+")"));
         if(fresh && !kind.isEmpty() && !eaten.isEmpty() && !eaten.contains(kind))
-            reasons.add("앞서 먹은 음식("+String.join("·",eaten)+")과 다른 분류예요.");
-        if(onTheWayTo!=null) reasons.add("다음에 갈 "+onTheWayTo.name()+" 쪽으로 덜 돌아가는 곳이에요.");
+            reasons.add("앞 끼니("+String.join("·",eaten)+")와 다른 음식");
+        if(onTheWayTo!=null) reasons.add(onTheWayTo.name()+" 가는 길");
         var from=builder.locations.get(after.placeId()); var to=builder.locations.get(restaurant.placeId());
         String where=kilometers(from,to)>FAR_MEAL_KM
             ?after.name()+"에서 직선 약 "+kilometersText(from,to)+" 떨어져 있어요. 더 가까운 곳에 확인된 음식점 후보가 없었어요."
             :after.name()+"에서 직선 약 "+kilometersText(from,to)+"예요.";
         String mealNote=(dinner?"저녁 식사":"식사")
             +(kind.isEmpty()?"":" · "+kind)
-            +(reasons.isEmpty()?"":"\n고른 이유: "+String.join(" ",reasons))
+            +(reasons.isEmpty()?"":"\n고른 이유: "+String.join(" · ",reasons))
             +"\n위치: "+where
             +(firstMeal?builder.foods.map(g->"\n이 지역 대표 "+(g.snack()?"간식":"음식")+": "+g.joined()+" (음식점마다 메뉴는 달라요)").orElse(""):"")
             // 확인된 음식점이 모자라 이미 들른 곳을 다시 넣었다면 숨기지 않고 알린다.
@@ -567,8 +578,8 @@ public class ItineraryGenerator {
     /** night면 AI가 밤에 둘러보기 좋다고 꼽아 낮 일정 대신 저녁에 넣은 곳이다. AI의 판단이라 그렇다고 밝힌다. */
     private static String eveningNote(PlaceCandidate place,PlaceCandidate from,boolean night) {
         return "저녁 관광"+(place.subtypeLabel().isEmpty()?"":" · "+place.subtypeLabel())
-            +(night?"\n고른 이유: AI가 이 지역에서 밤에 둘러보기 좋은 곳으로 꼽아, 낮 일정에 넣지 않고 저녁 식사 뒤에 넣었어요."
-                :"\n고른 이유: 저녁 식사 뒤 산책·야경을 보기 좋은 종류라 "+from.name()+"에서 가까운 곳으로 골랐어요.")
+            +(night?"\n고른 이유: AI가 꼽은 밤 명소 · 낮 대신 저녁 식사 뒤"
+                :"\n고른 이유: 저녁 산책·야경 · "+from.name()+"에서 가까운 곳")
             +"\n밤에도 둘러볼 수 있는지(개방 시간·조명)는 방문 전 확인해 주세요."
             +(place.religiousSite()?"\n종교 시설이라 행사 중에는 관람이 제한될 수 있어요.":"");
     }
@@ -628,17 +639,15 @@ public class ItineraryGenerator {
     }
 
     /**
-     * 남는 시간을 채운 예비 관광지의 이유. 하루 4곳보다 한 곳 더 넣었거나, 가까운 곳이 없어 조금 먼 곳까지 찾았거나,
-     * 직전 초안에 있던 곳을 다시 넣었으면 그 사정을 덧붙인다.
+     * 남는 시간을 채운 예비 관광지의 꼬리표. 가까운 곳이 없어 조금 먼 곳까지 찾았거나, 직전 초안에 있던 곳을 다시 넣었으면 그 사정을 덧붙인다.
+     * visits는 이 곳을 넣기 전 그날 관광지 수로, 하루 4곳보다 한 곳 더 넣은 경우를 구분하는 데 쓴다.
      */
     private static String spareNote(Map<Long,KakaoMapClient.Location> locations,PlaceCandidate place,PlaceCandidate anchor,Set<Long> lastDraft,int visits) {
-        var note=new StringBuilder("하루 시간이 남아 더 넣은 곳이에요.");
-        if(visits>=TripConstraints.MAX_AUTO_DAILY)
-            note.append(" 짧게 들르는 곳이 많아 하루 ").append(TripConstraints.MAX_AUTO_DAILY).append("곳보다 한 곳 더 넣었어요.");
+        var note=new StringBuilder(visits>=TripConstraints.MAX_AUTO_DAILY?"시간이 남아 한 곳 더":"시간이 남아 추가");
         if(anchor!=null && kilometers(locations.get(anchor.placeId()),locations.get(place.placeId()))>SPARE_MAX_KM)
-            note.append(" 가까운 예비 관광지가 없어 ").append(anchor.name()).append("에서 직선 약 ")
-                .append(kilometersText(locations.get(anchor.placeId()),locations.get(place.placeId()))).append(" 떨어진 곳까지 찾았어요.");
-        if(lastDraft.contains(place.placeId())) note.append(" 직전 초안에도 있던 곳이지만 다른 예비 관광지가 없어 다시 넣었어요.");
+            note.append(" · ").append(anchor.name()).append("에서 직선 약 ")
+                .append(kilometersText(locations.get(anchor.placeId()),locations.get(place.placeId())));
+        if(lastDraft.contains(place.placeId())) note.append(" · 직전 초안에도 있던 곳");
         return note.toString();
     }
 
@@ -698,7 +707,8 @@ public class ItineraryGenerator {
 
     /**
      * 숙소 후보를 이번 여행 관광지들과의 평균 직선거리가 짧은 순서로 정렬한다(SFR-05-02·03).
-     * 거리가 같으면 후보 목록 순서를 따른다. 위치를 확인한 후보가 없으면 null이다.
+     * 거리가 같으면 후보 목록 순서를 따르고, 가장 가까운 곳과 STAY_CHOICE_KM 안쪽 차이의 인기 숙소는 맨 앞에 둔다.
+     * 위치를 확인한 후보가 없으면 null이다.
      */
     static Lodging rankLodging(PlaceCandidateView places,Map<Long,KakaoMapClient.Location> locations) {
         return rankLodging(places,locations,null);
@@ -707,6 +717,7 @@ public class ItineraryGenerator {
     /**
      * stayTier(숙소 예산대, SFR-03-03)를 골랐으면 그 유형의 숙소를 먼저 두고, 없으면 전체 후보에서 고른다.
      * 예산대는 숙소 유형 기준이며 요금을 비교한 것이 아니다.
+     * 여기서 정하는 reason은 고른 기준(예산대·관광공사 인기 숙소)만 담고, 일정이 정해진 뒤 stayReason이 일정 기준 설명을 앞에 붙인다.
      */
     static Lodging rankLodging(PlaceCandidateView places,Map<Long,KakaoMapClient.Location> locations,String stayTier) {
         var ranked=rankByDistance(places,locations);
@@ -719,13 +730,35 @@ public class ItineraryGenerator {
         var all=rankByDistance(places,locations,Integer.MAX_VALUE);
         var preferred=all.stream().filter(o->matching.contains(o.placeId())).toList();
         if(preferred.isEmpty())
-            return new Lodging(ranked.chosenPlaceId(),"고른 숙소 예산대("+tier.getLabel()+")의 숙소가 후보에 없어 전체 후보에서 골랐어요. "+ranked.reason(),ranked.options());
-        List<StayOption> ordered=new ArrayList<>(preferred);
+            return new Lodging(ranked.chosenPlaceId(),("고른 숙소 예산대("+tier.getLabel()+")의 숙소가 후보에 없어 전체 후보에서 골랐어요. "+ranked.reason()).strip(),ranked.options());
+        var popular=popularStays(places);
+        List<StayOption> ordered=new ArrayList<>(popularFirst(preferred,popular));
         all.stream().filter(o->!matching.contains(o.placeId())).forEach(ordered::add);
         var best=ordered.getFirst();
-        String reason="고른 숙소 예산대("+tier.getLabel()+") 숙소 "+preferred.size()+"곳 중 방문할 관광지 "+places.attractions().size()
-            +"곳과의 평균 직선거리가 약 "+best.averageKilometers()+"km로 가장 가까워요.";
+        String reason="고른 숙소 예산대("+tier.getLabel()+")의 숙소예요."+(popular.contains(best.placeId())?" "+POPULAR_STAY:"");
         return new Lodging(best.placeId(),reason,ordered.subList(0,Math.min(3,ordered.size())));
+    }
+
+    /** 가장 가까운 숙소보다 관광지들과의 평균 직선거리가 이만큼(km)까지 더 멀어도, 관광공사 인기 숙소면 먼저 고른다(음식점 MEAL_CHOICE_KM와 같은 방식). */
+    static final double STAY_CHOICE_KM=2.0;
+    static final String POPULAR_STAY="관광공사 연관 관광지 정보에서 이 지역 여행자들이 많이 찾은 숙소예요.";
+
+    /** 관광공사 연관 관광지 정보로 확인한 인기 숙소 ID. */
+    private static Set<Long> popularStays(PlaceCandidateView places) {
+        Set<Long> ids=new HashSet<>();
+        places.accommodations().stream().filter(PlaceCandidate::popular).forEach(p->ids.add(p.placeId()));
+        return ids;
+    }
+
+    /** 가까운 순서(ordered)에서 가장 가까운 곳보다 STAY_CHOICE_KM 안쪽에 인기 숙소가 있으면 그중 가장 가까운 곳을 맨 앞으로 옮긴다. */
+    static List<StayOption> popularFirst(List<StayOption> ordered,Set<Long> popular) {
+        if(ordered.isEmpty()) return ordered;
+        double limit=ordered.getFirst().averageKilometers()+STAY_CHOICE_KM;
+        var pick=ordered.stream().filter(o->popular.contains(o.placeId()) && o.averageKilometers()<=limit).findFirst();
+        if(pick.isEmpty()) return ordered;
+        var result=new ArrayList<StayOption>(); result.add(pick.get());
+        ordered.stream().filter(o->!o.equals(pick.get())).forEach(result::add);
+        return result;
     }
 
     private static List<StayOption> rankByDistance(PlaceCandidateView places,Map<Long,KakaoMapClient.Location> locations,int limit) {
@@ -742,15 +775,57 @@ public class ItineraryGenerator {
         return options.subList(0,Math.min(limit,options.size()));
     }
 
-    // 예산대를 고르지 않았을 때: 거리 순서 그대로 첫 숙소를 쓴다. 위치를 확인한 후보가 없으면 null이다.
+    // 예산대를 고르지 않았을 때: 가까운 순서에서 가까운 인기 숙소가 있으면 그곳, 없으면 첫 숙소를 쓴다. 위치를 확인한 후보가 없으면 null이다.
     private static Lodging rankByDistance(PlaceCandidateView places,Map<Long,KakaoMapClient.Location> locations) {
-        var options=rankByDistance(places,locations,Integer.MAX_VALUE);
+        var popular=popularStays(places);
+        var options=popularFirst(rankByDistance(places,locations,Integer.MAX_VALUE),popular);
         if(options.isEmpty()) return null;
         var best=options.getFirst();
-        String reason=options.size()==1
-            ?"확인된 숙소 후보가 1곳이라 골랐어요. 방문할 관광지 "+places.attractions().size()+"곳과의 평균 직선거리는 약 "+best.averageKilometers()+"km예요."
-            :"방문할 관광지 "+places.attractions().size()+"곳과의 평균 직선거리가 약 "+best.averageKilometers()+"km로 숙소 후보 "+options.size()+"곳 중 가장 가까워요.";
+        String reason=popular.contains(best.placeId())?POPULAR_STAY:options.size()==1?"확인된 숙소 후보가 1곳이에요.":"";
         return new Lodging(best.placeId(),reason,options.subList(0,Math.min(3,options.size())));
+    }
+
+    /**
+     * 숙소를 고른 이유를 일정 기준으로 적는다(2026-10-31). 관광지들과의 평균 직선거리만으로는 여행자에게 의미가 약해,
+     * 날마다 마지막 장소에서 숙소까지와 숙소에서 다음 날 첫 관광지까지 걸리는 시간, 저녁 식당까지의 거리를 적고
+     * 고른 기준(basis: 수정 요청·예산대·관광공사 인기 숙소)을 덧붙인다. 일정에서 시간을 읽지 못하면 평균 직선거리를 쓴다.
+     */
+    static String stayReason(List<Day> days,PlaceCandidate hotel,StayOption chosen,String basis,KakaoMapClient.Transport transport,
+                             Map<Long,KakaoMapClient.Location> locations) {
+        String by=transport==KakaoMapClient.Transport.CAR?"차로":"대중교통으로";
+        int nights=0, maxIn=0, maxOut=0; String first=null, dinner=null;
+        for(int d=0;d+1<days.size();d++) {
+            // 숙소로 가는 이동과 다음 날 숙소에서 나서는 이동이 모두 이동시간을 확인한 구간인 밤만 센다.
+            var items=days.get(d).items(); int stayAt=stayIndex(items); var next=days.get(d+1).items();
+            if(stayAt<2 || !timedMove(items.get(stayAt-1)) || next.size()<2 || !timedMove(next.getFirst())) continue;
+            var in=items.get(stayAt-1); var out=next.getFirst();
+            if(nights==0) {
+                first=(d+1)+"일차 마지막 장소("+items.get(stayAt-2).name()+")에서 "+travelText(in,by)
+                    +", 숙소에서 "+(d+2)+"일차 첫 장소("+next.get(1).name()+")까지 "+travelText(out,by)+"이에요.";
+                // 숙소 도착 뒤 저녁 식사를 넣었으면 그 식당까지의 거리도 적는다.
+                var meal=items.subList(stayAt+1,items.size()).stream().filter(i->"MEAL".equals(i.type())).findFirst();
+                if(meal.isPresent() && locations.containsKey(meal.get().placeId()))
+                    dinner="저녁 식당("+meal.get().name()+")까지 직선 약 "+kilometersText(locations.get(hotel.placeId()),locations.get(meal.get().placeId()))+"예요.";
+            }
+            nights++; maxIn=Math.max(maxIn,(in.travelSeconds()+59)/60); maxOut=Math.max(maxOut,(out.travelSeconds()+59)/60);
+        }
+        String where=nights==0?"방문할 관광지들과 평균 직선 약 "+chosen.averageKilometers()+"km 떨어져 있어요."
+            :nights==1?first
+            :"날마다 마지막 장소에서 숙소까지 최대 약 "+maxIn+"분, 숙소에서 다음 날 첫 장소까지 최대 약 "+maxOut+"분 걸려요.";
+        // 저녁 식당은 밤마다 달라 하룻밤일 때만 적는다.
+        return String.join(" ",java.util.stream.Stream.of(where,nights==1?dinner:null,basis).filter(t->t!=null && !t.isBlank()).toList());
+    }
+
+    /** 길찾기나 직선거리 추정으로 이동시간을 정한 이동 항목인지. 같은 주소 안 이동(5분 여유)과 집 출발·귀가는 빼고 본다. */
+    private static boolean timedMove(Item item) {
+        return "TRANSIT".equals(item.type()) && item.placeId()!=null && item.travelSeconds()!=null;
+    }
+
+    /** 이동 항목의 이동 방법과 시간. 가까워 도보로 어림한 구간은 '걸어서', 직선거리로 어림한 구간은 '(추정)'을 붙인다. */
+    private static String travelText(Item move,String by) {
+        String note=move.note()==null?"":move.note();
+        return (note.startsWith(WALK_NOTE_PREFIX)?"걸어서":by)+" 약 "+(move.travelSeconds()+59)/60+"분"
+            +(note.startsWith(ESTIMATE_NOTE_PREFIX)?"(추정)":"");
     }
 
     public void checkInput(Input input) {

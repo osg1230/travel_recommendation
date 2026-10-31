@@ -388,7 +388,7 @@ public class ItineraryController {
                 :java.time.format.DateTimeFormatter.ofPattern("M월 d일 HH:mm").format(pricesReusedUntil.atZone(java.time.ZoneId.of("Asia/Seoul"))));
             // 카카오 길찾기에 연결하지 못해 직선거리로 추정한 이동 구간 수(SFR-04-04). 있으면 이동시간 안내 옆에 따로 알린다.
             model.addAttribute("estimatedMoves",ItineraryConditionReport.estimatedMoves(job.result()));
-            // 일정 항목에 AI가 쓴 'AI 설명' 줄이 있으면 화면 끝에서 그 뜻을 알린다.
+            // 일정 항목에 AI가 쓴 'AI 추천 활동'(이전 초안은 'AI 설명') 줄이 있으면 화면 끝에서 그 뜻을 알린다.
             model.addAttribute("aiReasonsUsed",com.travel.travel_recommendation.service.PlaceReasons.used(job.result()));
             // 장소에 저장해 둔 이전 검색 결과를 다시 쓴 곳은 그 검색 시각을 따로 보여 준다.
             var reusedAt=new java.util.HashMap<Long,String>();

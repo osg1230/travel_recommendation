@@ -34,6 +34,11 @@ public class OpenAiItineraryClient {
 
     /** 서버가 만든 일정 초안에 붙일 보조 안내를 받는다. previousFailure는 직전 응답의 형식 문제다. */
     public Assist assist(ConfirmedTravelConditions conditions,Result plan,String previousFailure) {
+        return assist(conditions,plan,previousFailure,Map.of());
+    }
+
+    /** overviews는 장소 ID → 서버가 한국관광공사에서 조회한 소개문이다. 관광지별 추천 활동의 근거로 보낸다. */
+    public Assist assist(ConfirmedTravelConditions conditions,Result plan,String previousFailure,Map<Long,String> overviews) {
         if(!configured()) throw failure("AI_NOT_CONFIGURED","일정 보조 연결 설정을 확인해야 해요.");
         if(plan.days().isEmpty() || plan.days().size()>7) throw invalid("일정 일차 수를 확인해야 해요.");
         try {
@@ -50,25 +55,25 @@ public class OpenAiItineraryClient {
                 취향은 일정에 있는 장소 이름으로 분명히 드러날 때만 그 장소와 함께 언급한다.
                 previousFailure가 있으면 그 형식 문제를 고쳐서 다시 작성한다.
                 summary와 advice는 각각 일반 텍스트 1~3문장으로 쓰고 HTML·URL·연락처·이메일은 넣지 않는다.
-                places에는 type이 VISIT(관광)·MEAL(식사)인 항목마다 그 장소를 이 여행에서 가 볼 만한 이유를 한 문장(80자 이내)으로 쓴다.
-                placeId는 입력에 있는 값만 쓰고 같은 장소는 한 번만 쓴다. 이유는 장소 이름·category(종류)와 여행 조건(계절, 동행, 여행 취향,
-                travelPurpose)을 이어 "가을 바다를 보며 걷기 좋은 해변이에요"처럼 여행자에게 말하듯 쓴다.
+                places에는 type이 VISIT(관광)인 항목마다 빠짐없이 그 장소에서 해 볼 만한 활동을 activity에 한 문장(90자 이내)으로 쓴다.
+                placeId는 입력에 있는 값만 쓰고 같은 장소는 한 번만 쓴다.
+                항목의 overview는 서버가 한국관광공사에서 조회한 그 장소의 소개문이다. overview가 있으면 그 안에 나온 건물·볼거리·길·체험만 근거로
+                "대웅전과 팔상전을 둘러본 뒤 숲길을 따라 걸어 보세요"처럼 그곳에서 할 수 있는 일 1~2가지를 구체적으로 쓴다.
+                overview가 없으면 장소 이름과 category(종류)로 알 수 있는 일반적인 활동(산책로 걷기, 전시 관람 등)만 쓴다.
+                overview·이름·종류에 없는 시설·체험 프로그램·메뉴·가격·운영시간·소요 시간을 지어내지 않고 '최고'·'꼭 가야 할' 같은 과장도 쓰지 않는다.
+                계절·동행·여행 취향·travelPurpose와 어울리는 활동이 overview에 있으면 그것을 먼저 쓴다.
                 purposeSuggested가 true면 travelPurpose는 사용자가 말한 것이 아니라 서비스가 제안한 여행 방향이므로 '원하신'이라고 쓰지 않는다.
-                널리 알려진 장소는 잘 알려진 특징을 써도 되지만, 잘 모르는 장소는 이름과 종류로 알 수 있는 것만 쓴다.
-                메뉴·가격·영업시간·수상 경력·방문객 수 같은 구체적인 사실을 지어내지 않고 '최고'·'꼭 가야 할'·'맛집' 같은 과장이나 평가도 쓰지 않는다.
-                이유는 '~해요'·'~이에요'처럼 부드러운 말투로 끝내고, 문장 끝에 장소 이름을 되풀이하지 않는다.
-                facts는 서버가 그 장소를 넣은 근거다. 축제·필수 방문 안내는 서버가 따로 보여 주므로 되풀이하지 않고,
-                '시간이 남아 넣었다'·'종류가 겹치지 않게 골랐다' 같은 배치 규칙도 이유로 쓰지 않는다.
-                식사는 음식 종류와 앞뒤 일정에 어울리는 점을 쓴다. 장소마다 다른 표현을 쓰고 같은 문장 틀을 되풀이하지 않는다.
+                activity는 '~해 보세요'·'~할 수 있어요'처럼 부드러운 말투로 끝내고, 장소 이름이나 소개를 되풀이하지 않는다.
+                facts는 서버가 그 장소를 넣은 근거(꼬리표)라 activity에 되풀이하지 않는다. 장소마다 다른 표현을 쓰고 같은 문장 틀을 되풀이하지 않는다.
                 petTravel이 true면 반려동물과 함께 가는 여행이다. 항목의 petInfo는 서버가 한국관광공사에서 조회한 그 장소의 반려동물 동반 정보
                 (동반 가능 구분·가능한 동물·필요 사항·기타)다. petInfo가 있는 장소는 그 내용을 근거로 동반 가능 여부와 준비물(목줄·입마개·배변봉투 등)을
-                일차 안내와 장소별 이유에 반영하고, petInfo가 '정보 없음'으로 시작하는 장소만 동반 가능 여부를 확인하지 못했다고 쓴다.
+                일차 안내와 장소별 활동에 반영하고, petInfo가 '정보 없음'으로 시작하는 장소만 동반 가능 여부를 확인하지 못했다고 쓴다.
                 petInfo에 없는 동반 조건을 지어내지 않고, petTravel이 없으면 반려동물 이야기를 하지 않는다.
                 항목의 aiChecks는 서버가 AI 웹 검색으로 찾은 그 장소의 확인 결과(반려동물 동반, 여행 목적 활동 가능 여부)와 근거다.
                 '가능'이면 그 근거를 들어 안내하고, '불가'면 그 장소에서는 안 된다고 알리며, '못 찾음'이면 직접 확인이 필요하다고 쓴다.
                 aiChecks는 웹 검색 결과라 "검색 결과에 따르면"처럼 출처가 검색임을 드러내고 확정된 사실처럼 쓰지 않는다.
                 """,
-                "input",mapper.writeValueAsString(promptInput(conditions,plan,previousFailure)),
+                "input",mapper.writeValueAsString(promptInput(conditions,plan,previousFailure,overviews)),
                 "text",Map.of("format",Map.of("type","json_schema","name","itinerary_assist","strict",true,
                     "schema",schema(plan)))));
             HttpRequest request=HttpRequest.newBuilder(endpoint).timeout(timeout)
@@ -104,7 +109,7 @@ public class OpenAiItineraryClient {
 
     Assist validate(JsonNode root,Result plan) {
         JsonNode items=root.path("days");
-        // places(장소별 이유)는 없어도 받는다. 있으면 일정에 있는 장소의 형식이 맞는 이유만 쓴다.
+        // places(관광지별 추천 활동)는 없어도 받는다. 있으면 일정에 있는 관광지의 형식이 맞는 활동만 쓴다.
         if(!root.isObject() || root.size()!=(root.has("places")?3:2) || !items.isArray() || items.size()!=plan.days().size())
             throw invalid("응답 형식이 달라요.");
         List<Integer> expected=new ArrayList<>(plan.days().stream().map(Day::number).toList());
@@ -127,42 +132,46 @@ public class OpenAiItineraryClient {
             throw invalid("안내 문구에 HTML·링크·연락처를 넣지 않아야 해요.");
         return value;
     }
-    /** 형식이 맞지 않는 이유는 그 장소만 버린다. 한 문장이 잘못됐다고 안내 전체를 다시 요청하지 않는다. */
+    /** 형식이 맞지 않는 활동 문장은 그 장소만 버린다. 한 문장이 잘못됐다고 안내 전체를 다시 요청하지 않는다. */
     private static Map<Long,String> placeReasons(JsonNode places,Result plan) {
         var allowed=placeIds(plan);
         Map<Long,String> reasons=new LinkedHashMap<>();
         for(JsonNode place:places) {
-            var id=place.path("placeId"); String reason=place.path("reason").asText("").strip();
+            var id=place.path("placeId"); String reason=place.path("activity").asText("").strip();
             if(!id.isIntegralNumber() || !allowed.contains(id.longValue()) || reasons.containsKey(id.longValue())) continue;
             if(reason.isEmpty() || reason.length()>200 || reason.contains("<") || reason.contains(">") || reason.contains("@")
                 || reason.contains("\n") || reason.toLowerCase().contains("http")) continue;
-            // 지시대로 '~해요'·'~이에요'로 끝나지 않는 문장은 버리고 서버 이유를 둔다. 지시문이 새어 나온 "부드러운 대화 tone" 같은
-            // 응답이 식사 이유로 화면에 나왔기 때문이다(2026-10-30 브라우저 확인).
+            // 지시대로 '~해 보세요'·'~할 수 있어요'처럼 '요'로 끝나지 않는 문장은 버리고 그 장소는 활동 줄 없이 둔다.
+            // 지시문이 새어 나온 "부드러운 대화 tone" 같은 응답이 화면에 나온 적이 있기 때문이다(2026-10-30 브라우저 확인).
             if(!reason.matches(".*요[.!]?")) continue;
             reasons.put(id.longValue(),reason);
         }
         return reasons;
     }
-    /** 이유를 쓸 수 있는 장소: 일정에 들어간 관광·식사 장소. */
+    /**
+     * 추천 활동을 쓸 수 있는 장소: 일정에 들어간 관광지(저녁 관광 포함). 식당은 메뉴를 확인하지 않아 쓸 수 있는 말이 음식 종류뿐이라
+     * 서버의 음식 분류·꼬리표로 충분해 받지 않는다(2026-10-31).
+     */
     private static List<Long> placeIds(Result plan) {
         return plan.days().stream().flatMap(d->d.items().stream())
-            .filter(i->i.placeId()!=null && List.of("VISIT","MEAL").contains(i.type())).map(Item::placeId).distinct().toList();
+            .filter(i->i.placeId()!=null && "VISIT".equals(i.type())).map(Item::placeId).distinct().toList();
     }
     private Map<String,Object> schema(Result plan) {
         var placeIds=placeIds(plan);
         var numbers=plan.days().stream().map(Day::number).toList();
         return Map.of("type","object","additionalProperties",false,"required",List.of("summary","days","places"),
             "properties",Map.of("summary",Map.of("type","string","minLength",1,"maxLength",600),
-                "places",Map.of("type","array","maxItems",placeIds.size(),
-                    "items",Map.of("type","object","additionalProperties",false,"required",List.of("placeId","reason"),
+                // 소개문이 없는 관광지도 빠뜨리지 않게 관광지 수만큼 받는다(2026-10-31, 소개문이 있는 곳만 쓰는 응답이 있었다).
+                "places",Map.of("type","array","minItems",placeIds.size(),"maxItems",placeIds.size(),
+                    "items",Map.of("type","object","additionalProperties",false,"required",List.of("placeId","activity"),
                         "properties",Map.of("placeId",Map.of("type","integer","enum",placeIds),
-                            "reason",Map.of("type","string","minLength",1,"maxLength",200)))),
+                            "activity",Map.of("type","string","minLength",1,"maxLength",200)))),
                 "days",Map.of("type","array","minItems",numbers.size(),"maxItems",numbers.size(),
                     "items",Map.of("type","object","additionalProperties",false,"required",List.of("number","advice"),
                         "properties",Map.of("number",Map.of("type","integer","enum",numbers),
                             "advice",Map.of("type","string","minLength",1,"maxLength",600))))));
     }
-    private Map<String,Object> promptInput(ConfirmedTravelConditions c,Result plan,String previousFailure) {
+    private Map<String,Object> promptInput(ConfirmedTravelConditions c,Result plan,String previousFailure,Map<Long,String> overviews) {
         Map<String,Object> prompt=new LinkedHashMap<>();
         prompt.put("region",c.region());prompt.put("durationDays",c.durationDays());prompt.put("partySize",c.partySize());
         prompt.put("accommodationNeeded",c.accommodationNeeded());prompt.put("transport",plan.transport().name());
@@ -179,6 +188,8 @@ public class OpenAiItineraryClient {
                 fields.put("type",item.type());fields.put("name",item.name());
                 fields.put("start",item.start().toString());fields.put("end",item.end().toString());
                 if(plan.pets()!=null && petInfo.containsKey(item.placeId())) fields.put("petInfo",petInfo.get(item.placeId()));
+                // 관광 항목이면 서버가 조회한 관광공사 소개문을 추천 활동의 근거로 함께 보낸다.
+                if("VISIT".equals(item.type()) && item.placeId()!=null && overviews.containsKey(item.placeId())) fields.put("overview",overviews.get(item.placeId()));
                 // 자동 실행 설정으로 초안을 만들 때 찾은 AI 확인 결과(버튼으로 찾은 결과는 안내가 이미 만들어진 뒤라 들어가지 않는다).
                 if(plan.verifications()!=null && item.placeId()!=null) {
                     var checks=plan.verifications().answers().stream().filter(a->a.placeId().equals(item.placeId()) && !"TRANSIT".equals(item.type()))

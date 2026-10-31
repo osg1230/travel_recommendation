@@ -195,7 +195,7 @@
 <!--/* 숙소 종류는 카카오 분류("여행 > 숙박 > 호텔")의 마지막 단계만 보여 준다. */-->
 <p class="help" th:with="kinds=${#strings.listSplit(stay.subtype ?: '', '>')}"
    th:text="${#strings.trim(kinds[kinds.size() - 1]) + ' · 관광지와 평균 약 ' + stay.averageKilometers + 'km'}"></p>
-<!--/* 서버가 이 숙소를 고른 이유(관광지와의 직선거리·숙소 예산대 등, SFR-05-03). 가격·예약 가능 여부를 확인한 것은 아니다. */-->
+<!--/* 서버가 이 숙소를 고른 이유(일정의 마지막·첫 장소와 오가는 시간, 숙소 예산대·관광공사 인기 숙소 등, SFR-05-03). 가격·예약 가능 여부를 확인한 것은 아니다. */-->
 <p th:if="${job.result.lodging.reason != null}" th:text="${'고른 이유: ' + job.result.lodging.reason}"></p>
 <p class="help" th:if="${stay.address != null}" th:text="${stay.address}"></p>
 <p class="help" th:if="${job.result.lodging.options.size() > 1}"
@@ -496,7 +496,7 @@
     + (job.input.home != null ? '집과 여행 지역 사이 이동은 편도 예상 시간으로 넣었어요(도로 상황에 따라 달라져요). ' : '여행 지역까지 오가는 이동은 포함하지 않았어요. ')
     + '영업시간·휴무일·예약은 방문 전 각 장소 출처에서 확인해 주세요.'}"></p>
 <!--/* AI 준비 안내 절 아래에 따로 적던 설명을 화면 끝 안내로 모은다. */-->
-<p th:if="${aiReasonsUsed}">일정 항목의 '고른 이유'는 서버가 입력한 조건과 후보 정보로 그 장소를 고른 근거이고, 'AI 설명'은 AI가 쓴 소개 문장이에요. AI 설명은 영업시간·가격 등을 확인한 내용이 아니에요.</p>
+<p th:if="${aiReasonsUsed}">일정 항목의 '고른 이유'는 서버가 입력한 조건과 후보 정보로 그 장소를 고른 근거예요. 'AI 추천 활동'(이전 초안은 'AI 설명')은 한국관광공사 소개문이 있으면 그 내용을 바탕으로 AI가 쓴 할 거리로, 운영 여부·시간·가격을 확인한 내용이 아니에요.</p>
 <p th:if="${job.result.assist != null}">AI 준비 안내는 AI가 이 초안을 읽고 쓴 참고 글이에요. 일정의 시각·장소·순서는 바꾸지 않았고, 영업시간·가격·예약 가능 여부를 확인한 내용은 아니에요.</p>
 </div>
 </main></body></html>

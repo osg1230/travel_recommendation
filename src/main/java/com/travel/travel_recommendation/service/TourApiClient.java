@@ -135,7 +135,36 @@ public class TourApiClient {
      */
     public List<SearchPlace> searchPhotos(String name) {
         if (name == null || name.isBlank() || name.length() > 200) throw failure("TOUR_INPUT", "장소 이름을 확인해 주세요.");
-        return photoItems(get(endpoint.resolve("searchKeyword2"), 30, "&keyword=" + URLEncoder.encode(name, StandardCharsets.UTF_8)));
+        return attractionItems(get(endpoint.resolve("searchKeyword2"), 30, "&keyword=" + URLEncoder.encode(name, StandardCharsets.UTF_8)), true);
+    }
+
+    /** 장소 소개문을 찾으려고 이름으로 관광지(12·14·28)를 검색한다. 사진 검색과 같지만 사진이 없는 곳도 받는다. */
+    public List<SearchPlace> searchAttractions(String name) {
+        if (name == null || name.isBlank() || name.length() > 200) throw failure("TOUR_INPUT", "장소 이름을 확인해 주세요.");
+        return attractionItems(get(endpoint.resolve("searchKeyword2"), 30, "&keyword=" + URLEncoder.encode(name, StandardCharsets.UTF_8)), false);
+    }
+
+    /** 소개문에서 남기는 최대 글자 수. 앞부분에 장소의 특징이 모여 있고, AI 요청 길이를 줄이려고 자른다. */
+    static final int OVERVIEW_CHARS = 600;
+
+    /**
+     * 장소의 관광공사 소개문(detailCommon2의 overview). 줄바꿈 태그 같은 HTML은 빼고 공백을 정리해 OVERVIEW_CHARS자까지 돌려준다.
+     * 관광공사에 소개문이 없으면 비어 있다.
+     */
+    public Optional<String> findOverview(String contentId) {
+        if (contentId == null || !contentId.matches("[1-9][0-9]{0,19}")) throw failure("TOUR_INPUT", "관광정보의 장소 ID를 확인해 주세요.");
+        var data = get(endpoint.resolve("detailCommon2"), 1, "&contentId=" + contentId);
+        var items = data.path("items").path("item");
+        if (data.path("totalCount").asInt() == 0) return Optional.empty();
+        if (data.path("totalCount").asInt() != 1 || items.size() != 1) throw invalid();
+        var item = items.get(0);
+        if (!contentId.equals(item.path("contentid").asText())) throw invalid();
+        var overview = item.path("overview");
+        if (!overview.isTextual()) return Optional.empty();
+        String plain = overview.asText().replaceAll("<[^>]*>", " ").replace("&nbsp;", " ").replace("&lt;", "<").replace("&gt;", ">")
+            .replace("&quot;", "\"").replace("&amp;", "&").replaceAll("\\s+", " ").strip();
+        if (plain.length() > OVERVIEW_CHARS) plain = plain.substring(0, OVERVIEW_CHARS) + "…";
+        return plain.isEmpty() ? Optional.empty() : Optional.of(plain);
     }
 
     /**
@@ -271,17 +300,17 @@ public class TourApiClient {
         if (provinceCode == null || !provinceCode.matches("[0-9]{2,5}")) throw failure("TOUR_INPUT", "지역 코드를 확인해 주세요.");
         String extra = "&lDongRegnCd=" + provinceCode + "&cat1=A01&contentTypeId=12&arrange=O";
         if (districtCode != null && districtCode.matches("[0-9]{2,5}")) extra += "&lDongSignguCd=" + districtCode;
-        return photoItems(get(endpoint.resolve("areaBasedList2"), 30, extra));
+        return attractionItems(get(endpoint.resolve("areaBasedList2"), 30, extra), true);
     }
 
-    /** 사진 검색·자연 관광지 목록의 항목을 SearchPlace로 바꾼다. 사진이 없거나 형식이 맞지 않는 항목은 뺀다. */
-    private static List<SearchPlace> photoItems(JsonNode data) {
+    /** 관광지 검색·자연 관광지 목록의 항목을 SearchPlace로 바꾼다. 형식이 맞지 않는 항목과, needImage면 사진이 없는 항목은 뺀다. */
+    private static List<SearchPlace> attractionItems(JsonNode data, boolean needImage) {
         List<SearchPlace> result = new ArrayList<>();
         for (var item : data.path("items").path("item")) {
             String id = item.path("contentid").asText(""), type = item.path("contenttypeid").asText("");
             String title = item.path("title").asText(""), image = item.path("firstimage").asText("");
             if (!id.matches("[1-9][0-9]{0,19}") || !Set.of("12", "14", "28").contains(type) || title.isBlank() || title.length() > 100
-                    || image.isBlank() || image.length() > 500) continue;
+                    || (needImage && (image.isBlank() || image.length() > 500))) continue;
             double x = item.path("mapx").asDouble(Double.NaN), y = item.path("mapy").asDouble(Double.NaN);
             result.add(new SearchPlace(id, type, title, item.path("addr1").asText(""), x, y, image, item.path("cpyrhtDivCd").asText("")));
         }

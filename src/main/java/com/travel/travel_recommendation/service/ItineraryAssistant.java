@@ -2,6 +2,7 @@ package com.travel.travel_recommendation.service;
 
 import com.travel.travel_recommendation.dto.ItineraryPlan.*;
 import java.time.Instant;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -15,7 +16,10 @@ public class ItineraryAssistant {
     private static final int BUDGET_SECONDS=45;
 
     /** jobDeadline은 일정 작업 전체의 제한 시각이다. 보조 때문에 작업이 시간 초과로 실패하지 않게 한다. */
-    public Result assist(Input input,Result plan,Instant jobDeadline) {
+    public Result assist(Input input,Result plan,Instant jobDeadline) { return assist(input,plan,jobDeadline,Map.of()); }
+
+    /** overviews는 장소 ID → 관광공사 소개문이다. AI가 관광지마다 추천 활동을 쓸 근거로 함께 보낸다. */
+    public Result assist(Input input,Result plan,Instant jobDeadline,Map<Long,String> overviews) {
         if(!client.configured()) return plan;
         Instant budget=Instant.now().plusSeconds(BUDGET_SECONDS);
         Instant deadline=jobDeadline.isBefore(budget)?jobDeadline:budget;
@@ -24,8 +28,8 @@ public class ItineraryAssistant {
             // 일정 작업 전체에 시간 제한이 있으므로 남은 시간이 없으면 재요청하지 않는다.
             if(Instant.now().isAfter(deadline)) break;
             try {
-                var assist=client.assist(input.conditions(),plan,previousFailure);
-                // AI가 쓴 장소별 이유를 일정 항목의 '고른 이유'에 반영한다. 시각·장소·순서는 바꾸지 않는다.
+                var assist=client.assist(input.conditions(),plan,previousFailure,overviews);
+                // AI가 쓴 관광지별 추천 활동을 일정 항목 메모에 'AI 추천 활동' 줄로 더한다. 시각·장소·순서는 바꾸지 않는다.
                 return PlaceReasons.apply(plan,assist.placeReasons()).withAssist(assist);
             } catch(RecommendationException error) {
                 // 형식 문제만 다시 묻는다. 설정·인증·한도·연결 문제는 다시 불러도 같은 결과다.

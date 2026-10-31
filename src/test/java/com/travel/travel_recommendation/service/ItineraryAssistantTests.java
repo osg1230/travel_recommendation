@@ -32,45 +32,45 @@ class ItineraryAssistantTests {
         when(client.configured()).thenReturn(true);
         var plan=plan();
         assertThat(assistant.assist(input(),plan,Instant.now().minusSeconds(1))).isSameAs(plan);
-        verify(client,never()).assist(any(),any(),any());
+        verify(client,never()).assist(any(),any(),any(),any());
     }
 
     @Test void skipsAssistWithoutCallingWhenNotConfigured() {
         when(client.configured()).thenReturn(false);
         var plan=plan();
         assertThat(assistant.assist(input(),plan,later())).isSameAs(plan);
-        verify(client,never()).assist(any(),any(),any());
+        verify(client,never()).assist(any(),any(),any(),any());
     }
     // 형식 문제는 이유를 전달해 다시 묻되 자기수정은 2회까지만 한다.
     @Test void retriesFormatFailuresWithTheReasonUpToTwiceAndThenKeepsTheDraft() {
         when(client.configured()).thenReturn(true);
-        doThrow(invalid()).doThrow(invalid()).doReturn(assist).when(client).assist(any(),any(),any());
+        doThrow(invalid()).doThrow(invalid()).doReturn(assist).when(client).assist(any(),any(),any(),any());
         assertThat(assistant.assist(input(),plan(),later()).assist()).isEqualTo(assist);
-        verify(client,times(3)).assist(any(),any(),any());
-        verify(client).assist(any(),any(),isNull());
-        verify(client,times(2)).assist(any(),any(),eq("응답 형식이 달라요."));
+        verify(client,times(3)).assist(any(),any(),any(),any());
+        verify(client).assist(any(),any(),isNull(),any());
+        verify(client,times(2)).assist(any(),any(),eq("응답 형식이 달라요."),any());
 
         clearInvocations(client);
-        doThrow(invalid()).when(client).assist(any(),any(),any());
+        doThrow(invalid()).when(client).assist(any(),any(),any(),any());
         var plan=plan();
         assertThat(assistant.assist(input(),plan,later())).isSameAs(plan);
-        verify(client,times(ItineraryAssistant.MAX_RETRIES+1)).assist(any(),any(),any());
+        verify(client,times(ItineraryAssistant.MAX_RETRIES+1)).assist(any(),any(),any(),any());
     }
     @Test void doesNotRetryConnectionQuotaOrUnexpectedFailures() {
         when(client.configured()).thenReturn(true);
         for(var error:new RuntimeException[]{new RecommendationException("AI_AUTH","설정 확인"),
                 new RecommendationException("AI_RATE_LIMIT","사용량 제한"),new IllegalStateException("예상 밖 오류")}) {
             clearInvocations(client);
-            doThrow(error).when(client).assist(any(),any(),any());
+            doThrow(error).when(client).assist(any(),any(),any(),any());
             var plan=plan();
             // 보조 기능이므로 실패를 일정 생성 실패로 올리지 않는다.
             assertThat(assistant.assist(input(),plan,later())).isSameAs(plan);
-            verify(client,times(1)).assist(any(),any(),any());
+            verify(client,times(1)).assist(any(),any(),any(),any());
         }
     }
     @Test void keepsScheduleFieldsAndOldResultJsonWithoutAssist() {
         when(client.configured()).thenReturn(true);
-        doReturn(assist).when(client).assist(any(),any(),any());
+        doReturn(assist).when(client).assist(any(),any(),any(),any());
         var plan=plan();
         var result=assistant.assist(input(),plan,later());
         assertThat(result.days()).isEqualTo(plan.days());

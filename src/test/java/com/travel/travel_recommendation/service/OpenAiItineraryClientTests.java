@@ -80,12 +80,24 @@ class OpenAiItineraryClientTests {
         output("{\"summary\":\"안내\",\"days\":[]}");
         assertCode("AI_INVALID_RESPONSE",()->client("key",Duration.ofSeconds(2)).assist(conditions(),plan(),null));
     }
-    // 장소 이유는 '~요'로 끝나는 문장만 받는다. 지시문이 새어 나온 것 같은 문장은 그 장소만 버린다(일정 안내는 그대로).
-    @Test void dropsPlaceReasonsThatDoNotEndAsSentences() {
-        output("{\"summary\":\"안내\",\"days\":[{\"number\":1,\"advice\":\"안내\"}],\"places\":[{\"placeId\":10,\"reason\":\"부드러운 대화 tone\"}]}");
+    // 추천 활동은 '~요'로 끝나는 문장만 받는다. 지시문이 새어 나온 것 같은 문장은 그 장소만 버린다(일정 안내는 그대로).
+    @Test void dropsPlaceActivitiesThatDoNotEndAsSentences() {
+        output("{\"summary\":\"안내\",\"days\":[{\"number\":1,\"advice\":\"안내\"}],\"places\":[{\"placeId\":10,\"activity\":\"부드러운 대화 tone\"}]}");
         assertThat(client("key",Duration.ofSeconds(2)).assist(conditions(),plan(),null).placeReasons()).isEmpty();
-        output("{\"summary\":\"안내\",\"days\":[{\"number\":1,\"advice\":\"안내\"}],\"places\":[{\"placeId\":10,\"reason\":\"조선 시대 집을 둘러보기 좋은 곳이에요.\"}]}");
-        assertThat(client("key",Duration.ofSeconds(2)).assist(conditions(),plan(),null).placeReasons()).containsEntry(10L,"조선 시대 집을 둘러보기 좋은 곳이에요.");
+        output("{\"summary\":\"안내\",\"days\":[{\"number\":1,\"advice\":\"안내\"}],\"places\":[{\"placeId\":10,\"activity\":\"몽룡실과 율곡기념관을 둘러보세요.\"}]}");
+        assertThat(client("key",Duration.ofSeconds(2)).assist(conditions(),plan(),null).placeReasons()).containsEntry(10L,"몽룡실과 율곡기념관을 둘러보세요.");
+    }
+    // 관광 항목에는 서버가 조회한 관광공사 소개문을 추천 활동의 근거로 보내고, 식사 항목은 활동을 받지 않아 소개문도 보내지 않는다.
+    @Test void sendsOverviewsOnlyForVisitsAndAcceptsActivitiesOnlyForVisits() {
+        var visit=plan().days().getFirst().items().getFirst();
+        var meal=new Item("MEAL",20L,"식당",LocalTime.of(12,0),LocalTime.of(13,0),"식사 · 한식",null,null,null,null);
+        var withMeal=new Result("강릉",List.of(new Day(1,LocalDate.of(2026,10,1),List.of(visit,meal))),KakaoMapClient.Transport.CAR,Instant.now());
+        output("{\"summary\":\"안내\",\"days\":[{\"number\":1,\"advice\":\"안내\"}],\"places\":[{\"placeId\":10,\"activity\":\"몽룡실을 둘러보세요.\"}]}");
+        var assist=client("key",Duration.ofSeconds(2)).assist(conditions(),withMeal,null,Map.of(10L,"율곡 이이가 태어난 몽룡실이 있는 곳", 20L,"식당 소개"));
+        assertThat(request.get()).contains("\\\"overview\\\":\\\"율곡 이이가 태어난 몽룡실이 있는 곳\\\"").doesNotContain("식당 소개");
+        assertThat(assist.placeReasons()).containsOnlyKeys(10L);
+        // 응답 형식(JSON 스키마)도 관광지 ID만 허용한다.
+        assertThat(request.get()).contains("\"activity\"").doesNotContain("\"enum\":[10,20]");
     }
     @Test void rejectsMarkupLinksAndEmptyOrOversizedText() {
         for(String advice:new String[]{"<b>안내</b>","https://example.com 확인","mail@example.com 문의","   ","안".repeat(601)}) {
