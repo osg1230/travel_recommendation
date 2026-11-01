@@ -34,6 +34,13 @@ class ItineraryConditionReportTests {
         when(maps.travelTime(any(),any(),any())).thenAnswer(invocation->new KakaoMapClient.TravelTime(invocation.getArgument(2),601,3000,Instant.now()));
     }
 
+    // 저장 일정 스냅샷에 지금 코드에 없는 상태 값이 있어도 상세 화면이 깨지지 않게 '확인 필요'로 읽는다.
+    @Test void unknownSavedStatusIsReadAsNeedsCheck() {
+        assertThat(Status.fromSaved("MET")).isEqualTo(Status.MET);
+        assertThat(Status.fromSaved("REMOVED_STATUS")).isEqualTo(Status.NEEDS_CHECK);
+        assertThat(Status.fromSaved("")).isEqualTo(Status.NEEDS_CHECK);
+    }
+
     @Test void generatedPlanIsCompleteButUnverifiableItemsStayNeedsCheck() {
         var input=input(2,LocalDate.of(2026,10,1),new BigDecimal("300000"));
         var report=ItineraryConditionReport.evaluate(input,generator.generate(input));

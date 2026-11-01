@@ -45,6 +45,8 @@ public class SavedItineraryService {
     @Transactional(timeout=10)
     public Saved save(UUID jobId, String loginId, byte[] guestHash) {
         Long userId=member(loginId);
+        // 초안 ID는 스냅샷 JSON 안에만 있어 DB 유니크로 막을 수 없다. 초안 행을 잠가 두 탭에서 동시에 눌러도 뒤 요청이 기존 일정을 찾게 한다.
+        jobs.lockById(jobId);
         var job=access.owned(jobId,loginId,guestHash,"ITINERARY");
         if(!"COMPLETED".equals(job.getStatus()) || job.getResultJson()==null)
             throw new ResponseStatusException(HttpStatus.CONFLICT,"아직 완성되지 않은 일정이에요. 초안이 준비된 뒤 저장해 주세요.");
@@ -251,7 +253,7 @@ public class SavedItineraryService {
         // 저장 당시 확인한 조건 결과와 참고 가격. 예전 형식의 일정에는 없어서 비어 있다.
         var checks=new ArrayList<SavedItinerary.Check>();
         for(var check:snapshot.path("conditionChecks")) {
-            var status=ItineraryConditionReport.Status.valueOf(check.path("status").asText());
+            var status=ItineraryConditionReport.Status.fromSaved(check.path("status").asText());
             checks.add(new SavedItinerary.Check(check.path("name").asText(),status.name(),status.getLabel(),check.path("detail").asText("")));
         }
         var prices=snapshot.path("prices").isObject()?mapper.treeToValue(snapshot.path("prices"),Prices.class):null;

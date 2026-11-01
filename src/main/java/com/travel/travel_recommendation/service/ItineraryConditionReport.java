@@ -16,6 +16,11 @@ public final class ItineraryConditionReport {
         private final String label;
         Status(String label) { this.label = label; }
         public String getLabel() { return label; }
+        /** 저장 일정 스냅샷의 값을 읽는다. 지금 코드에 없는 값이 남아 있어도 상세 화면이 500이 되지 않게 '확인 필요'로 본다. */
+        public static Status fromSaved(String value) {
+            for(var status : values()) if(status.name().equals(value)) return status;
+            return NEEDS_CHECK;
+        }
     }
     public record Check(String name, Status status, String detail) {}
     /** complete=false이면 미충족 항목이 남아 있어 완료 일정으로 저장하지 않는다. */
