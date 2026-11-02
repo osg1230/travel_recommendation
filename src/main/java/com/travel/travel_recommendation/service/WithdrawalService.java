@@ -12,7 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 회원 본인 탈퇴(SFR-01-05). 계정 행은 남겨 아이디 재사용과 운영 기록 참조를 막고, 상태·탈퇴 시각·익명 닉네임으로 바꾼다.
+ * 회원 본인 탈퇴(SFR-01-05). 계정 행은 운영 기록 참조를 위해 남기고, 상태·탈퇴 시각·익명 닉네임으로 바꾼다.
+ * 아이디는 30일 동안 그대로 두어 재사용을 막고, 그 뒤에는 대체 아이디로 바꿔 지운다(anonymizeExpired).
  * 본인이 만든 가상 예약·일정·즐겨찾기·추천 이력·평가·임시 작업은 같은 트랜잭션에서 지운다. 관리자 계정은 탈퇴하지 않는다.
  */
 @Service
@@ -20,6 +21,9 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class WithdrawalService {
     public static final String ANONYMOUS_NICKNAME = "탈퇴한 회원";
+    /** 탈퇴한 뒤 아이디를 남겨 두는 기간. */
+    static final int LOGIN_ID_KEEP_DAYS = 30;
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(WithdrawalService.class);
     private final UserRepository users;
     private final PasswordEncoder encoder;
     private final JdbcTemplate jdbc;
@@ -58,5 +62,14 @@ public class WithdrawalService {
         // 원래 비밀번호로 다시 로그인할 수 없도록 알 수 없는 값으로 바꾼다. 상태로도 로그인은 막힌다.
         user.withdraw(ANONYMOUS_NICKNAME,encoder.encode(UUID.randomUUID().toString()));
         users.flush();
+    }
+
+    /** 탈퇴한 지 30일 지난 회원의 아이디를 withdrawn-회원번호로 바꿔 개인 식별정보를 남기지 않는다. 로그에는 건수만 남긴다. */
+    @Transactional(timeout=15)
+    public int anonymizeExpired() {
+        var now=KoreaTime.now();
+        int changed=users.replaceWithdrawnLoginIds(UserStatus.WITHDRAWN,now.minusDays(LOGIN_ID_KEEP_DAYS),now);
+        if(changed>0) log.info("탈퇴 회원 아이디 {}건을 대체 아이디로 바꿈",changed);
+        return changed;
     }
 }

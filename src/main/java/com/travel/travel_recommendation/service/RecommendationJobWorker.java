@@ -30,6 +30,7 @@ public class RecommendationJobWorker {
     private final PlacePickService placePicks;
     private final DestinationLandmarkService landmarks;
     private final DestinationProfileService profiles;
+    private final WithdrawalService withdrawals;
     private volatile boolean ready;
 
     @EventListener(ApplicationReadyEvent.class)
@@ -129,4 +130,8 @@ public class RecommendationJobWorker {
     }
     @Scheduled(fixedDelay=60000)
     public void cleanup() { if(ready) service.cleanup(); }
+
+    // 하루 한 번이면 충분하다. 서버를 자주 껐다 켜도 빠지지 않게 시작 1분 뒤에도 한 번 돌린다.
+    @Scheduled(initialDelay=60000,fixedDelay=24*60*60*1000)
+    public void anonymizeWithdrawn() { if(ready) withdrawals.anonymizeExpired(); }
 }
