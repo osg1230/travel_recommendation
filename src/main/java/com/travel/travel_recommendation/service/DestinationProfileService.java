@@ -30,6 +30,8 @@ public class DestinationProfileService {
     private final ObjectMapper mapper;
     private final PlatformTransactionManager transactions;
     private final AtomicBoolean preparing=new AtomicBoolean();
+    /** 목록을 만들지 못한 여행지. 추천이 끝날 때마다 다시 시도하면 한도를 계속 쓰므로 하루가 지난 뒤에만 다시 만든다. */
+    private final ExpiringCache<Long,Boolean> failed=new ExpiringCache<>(java.time.Duration.ofDays(1),1000);
 
     /** 여행지의 "할 수 있는 것" 목록. 30일 안에 만든 것이 있으면 그것을, 없으면 관광공사에서 새로 세어 보관한다. 만들지 못하면 빈 목록이다. */
     public Map<String,DestinationProfile.Category> profile(long destinationId) {
@@ -37,15 +39,16 @@ public class DestinationProfileService {
         if(destination==null) return Map.of();
         var saved=DestinationProfile.read(destination,Instant.now(),mapper);
         if(saved!=null) return saved;
-        if(!tour.configured()) return Map.of();
+        if(!tour.configured() || failed.peek(destinationId)!=null) return Map.of();
         try {
             var made=build(destination.getRegion());
-            if(made.isEmpty()) return Map.of();
+            if(made.isEmpty()) { failed.get(destinationId,()->true); return Map.of(); }
             save(destinationId,made);
             return made;
         } catch(RecommendationException error) {
-            // 관광공사 오류·한도면 이번에는 근거 없이 넘어가고 다음 요청에서 다시 만든다(일부만 모은 목록은 보관하지 않는다).
+            // 관광공사 오류·한도면 이번에는 근거 없이 넘어가고 하루 뒤에 다시 만든다(일부만 모은 목록은 보관하지 않는다).
             log.warn("여행지 목록을 만들지 못함 destination={} ({})",destination.getName(),error.getCode());
+            failed.get(destinationId,()->true);
             return Map.of();
         }
     }

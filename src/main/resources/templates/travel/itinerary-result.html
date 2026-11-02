@@ -308,6 +308,7 @@
 </article>
 <p class="help">실제 가격은 날짜·객실·메뉴·인원에 따라 달라요. 찾은 가격은 위 예상 경비의 숙박·식비에 반영돼요.</p>
 <!--/* 찾은 가격은 24시간 동안 그대로 다시 쓰므로, 그 전에는 버튼 대신 다시 찾을 수 있는 시각을 알려 준다. */-->
+<p class="help" th:if="${job.result.prices.incomplete}">시간 안에 다 찾지 못한 곳이 있어요. 다시 찾으면 찾은 곳은 그대로 두고 남은 곳만 찾아요.</p>
 <form th:if="${pricesRefreshAt == null}" method="post" th:action="@{/travel/recommendations/itineraries/{id}/prices(id=${job.id})}" data-submit-loading="참고 가격 찾는 중…"><button type="submit">참고 가격 다시 찾기</button></form>
 <p class="help" th:if="${pricesRefreshAt != null}" th:text="${'찾은 가격은 24시간 동안 그대로 써요. ' + pricesRefreshAt + '(한국 시간) 이후 다시 찾을 수 있어요.'}"></p>
 </th:block>

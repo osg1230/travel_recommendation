@@ -15,6 +15,8 @@ public interface AiJobRepository extends JpaRepository<AiJob,UUID> {
     @Query("delete from AiJob j where j.requestId=:requestId and j.userId=:userId")
     int deleteByRequest(Long requestId, Long userId);
     List<AiJob> findTop5ByJobTypeAndStatusOrderByCreatedAtAsc(String jobType,String status);
+    long countByUserIdAndJobTypeAndStatusIn(Long userId,String jobType,Collection<String> statuses);
+    long countByGuestTokenHashAndJobTypeAndStatusIn(byte[] guestTokenHash,String jobType,Collection<String> statuses);
     @Modifying(clearAutomatically=true,flushAutomatically=true)
     @Query("delete from AiJob j where j.userId is null and j.expiresAt<=:now")
     int deleteExpiredGuests(LocalDateTime now);

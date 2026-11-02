@@ -189,8 +189,12 @@ public class RecommendationJobService {
         return true;
     }
     // 아직 시작하지 않은 요청은 만든 시각부터 대기 제한을 잰다.
-    private boolean waitedTooLong(AiJob job) {
-        return job.getStartedAt()==null && job.getCreatedAt().isBefore(now().minus(WAIT_LIMIT));
+    static boolean waitedTooLong(AiJob job) {
+        return job.getStartedAt()==null && job.getCreatedAt().isBefore(KoreaTime.now().minus(WAIT_LIMIT));
+    }
+    /** 어차피 버려질 대기 작업인지. 일정 작업을 시작하기 전 단계(AI 순서·주변 음식점)가 이런 작업에 유료·한도 호출을 쓰지 않게 한다. */
+    static boolean abandoned(AiJob job) {
+        return waitedTooLong(job) || !job.getExpiresAt().isAfter(KoreaTime.now());
     }
 
     @Transactional(timeout=15)

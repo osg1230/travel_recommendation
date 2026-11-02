@@ -135,6 +135,46 @@ class TourApiClientTests {
         status.set(503); assertCode("TOUR_UNAVAILABLE", () -> client("secret-key").findOperatingInfo("123", "12"));
         status.set(429); assertCode("TOUR_QUOTA", () -> client("secret-key").findOperatingInfo("123", "12"));
     }
+    // 하루 한도를 넘으면 그날은 호출을 보내지 않고 바로 실패시킨다. 어차피 실패할 호출로 시간과 다른 요청의 대기를 쓰지 않는다.
+    @Test void stopsCallingAfterDailyQuotaOrAuthFailure() {
+        var client = client("key");
+        body.set("<error>LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR</error>");
+        assertCode("TOUR_QUOTA", () -> client.findOperatingInfo("123", "12"));
+        int calls = this.calls.get();
+        response("12", "");
+        assertCode("TOUR_QUOTA", () -> client.findOperatingInfo("123", "12"));
+        assertThat(this.calls.get()).isEqualTo(calls);
+
+        var other = client("key");
+        status.set(401);
+        assertCode("TOUR_AUTH", () -> other.findOperatingInfo("123", "12"));
+        calls = this.calls.get();
+        status.set(200);
+        assertCode("TOUR_AUTH", () -> other.findOperatingInfo("123", "12"));
+        assertThat(this.calls.get()).isEqualTo(calls);
+    }
+    // 잠깐 실패한 경우에는 막지 않는다.
+    @Test void keepsCallingAfterTemporaryFailure() {
+        var client = client("key");
+        status.set(503);
+        assertCode("TOUR_UNAVAILABLE", () -> client.findOperatingInfo("123", "12"));
+        status.set(200); response("12", "");
+        assertThat(client.findOperatingInfo("123", "12")).isPresent();
+    }
+    // 거의 바뀌지 않는 법정동 코드와 같은 검색어의 시설 검색은 다시 부르지 않는다.
+    @Test void reusesDistrictListsAndFacilitySearches() {
+        var client = client("key");
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":1,\"items\":{\"item\":[{\"code\":\"51\",\"name\":\"강원특별자치도\"}]}}}}");
+        assertThat(client.districtCode(null, "강원특별자치도")).contains("51");
+        int calls = this.calls.get();
+        assertThat(client.districtCode(null, "강원특별자치도")).contains("51");
+        assertThat(this.calls.get()).isEqualTo(calls);
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":0,\"items\":\"\"}}}");
+        client.searchFacilities("갯벌체험장");
+        calls = this.calls.get();
+        client.searchFacilities(" 갯벌체험장 ");
+        assertThat(this.calls.get()).isEqualTo(calls);
+    }
     private void assertCode(String code, org.assertj.core.api.ThrowableAssert.ThrowingCallable action) {
         assertThatThrownBy(action).isInstanceOfSatisfying(RecommendationException.class, error -> {
             assertThat(error.getCode()).isEqualTo(code);

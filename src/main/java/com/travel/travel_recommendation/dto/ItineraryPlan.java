@@ -293,9 +293,10 @@ public final class ItineraryPlan {
             return new PriceQuote(placeId, name, kind, status, priceText, minWon, maxWon, basis, sourceUrl, at);
         }
     }
-    /** 결과 화면에서 버튼을 눌러 조회한 참고 가격 묶음. checkedAt은 조회 시각이다. */
-    public record Prices(List<PriceQuote> quotes, Instant checkedAt) {
+    /** 결과 화면에서 버튼을 눌러 조회한 참고 가격 묶음. checkedAt은 조회 시각, incomplete는 시간 안에 다 찾지 못해 다시 찾을 수 있다는 뜻이다. */
+    public record Prices(List<PriceQuote> quotes, Instant checkedAt, boolean incomplete) {
         public Prices { quotes = quotes == null ? List.of() : List.copyOf(quotes); }
+        public Prices(List<PriceQuote> quotes, Instant checkedAt) { this(quotes, checkedAt, false); }
     }
     /**
      * 반려동물 동반 여행에서 일정에 들어간 장소(관광·식사·숙소)마다 한국관광공사에서 조회한 동반 정보.

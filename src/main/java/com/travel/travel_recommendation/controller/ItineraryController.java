@@ -35,6 +35,7 @@ public class ItineraryController {
     private final ObjectProvider<KakaoMapClient> mapClients;
     private final ObjectProvider<TransitRouteService> transitRoutes;
     private final tools.jackson.databind.ObjectMapper mapper;
+    private final com.travel.travel_recommendation.service.AiRequestLimiter limiter;
     private record Submission(UUID parent,long destination,String login,String token,UUID job) {}
     private static final String SESSION_KEY="itinerarySubmission";
     private static final String CONFLICT_KEY="itineraryConstraintConflict";
@@ -56,6 +57,11 @@ public class ItineraryController {
         ConstraintInput withReason(String reason) {
             return withConflicts(List.of(new TripConstraints.Conflict(reason==null?"입력한 값을 확인해 주세요.":reason,List.of())));
         }
+    }
+    /** 일정 작업이나 유료 검색을 시작하기 전에 요청 횟수를 확인한다. 넘었으면 429를 던지고, 각 화면의 오류 처리가 안내 문장을 보여 준다. */
+    private void checkItineraryLimit(Principal principal,HttpServletRequest request) {
+        String limited=limiter.tryAcquireItinerary(login(principal),request.getRemoteAddr());
+        if(limited!=null) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,limited);
     }
     /** 입력 화면으로 돌아가 만들지 못한 이유와 입력했던 값을 한 번 보여 준다. 새 제출 토큰은 입력 화면을 열 때 다시 만든다. */
     private ResponseEntity<?> backToForm(HttpSession session,long destinationId,ConstraintInput values) {
@@ -153,7 +159,7 @@ public class ItineraryController {
             @RequestParam(name="center",required=false) List<Long> centers,
             @RequestParam(required=false) String origin,@RequestParam(required=false) Double originLongitude,
             @RequestParam(required=false) Double originLatitude,@RequestParam(required=false) String returnPlace,
-            Principal principal,HttpSession session,
+            Principal principal,HttpSession session,HttpServletRequest request,
             @RequestHeader(value="Accept",defaultValue="") String accept) {
         var homeRequest=homeRequest(origin,originLongitude,originLatitude,returnPlace);
         var homeValues=new HomeValues(origin,returnPlace);
@@ -175,6 +181,7 @@ public class ItineraryController {
                 job=submission.job(); service().view(job,login(principal),hash(session));
             } else {
                 try {
+                    checkItineraryLimit(principal,request);
                     var home=home(homeRequest,id,destinationId,principal,session,transport);
                     job=service().create(id,destinationId,login(principal),hash(session),start,end,transport,visitMinutes,constraints,durationDays,accommodationNeeded,startDate,home);
                 } catch(TripConstraints.ConflictException conflict) {
@@ -239,7 +246,7 @@ public class ItineraryController {
             @RequestParam(required=false) KakaoMapClient.Transport transport,
             @RequestParam(required=false) String origin,@RequestParam(required=false) Double originLongitude,
             @RequestParam(required=false) Double originLatitude,@RequestParam(required=false) String returnPlace,
-            Principal principal,HttpSession session) {
+            Principal principal,HttpSession session,HttpServletRequest request) {
         // 출발지 칸을 한 번도 보지 않은 첫 요청(origin 없음)이면 회원이 내 정보에 적은 출발지를 쓴다.
         // 여행 정보 화면에서 출발지를 비우고 보내면(빈 문자열) 집 이동 없이 만든다.
         boolean originAsked=origin!=null || originLongitude!=null;
@@ -276,6 +283,11 @@ public class ItineraryController {
             boolean submitted=durationDays!=null || accommodationNeeded!=null || startDate!=null || transport!=null || originAsked;
             if(missing!=null) {
                 session.setAttribute(TRIP_INFO_KEY,new TripInfoInput(id,durationDays,accommodationNeeded,startDate,transport,submitted?missing:null,homeValues));
+                return seeOther(base+"/trip-info");
+            }
+            String limited=limiter.tryAcquireItinerary(login(principal),request.getRemoteAddr());
+            if(limited!=null) {
+                session.setAttribute(TRIP_INFO_KEY,new TripInfoInput(id,durationDays,accommodationNeeded,startDate,transport,limited,homeValues));
                 return seeOther(base+"/trip-info");
             }
             ItineraryPlan.HomeTrip home;
@@ -319,9 +331,10 @@ public class ItineraryController {
      * 만들 수 없으면 이유를 실패한 초안 화면에 보여 준다. 볼 수 없는 초안(다른 사람·만료)은 찾을 수 없음으로 처리한다.
      */
     @PostMapping("/itineraries/{id}/retry")
-    String retry(@PathVariable UUID id,Principal principal,HttpSession session,
+    String retry(@PathVariable UUID id,Principal principal,HttpSession session,HttpServletRequest request,
                  org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
         try {
+            checkItineraryLimit(principal,request);
             return "redirect:/travel/recommendations/itineraries/"+service().retry(id,login(principal),hash(session));
         } catch(ResponseStatusException e) {
             if(e.getStatusCode().value()==404) throw e;
@@ -382,8 +395,8 @@ public class ItineraryController {
             // 조회 시각은 한국 시간으로 보여 준다.
             model.addAttribute("pricesCheckedAt",job.result().prices()==null?null:java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
                 .format(job.result().prices().checkedAt().atZone(java.time.ZoneId.of("Asia/Seoul"))));
-            // 찾은 가격은 24시간 동안 다시 쓰므로 그 전에는 '다시 찾기' 대신 다시 찾을 수 있는 시각을 보여 준다.
-            var pricesReusedUntil=job.result().prices()==null?null:job.result().prices().checkedAt().plus(ItineraryJobService.PRICE_REUSE);
+            // 찾은 가격은 24시간 동안 다시 쓰므로 그 전에는 '다시 찾기' 대신 다시 찾을 수 있는 시각을 보여 준다. 시간 안에 다 찾지 못했으면 바로 이어서 찾게 한다.
+            var pricesReusedUntil=job.result().prices()==null || job.result().prices().incomplete()?null:job.result().prices().checkedAt().plus(ItineraryJobService.PRICE_REUSE);
             model.addAttribute("pricesRefreshAt",pricesReusedUntil==null || !pricesReusedUntil.isAfter(java.time.Instant.now())?null
                 :java.time.format.DateTimeFormatter.ofPattern("M월 d일 HH:mm").format(pricesReusedUntil.atZone(java.time.ZoneId.of("Asia/Seoul"))));
             // 카카오 길찾기에 연결하지 못해 직선거리로 추정한 이동 구간 수(SFR-04-04). 있으면 이동시간 안내 옆에 따로 알린다.
@@ -443,9 +456,10 @@ public class ItineraryController {
      * 원래 초안은 그대로 두고, 만들지 못하면 이유를 이 초안 화면에 보여 준다.
      */
     @PostMapping("/itineraries/{id}/recreate")
-    String recreate(@PathVariable UUID id,Principal principal,HttpSession session,
+    String recreate(@PathVariable UUID id,Principal principal,HttpSession session,HttpServletRequest request,
                     org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
         try {
+            checkItineraryLimit(principal,request);
             return "redirect:/travel/recommendations/itineraries/"+service().recreate(id,login(principal),hash(session));
         } catch(ResponseStatusException e) {
             if(e.getStatusCode().value()==404) throw e;
@@ -468,9 +482,10 @@ public class ItineraryController {
     org.springframework.web.servlet.view.RedirectView revise(@PathVariable UUID id,@RequestParam(required=false) List<Long> replace,
             @RequestParam(required=false) ItineraryJobService.ReplaceReason reason,@RequestParam LocalTime start,
             @RequestParam LocalTime end,@RequestParam int visitMinutes,@RequestParam(defaultValue="false") boolean fromEdit,
-            Principal principal,HttpSession session,org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
+            Principal principal,HttpSession session,HttpServletRequest request,org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
         String error;
         try {
+            checkItineraryLimit(principal,request);
             return seeOtherView("/travel/recommendations/itineraries/"+service().revise(id,login(principal),hash(session),replace,reason,start,end,visitMinutes));
         } catch(ResponseStatusException e) {
             if(e.getStatusCode().value()==404) throw e;
@@ -517,8 +532,9 @@ public class ItineraryController {
             @RequestParam(required=false) Long avoidRestaurant,@RequestParam(required=false) Long stay,
             @RequestParam(required=false) KakaoMapClient.Transport transport,@RequestParam(required=false) LocalTime start,
             @RequestParam(required=false) LocalTime end,@RequestParam(required=false) Integer visitMinutes,Principal principal,HttpSession session,
-            org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
+            HttpServletRequest request,org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
         try {
+            checkItineraryLimit(principal,request);
             UUID job=service().reviseDirect(id,login(principal),hash(session),
                 new ItineraryJobService.DirectChange(remove,add,avoidRestaurant,stay,transport,start,end,visitMinutes));
             return "redirect:/travel/recommendations/itineraries/"+job;
@@ -541,51 +557,61 @@ public class ItineraryController {
     private static final String AI_ASKED_KEY="itineraryAiAskedPlaces";
     private static final String PRICE_COOLDOWN_KEY="itineraryPriceLookupNext";
     private static final String VERIFY_COOLDOWN_KEY="itineraryVerifyNext";
+    /** 유료 웹 검색이 끝날 때까지 다시 받지 않으려고 시작할 때 잡아 두는 시간. 가장 오래 걸리는 경우보다 길게 둔다(서버가 멈춰도 풀리게 무기한으로 두지 않는다). */
+    private static final long SEARCH_BUSY_SECONDS=150;
+    /** 유료 웹 검색이 끝난 뒤 다음 검색까지의 간격. */
+    private static final long SEARCH_COOLDOWN_SECONDS=30;
 
-    /** 초안의 확인 필요 항목(반려동물 동반·여행 목적 활동)을 AI 웹 검색으로 찾는다. 유료 호출이라 버튼을 누를 때만 하고 세션마다 30초 간격을 둔다. */
+    /** 초안의 확인 필요 항목(반려동물 동반·여행 목적 활동)을 AI 웹 검색으로 찾는다. 유료 호출이라 버튼을 누를 때만 하고, 끝날 때까지 다시 받지 않으며 끝난 뒤 30초 간격을 둔다. */
     @PostMapping("/itineraries/{id}/verify")
-    String verify(@PathVariable UUID id,Principal principal,HttpSession session,
+    String verify(@PathVariable UUID id,Principal principal,HttpSession session,HttpServletRequest request,
                   org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
         String back="redirect:/travel/recommendations/itineraries/"+id+"#verify-title";
         synchronized(session) {
             var next=session.getAttribute(VERIFY_COOLDOWN_KEY) instanceof java.time.Instant at?at:null;
             if(next!=null && next.isAfter(java.time.Instant.now())) {
-                redirect.addFlashAttribute("verifyError","방금 AI 확인 검색을 했어요. 잠시 후 다시 시도해 주세요.");
+                redirect.addFlashAttribute("verifyError","AI 확인 검색이 진행 중이거나 방금 끝났어요. 잠시 후 다시 시도해 주세요.");
                 return back;
             }
-            session.setAttribute(VERIFY_COOLDOWN_KEY,java.time.Instant.now().plusSeconds(30));
+            session.setAttribute(VERIFY_COOLDOWN_KEY,java.time.Instant.now().plusSeconds(SEARCH_BUSY_SECONDS));
         }
         try {
+            checkItineraryLimit(principal,request);
             service().lookupVerifications(id,login(principal),hash(session));
         } catch(RecommendationException e) {
             redirect.addFlashAttribute("verifyError",e.getMessage()+" 일정 초안은 그대로예요.");
         } catch(ResponseStatusException e) {
             if(e.getStatusCode().value()==404) throw e;
             redirect.addFlashAttribute("verifyError",e.getReason());
+        } finally {
+            synchronized(session) { session.setAttribute(VERIFY_COOLDOWN_KEY,java.time.Instant.now().plusSeconds(SEARCH_COOLDOWN_SECONDS)); }
         }
         return back;
     }
 
-    /** 초안의 숙소·음식점 참고 가격을 AI 웹 검색으로 찾는다. 유료 호출이라 버튼을 누를 때만 하고, 세션마다 30초 간격을 둔다. */
+    /** 초안의 숙소·음식점 참고 가격을 AI 웹 검색으로 찾는다. 유료 호출이라 버튼을 누를 때만 하고, 끝날 때까지 다시 받지 않으며 끝난 뒤 30초 간격을 둔다. */
     @PostMapping("/itineraries/{id}/prices")
-    String prices(@PathVariable UUID id,Principal principal,HttpSession session,
+    String prices(@PathVariable UUID id,Principal principal,HttpSession session,HttpServletRequest request,
                   org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
         String back="redirect:/travel/recommendations/itineraries/"+id+"#prices-title";
         synchronized(session) {
             var next=session.getAttribute(PRICE_COOLDOWN_KEY) instanceof java.time.Instant at?at:null;
             if(next!=null && next.isAfter(java.time.Instant.now())) {
-                redirect.addFlashAttribute("priceError","방금 가격을 찾았어요. 잠시 후 다시 시도해 주세요.");
+                redirect.addFlashAttribute("priceError","가격을 찾는 중이거나 방금 찾았어요. 잠시 후 다시 시도해 주세요.");
                 return back;
             }
-            session.setAttribute(PRICE_COOLDOWN_KEY,java.time.Instant.now().plusSeconds(30));
+            session.setAttribute(PRICE_COOLDOWN_KEY,java.time.Instant.now().plusSeconds(SEARCH_BUSY_SECONDS));
         }
         try {
+            checkItineraryLimit(principal,request);
             service().lookupPrices(id,login(principal),hash(session));
         } catch(RecommendationException e) {
             redirect.addFlashAttribute("priceError",e.getMessage()+" 일정 초안은 그대로예요.");
         } catch(ResponseStatusException e) {
             if(e.getStatusCode().value()==404) throw e;
             redirect.addFlashAttribute("priceError",e.getReason());
+        } finally {
+            synchronized(session) { session.setAttribute(PRICE_COOLDOWN_KEY,java.time.Instant.now().plusSeconds(SEARCH_COOLDOWN_SECONDS)); }
         }
         return back;
     }
@@ -596,7 +622,7 @@ public class ItineraryController {
      */
     @PostMapping("/itineraries/{id}/ai-revisions")
     String aiRevise(@PathVariable UUID id,@RequestParam(defaultValue="") String request,@RequestParam(defaultValue="false") boolean fromEdit,
-                    Principal principal,HttpSession session,
+                    Principal principal,HttpSession session,HttpServletRequest httpRequest,
                     org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
         // 직접 수정 화면에서 보낸 요청은 되묻는 말이나 오류를 그 화면에 보여 준다.
         String back="redirect:/travel/recommendations/itineraries/"+id+(fromEdit?"/edit#ai-title":"#revise-title");
@@ -611,6 +637,7 @@ public class ItineraryController {
             session.setAttribute(AI_COOLDOWN_KEY,java.time.Instant.now().plusSeconds(20));
         }
         try {
+            checkItineraryLimit(principal,httpRequest);
             java.util.Set<String> asked;
             synchronized(session) {
                 @SuppressWarnings("unchecked")

@@ -62,16 +62,20 @@ public class PlaceCandidateController {
         response.setHeader("Cache-Control","no-store");
         var service=discoveries.getIfAvailable();
         if(service==null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"장소 조회는 DB 연결 후 이용할 수 있어요.");
+        byte[] guest;
+        boolean allowed;
+        // 조회 한 번에 카카오·관광공사를 수십 번 부르므로 여행지와 상관없이 세션당 1분에 한 번만 받는다.
+        // 다음 조회 시각을 먼저 잡아 두고, 느린 호출은 세션 잠금 밖에서 한다(같은 사용자의 다른 요청이 기다리지 않게).
         synchronized(session) {
-            String key="placeLookup:"+id+":"+destinationId;
-            var previous=(String)session.getAttribute("lastPlaceLookup");
-            var time=(Long)session.getAttribute("lastPlaceLookupTime");
-            if(!key.equals(previous) || time==null || System.currentTimeMillis()-time>=60000) {
-                int count=service.refresh(id,destinationId,principal==null?null:principal.getName(),RecommendationJobController.guestHash(session,false));
-                session.setAttribute("lastPlaceLookup",key); session.setAttribute("lastPlaceLookupTime",System.currentTimeMillis());
-                flash.addFlashAttribute("lookupMessage",count==0?"이번 조회에서 추가로 확인할 수 있는 장소가 없어요. 기존 후보를 유지했어요.":"카카오에서 "+count+"곳의 정보를 확인했어요. 기존 후보와 함께 표시해요.");
-            } else flash.addFlashAttribute("lookupMessage","방금 확인한 결과를 표시해요. 새 조회는 1분 후 가능해요.");
+            var last=(Long)session.getAttribute("lastPlaceLookupTime");
+            allowed=last==null || System.currentTimeMillis()-last>=60000;
+            if(allowed) session.setAttribute("lastPlaceLookupTime",System.currentTimeMillis());
+            guest=RecommendationJobController.guestHash(session,false);
         }
+        if(allowed) {
+            int count=service.refresh(id,destinationId,principal==null?null:principal.getName(),guest);
+            flash.addFlashAttribute("lookupMessage",count==0?"이번 조회에서 추가로 확인할 수 있는 장소가 없어요. 기존 후보를 유지했어요.":"카카오에서 "+count+"곳의 정보를 확인했어요. 기존 후보와 함께 표시해요.");
+        } else flash.addFlashAttribute("lookupMessage","방금 장소를 찾아봤어요. 새 조회는 1분 후 가능해요.");
         response.setStatus(303);
         return "redirect:/travel/recommendations/"+id+"/destinations/"+destinationId+"/places";
     }

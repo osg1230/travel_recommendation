@@ -365,6 +365,32 @@ class ItineraryIntegrationTests {
             .andExpect(content().string(containsString("이전에 찾은 결과를 다시 사용했어요")));
     }
 
+    // 한 곳이 시간 초과돼도 찾은 곳은 보여 주고, 다시 누르면 남은 곳만 찾는다.
+    @Test void priceTimeoutShowsTheRestAndNextLookupContinues() {
+        answerPrices();
+        var quote=new ItineraryPlan.PriceQuote(1L,"식당",OpenAiPriceClient.RESTAURANT,"VERIFIED","참고 가격",20000,30000,"기준","https://price.example.kr/1");
+        doThrow(new RecommendationException("AI_TIMEOUT","시간 초과")).when(prices).lookup(any(),eq(OpenAiPriceClient.RESTAURANT));
+        var id=completedDraft();
+        var first=schedules.lookupPrices(id,null,hash);
+        assertThat(first.incomplete()).isTrue();
+        assertThat(first.quotes().getFirst().found()).isTrue();
+        assertThat(first.quotes().getLast().found()).isFalse();
+        em.flush();
+        assertThat(schedules.view(id,null,hash).result().prices().incomplete()).isTrue();
+        doReturn(quote).when(prices).lookup(any(),eq(OpenAiPriceClient.RESTAURANT));
+        var second=schedules.lookupPrices(id,null,hash);
+        assertThat(second.incomplete()).isFalse();
+        // 앞서 찾은 숙소는 다시 검색하지 않는다.
+        verify(prices,times(1)).lookup(any(),eq(OpenAiPriceClient.LODGING));
+    }
+
+    // 한 사람이 일정 작업으로 줄을 채우지 못하게 동시에 맡길 수 있는 수를 제한한다.
+    @Test void oneOwnerCannotQueueTooManyDrafts() {
+        for(int i=0;i<ItineraryJobService.MAX_ACTIVE_JOBS;i++) create();
+        assertThatThrownBy(this::create).isInstanceOfSatisfying(org.springframework.web.server.ResponseStatusException.class,
+            e->assertThat(e.getStatusCode().value()).isEqualTo(429));
+    }
+
     // 여러 곳을 찾다 중간에 실패해도 이미 비용을 낸 앞쪽 검색 결과는 장소에 남는다.
     @Test void searchedPricesAreKeptWhenALaterLookupFails() {
         answerPrices();
