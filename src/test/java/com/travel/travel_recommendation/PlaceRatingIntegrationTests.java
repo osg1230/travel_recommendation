@@ -45,8 +45,13 @@ class PlaceRatingIntegrationTests {
         owner=member();
         attraction=placeOf("ATTRACTION"); restaurant=placeOf("RESTAURANT"); destination=placeOf("DESTINATION");
     }
+    // 개발 DB의 장소를 쓰면 시연 중 남긴 평가와 섞이므로 테스트 장소를 새로 넣는다(롤백됨).
     private long placeOf(String type) {
-        return jdbc.queryForObject("SELECT TOP 1 place_id FROM dbo.places WHERE place_type=? AND is_active=1 ORDER BY place_id",Long.class,type);
+        return jdbc.queryForObject("""
+            INSERT INTO dbo.places(place_type,source_provider,source_place_id,place_name,region,address,subtype,description,source_url,verified_at)
+            OUTPUT INSERTED.place_id
+            VALUES(?,'SYSTEM',?,N'평가 테스트 장소',N'강원특별자치도 강릉시',N'강원특별자치도 강릉시 경포로 1',N'테스트',N'테스트 장소',N'https://www.gn.go.kr/',DATEADD(day,-1,SYSDATETIME()))""",
+            Long.class,type,"TEST_RATING_"+UUID.randomUUID().toString().substring(0,8));
     }
     private User member() {
         String suffix=UUID.randomUUID().toString().replace("-","");

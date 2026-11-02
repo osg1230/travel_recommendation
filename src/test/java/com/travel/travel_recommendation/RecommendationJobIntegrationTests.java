@@ -146,10 +146,10 @@ class RecommendationJobIntegrationTests {
         // 전국 여행지는 AI가 한 번에 비교하는 5곳까지만 고른다.
         assertThat(destinations.find("")).hasSize(5);
         assertThat(destinations.find("강원특별자치도 강릉시")).extracting(DestinationCandidate::name).containsExactly("강릉");
-        // 추천 중에 확인해 추가한 여행지(RegionSuggestionService)는 등록 순서상 뒤에 붙을 수 있다. 다른 시·도는 섞이지 않는다.
-        assertThat(destinations.find("경북")).extracting(DestinationCandidate::name).startsWith("경주","안동","포항");
+        // 추천 중에 확인해 추가한 여행지(RegionSuggestionService)가 PC마다 다를 수 있어 순서는 보지 않는다. 다른 시·도는 섞이지 않는다.
+        assertThat(destinations.find("경북")).extracting(DestinationCandidate::name).contains("경주","안동","포항");
         assertThat(destinations.find("경북")).allSatisfy(d -> assertThat(Provinces.canonical(d.region().split(" ")[0])).isEqualTo("경북"));
-        assertThat(destinations.find("광주")).extracting(DestinationCandidate::name).startsWith("여수","순천","담양");
+        assertThat(destinations.find("광주")).extracting(DestinationCandidate::name).contains("여수","순천","담양");
         assertThat(destinations.find("광주")).allSatisfy(d -> assertThat(Provinces.canonical(d.region().split(" ")[0])).isEqualTo("전남광주"));
         assertThat(destinations.find("부산 아닌 서울")).isEmpty();
         assertThat(destinations.find("강릉 부산")).isEmpty();

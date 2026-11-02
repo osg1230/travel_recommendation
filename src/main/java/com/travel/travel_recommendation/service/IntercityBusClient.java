@@ -20,6 +20,9 @@ import tools.jackson.databind.*;
  */
 @Component
 public class IntercityBusClient {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(IntercityBusClient.class);
+    /** 키가 없거나 인증에 실패했을 때 사용자에게 보여 주는 문장. 사용자가 고칠 수 없는 원인은 로그에만 남긴다. */
+    private static final String UNAVAILABLE = "지금은 버스 정보를 불러올 수 없어요. 잠시 후 다시 시도해 주세요.";
     /** TAGO 버스 서비스 종류. 두 서비스는 주소·오퍼레이션 이름만 다르고 요청·응답 형식은 같다. */
     public enum Service {
         INTERCITY("시외버스", "SuburbsBusInfo/", "GetSuberbsBusTrminlList", "GetStrtpntAlocFndSuberbsBusInfo"),
@@ -144,7 +147,7 @@ public class IntercityBusClient {
     }
 
     private JsonNode get(Service service, String operation, String parameters) {
-        if (!properties.isConfigured()) throw failure("BUS_NOT_CONFIGURED", "버스 정보 인증키 설정이 필요해요.");
+        if (!properties.isConfigured()) throw failure("BUS_NOT_CONFIGURED", UNAVAILABLE);
         // Decoding 키를 한 번만 인코딩한다. 요청 URL에는 키가 있어 로그에 남기지 않는다.
         String query = "?serviceKey=" + URLEncoder.encode(properties.serviceKey().trim(), StandardCharsets.UTF_8)
             + "&_type=json" + parameters;
@@ -215,7 +218,10 @@ public class IntercityBusClient {
         return value.asText().trim();
     }
     private RecommendationException invalid() { return failure("BUS_RESPONSE", "시외버스 정보 응답을 확인하지 못했어요."); }
-    private RecommendationException auth() { return failure("BUS_AUTH", "시외버스 정보 인증키와 활용신청 승인 상태를 확인해 주세요."); }
+    private RecommendationException auth() {
+        log.warn("시외버스 정보 인증에 실패했습니다. 인증키와 활용신청 승인 상태를 확인하세요.");
+        return failure("BUS_AUTH", UNAVAILABLE);
+    }
     private RecommendationException quota() { return failure("BUS_QUOTA", "시외버스 정보 조회 한도에 도달했어요. 잠시 후 다시 시도해 주세요."); }
     private RecommendationException failure(String code, String message) { return new RecommendationException(code, message); }
 }

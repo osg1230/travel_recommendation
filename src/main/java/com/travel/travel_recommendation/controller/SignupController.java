@@ -4,8 +4,10 @@ import com.travel.travel_recommendation.config.SecurityConfig;
 import com.travel.travel_recommendation.dto.SignupForm;
 import com.travel.travel_recommendation.service.DuplicateUserException;
 import com.travel.travel_recommendation.service.KakaoMapClient;
+import com.travel.travel_recommendation.service.LoginAttemptLimiter;
 import com.travel.travel_recommendation.service.RecommendationException;
 import com.travel.travel_recommendation.service.UserService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
@@ -26,6 +28,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 public class SignupController {
     private final UserService userService;
     private final KakaoMapClient maps;
+    private final LoginAttemptLimiter limiter;
 
     @InitBinder("signupForm")
     void bindSignupFields(WebDataBinder binder) {
@@ -42,14 +45,21 @@ public class SignupController {
 
     @PostMapping("/signup")
     public String signup(@Valid @ModelAttribute SignupForm signupForm, BindingResult result,
-                         Authentication authentication, RedirectAttributes redirectAttributes) {
+                         Authentication authentication, RedirectAttributes redirectAttributes,
+                         HttpServletRequest request) {
         if (loggedIn(authentication)) return "redirect:" + SecurityConfig.startPage(authentication);
-        if (!result.hasErrors()) checkHomeArea(signupForm, result);
         if (!result.hasErrors()) {
             try {
-                userService.signup(signupForm);
-                redirectAttributes.addFlashAttribute("signupComplete", true);
-                return "redirect:/signup/complete";
+                // DB만 보면 되는 중복 검사를 먼저 한다. 횟수 제한을 쓰지 않고, 쓰지도 못할 가입으로 카카오를 부르지 않는다.
+                userService.checkAvailable(signupForm);
+                String limited = limiter.tryAcquireSignup(request.getRemoteAddr());
+                if (limited != null) result.reject("signup.limited", limited);
+                else checkHomeArea(signupForm, result);
+                if (!result.hasErrors()) {
+                    userService.signup(signupForm);
+                    redirectAttributes.addFlashAttribute("signupComplete", true);
+                    return "redirect:/signup/complete";
+                }
             } catch (DuplicateUserException ex) {
                 result.rejectValue(ex.getField(), "duplicate", ex.getMessage());
             } catch (DataIntegrityViolationException ex) {

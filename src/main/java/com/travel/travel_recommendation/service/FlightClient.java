@@ -20,6 +20,9 @@ import tools.jackson.databind.*;
  */
 @Component
 public class FlightClient {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(FlightClient.class);
+    /** 키가 없거나 인증에 실패했을 때 사용자에게 보여 주는 문장. 사용자가 고칠 수 없는 원인은 로그에만 남긴다. */
+    private static final String UNAVAILABLE = "지금은 항공 운항 정보를 불러올 수 없어요. 잠시 후 다시 시도해 주세요.";
     /** 운항편 한 건. 시각은 항공사가 알린 예정 시각이다. */
     public record Flight(LocalDateTime departure, LocalDateTime arrival, String airline, String flightNo, Integer economyCharge) {
         public int minutes() { return (int) Duration.between(departure, arrival).toMinutes(); }
@@ -73,7 +76,7 @@ public class FlightClient {
     }
 
     private JsonNode get(String operation, String parameters) {
-        if (!properties.isConfigured()) throw failure("FLIGHT_NOT_CONFIGURED", "항공 운항 정보 인증키 설정이 필요해요.");
+        if (!properties.isConfigured()) throw failure("FLIGHT_NOT_CONFIGURED", UNAVAILABLE);
         // Decoding 키를 한 번만 인코딩한다. 요청 URL에는 키가 있어 로그에 남기지 않는다.
         String query = "?serviceKey=" + URLEncoder.encode(properties.serviceKey().trim(), StandardCharsets.UTF_8) + "&_type=json" + parameters;
         try {
@@ -139,7 +142,10 @@ public class FlightClient {
         return value.asText().trim();
     }
     private RecommendationException invalid() { return failure("FLIGHT_RESPONSE", "항공 운항 정보 응답을 확인하지 못했어요."); }
-    private RecommendationException auth() { return failure("FLIGHT_AUTH", "항공 운항 정보 인증키와 활용신청 승인 상태를 확인해 주세요."); }
+    private RecommendationException auth() {
+        log.warn("항공 운항 정보 인증에 실패했습니다. 인증키와 활용신청 승인 상태를 확인하세요.");
+        return failure("FLIGHT_AUTH", UNAVAILABLE);
+    }
     private RecommendationException quota() { return failure("FLIGHT_QUOTA", "항공 운항 정보 조회 한도에 도달했어요. 잠시 후 다시 시도해 주세요."); }
     private RecommendationException failure(String code, String message) { return new RecommendationException(code, message); }
 }

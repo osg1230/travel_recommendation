@@ -97,7 +97,10 @@ class SavedItineraryControllerTests {
         doThrow(new ResponseStatusException(HttpStatus.NOT_FOUND,"저장한 일정을 찾을 수 없어요.")).when(service).rename(8L,"member","새 이름");
         mvc.perform(post("/my/itineraries/8/title").with(user("member")).with(csrf()).param("title","새 이름"))
             .andExpect(status().isNotFound())
-            .andExpect(content().string(not(containsString("이전 화면으로"))));
+            .andExpect(content().string(not(containsString("이전 화면으로"))))
+            // 오류 화면에서도 상단 바는 로그인한 상태로 보인다.
+            .andExpect(content().string(containsString("로그아웃"))).andExpect(content().string(containsString("member님")))
+            .andExpect(content().string(not(containsString("href=\"/login\""))));
     }
 
     @Test void showsRecentRatingsOfSavedPlaces() throws Exception {

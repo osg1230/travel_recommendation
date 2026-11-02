@@ -35,7 +35,7 @@
     <!--/* 다음 단계(일정 만들기)를 주 버튼으로, 후보 더 찾기는 보조 버튼으로 둔다. */-->
     <!--/* 하루 시간은 기본값으로 바로 만들고, 필요한 사람만 자세한 입력 화면에서 정한다. */-->
     <div class="form-actions">
-        <form method="post" th:action="@{/travel/recommendations/{id}/destinations/{dest}/quick-schedule(id=${places.jobId},dest=${places.destination.placeId})}">
+        <form method="post" data-submit-loading="일정을 준비하는 중…" th:action="@{/travel/recommendations/{id}/destinations/{dest}/quick-schedule(id=${places.jobId},dest=${places.destination.placeId})}">
             <button type="submit">이 여행지로 일정 만들기</button></form>
         <a class="button button-quiet" th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${places.jobId},dest=${places.destination.placeId})}">시간·조건 자세히 정하고 만들기</a>
     </div>

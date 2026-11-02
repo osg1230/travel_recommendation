@@ -21,14 +21,20 @@ public class UserService {
     private final UserRepository users;
     private final PasswordEncoder passwordEncoder;
 
-    @Transactional
-    public void signup(@NotNull @Valid SignupForm form) {
+    /** 아이디·닉네임이 이미 쓰이면 DuplicateUserException을 던진다. 가입 화면이 지도 조회 전에 먼저 부른다. */
+    @Transactional(readOnly = true)
+    public void checkAvailable(SignupForm form) {
         if (users.existsByLoginId(form.getLoginId())) {
             throw new DuplicateUserException("loginId", "이미 사용 중인 아이디입니다.");
         }
         if (users.existsByNicknameAndStatusNot(form.getNickname(), UserStatus.WITHDRAWN)) {
             throw new DuplicateUserException("nickname", "이미 사용 중인 닉네임입니다.");
         }
+    }
+
+    @Transactional
+    public void signup(@NotNull @Valid SignupForm form) {
+        checkAvailable(form);
         // 권한과 상태는 입력받지 않는다. User의 기본값 MEMBER / ACTIVE를 사용한다.
         User user = new User(form.getLoginId(), passwordEncoder.encode(form.getPassword()), form.getNickname());
         user.changeHomeArea(form.getHomeArea());
