@@ -50,7 +50,7 @@ public class BusGuideService {
         boolean originFound=found.originFound(), trimmed=found.trimmed();
         var authError=found.authError();
         if(unavailable.size()==IntercityBusClient.Service.values().length) throw authError;
-        String skipped=unavailable.isEmpty()?"":" "+String.join("·",unavailable)+" 정보는 인증키 활용신청이 확인되지 않아 제외했어요.";
+        String skipped=unavailable.isEmpty()?"":" "+String.join("·",unavailable)+" 정보는 지금 확인할 수 없어 제외했어요.";
         if(!originFound)
             return new BusGuide(label,to,today,tripDate,List.of(),"'"+keyword+"' 이름의 시외·고속버스 터미널을 찾지 못했어요. 도시 이름이나 터미널 이름을 다시 적어 주세요."+skipped);
         String more=(trimmed?" 터미널이 많아 이름 기준 "+MAX_ORIGINS+"곳만 조회했어요. 터미널 이름을 적으면 더 정확해요.":"")+skipped;

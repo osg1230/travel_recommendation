@@ -113,7 +113,7 @@ class BusGuideServiceTests {
         when(buses.trips(Service.INTERCITY,"DS","GN",today)).thenReturn(List.of(trip(7,140,22300)));
         var guide=service.guide(job,"user",null,"강릉","동서울",null,null);
         assertThat(guide.routes()).extracting(BusGuide.Route::kind).containsExactly("시외버스");
-        assertThat(guide.message()).contains("고속버스 정보는 인증키 활용신청이 확인되지 않아 제외했어요");
+        assertThat(guide.message()).contains("고속버스 정보는 지금 확인할 수 없어 제외했어요");
         when(buses.terminalIds(Service.INTERCITY,"강릉")).thenThrow(new RecommendationException("BUS_AUTH","활용신청 확인"));
         assertThatThrownBy(()->service.guide(job,"user",null,"강릉","동서울",null,null)).hasMessage("활용신청 확인");
     }

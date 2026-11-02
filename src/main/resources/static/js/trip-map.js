@@ -15,11 +15,16 @@
     const COLORS = ['#0f766e', '#c2410c', '#1d4ed8', '#7c3aed', '#be123c', '#15803d', '#a16207'];
     const TYPE_NAMES = { VISIT: '관광', MEAL: '식사', STAY: '숙소', ATTRACTION: '관광지', ACCOMMODATION: '숙소' };
 
-    const failed = setTimeout(() => tell('지도를 불러오지 못했어요. 카카오 JavaScript 키와 사이트 도메인 등록을 확인해 주세요. 아래 목록과 링크는 그대로 쓸 수 있어요.'), 8000);
+    // 사용자에게는 할 수 있는 일만 알리고, 개발자가 볼 원인은 브라우저 콘솔에 남긴다.
+    function mapFailed() {
+        tell('지도를 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요. 아래 목록과 링크는 그대로 쓸 수 있어요.');
+        console.warn('카카오 지도 SDK를 불러오지 못했습니다. 네트워크, JavaScript 키, 카카오 개발자 콘솔의 웹 도메인 등록을 확인하세요.');
+    }
+    const failed = setTimeout(mapFailed, 8000);
     const script = document.createElement('script');
     script.src = 'https://dapi.kakao.com/v2/maps/sdk.js?autoload=false&libraries=services&appkey=' + encodeURIComponent(key);
-    // 등록하지 않은 사이트 도메인(401)도 네트워크 오류처럼 onerror로만 알려져 두 원인을 함께 안내한다.
-    script.onerror = () => { clearTimeout(failed); tell('지도를 불러오지 못했어요. 네트워크 연결과, 카카오 개발자 콘솔에 이 사이트 주소(예: http://localhost:8080)가 웹 도메인으로 등록됐는지 확인해 주세요. 아래 목록과 링크는 그대로 쓸 수 있어요.'); };
+    // 등록하지 않은 사이트 도메인(401)도 네트워크 오류처럼 onerror로만 알려진다.
+    script.onerror = () => { clearTimeout(failed); mapFailed(); };
     script.onload = () => window.kakao.maps.load(() => { clearTimeout(failed); canvas.hidden = false; draw(); });
     document.head.appendChild(script);
 

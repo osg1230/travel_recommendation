@@ -1,6 +1,7 @@
 package com.travel.travel_recommendation.config;
 
 import com.travel.travel_recommendation.repository.UserRepository;
+import com.travel.travel_recommendation.service.LoginAttemptLimiter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -8,6 +9,7 @@ import java.io.IOException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -41,10 +43,11 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, UserDetailsService userDetailsService,
-                                            PasswordEncoder passwordEncoder, ObjectProvider<UserRepository> users) throws Exception {
+                                            PasswordEncoder passwordEncoder, ObjectProvider<UserRepository> users,
+                                            LoginAttemptLimiter loginLimiter) throws Exception {
         var accountCheck = new AccountSessionFilter(users);
         // 회원가입에도 CSRF 보호를 유지한다. 새 기능은 구현할 때 접근 규칙을 추가한다.
-        return http.addFilterBefore(new LoginInputFilter(), org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
+        return http.addFilterBefore(new LoginInputFilter(loginLimiter), org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
                 // 세션에서 로그인 정보를 읽은 뒤, CSRF 검사 전에 계정 상태와 비밀번호 변경 여부를 확인한다.
                 .addFilterBefore(accountCheck, CsrfFilter.class)
                 .authenticationManager(loginManager(userDetailsService, passwordEncoder))
@@ -65,6 +68,7 @@ public class SecurityConfig {
                     .successHandler((request, response, authentication) -> {
                         // 지금 비밀번호의 표식을 세션에 남긴다. 다른 기기에서 비밀번호를 바꾸면 이 세션을 끝내는 데 쓴다.
                         accountCheck.rememberCredential(request, authentication.getName());
+                        loginLimiter.loginSucceeded(request.getParameter("loginId"), request.getRemoteAddr());
                         // 일정 초안이나 회원 화면에서 로그인하러 온 경우 그 화면으로 돌려보낸다.
                         var session = request.getSession(false);
                         Object back = session == null ? null : session.getAttribute(LOGIN_RETURN);
@@ -78,6 +82,7 @@ public class SecurityConfig {
                         // 그 밖의 실패는 아이디가 있는지 드러나지 않게 같은 문구를 쓴다.
                         String reason = exception instanceof InternalAuthenticationServiceException ? "unavailable"
                                 : exception instanceof LockedException ? "restricted" : "error";
+                        if ("unavailable".equals(reason)) loginLimiter.loginNotChecked(request.getParameter("loginId"), request.getRemoteAddr());
                         logDenied(request, "LOGIN_" + exception.getClass().getSimpleName(), request.getParameter("loginId"));
                         keepLoginId(request, response);
                         response.sendRedirect(request.getContextPath() + "/login?" + reason);
@@ -148,9 +153,9 @@ public class SecurityConfig {
         new AccessDeniedHandlerImpl().handle(request, response, denied);
     }
 
-    /** 접근 거부·로그인 실패 기록(SER-01·02·04·05). 시각은 로그 줄 앞에 찍힌다. 비밀번호와 요청 본문은 남기지 않는다. */
+    /** 접근 거부·로그인 실패 기록(SER-01·02·04·05). 시각은 로그 줄 앞에 찍힌다. 어디서 온 시도인지 보려고 IP를 함께 남기며, 비밀번호와 요청 본문은 남기지 않는다. */
     static void logDenied(HttpServletRequest request, String reason, String loginId) {
-        log.warn("보안 기록 path={} reason={} loginId={}", request.getRequestURI(), reason, maskLoginId(loginId));
+        log.warn("보안 기록 path={} reason={} loginId={} ip={}", request.getRequestURI(), reason, maskLoginId(loginId), request.getRemoteAddr());
     }
 
     /** 아이디는 앞 2글자만 남긴다(예: tr***). 영문·숫자·밑줄이 아닌 글자는 ?로 바꿔 로그 줄이 깨지지 않게 한다. */
@@ -192,6 +197,12 @@ public class SecurityConfig {
     public static String startPage(Authentication authentication) {
         return authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
                 ? "/admin" : "/";
+    }
+
+    /** 테스트에서만 끈다(src/test/resources/config/application.properties). 실제 실행에서는 늘 켜 둔다. */
+    @Bean
+    LoginAttemptLimiter loginAttemptLimiter(@Value("${travel.login-limit.enabled:true}") boolean enabled) {
+        return new LoginAttemptLimiter(enabled);
     }
 
     @Bean

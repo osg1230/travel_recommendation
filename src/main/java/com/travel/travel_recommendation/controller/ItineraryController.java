@@ -172,35 +172,49 @@ public class ItineraryController {
             tier,List.of(),durationDays,accommodationNeeded,startDate,constraints.centerPlaceIds(),homeValues);
         UUID job;
         synchronized(session) {
-            var submission=(Submission)session.getAttribute(submissionKey(id,destinationId));
-            // 같은 여행지 입력 화면을 다른 탭에서 다시 열었거나 오래 둬서 토큰이 바뀌었으면, 입력값을 잃지 않게 화면으로 돌려보낸다.
-            if(submission==null || !submission.parent().equals(id) || submission.destination()!=destinationId
-                || !Objects.equals(submission.login(),login(principal)) || !submission.token().equals(submissionToken))
-                return backToForm(session,destinationId,entered.withReason("입력 화면이 새로 열려 이 화면의 입력을 받지 못했어요. 입력한 값을 확인하고 다시 눌러 주세요."));
-            if(submission.job()!=null) {
-                job=submission.job(); service().view(job,login(principal),hash(session));
-            } else {
-                try {
-                    checkItineraryLimit(principal,request);
-                    var home=home(homeRequest,id,destinationId,principal,session,transport);
-                    job=service().create(id,destinationId,login(principal),hash(session),start,end,transport,visitMinutes,constraints,durationDays,accommodationNeeded,startDate,home);
-                } catch(TripConstraints.ConflictException conflict) {
-                    // 모순된 필수 조건은 임의로 완화하지 않고 입력 화면으로 돌아가 이유와 선택지를 보여 준다.
-                    return backToForm(session,destinationId,entered.withConflicts(conflict.conflicts()));
-                } catch(RecommendationException error) {
-                    // 하루 시간이 4시간보다 짧거나 후보가 부족한 것처럼 입력을 고쳐야 하는 문제다.
-                    return backToForm(session,destinationId,entered.withReason(error.getMessage()));
-                } catch(ResponseStatusException error) {
-                    // 찾을 수 없음(만료·다른 세션)과 서비스 연결 문제는 오류 화면에서 안내한다.
-                    if(error.getStatusCode().value()==404 || error.getStatusCode().value()==503) throw error;
-                    return backToForm(session,destinationId,entered.withReason(error.getReason()));
+            var submission=currentSubmission(id,destinationId,submissionToken,principal,session);
+            if(submission==null) return backToForm(session,destinationId,entered.withReason(FORM_REOPENED));
+            job=submission.job();
+            if(job!=null) service().view(job,login(principal),hash(session));
+        }
+        if(job==null) {
+            try {
+                checkItineraryLimit(principal,request);
+                // 집 출발 이동은 카카오·항공 조회로 오래 걸릴 수 있다. 세션 잠금을 잡고 기다리면 같은 사용자의 다른 탭도 멈추므로 잠금 밖에서 찾는다.
+                var home=home(homeRequest,id,destinationId,principal,session,transport);
+                synchronized(session) {
+                    // 찾는 동안 먼저 끝난 요청이 있으면 그 초안으로 보낸다.
+                    var submission=currentSubmission(id,destinationId,submissionToken,principal,session);
+                    if(submission==null) return backToForm(session,destinationId,entered.withReason(FORM_REOPENED));
+                    job=submission.job();
+                    if(job==null) {
+                        job=service().create(id,destinationId,login(principal),hash(session),start,end,transport,visitMinutes,constraints,durationDays,accommodationNeeded,startDate,home);
+                        session.setAttribute(submissionKey(id,destinationId),new Submission(id,destinationId,login(principal),submissionToken,job));
+                    }
                 }
-                session.setAttribute(submissionKey(id,destinationId),new Submission(id,destinationId,login(principal),submissionToken,job));
+            } catch(TripConstraints.ConflictException conflict) {
+                // 모순된 필수 조건은 임의로 완화하지 않고 입력 화면으로 돌아가 이유와 선택지를 보여 준다.
+                return backToForm(session,destinationId,entered.withConflicts(conflict.conflicts()));
+            } catch(RecommendationException error) {
+                // 하루 시간이 4시간보다 짧거나 후보가 부족한 것처럼 입력을 고쳐야 하는 문제다.
+                return backToForm(session,destinationId,entered.withReason(error.getMessage()));
+            } catch(ResponseStatusException error) {
+                // 찾을 수 없음(만료·다른 세션)과 서비스 연결 문제는 오류 화면에서 안내한다.
+                if(error.getStatusCode().value()==404 || error.getStatusCode().value()==503) throw error;
+                return backToForm(session,destinationId,entered.withReason(error.getReason()));
             }
         }
         String location="/travel/recommendations/itineraries/"+job;
         return accept.contains("application/json")?ResponseEntity.accepted().cacheControl(CacheControl.noStore()).body(Map.of("jobId",job,"location",location)):
             ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create(location)).cacheControl(CacheControl.noStore()).build();
+    }
+    private static final String FORM_REOPENED="입력 화면이 새로 열려 이 화면의 입력을 받지 못했어요. 입력한 값을 확인하고 다시 눌러 주세요.";
+    /** 이 입력 화면의 제출 기록. 같은 여행지 입력 화면을 다른 탭에서 다시 열었거나 오래 둬서 토큰이 바뀌었으면 null이다. */
+    private Submission currentSubmission(UUID id,long destinationId,String token,Principal principal,HttpSession session) {
+        var submission=(Submission)session.getAttribute(submissionKey(id,destinationId));
+        boolean same=submission!=null && submission.parent().equals(id) && submission.destination()==destinationId
+            && Objects.equals(submission.login(),login(principal)) && submission.token().equals(token);
+        return same?submission:null;
     }
     /** 여행 정보 화면에서 입력한 값과 안내 문장. 빠진 값이 있어 돌아갈 때 입력을 잃지 않도록 세션에 한 번 둔다. */
     public record TripInfoInput(UUID parent,Integer durationDays,Boolean accommodationNeeded,LocalDate startDate,
@@ -255,57 +269,62 @@ public class ItineraryController {
         var homeRequest=homeRequest(from,originLongitude,originLatitude,returnPlace);
         var homeValues=origin==null && returnPlace==null?HomeValues.DEFAULT:new HomeValues(origin,returnPlace);
         String base="/travel/recommendations/"+id+"/destinations/"+destinationId;
-        UUID job;
+        // 두 번 누르거나 뒤로 가서 다시 눌러도 같은 초안으로 보낸다. 다른 시간으로 만들려면 초안의 '자세히 정해서 다시 만들기'를 쓴다.
+        // 그 초안을 만들지 못했거나(실패) 사라졌으면 기억을 지우고 새로 만든다. 실패한 초안으로만 계속 보내면 다시 시도할 수 없다.
+        String key=QUICK_KEY+id+":"+destinationId+":"+login(principal);
         synchronized(session) {
-            // 두 번 누르거나 뒤로 가서 다시 눌러도 같은 초안으로 보낸다. 다른 시간으로 만들려면 초안의 '자세히 정해서 다시 만들기'를 쓴다.
-            // 그 초안을 만들지 못했거나(실패) 사라졌으면 기억을 지우고 새로 만든다. 실패한 초안으로만 계속 보내면 다시 시도할 수 없다.
-            String key=QUICK_KEY+id+":"+destinationId+":"+login(principal);
             if(session.getAttribute(key) instanceof UUID made) {
                 if(stillUsable(made,principal,session)) return seeOther("/travel/recommendations/itineraries/"+made);
                 session.removeAttribute(key);
             }
-            findMorePlacesIfFew(id,destinationId,principal,session);
-            var options=service().options(id,destinationId,login(principal),hash(session));
-            var c=options.conditions();
-            // 추천 조건에 이미 있는 값이 먼저이고, 없는 값만 이번 요청에서 받는다.
-            Integer days=c.durationDays()!=null?c.durationDays():durationDays;
-            Boolean stay=c.accommodationNeeded()!=null?c.accommodationNeeded():accommodationNeeded;
-            LocalDate date=c.startDate()!=null?c.startDate():startDate;
-            var mode=c.keywordNames("TRANSPORTATION").isEmpty()?transport:options.transport();
-            String missing=days==null || days<1 || days>7 ? "여행 일수를 골라 주세요."
-                : days>1 && stay==null ? "여러 날 여행이라 숙소가 필요한지 골라 주세요."
-                : date==null ? "출발일을 골라 주세요."
-                : c.startDate()==null && date.isBefore(LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))) ? "출발일은 오늘이나 그 이후 날짜로 골라 주세요."
-                : mode==null ? "이동수단을 골라 주세요."
-                // 출발지는 선택이다. 비회원이거나 내 정보에 적지 않았으면 여행 정보 화면에서 한 번 물어본다(비워서 보내도 된다).
-                : !originAsked && savedArea==null ? "출발지를 적으면 집에서 오가는 이동까지 일정에 넣어요." : null;
-            // 처음 눌렀을 때(아무것도 보내지 않음)는 안내 문장 없이 여행 정보 화면만 보여 준다.
-            boolean submitted=durationDays!=null || accommodationNeeded!=null || startDate!=null || transport!=null || originAsked;
-            if(missing!=null) {
-                session.setAttribute(TRIP_INFO_KEY,new TripInfoInput(id,durationDays,accommodationNeeded,startDate,transport,submitted?missing:null,homeValues));
-                return seeOther(base+"/trip-info");
-            }
-            String limited=limiter.tryAcquireItinerary(login(principal),request.getRemoteAddr());
-            if(limited!=null) {
-                session.setAttribute(TRIP_INFO_KEY,new TripInfoInput(id,durationDays,accommodationNeeded,startDate,transport,limited,homeValues));
-                return seeOther(base+"/trip-info");
-            }
-            ItineraryPlan.HomeTrip home;
-            try {
-                home=home(homeRequest,id,destinationId,principal,session,mode);
-            } catch(TripConstraints.ConflictException error) {
-                // 이동시간을 찾지 못하면 여행 정보 화면으로 돌아가 직접 적게 한다.
-                session.setAttribute(TRIP_INFO_KEY,new TripInfoInput(id,durationDays,accommodationNeeded,startDate,transport,
-                    error.conflicts().getFirst().reason(),homeValues));
-                return seeOther(base+"/trip-info");
-            }
-            var pool=service().attractionPool(id,destinationId,login(principal),hash(session));
-            // 축제 장소는 자동으로 넣지 않는다. 넣으려면 자세한 입력 화면의 꼭 가야 하는 관광지에서 고른다.
-            var defaults=defaultPlaces(id,destinationId,principal,session,pool);
-            var constraints=new ItineraryPlan.Constraints(defaults.purposeIds(),null,false,null,List.of(),null,defaults.centerIds());
-            Integer newDays=c.durationDays()==null?days:null;
-            Boolean newStay=c.accommodationNeeded()==null?stay:null;
-            LocalDate newDate=c.startDate()==null?date:null;
+        }
+        // 후보 보충과 집 출발 이동은 카카오·항공 조회로 오래 걸릴 수 있다. 세션 잠금을 잡고 기다리면 같은 사용자의 다른 탭도 멈추므로 잠금 밖에서 한다.
+        findMorePlacesIfFew(id,destinationId,principal,session);
+        var options=service().options(id,destinationId,login(principal),hash(session));
+        var c=options.conditions();
+        // 추천 조건에 이미 있는 값이 먼저이고, 없는 값만 이번 요청에서 받는다.
+        Integer days=c.durationDays()!=null?c.durationDays():durationDays;
+        Boolean stay=c.accommodationNeeded()!=null?c.accommodationNeeded():accommodationNeeded;
+        LocalDate date=c.startDate()!=null?c.startDate():startDate;
+        var mode=c.keywordNames("TRANSPORTATION").isEmpty()?transport:options.transport();
+        String missing=days==null || days<1 || days>7 ? "여행 일수를 골라 주세요."
+            : days>1 && stay==null ? "여러 날 여행이라 숙소가 필요한지 골라 주세요."
+            : date==null ? "출발일을 골라 주세요."
+            : c.startDate()==null && date.isBefore(LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))) ? "출발일은 오늘이나 그 이후 날짜로 골라 주세요."
+            : mode==null ? "이동수단을 골라 주세요."
+            // 출발지는 선택이다. 비회원이거나 내 정보에 적지 않았으면 여행 정보 화면에서 한 번 물어본다(비워서 보내도 된다).
+            : !originAsked && savedArea==null ? "출발지를 적으면 집에서 오가는 이동까지 일정에 넣어요." : null;
+        // 처음 눌렀을 때(아무것도 보내지 않음)는 안내 문장 없이 여행 정보 화면만 보여 준다.
+        boolean submitted=durationDays!=null || accommodationNeeded!=null || startDate!=null || transport!=null || originAsked;
+        if(missing!=null) {
+            session.setAttribute(TRIP_INFO_KEY,new TripInfoInput(id,durationDays,accommodationNeeded,startDate,transport,submitted?missing:null,homeValues));
+            return seeOther(base+"/trip-info");
+        }
+        String limited=limiter.tryAcquireItinerary(login(principal),request.getRemoteAddr());
+        if(limited!=null) {
+            session.setAttribute(TRIP_INFO_KEY,new TripInfoInput(id,durationDays,accommodationNeeded,startDate,transport,limited,homeValues));
+            return seeOther(base+"/trip-info");
+        }
+        ItineraryPlan.HomeTrip home;
+        try {
+            home=home(homeRequest,id,destinationId,principal,session,mode);
+        } catch(TripConstraints.ConflictException error) {
+            // 이동시간을 찾지 못하면 여행 정보 화면으로 돌아가 직접 적게 한다.
+            session.setAttribute(TRIP_INFO_KEY,new TripInfoInput(id,durationDays,accommodationNeeded,startDate,transport,
+                error.conflicts().getFirst().reason(),homeValues));
+            return seeOther(base+"/trip-info");
+        }
+        var pool=service().attractionPool(id,destinationId,login(principal),hash(session));
+        // 축제 장소는 자동으로 넣지 않는다. 넣으려면 자세한 입력 화면의 꼭 가야 하는 관광지에서 고른다.
+        var defaults=defaultPlaces(id,destinationId,principal,session,pool);
+        var constraints=new ItineraryPlan.Constraints(defaults.purposeIds(),null,false,null,List.of(),null,defaults.centerIds());
+        Integer newDays=c.durationDays()==null?days:null;
+        Boolean newStay=c.accommodationNeeded()==null?stay:null;
+        LocalDate newDate=c.startDate()==null?date:null;
+        UUID job;
+        synchronized(session) {
+            // 조회하는 동안 먼저 끝난 요청이 있으면 그 초안으로 보내 초안이 두 개 생기지 않게 한다.
+            if(session.getAttribute(key) instanceof UUID made) return seeOther("/travel/recommendations/itineraries/"+made);
             try {
                 job=service().create(id,destinationId,login(principal),hash(session),options.start(),options.end(),mode,
                     options.visitMinutes(),constraints,newDays,newStay,newDate,home);

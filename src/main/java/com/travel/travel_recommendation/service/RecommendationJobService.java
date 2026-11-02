@@ -36,6 +36,8 @@ public class RecommendationJobService {
     static final Duration SEARCH_LIMIT=Duration.ofMinutes(2);
     /** 결과 화면이 상태를 확인하는 시간(초). 대기 제한과 후보 찾기 처리 제한을 더한 만큼 기다린다. */
     public static final long POLL_SECONDS=WAIT_LIMIT.plus(SEARCH_LIMIT).toSeconds();
+    /** 처리 시작 후 이만큼 지나도 끝나지 않은 작업은 멈춘 것으로 본다. 모든 처리 제한(2분 이하)보다 넉넉하게 둔다. */
+    static final Duration STUCK_AFTER=Duration.ofMinutes(10);
     public static final String WAIT_MESSAGE="요청이 많아 처리하지 못했어요. 다시 요청해 주세요.";
     /** 대기 중이라고 알리기까지의 시간. 실행기는 1초마다 확인하므로 몇 초가 지나도 시작하지 않았으면 앞선 요청을 처리하는 중이다. */
     private static final Duration WAITING_NOTICE_AFTER=Duration.ofSeconds(3);
@@ -231,7 +233,11 @@ public class RecommendationJobService {
     @Transactional(timeout=10)
     public void recover() { jobs.recoverInterrupted(now()); }
     @Transactional(timeout=10)
-    public void cleanup() { jobs.deleteExpiredGuests(now()); }
+    public void cleanup() {
+        jobs.deleteExpiredGuests(now());
+        // 실행기가 끝맺지 못한 작업이 화면에 '처리 중'으로 계속 남지 않게 마감한다.
+        jobs.failStuck(now().minus(STUCK_AFTER),now());
+    }
 
     /** 추천 요청의 확정 조건. 예산 미입력 안내(SFR-03-03)처럼 결과 화면에서 조건에 따라 달리 보여 줄 때 쓴다. */
     @Transactional(readOnly=true, timeout=10)

@@ -1112,6 +1112,12 @@ public class ItineraryJobService {
         job.validatingSchedule(); generator.validate(input,result);
         job.completeSchedule(mapper.writeValueAsString(result)); jobs.flush();
     }
+    /** claim이 실패한 작업을 끝낸다. 저장된 요청을 읽지 못하는 작업은 다시 해도 같아서, 남겨 두면 1초마다 같은 오류가 난다. */
+    @Transactional(timeout=10)
+    public void failClaim(UUID id) {
+        jobs.lockById(id).filter(j->"ITINERARY".equals(j.getJobType()) && "QUEUED".equals(j.getStatus()))
+            .ifPresent(j->j.fail("SCHEDULE_FAILED","일정을 만들지 못했어요. 잠시 후 다시 요청해 주세요."));
+    }
     @Transactional(timeout=10)
     public void fail(Work work,String code,String message) {
         jobs.lockById(work.id()).filter(j->"ITINERARY".equals(j.getJobType()) && "GENERATING_SCHEDULE".equals(j.getStatus()))

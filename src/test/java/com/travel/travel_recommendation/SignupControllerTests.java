@@ -5,6 +5,7 @@ import com.travel.travel_recommendation.controller.SignupController;
 import com.travel.travel_recommendation.dto.SignupForm;
 import com.travel.travel_recommendation.service.DuplicateUserException;
 import com.travel.travel_recommendation.service.KakaoMapClient;
+import com.travel.travel_recommendation.service.LoginAttemptLimiter;
 import com.travel.travel_recommendation.service.RecommendationException;
 import com.travel.travel_recommendation.service.UserService;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,26 @@ class SignupControllerTests {
     @Autowired MockMvc mvc;
     @MockitoBean UserService users;
     @MockitoBean KakaoMapClient maps;
+    @MockitoBean LoginAttemptLimiter limiter;
+
+    // 한도를 넘으면 지도 조회와 가입을 하지 않는다. 이미 쓰는 아이디는 횟수도 지도 조회도 쓰지 않고 바로 알린다.
+    @Test
+    void overTheLimitNeitherLooksUpMapNorSignsUp() throws Exception {
+        when(limiter.tryAcquireSignup(any())).thenReturn("가입 요청이 많아요. 1시간쯤 뒤에 다시 시도해 주세요.");
+        mvc.perform(validRequest().with(csrf()).param("homeArea", "수원역")).andExpect(status().isOk())
+                .andExpect(content().string(containsString("가입 요청이 많아요")));
+        verify(maps, never()).findOrigin(any());
+        verify(users, never()).signup(any());
+    }
+
+    @Test
+    void duplicateLoginIdIsCheckedBeforeLimitAndMap() throws Exception {
+        doThrow(new DuplicateUserException("loginId", "이미 사용 중인 아이디입니다.")).when(users).checkAvailable(any());
+        mvc.perform(validRequest().with(csrf()).param("homeArea", "수원역")).andExpect(status().isOk())
+                .andExpect(content().string(containsString("이미 사용 중인 아이디입니다.")));
+        verifyNoInteractions(limiter);
+        verify(maps, never()).findOrigin(any());
+    }
 
     private MockHttpServletRequestBuilder validRequest() {
         return post("/signup").param("loginId", " traveler_01 ").param("nickname", " 여행자 ")
@@ -111,7 +132,7 @@ class SignupControllerTests {
                 .andExpect(model().attributeHasFieldErrors("signupForm", "homeArea"))
                 .andExpect(content().string(containsString("비우고 가입한 뒤")))
                 .andExpect(content().string(not(containsString("private map details"))));
-        verifyNoInteractions(users);
+        verify(users, never()).signup(any());
     }
 
     @Test

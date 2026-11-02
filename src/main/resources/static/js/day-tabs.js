@@ -19,7 +19,21 @@
         if (scroll && anchor.getBoundingClientRect().top < 0) anchor.scrollIntoView({ behavior: 'smooth' });
     }
 
+    // 일정 항목 주소(#stop-일차-순번)의 일차. 항목 주소가 아니면 0이다.
+    function dayOfStop(hash) {
+        const match = /^#stop-(\d+)-/.exec(hash);
+        return match ? Number(match[1]) : 0;
+    }
+
     buttons.forEach((button) => button.addEventListener('click', () => select(Number(button.dataset.day), true)));
+    // 숨은 날의 항목으로 가는 링크(식사 안내 등)는 그날을 먼저 펼친다. 그래야 브라우저가 그 항목으로 이동할 수 있다.
+    document.addEventListener('click', (event) => {
+        const link = event.target.closest('a[href^="#stop-"]');
+        if (link && dayOfStop(link.getAttribute('href'))) select(dayOfStop(link.getAttribute('href')), false);
+    });
     bar.hidden = false;
-    select(1, false);
+    // 즐겨찾기·평가를 마치고 돌아오면 주소가 그 항목을 가리킨다. 보던 날을 펼치고 그 항목으로 간다.
+    const returnedDay = dayOfStop(location.hash);
+    select(returnedDay || 1, false);
+    if (returnedDay) document.querySelector(location.hash)?.scrollIntoView();
 })();

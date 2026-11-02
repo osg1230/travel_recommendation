@@ -172,6 +172,12 @@ public class DestinationRecommendationService {
         return reason.length()>2000?reason.substring(0,2000):reason;
     }
 
+    /** claim이 실패한 작업을 끝낸다. 저장된 요청을 읽지 못하는 작업은 다시 해도 같아서, 남겨 두면 1초마다 같은 오류가 난다. */
+    @Transactional(timeout=10)
+    public void failClaim(UUID id) {
+        jobs.lockById(id).filter(j->"RECOMMENDATION_QUEUED".equals(j.getStatus()))
+            .ifPresent(j->j.failRecommendation("RECOMMENDATION_FAILED","요청을 처리하지 못했어요. 조건을 확인하고 다시 요청해 주세요."));
+    }
     @Transactional(timeout=10)
     public void fail(Work work,String code,String safeMessage) {
         jobs.lockById(work.jobId()).filter(j->sameAttempt(j,work)).ifPresent(j->j.failRecommendation(code,safeMessage));
