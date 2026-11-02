@@ -33,4 +33,15 @@ class AiRequestLimiterTests {
         now.set(now.get().plus(Duration.ofMinutes(59)).plusSeconds(30));
         assertThat(limiter.tryAcquire("member1", "10.0.0.1")).isEqualTo("요청이 많아 잠시 뒤 다시 시도해 주세요(약 1분 뒤).");
     }
+
+    // 일정 작업은 추천과 따로 세어, 초안을 고치느라 많이 눌러도 추천 요청 횟수는 줄지 않는다.
+    @Test void itineraryWorkIsCountedApartFromRecommendations() {
+        for (int i = 0; i < AiRequestLimiter.GUEST_ITINERARY_LIMIT_PER_HOUR; i++) assertThat(limiter.tryAcquireItinerary(null, "10.0.0.1")).isNull();
+        assertThat(limiter.tryAcquireItinerary(null, "10.0.0.1")).startsWith("요청이 많아 잠시 뒤 다시 시도해 주세요");
+        assertThat(limiter.tryAcquire(null, "10.0.0.1")).isNull();
+        assertThat(limiter.tryAcquireItinerary("member1", "10.0.0.1")).isNull();
+        // 1시간이 지나면 다시 셀 수 있다.
+        now.set(now.get().plus(AiRequestLimiter.WINDOW));
+        assertThat(limiter.tryAcquireItinerary(null, "10.0.0.1")).isNull();
+    }
 }

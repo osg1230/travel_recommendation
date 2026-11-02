@@ -49,7 +49,7 @@ public class NearbyRestaurantService {
     @Transactional(readOnly=true,timeout=10)
     public Task task(UUID jobId) {
         var job=jobs.findById(jobId).orElse(null);
-        if(job==null || !"ITINERARY".equals(job.getJobType()) || !"QUEUED".equals(job.getStatus())) return null;
+        if(job==null || !"ITINERARY".equals(job.getJobType()) || !"QUEUED".equals(job.getStatus()) || RecommendationJobService.abandoned(job)) return null;
         return new Task(jobId,job.getRequestJson(),mapper.readValue(job.getRequestJson(),Input.class));
     }
 

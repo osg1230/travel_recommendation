@@ -39,9 +39,12 @@ public class PlacePetService {
             if (candidate == null) continue;
             String type = input.places().restaurants().contains(candidate) ? "RESTAURANT"
                 : input.places().accommodations().contains(candidate) ? "ACCOMMODATION" : "ATTRACTION";
-            var stored = places.findById(candidate.placeId()).map(p -> PlacePetDetails.read(p, mapper)).orElse(null);
+            var place = places.findById(candidate.placeId()).orElse(null);
+            var stored = place == null ? null : PlacePetDetails.read(place, mapper);
             PlacePetInfo info = stored;
-            if (!PlacePetDetails.fresh(stored, Instant.now())) {
+            // 관광공사에서 얼마 전에 찾지 못한 장소는 초안마다 다시 검색하지 않는다.
+            if (!PlacePetDetails.fresh(stored, Instant.now()) && place != null && PlacePetDetails.missedRecently(place, Instant.now(), mapper)) info = null;
+            else if (!PlacePetDetails.fresh(stored, Instant.now())) {
                 info = lookups < MAX_LOOKUPS && Instant.now().isBefore(deadline) ? find(candidate, type, input.places().destination().name()) : null;
                 lookups++;
             }
@@ -54,7 +57,7 @@ public class PlacePetService {
     private PlacePetInfo find(PlaceCandidate candidate, String type, String city) {
         try {
             var matches = tour.search(candidate.name()).stream().filter(p -> matches(candidate, type, city, p)).toList();
-            if (matches.size() != 1) return null;
+            if (matches.size() != 1) { saveMiss(candidate.placeId()); return null; }
             String contentId = matches.getFirst().id();
             var info = tour.findPetInfo(contentId).orElse(PlacePetInfo.none(contentId));
             save(candidate.placeId(), info);
@@ -95,6 +98,13 @@ public class PlacePetService {
         var transaction = new TransactionTemplate(transactions); transaction.setTimeout(10);
         transaction.executeWithoutResult(status -> places.lockById(placeId).ifPresent(place -> {
             place.updateDetails(PlacePetDetails.write(place, info, mapper));
+            places.flush();
+        }));
+    }
+    private void saveMiss(long placeId) {
+        var transaction = new TransactionTemplate(transactions); transaction.setTimeout(10);
+        transaction.executeWithoutResult(status -> places.lockById(placeId).ifPresent(place -> {
+            place.updateDetails(PlacePetDetails.writeMiss(place, Instant.now(), mapper));
             places.flush();
         }));
     }

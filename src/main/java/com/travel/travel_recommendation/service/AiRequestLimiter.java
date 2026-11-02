@@ -20,6 +20,9 @@ public class AiRequestLimiter {
      */
     static final int GUEST_LIMIT_PER_HOUR = 10;
     static final int MEMBER_LIMIT_PER_HOUR = 30;
+    /** 일정 작업·유료 검색은 초안을 고치다 보면 추천보다 자주 누르므로 따로 세고 조금 넉넉하게 둔다. 한 번에 AI를 2~4번 부른다. */
+    static final int GUEST_ITINERARY_LIMIT_PER_HOUR = 20;
+    static final int MEMBER_ITINERARY_LIMIT_PER_HOUR = 60;
     static final Duration WINDOW = Duration.ofHours(1);
     /** 기억해 둘 사용자 수의 상한. 가득 차면 ExpiringCache가 비우고 다시 센다. */
     private static final int MAX_USERS = 10_000;
@@ -45,10 +48,19 @@ public class AiRequestLimiter {
      * 회원은 아이디로, 비회원은 접속 IP로 센다.
      */
     public String tryAcquire(String loginId, String remoteAddress) {
+        return acquire("", loginId, remoteAddress, MEMBER_LIMIT_PER_HOUR, GUEST_LIMIT_PER_HOUR);
+    }
+
+    /** 일정 초안 작업과 유료 검색(참고 가격·AI 확인·AI 수정 요청)을 센다. 추천과 따로 세며 돌려주는 값은 tryAcquire와 같다. */
+    public String tryAcquireItinerary(String loginId, String remoteAddress) {
+        return acquire("itinerary:", loginId, remoteAddress, MEMBER_ITINERARY_LIMIT_PER_HOUR, GUEST_ITINERARY_LIMIT_PER_HOUR);
+    }
+
+    private String acquire(String prefix, String loginId, String remoteAddress, int memberLimit, int guestLimit) {
         if (!enabled) return null;
         boolean member = loginId != null;
-        String key = member ? "member:" + loginId : "guest:" + remoteAddress;
-        int limit = member ? MEMBER_LIMIT_PER_HOUR : GUEST_LIMIT_PER_HOUR;
+        String key = prefix + (member ? "member:" + loginId : "guest:" + remoteAddress);
+        int limit = member ? memberLimit : guestLimit;
         Window window = windows.get(key, () -> new Window(clock.get(), new AtomicInteger()));
         // 동시에 들어온 요청도 한도를 넘지 않게 늘리기 전에 확인한다.
         int used = window.count().getAndUpdate(count -> count < limit ? count + 1 : count);

@@ -29,6 +29,13 @@ public class TourApiClient {
     private final URI endpoint;
     private final Duration timeout;
     private final HttpClient http;
+    /** 법정동 코드는 거의 바뀌지 않고 여행지마다 같은 목록을 다시 받으므로 하루 동안 재사용한다. */
+    private final ExpiringCache<String, JsonNode> districtLists = new ExpiringCache<>(Duration.ofHours(24), 100);
+    /** 목적 시설·사찰·성당 검색 결과. '장소 더 찾아보기'가 같은 검색어를 되풀이해 하루 한도를 쓰지 않게 한다. */
+    private final ExpiringCache<String, List<SearchPlace>> facilitySearches = new ExpiringCache<>(Duration.ofHours(24), 1000);
+    /** 한도 초과나 인증 실패 뒤에는 어차피 실패할 호출을 보내지 않고 이 시각까지 바로 실패시킨다. */
+    private volatile Instant blockedUntil;
+    private volatile boolean blockedByQuota;
 
     @Autowired
     public TourApiClient(TourApiProperties properties, ObjectMapper mapper) {
@@ -174,18 +181,23 @@ public class TourApiClient {
     public Optional<String> districtCode(String provinceCode, String name) {
         if (name == null || name.isBlank() || name.length() > 40) return Optional.empty();
         if (provinceCode != null && !provinceCode.matches("[0-9]{2,5}")) return Optional.empty();
-        var data = get(endpoint.resolve("ldongCode2"), 100, provinceCode == null ? "" : "&lDongRegnCd=" + provinceCode);
+        var data = districtList(provinceCode);
         for (var item : data.path("items").path("item")) {
             String code = item.path("code").asText("");
             if (name.equals(item.path("name").asText("")) && code.matches("[0-9]{2,5}")) return Optional.of(code);
         }
         return Optional.empty();
     }
+    // provinceCode가 없으면 시·도 목록, 있으면 그 시·도의 시·군·구 목록이다.
+    private JsonNode districtList(String provinceCode) {
+        String extra = provinceCode == null ? "" : "&lDongRegnCd=" + provinceCode;
+        return districtLists.get(extra, () -> get(endpoint.resolve("ldongCode2"), 100, extra));
+    }
 
     /** 시·도 안의 시·군·구 코드 전체(예: "26" → 부산광역시 16개 구·군의 "110"·"140"…). 연관 관광지를 시·도 전체로 모을 때 쓴다. */
     public List<String> districtCodes(String provinceCode) {
         if (provinceCode == null || !provinceCode.matches("[0-9]{2}")) return List.of();
-        var data = get(endpoint.resolve("ldongCode2"), 100, "&lDongRegnCd=" + provinceCode);
+        var data = districtList(provinceCode);
         List<String> codes = new ArrayList<>();
         for (var item : data.path("items").path("item")) {
             String code = item.path("code").asText("");
@@ -202,7 +214,7 @@ public class TourApiClient {
     public List<String> cityDistrictCodes(String provinceCode, String cityName) {
         if (provinceCode == null || !provinceCode.matches("[0-9]{2}") || cityName == null || cityName.isBlank() || cityName.length() > 40)
             return List.of();
-        var data = get(endpoint.resolve("ldongCode2"), 100, "&lDongRegnCd=" + provinceCode);
+        var data = districtList(provinceCode);
         String own = null; List<String> wards = new ArrayList<>();
         for (var item : data.path("items").path("item")) {
             String code = item.path("code").asText(""), name = item.path("name").asText("");
@@ -325,7 +337,10 @@ public class TourApiClient {
      */
     public List<SearchPlace> searchFacilities(String keyword) {
         if (keyword == null || keyword.isBlank() || keyword.length() > 40) throw failure("TOUR_INPUT", "검색어를 확인해 주세요.");
-        var data = get(endpoint.resolve("searchKeyword2"), FACILITY_ROWS, "&keyword=" + URLEncoder.encode(keyword.strip(), StandardCharsets.UTF_8));
+        return facilitySearches.get(keyword.strip(), () -> loadFacilities(keyword.strip()));
+    }
+    private List<SearchPlace> loadFacilities(String keyword) {
+        var data = get(endpoint.resolve("searchKeyword2"), FACILITY_ROWS, "&keyword=" + URLEncoder.encode(keyword, StandardCharsets.UTF_8));
         List<SearchPlace> result = new ArrayList<>();
         for (var item : data.path("items").path("item")) {
             try {
@@ -385,27 +400,30 @@ public class TourApiClient {
         String parameters = "&numOfRows=" + rows + extra;
         if (!properties.isConfigured())
             throw failure("TOUR_NOT_CONFIGURED", "TourAPI 인증키 설정이 필요해요.");
+        var until = blockedUntil;
+        if (until != null && Instant.now().isBefore(until)) throw blockedByQuota ? quota() : auth();
         // Decoding 키를 한 번만 인코딩한다. 요청 URL에는 키가 있어 로그에 남기지 않는다.
         String query = "?serviceKey=" + URLEncoder.encode(properties.serviceKey().trim(), StandardCharsets.UTF_8)
             + "&MobileOS=WEB&MobileApp=travel_recommendation&_type=json&pageNo=" + page + parameters;
         try {
             var request = HttpRequest.newBuilder(URI.create(target + query)).timeout(timeout).GET().build();
             var response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if (response.statusCode() == 401 || response.statusCode() == 403) throw auth();
-            if (response.statusCode() == 429) throw quota();
+            if (response.statusCode() == 401 || response.statusCode() == 403) throw blockForAuth();
+            // 429는 잠깐 몰린 경우일 수 있어 하루 한도처럼 자정까지 막지 않고 인증 실패와 같은 시간만 쉰다.
+            if (response.statusCode() == 429) { block(true, Instant.now().plus(BLOCK_AFTER_FAILURE)); throw quota(); }
             if (response.statusCode() != 200) throw failure("TOUR_UNAVAILABLE", "관광정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
             String body = response.body();
             // 게이트웨이는 JSON 요청에도 XML 오류를 보낼 수 있다. 원문은 반환하지 않는다.
             if (body.stripLeading().startsWith("<")) {
                 if (body.contains("SERVICE_KEY_IS_NOT_REGISTERED_ERROR") || body.contains("SERVICE_ACCESS_DENIED_ERROR")
-                        || body.contains("DEADLINE_HAS_EXPIRED_ERROR") || body.contains("SERVICE_KEY_IS_NULL")) throw auth();
-                if (body.contains("LIMITED_NUMBER_OF_SERVICE_REQUESTS")) throw quota();
+                        || body.contains("DEADLINE_HAS_EXPIRED_ERROR") || body.contains("SERVICE_KEY_IS_NULL")) throw blockForAuth();
+                if (body.contains("LIMITED_NUMBER_OF_SERVICE_REQUESTS")) throw blockForDailyQuota();
                 throw invalid();
             }
             var root = mapper.readTree(body).path("response");
             String code = root.path("header").path("resultCode").asText("");
-            if (Set.of("20", "30", "31", "32").contains(code)) throw auth();
-            if (Set.of("22", "23").contains(code)) throw quota();
+            if (Set.of("20", "30", "31", "32").contains(code)) throw blockForAuth();
+            if (Set.of("22", "23").contains(code)) throw blockForDailyQuota();
             if (!"0000".equals(code) && !"00".equals(code)) throw invalid();
             var data = root.path("body");
             if (!data.path("totalCount").asText("").matches("[0-9]+")) throw invalid();
@@ -450,4 +468,15 @@ public class TourApiClient {
     private RecommendationException auth() { return failure("TOUR_AUTH", "TourAPI 인증키와 활용신청 승인 상태를 확인해 주세요."); }
     private RecommendationException quota() { return failure("TOUR_QUOTA", "관광정보 조회 한도에 도달했어요. 잠시 후 다시 시도해 주세요."); }
     private RecommendationException failure(String code, String message) { return new RecommendationException(code, message); }
+
+    /** 인증 실패·순간 과다 요청 뒤 쉬는 시간. 키를 고치거나 몰린 요청이 풀리면 곧 다시 쓸 수 있게 짧게 둔다. */
+    private static final Duration BLOCK_AFTER_FAILURE = Duration.ofMinutes(10);
+    private void block(boolean quota, Instant until) { blockedByQuota = quota; blockedUntil = until; }
+    private RecommendationException blockForAuth() { block(false, Instant.now().plus(BLOCK_AFTER_FAILURE)); return auth(); }
+    // 공공데이터포털의 하루 한도는 자정에 다시 채워진다.
+    private RecommendationException blockForDailyQuota() {
+        var korea = ZoneId.of("Asia/Seoul");
+        block(true, LocalDate.now(korea).plusDays(1).atStartOfDay(korea).toInstant());
+        return quota();
+    }
 }

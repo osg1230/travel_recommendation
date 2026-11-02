@@ -13,6 +13,8 @@ public final class PlacePetDetails {
     /** 동반 정책은 자주 바뀌지 않으므로 7일 동안 다시 조회하지 않는다. */
     static final Duration REUSE = Duration.ofDays(7);
     public record Snapshot(String name, String address, PlacePetInfo info) {}
+    /** 관광공사에서 장소를 하나로 찾지 못한 기록(tourApiPetMiss). 소개문·사진의 '못 찾음'처럼 7일 동안 다시 찾지 않는다. */
+    public record Miss(String name, String address, Instant missedAt) {}
 
     public static PlacePetInfo read(Place place, ObjectMapper mapper) {
         if (place.getDetailsJson() == null) return null;
@@ -27,6 +29,26 @@ public final class PlacePetDetails {
 
     public static boolean fresh(PlacePetInfo info, Instant now) {
         return info != null && info.fetchedAt() != null && !info.fetchedAt().isAfter(now) && info.fetchedAt().isAfter(now.minus(REUSE));
+    }
+
+    public static boolean missedRecently(Place place, Instant now, ObjectMapper mapper) {
+        if (place.getDetailsJson() == null) return false;
+        try {
+            var node = mapper.readTree(place.getDetailsJson()).path("tourApiPetMiss");
+            if (!node.isObject()) return false;
+            var miss = mapper.treeToValue(node, Miss.class);
+            return place.getName().equals(miss.name()) && java.util.Objects.equals(place.getAddress(), miss.address())
+                && miss.missedAt() != null && !miss.missedAt().isAfter(now) && miss.missedAt().isAfter(now.minus(REUSE));
+        } catch (RuntimeException error) { return false; }
+    }
+
+    public static String writeMiss(Place place, Instant now, ObjectMapper mapper) {
+        var node = place.getDetailsJson() == null ? mapper.createObjectNode() : parse(place.getDetailsJson(), mapper);
+        if (!(node instanceof ObjectNode root)) throw invalid();
+        root.set("tourApiPetMiss", mapper.valueToTree(new Miss(place.getName(), place.getAddress(), now)));
+        try {
+            return mapper.writeValueAsString(root);
+        } catch (RuntimeException error) { throw invalid(); }
     }
 
     public static String write(Place place, PlacePetInfo info, ObjectMapper mapper) {

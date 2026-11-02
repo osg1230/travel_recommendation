@@ -50,7 +50,7 @@ public class PlacePickService {
     @Transactional(readOnly=true,timeout=10)
     public Task task(UUID jobId) {
         var job=jobs.findById(jobId).orElse(null);
-        if(job==null || !"ITINERARY".equals(job.getJobType()) || !"QUEUED".equals(job.getStatus())) return null;
+        if(job==null || !"ITINERARY".equals(job.getJobType()) || !"QUEUED".equals(job.getStatus()) || RecommendationJobService.abandoned(job)) return null;
         var input=mapper.readValue(job.getRequestJson(),Input.class);
         // 처음 만드는 초안만 다시 고른다. 수정안은 사용자가 본 초안의 장소를 유지해야 한다.
         if(input.revision()!=null || input.picking()==null || input.picking().byAi() || input.picking().pool().isEmpty()) return null;

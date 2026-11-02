@@ -54,6 +54,23 @@ class PlacePetServiceTests {
         verify(tour, times(1)).search("경포해변"); verify(tour, times(1)).findPetInfo("129784");
     }
 
+    // 관광공사에서 찾지 못한 장소는 7일 동안 초안마다 다시 검색하지 않는다. 이름이 바뀌었거나 기간이 지나면 다시 찾는다.
+    @Test void placesNotFoundAreNotSearchedAgainForAWeek() {
+        var place = entity(beach);
+        var now = Instant.now();
+        place.updateDetails(PlacePetDetails.writeMiss(place, now.minus(Duration.ofDays(1)), mapper));
+        assertThat(PlacePetDetails.missedRecently(place, now, mapper)).isTrue();
+        assertThat(PlacePetDetails.missedRecently(place, now.plus(Duration.ofDays(7)), mapper)).isFalse();
+        when(repo.findById(1L)).thenReturn(Optional.of(place));
+        when(repo.findById(2L)).thenReturn(Optional.empty());
+        when(tour.search("바다식당")).thenReturn(List.of());
+
+        var checks = service.lookup(input(), draft(), Instant.now().plusSeconds(30));
+        assertThat(checks.get(0).info()).isNull();
+        verify(tour, never()).search("경포해변");
+        verify(tour, times(1)).search("바다식당");
+    }
+
     // 해변처럼 카카오 주소가 지번이거나 도로명 번호가 달라도, 이름이 같고 좌표가 1.5km 안이면 같은 장소로 본다. 이름이 다르거나 멀면 아니다.
     @Test void matchesSameNamedPlacesByRoadAddressOrNearbyCoordinates() {
         var anmok = new PlaceCandidate(5L, "안목해변", "강원특별자치도 강릉시 창해로14번길 51-26", "", "", "", "", LocalDateTime.now(), 128.9478, 37.7719, "KAKAO");

@@ -289,7 +289,17 @@ public class ItineraryJobService {
                 List.of("하루 시작·종료 시간 늘리기","출발지를 비워 집 이동 없이 여행지 도착부터 일정 짜기"))));
         }
         var parent=access.owned(parentId,login,hash,"RECOMMENDATION");
+        checkActiveJobs(parent,hash);
         return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();
+    }
+    /** 한 사람이 동시에 맡길 수 있는 일정 작업 수. 실행기가 하나라 한 사람의 작업이 줄을 채우면 다른 사람의 초안이 대기 제한에 걸린다. */
+    public static final int MAX_ACTIVE_JOBS=3;
+    private void checkActiveJobs(AiJob parent,byte[] hash) {
+        var active=List.of("QUEUED","GENERATING_SCHEDULE");
+        long count=parent.getUserId()!=null?jobs.countByUserIdAndJobTypeAndStatusIn(parent.getUserId(),"ITINERARY",active)
+            :jobs.countByGuestTokenHashAndJobTypeAndStatusIn(hash,"ITINERARY",active);
+        if(count>=MAX_ACTIVE_JOBS)
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,"만들고 있는 일정이 많아요. 지금 만드는 일정이 끝난 뒤 다시 시도해 주세요.");
     }
 
     /** 일정에 넣을 관광지(selected), 예비 관광지(reserve), 저녁 관광 후보(evening). */
@@ -551,6 +561,7 @@ public class ItineraryJobService {
             .withPicking(original.pickedByAi()?new Picking(List.of(),true):null);
         generator.checkInput(input);
         var parent=access.owned(original.recommendationId(),login,hash,"RECOMMENDATION");
+        checkActiveJobs(parent,hash);
         return jobs.saveAndFlush(AiJob.itinerary(parent,mapper.writeValueAsString(input))).getId();
     }
     /**
@@ -798,6 +809,8 @@ public class ItineraryJobService {
     static final int MAX_PRICE_PLACES=8;
     /** 같은 초안을 다시 눌러도 이 시간 안에는 이전 조회 결과를 쓴다. 결과 화면은 이 시간이 지난 뒤에 '다시 찾기'를 보여 준다. */
     public static final Duration PRICE_REUSE=Duration.ofHours(24);
+    /** 요청 하나가 새 검색을 시작할 수 있는 시간. 리버스 프록시의 읽기 제한(보통 60초)에 걸리지 않도록 보통은 이 안에 끝내고, 남은 곳은 다시 눌러 이어서 찾는다. */
+    static final Duration PRICE_TIME_LIMIT=Duration.ofSeconds(45);
     /** stored는 이 장소에 저장해 둔 재사용 가능한 가격이다. 있으면 다시 검색하지 않는다. */
     public record PriceTarget(PlaceCandidate place,String kind,PriceQuote stored) {
         PriceTarget(PlaceCandidate place,String kind) { this(place,kind,null); }
@@ -812,22 +825,27 @@ public class ItineraryJobService {
     public Prices lookupPrices(UUID id,String login,byte[] hash) {
         var context=self().priceContext(id,login,hash);
         if(context.cached()!=null) return context.cached();
-        List<PriceQuote> quotes=new ArrayList<>(); List<SearchedPrice> searched=new ArrayList<>();
-        try {
-            // 장소마다 따로 검색해야 다른 가게 가격이 섞이지 않는다. 앞에서부터 차례로 찾고, 저장해 둔 가격이 있는 곳은 건너뛴다.
-            for(var target:context.targets()) {
-                if(target.stored()!=null) { quotes.add(target.stored()); continue; }
-                var quote=priceClient.lookup(target.place(),target.kind()).checkedAt(Instant.now());
-                quotes.add(quote); searched.add(new SearchedPrice(target.place(),quote));
+        var deadline=Instant.now().plus(PRICE_TIME_LIMIT);
+        List<PriceQuote> quotes=new ArrayList<>(); boolean incomplete=false;
+        // 장소마다 따로 검색해야 다른 가게 가격이 섞이지 않는다. 앞에서부터 차례로 찾고, 저장해 둔 가격이 있는 곳은 건너뛴다.
+        for(var target:context.targets()) {
+            if(target.stored()!=null) { quotes.add(target.stored()); continue; }
+            // 시간이 다 됐거나 그 곳만 응답이 늦으면 못 찾음으로 두고 나머지 결과를 보여 준다. 다시 누르면 남은 곳만 찾는다.
+            if(Instant.now().isAfter(deadline)) {
+                quotes.add(OpenAiPriceClient.notFound(target.place(),target.kind()).checkedAt(Instant.now())); incomplete=true; continue;
             }
-        } finally {
-            // 중간에 실패하거나 초안이 바뀌어도 이미 비용을 낸 검색 결과는 장소에 남긴다.
-            if(!searched.isEmpty()) {
-                try { self().storePlacePrices(searched); }
+            try {
+                var quote=priceClient.lookup(target.place(),target.kind()).checkedAt(Instant.now());
+                quotes.add(quote);
+                // 중간에 실패하거나 다른 탭에서 다시 눌러도 이미 비용을 낸 검색을 되풀이하지 않게 한 곳마다 바로 장소에 남긴다.
+                try { self().storePlacePrices(List.of(new SearchedPrice(target.place(),quote))); }
                 catch(RuntimeException e) { log.warn("참고 가격을 장소에 저장하지 못함 job={} ({})",id,e.toString()); }
+            } catch(RecommendationException e) {
+                if(!"AI_TIMEOUT".equals(e.getCode())) throw e;
+                quotes.add(OpenAiPriceClient.notFound(target.place(),target.kind()).checkedAt(Instant.now())); incomplete=true;
             }
         }
-        var prices=new Prices(quotes,Instant.now());
+        var prices=new Prices(quotes,Instant.now(),incomplete);
         self().savePrices(id,login,hash,context.resultJson(),prices);
         return prices;
     }
@@ -837,7 +855,8 @@ public class ItineraryJobService {
         if(!"COMPLETED".equals(job.getStatus()) || job.getResultJson()==null)
             throw new ResponseStatusException(HttpStatus.CONFLICT,"완성된 일정 초안에서만 가격을 찾을 수 있어요.");
         var result=mapper.readValue(job.getResultJson(),Result.class);
-        if(result.prices()!=null && result.prices().checkedAt().isAfter(Instant.now().minus(PRICE_REUSE)))
+        // 시간 안에 다 찾지 못한 묶음은 재사용하지 않아 남은 곳을 이어서 찾을 수 있게 한다.
+        if(result.prices()!=null && !result.prices().incomplete() && result.prices().checkedAt().isAfter(Instant.now().minus(PRICE_REUSE)))
             return new PriceContext(job.getResultJson(),List.of(),result.prices());
         if(!priceClient.configured())
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"가격 검색은 OpenAI 연결 설정 후 이용할 수 있어요.");
@@ -915,20 +934,20 @@ public class ItineraryJobService {
         if(questions.isEmpty()) return null;
         return search(self().checkTargets(questions),deadline);
     }
-    /** 질문마다 따로 검색한다. 저장해 둔 답이 있는 곳은 건너뛰고, 시간이 모자라면 나머지는 못 찾음으로 둔다. 비용을 낸 결과는 장소에 남긴다. */
+    /** 질문마다 따로 검색한다. 저장해 둔 답이 있는 곳은 건너뛰고, 시간이 모자라거나 그 질문만 응답이 늦으면 못 찾음으로 둔다. 비용을 낸 결과는 한 건마다 바로 장소에 남긴다. */
     private Verifications search(List<CheckTarget> targets,Instant deadline) {
-        List<CheckAnswer> answers=new ArrayList<>(); List<SearchedCheck> searched=new ArrayList<>();
-        try {
-            for(var target:targets) {
-                if(target.stored()!=null) { answers.add(target.stored()); continue; }
-                if(Instant.now().isAfter(deadline)) { answers.add(OpenAiVerificationClient.notFound(target.question())); continue; }
+        List<CheckAnswer> answers=new ArrayList<>();
+        for(var target:targets) {
+            if(target.stored()!=null) { answers.add(target.stored()); continue; }
+            if(Instant.now().isAfter(deadline)) { answers.add(OpenAiVerificationClient.notFound(target.question())); continue; }
+            try {
                 var answer=verificationClient.lookup(target.question());
-                answers.add(answer); searched.add(new SearchedCheck(target.question().placeId(),target.question().name(),answer));
-            }
-        } finally {
-            if(!searched.isEmpty()) {
-                try { self().storePlaceChecks(searched); }
+                answers.add(answer);
+                try { self().storePlaceChecks(List.of(new SearchedCheck(target.question().placeId(),target.question().name(),answer))); }
                 catch(RuntimeException e) { log.warn("AI 확인 결과를 장소에 저장하지 못함 ({})",e.toString()); }
+            } catch(RecommendationException e) {
+                if(!"AI_TIMEOUT".equals(e.getCode())) throw e;
+                answers.add(OpenAiVerificationClient.notFound(target.question()));
             }
         }
         return new Verifications(answers,Instant.now());
