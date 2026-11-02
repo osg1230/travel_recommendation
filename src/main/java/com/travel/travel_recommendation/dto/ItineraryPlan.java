@@ -209,9 +209,18 @@ public final class ItineraryPlan {
      * choiceNotices는 원래 고른 식당·숙소를 지금 다시 확인하지 못해 다른 곳으로 고른 경우의 안내 문장이다.
      * 이 값이 생기기 전의 작업 JSON에는 없으므로 null이면 빈 목록으로 본다.
      */
+    /**
+     * keptDays는 관광지를 빼기만 한 수정안에서 날짜별로 그대로 둘 일정이다(2026-11-02). 관광지를 뺐다고 다른 날의 일정까지 바뀌지 않게 한다.
+     * 다른 수정안과 이 값이 생기기 전의 작업 JSON에는 없으며(null), 그때는 일정을 처음부터 다시 배치한다.
+     */
     public record Revision(UUID sourceJobId, List<PlaceRef> kept, List<PlaceRef> replaced, List<PlaceRef> added,
                            String reason, Instant requestedAt, String request, String explanation, List<String> unavailablePlaces,
-                           List<String> choiceNotices) {
+                           List<String> choiceNotices, List<KeptDay> keptDays) {
+        public Revision(UUID sourceJobId, List<PlaceRef> kept, List<PlaceRef> replaced, List<PlaceRef> added,
+                        String reason, Instant requestedAt, String request, String explanation, List<String> unavailablePlaces,
+                        List<String> choiceNotices) {
+            this(sourceJobId, kept, replaced, added, reason, requestedAt, request, explanation, unavailablePlaces, choiceNotices, null);
+        }
         public Revision(UUID sourceJobId, List<PlaceRef> kept, List<PlaceRef> replaced, List<PlaceRef> added,
                         String reason, Instant requestedAt, String request, String explanation, List<String> unavailablePlaces) {
             this(sourceJobId, kept, replaced, added, reason, requestedAt, request, explanation, unavailablePlaces, null);
@@ -227,7 +236,11 @@ public final class ItineraryPlan {
         }
         public List<String> missingPlaces() { return unavailablePlaces == null ? List.of() : unavailablePlaces; }
         public List<String> choiceChanges() { return choiceNotices == null ? List.of() : choiceNotices; }
+        /** n일차에 그대로 둘 일정. 없으면 null이다. */
+        public KeptDay keptDay(int day) { return keptDays == null || day > keptDays.size() ? null : keptDays.get(day - 1); }
     }
+    /** 빼기 수정안에서 하루에 그대로 둘 낮 관광지·식당(둘 다 방문 순서대로)과 저녁 관광(없으면 null)이다. */
+    public record KeptDay(List<Long> visits, List<Long> meals, Long evening) {}
     public record Item(String type, Long placeId, String name, LocalTime start, LocalTime end,
                        String note, String mapUrl, String sourceUrl, Integer travelSeconds, Instant checkedAt) {
         /** 화면용 조회 시각(한국 시간, 분 단위). 저장 JSON에는 들어가지 않는다. */

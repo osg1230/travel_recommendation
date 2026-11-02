@@ -314,6 +314,60 @@ class ItineraryRevisionIntegrationTests {
         assertThat(schedules.view(revised,null,hash).result().lodging().chosenPlaceId()).isEqualTo(stay);
     }
 
+    /** 날짜별 방문·식사 장소를 순서대로 모은다. 시각은 빼서 장소와 순서만 비교한다. */
+    private List<List<Long>> stops(UUID id,long removed) {
+        return schedules.view(id,null,hash).result().days().stream().map(day->day.items().stream()
+            .filter(i->List.of("VISIT","MEAL","STAY").contains(i.type()) && i.placeId()!=removed).map(i->i.placeId()).toList()).toList();
+    }
+
+    // 관광지 하나를 빼도 나머지 관광지·식당·숙소의 날짜와 순서는 그대로다(2026-11-02). 예전에는 일정을 처음부터 다시 배치해 다른 곳까지 바뀌었다.
+    @Test void removingOnePlaceKeepsTheRestOfTheItinerary() {
+        var original=completedDraft();
+        var result=schedules.view(original,null,hash).result();
+        var visits=result.days().getFirst().items().stream().filter(i->"VISIT".equals(i.type())).toList();
+        assertThat(visits.size()).isGreaterThan(1);
+        long removed=visits.getFirst().placeId();
+
+        var revised=schedules.reviseDirect(original,null,hash,new ItineraryJobService.DirectChange(List.of(removed),null,null,null,null,null,null,null));
+        var revision=schedules.view(revised,null,hash).input().revision();
+        assertThat(revision.replaced()).extracting(PlaceRef::placeId).containsExactly(removed);
+        assertThat(revision.keptDays()).hasSize(result.days().size());
+        finish(revised);
+
+        assertThat(stops(revised,removed)).isEqualTo(stops(original,removed));
+        var after=schedules.view(revised,null,hash).result();
+        assertThat(after.days().stream().flatMap(d->d.items().stream()).map(i->i.placeId())).doesNotContain(removed);
+    }
+
+    // 그날의 관광지를 모두 빼면 다른 날에서 옮겨 와야 하므로 예전처럼 다시 배치한다.
+    @Test void removingEveryPlaceOfADayArrangesAgain() {
+        var original=completedDraft();
+        var firstDay=schedules.view(original,null,hash).result().days().getFirst().items().stream()
+            .filter(i->"VISIT".equals(i.type())).map(i->i.placeId()).toList();
+        var revised=schedules.reviseDirect(original,null,hash,new ItineraryJobService.DirectChange(firstDay,null,null,null,null,null,null,null));
+        assertThat(schedules.view(revised,null,hash).input().revision().keptDays()).isNull();
+    }
+
+    // 시간을 함께 바꾸면 빼기만 한 수정안이 아니므로 예전처럼 다시 배치한다.
+    @Test void removingWithAnotherChangeArrangesAgain() {
+        var original=completedDraft();
+        long removed=attractionIds(original).getFirst();
+        var revised=schedules.reviseDirect(original,null,hash,new ItineraryJobService.DirectChange(List.of(removed),null,null,null,null,LocalTime.of(10,0),null,null));
+        assertThat(schedules.view(revised,null,hash).input().revision().keptDays()).isNull();
+    }
+
+    // 직접 수정 화면이 열리고, 화면의 '빼기'로 수정안이 만들어지며, 다른 세션은 볼 수 없다.
+    @Test void directEditScreenOpensAndRemoveCreatesRevision() throws Exception {
+        var original=completedDraft();
+        long removed=attractionIds(original).getFirst();
+        mvc.perform(get("/travel/recommendations/itineraries/"+original+"/edit").session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("강릉 일정 수정")))
+            .andExpect(content().string(containsString("다른 장소의 날짜와 순서는 그대로")));
+        mvc.perform(get("/travel/recommendations/itineraries/"+original+"/edit").session(new MockHttpSession())).andExpect(status().isNotFound());
+        mvc.perform(post("/travel/recommendations/itineraries/"+original+"/direct-revisions").session(session).with(csrf()).param("remove",Long.toString(removed)))
+            .andExpect(status().is3xxRedirection());
+    }
+
     @Test void invalidRequestsDoNotCreateJobs() {
         var original=completedDraft();
         var ids=attractionIds(original);
