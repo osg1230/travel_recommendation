@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 // 유료 API는 명시적으로 선택한 경우에만 예시 문장 한 건으로 확인한다.
 @EnabledIfEnvironmentVariable(named = "RUN_OPENAI_TESTS", matches = "true")
-@SpringBootTest
+@SpringBootTest(properties="travel.openai.api-key=${OPENAI_API_KEY:${OPEN_AI_API:${Portfolio_java_API:}}}")
 @ActiveProfiles("sqlserver-windows")
 class OpenAiLiveTests {
     @Autowired ConditionReviewService service;

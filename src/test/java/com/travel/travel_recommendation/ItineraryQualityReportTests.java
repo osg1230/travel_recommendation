@@ -43,7 +43,9 @@ import static org.assertj.core.api.Assertions.*;
  * - 남는 시간: 관광을 마친 시각(숙박하는 날은 숙소 도착)부터 하루 종료 시각까지 남는 시간(분, 하루 평균)
  */
 @EnabledIfEnvironmentVariable(named="RUN_QUALITY_REPORT",matches="true")
-@SpringBootTest(properties={"spring.jpa.hibernate.ddl-auto=validate","travel.jobs.enabled=false"})
+@SpringBootTest(properties={"spring.jpa.hibernate.ddl-auto=validate","travel.jobs.enabled=false",
+    "travel.openai.api-key=${OPENAI_API_KEY:${OPEN_AI_API:${Portfolio_java_API:}}}","travel.kakao.rest-api-key=${KAKAO_REST_API_KEY:}",
+    "travel.tourapi.service-key=${TOUR_API_SERVICE_KEY:}","travel.tago.service-key=${TAGO_SERVICE_KEY:${TOUR_API_SERVICE_KEY:}}"})
 @ActiveProfiles("sqlserver-windows")
 @Transactional
 class ItineraryQualityReportTests {

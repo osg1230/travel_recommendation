@@ -33,7 +33,9 @@ import static org.assertj.core.api.Assertions.*;
  * (예: 등산 → 산·국립공원·도립공원·군립공원). 여행지 전체를 이 수로 줄 세워 '근거 상위 5곳'과 추천 5곳이 얼마나 겹치는지도 본다.
  */
 @EnabledIfEnvironmentVariable(named="RUN_QUALITY_REPORT",matches="true")
-@SpringBootTest(properties={"spring.jpa.hibernate.ddl-auto=validate","travel.jobs.enabled=false"})
+@SpringBootTest(properties={"spring.jpa.hibernate.ddl-auto=validate","travel.jobs.enabled=false",
+    "travel.openai.api-key=${OPENAI_API_KEY:${OPEN_AI_API:${Portfolio_java_API:}}}","travel.kakao.rest-api-key=${KAKAO_REST_API_KEY:}",
+    "travel.tourapi.service-key=${TOUR_API_SERVICE_KEY:}","travel.tago.service-key=${TAGO_SERVICE_KEY:${TOUR_API_SERVICE_KEY:}}"})
 @ActiveProfiles("sqlserver-windows")
 @Transactional
 class DestinationQualityReportTests {

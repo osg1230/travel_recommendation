@@ -4,6 +4,15 @@
 
 작업 시작 시 이 요약과 Git 상태를 확인한다. 기능별 상세 구현·검증 기록은 [2026-09-22 정리 전 원문](progress-history/2026-09-22-before-cleanup.md)에 있으며, 과거 결정·검증 근거가 필요할 때 해당 부분만 읽는다.
 
+## 2026-11-01 전체 점검 1번 묶음: 설정·한 줄 수정 (`fix/review-quick-fixes`, 데스크탑)
+
+- E1: `src/test/resources/config/application.properties`에서 외부 API 키 4개를 비우고 `travel.verification.auto=false`·`travel.jobs.enabled=false`를 넣었다. 실제 키가 필요한 `OpenAiLiveTests`·`OpenAiRecommendationLiveTests`·품질 보고서 2개만 `@SpringBootTest`에서 키를 되살린다. 전체 테스트가 8.3분(노트북)에서 1분 46초(데스크탑)로 줄었다(PC가 달라 단순 비교는 아니다).
+- A5: `OpenAiPlacePickClient`가 `properties.requestBase()`를 써서 reasoning effort가 들어간다.
+- C1: `spring.jackson.deserialization.fail-on-null-for-primitives=false`로 저장된 JSON의 없는 기본형 항목을 기본값으로 읽는다. 저장 일정 상세의 조건 상태는 `Status.fromSaved`로 읽어 모르는 값이면 '확인 필요'로 보인다. 앞서 두 곳에 넣은 느슨한 읽기는 남은 채로 동작이 같다.
+- C3: `SavedItineraryService.save`가 초안 행을 먼저 잠근다. DB 변경은 없다.
+- 확인(데스크탑, Windows 인증 SQL Server, `RUN_SQLSERVER_TESTS=true`): `clean verify` **700개 실행, 실패·오류 0, 건너뜀 13**, `BUILD SUCCESS`. 새 테스트는 `SavedItineraryRaceIntegrationTests`(커밋하는 동시 저장, 끝나면 만든 행 삭제)·`StoredJsonReadingTests`와 기존 클래스의 2개다. 잠금을 잠시 끄면 동시 저장 4건이 일정 4개를 만들어 테스트가 실패하는 것을 확인했다. 실제 GPT 호출(A5의 응답 속도·밤 명소)과 Live·품질 보고서 테스트의 키 복원은 실행하지 않았다. 화면 변경은 없다.
+- 남은 것: 보고서 권장 순서의 7(devtools 오류 JSON)은 배포 방식이 정해진 뒤 본다. 다음은 ② 비용·한도(A1~A4)다.
+
 ## 2026-10-31 고른 이유 꼬리표·AI 추천 활동·숙소 이유 (`feature/place-activities-and-stay-reason`, 노트북)
 
 - 배경: 사용자가 속리산(보은) 1박 2일 초안을 보고 "고른 이유와 AI 설명이 겹친다, 고른 이유를 빼고 여기서 무엇을 할 수 있는지(추천 활동)를 넣자", "다래호텔을 고른 이유가 그냥 가까워서면 이상하다"고 했다. 관광지 7곳 중 5곳이 "고른 여행 취향(자연)에 맞는 분류예요."였고, 숙소 이유는 평균 직선거리 2.2km뿐(라온호텔도 2.2km)이었다.
@@ -369,7 +378,7 @@
 
 ## 다음 작업
 
-- 2026-11-01 실사용 가정 전체 점검의 개선 목록(사용자 결정: 나중에 고침): [전체 점검 보고](quality/2026-11-01_전체점검_보고.md)에 먼저 고칠 것 18개·나중에 해도 될 것 29개를 근거 줄·재현 방법·고치는 방법과 함께 적었다(코드 수정 없음, 전체 테스트 695개 중 실패 1·건너뜀 13, 실패는 `SimilarMemberIntegrationTests` DB 데이터 문제). 권장 순서: ① 설정·한 줄 수정(E1 DB 테스트가 실제 OpenAI를 부르지 않게, A5 관광지 순서 GPT에도 공통 요청 설정, C1 저장된 작업 JSON을 느슨하게 읽기, C3 같은 초안 동시 저장 잠금) ② 비용·한도(A1 일정 작업 요청 수 제한 → A2 '장소 더 찾아보기' 제한 → A3 관광공사 한도 보호 → A4 참고 가격·AI 확인 검색 마감) ③ 보안(B1 로그인 시도 제한, B2 탈퇴 회원 아이디 정책부터 결정) ④ 화면(D1 여러 날 일정 탭 → D2 오류 화면 상단 바 → D3 운영자용 문구 → D4 처리 중 표시 → D5 휴대폰 마이페이지 탭) ⑤ C2 실행기 예외 격리 ⑥ 테스트(E3 → E2). 시연에서 `VERIFY_AUTO=true`를 켜거나 `spring-boot:run`으로 배포한다면 '나중에' 목록의 1·7번을 먼저 고친다.
+- 2026-11-01 실사용 가정 전체 점검의 개선 목록(사용자 결정: 나중에 고침): [전체 점검 보고](quality/2026-11-01_전체점검_보고.md)에 먼저 고칠 것 18개·나중에 해도 될 것 29개를 근거 줄·재현 방법·고치는 방법과 함께 적었다(코드 수정 없음, 전체 테스트 695개 중 실패 1·건너뜀 13, 실패는 `SimilarMemberIntegrationTests` DB 데이터 문제). 권장 순서: ① 설정·한 줄 수정(E1 DB 테스트가 실제 OpenAI를 부르지 않게, A5 관광지 순서 GPT에도 공통 요청 설정, C1 저장된 작업 JSON을 느슨하게 읽기, C3 같은 초안 동시 저장 잠금, 2026-11-01 ①의 네 항목 고침) ② 비용·한도(A1 일정 작업 요청 수 제한 → A2 '장소 더 찾아보기' 제한 → A3 관광공사 한도 보호 → A4 참고 가격·AI 확인 검색 마감) ③ 보안(B1 로그인 시도 제한, B2 탈퇴 회원 아이디 정책부터 결정) ④ 화면(D1 여러 날 일정 탭 → D2 오류 화면 상단 바 → D3 운영자용 문구 → D4 처리 중 표시 → D5 휴대폰 마이페이지 탭) ⑤ C2 실행기 예외 격리 ⑥ 테스트(E3 → E2). 시연에서 `VERIFY_AUTO=true`를 켜거나 `spring-boot:run`으로 배포한다면 '나중에' 목록의 1·7번을 먼저 고친다.
 - 2026-10-31 일정 배치 후속(사용자 결정 대기): 품질 보고서 전후 측정(데스크탑, `461303e`와 지금 main을 같은 DB에서 한 번씩, 배치 지표 표의 '남는 시간' 포함), ⑥ 아이·부모님 동행이면 하루 시간 정하기 기본값 조정. ④ 남는 시간 채우기는 `feature/fill-spare-time`, ⑤ 밤 명소는 `feature/night-spots-evening`에서 했다. `SimilarMemberIntegrationTests`가 DB의 강원 여행지 수(5곳 초과)에 기대는 문제도 따로 고친다.
 
 - 2026-10-05 대전은 문화유산 먼저 규칙에서 제외(`fix/daejeon-not-heritage-first`, 사용자 결정): 대전은 여행지 분류 맨 앞이 문화·역사지만 과학 전시 위주라 `ThemePlaces.NOT_HERITAGE_CITIES`에 이름을 넣어 뺐다. 그래서 대전에서는 다른 일반 여행지처럼 사찰·성당 뒤로 보내기가 적용된다. 분류 데이터(`places.subtype`)는 바꾸지 않았다(두 PC의 DB에 SQL을 따로 적용할 필요가 없도록 코드에서 처리). 아래 기록의 해당 여행지 목록에서 대전은 빠진다. 확인(노트북): `ThemePlacesTests`에 대전 검사를 더했고 SQL Server 전체 `clean verify` 452개 실행·실패 0·건너뜀 11(외부 API). 브라우저로 대전 일정을 만들어 보지는 않았다.

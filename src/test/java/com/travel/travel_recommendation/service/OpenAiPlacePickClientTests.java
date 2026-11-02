@@ -56,6 +56,16 @@ class OpenAiPlacePickClientTests {
         assertThat(request.get()).contains("정동진 해변","해수욕장·해변","강릉").doesNotContain("private-original-input","private-summary");
     }
 
+    // 다른 OpenAI 호출과 같은 공통 요청 설정을 쓴다. reasoning이 빠지면 느려지고 출력 상한을 생각에 먼저 쓴다.
+    @Test void usesCommonRequestSettings() {
+        pick();
+        var body=mapper.readTree(request.get());
+        assertThat(body.path("model").asText()).isEqualTo("gpt-4.1-mini");
+        assertThat(body.path("store").booleanValue()).isFalse();
+        assertThat(body.path("reasoning").path("effort").asText()).isEqualTo("none");
+        assertThat(body.path("max_output_tokens").intValue()).isEqualTo(1500);
+    }
+
     // 비슷한 조건 회원 기록이 있는 관광지에만 회원 수를 붙여 보낸다.
     @Test void memberCountsAreSentOnlyForPlacesWithRecords() {
         var withMembers=List.of(new Candidate(1,"정동진 해변","해수욕장·해변",18,false,new MemberStats(1,0,2)),

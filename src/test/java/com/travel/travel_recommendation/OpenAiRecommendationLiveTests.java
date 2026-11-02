@@ -11,7 +11,7 @@ import org.springframework.test.context.ActiveProfiles;
 import static org.assertj.core.api.Assertions.*;
 
 @EnabledIfEnvironmentVariable(named="RUN_OPENAI_RECOMMENDATION_TESTS",matches="true")
-@SpringBootTest(properties="travel.jobs.enabled=false")
+@SpringBootTest(properties={"travel.jobs.enabled=false","travel.openai.api-key=${OPENAI_API_KEY:${OPEN_AI_API:${Portfolio_java_API:}}}"})
 @ActiveProfiles("sqlserver-windows")
 class OpenAiRecommendationLiveTests {
     @Autowired OpenAiRecommendationClient client;
