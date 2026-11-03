@@ -173,6 +173,16 @@ class TripConstraintsTests {
         assertThat(ids(TripConstraints.limitKindRuns(plain))).containsExactly(1L, 2L, 3L, 4L);
     }
 
+    // 2026-11-03 영덕 초안: 해수욕장·해안길·숲은 분류가 달라 이어져도 몰랐다. AI가 고른 활동(걷기·풍경)으로 세면 다른 활동을 먼저 당겨 온다.
+    @Test void aiActivitiesLimitRunsAcrossDifferentKinds() {
+        var pool = List.of(kind(1, "고래불해수욕장", "여행 > 관광,명소 > 해수욕장,해변"), kind(2, "영덕블루로드", "여행 > 관광,명소 > 둘레길"),
+            kind(3, "벌영리메타세콰이어숲", "여행 > 관광,명소 > 숲"), kind(4, "괴시리전통마을", "여행 > 관광,명소 > 전통마을"));
+        // 분류만 보면 모두 다른 종류라 AI 순서 그대로다.
+        assertThat(ids(TripConstraints.byPicks(pool, List.of(), List.of(1L, 2L, 3L, 4L), List.of()))).containsExactly(1L, 2L, 3L, 4L);
+        var activities = Map.of(1L, "걷기·풍경", 2L, "걷기·풍경", 3L, "걷기·풍경", 4L, "역사·문화");
+        assertThat(ids(TripConstraints.byPicks(pool, List.of(), List.of(1L, 2L, 3L, 4L), List.of(), activities))).containsExactly(1L, 2L, 4L, 3L);
+    }
+
     // AI 순서로 고를 때는 앞쪽(낮에 갈 만한 곳)을 저녁 관광 몫으로 떼지 않고, AI가 뺄 곳은 예비·저녁 관광으로 쓰지 않는다.
     @Test void aiOrderKeepsTopPicksForDaytime() {
         var ordered = new ArrayList<PlaceCandidate>();
