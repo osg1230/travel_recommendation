@@ -21,6 +21,8 @@ public class ItineraryGenerator {
     private static final double SAME_KIND_PENALTY=4;
     /** 하루에 같은 활동(예: 걷기·풍경)을 넣는 수. 넘기면 그 활동은 다른 곳이 없을 때만 고른다(2026-11-03). */
     static final int MAX_SAME_ACTIVITY_DAILY=2;
+    /** 사용자가 고른 취향에 맞는 활동(예: 바다 → 걷기·풍경)은 하루에 이만큼 넣는다. 2곳에서 막혀 바다 취향 일정의 걷기·풍경이 40%에 머물렀다(2026-11-05). */
+    static final int MAX_THEME_ACTIVITY_DAILY=3;
     /** 저녁 식사는 이 시각 이후에만 넣는다. */
     private static final LocalTime DINNER_FROM=LocalTime.of(17,0);
     /** 이 시각이 지났는데 다음 관광지를 마치면 LUNCH_UNTIL을 넘기면 관광지보다 점심을 먼저 넣는다. */
@@ -304,12 +306,20 @@ public class ItineraryGenerator {
      * 이 장소에서 무엇을 할지는 AI 추천 활동 줄이 따로 붙는다(PlaceReasons). spareNote는 남는 시간을 채운 예비 관광지의 꼬리표이고, 아니면 null이다.
      */
     /**
-     * 그날 이 장소의 활동을 이미 MAX_SAME_ACTIVITY_DAILY곳 넣었는지. AI가 활동을 고른 일정에서만 본다.
+     * 그날 이 장소의 활동을 이미 MAX_SAME_ACTIVITY_DAILY곳(고른 취향에 맞는 활동은 MAX_THEME_ACTIVITY_DAILY곳) 넣었는지. AI가 활동을 고른 일정에서만 본다.
      * 분류 이름만 있는 일정은 종류가 잘게 나뉘어(해변·숲·공원) 이 기준을 쓰지 않고, 전처럼 직전 종류만 본다.
      */
     static boolean tooMany(Input input,Map<String,Long> activityCount,PlaceCandidate place) {
         if(input.picking()==null || !input.picking().activities().containsKey(place.placeId())) return false;
-        return activityCount.getOrDefault(input.activityOf(place),0L)>=MAX_SAME_ACTIVITY_DAILY;
+        String activity=input.activityOf(place);
+        int limit=themeActivity(input,activity)?MAX_THEME_ACTIVITY_DAILY:MAX_SAME_ACTIVITY_DAILY;
+        return activityCount.getOrDefault(activity,0L)>=limit;
+    }
+
+    /** 이 활동이 사용자가 고른 여행 취향에 맞는지. */
+    static boolean themeActivity(Input input,String activity) {
+        return input.conditions().themeNames().stream()
+            .anyMatch(theme->OpenAiPlacePickClient.THEME_ACTIVITIES.getOrDefault(theme,Set.of()).contains(activity));
     }
 
     private static String visitNote(Input input,PlaceCandidate place,String spareNote,boolean dayCenter,boolean chosenCenter,String avoidedKind) {

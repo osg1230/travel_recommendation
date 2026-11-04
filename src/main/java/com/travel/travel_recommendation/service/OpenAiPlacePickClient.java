@@ -43,6 +43,10 @@ public class OpenAiPlacePickClient {
     }
     /** AI가 고르는 관광지의 주된 활동. 바다·숲·공원을 걷거나 보는 곳은 모두 '걷기·풍경'이다. */
     static final List<String> ACTIVITIES = List.of("걷기·풍경", "관람·전시", "역사·문화", "체험·놀이", "시장·먹거리", "휴식·온천");
+    /** 기본 여행 취향 6개와 그 취향에 맞는 활동(2026-11-05). 관리자가 더한 취향은 대응하는 활동이 없다. */
+    public static final Map<String, Set<String>> THEME_ACTIVITIES = Map.of(
+        "바다", Set.of("걷기·풍경"), "자연", Set.of("걷기·풍경"), "휴식", Set.of("휴식·온천"),
+        "맛집", Set.of("시장·먹거리"), "문화·역사", Set.of("역사·문화", "관람·전시"), "체험·액티비티", Set.of("체험·놀이"));
     /** AI가 밤 명소로 꼽을 수 있는 최대 수. 숙박하는 밤마다 한 곳씩 쓰므로 많을 필요가 없다. */
     static final int MAX_NIGHT=3;
     /**

@@ -186,10 +186,8 @@ class ItineraryQualityReportTests {
         return order.subList(0, n).stream().filter(used::contains).count() / (double) n;
     }
 
-    /** 여행 취향과 GPT가 고른 주된 활동의 대응. 활동 정보가 없는 장소는 어느 취향에도 세지 않는다. */
-    static final Map<String, Set<String>> THEME_ACTIVITIES = Map.of(
-        "바다", Set.of("걷기·풍경"), "자연", Set.of("걷기·풍경"), "휴식", Set.of("휴식·온천"),
-        "맛집", Set.of("시장·먹거리"), "문화·역사", Set.of("역사·문화", "관람·전시"), "체험·액티비티", Set.of("체험·놀이"));
+    /** 여행 취향과 GPT가 고른 주된 활동의 대응. 일정 생성과 같은 표를 쓴다. 활동 정보가 없는 장소는 어느 취향에도 세지 않는다. */
+    static final Map<String, Set<String>> THEME_ACTIVITIES = OpenAiPlacePickClient.THEME_ACTIVITIES;
 
     /**
      * 취향 비율 일치도(2026-11-05 추가). 고른 취향마다 그 취향에 맞는 활동의 관광지 수를 세고, 취향끼리 같은 비율(1/k)과의 차이로 점수를 낸다.
