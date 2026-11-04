@@ -10,6 +10,7 @@
 - 구현: 관광지를 빼기만 한 수정안(시간·이동수단·식당·숙소 변경 없음)은 `ItineraryJobService.keptDays`가 날짜별 낮 관광지·식당·저녁 관광을 `revision.keptDays`에 담고, `ItineraryGenerator`가 그 순서대로 넣고 방문 시각만 다시 계산한다. 넣지 못하는 날은 그날만 평소처럼 고른다. 그날 관광지를 모두 빼거나 다른 조건을 함께 바꾸면 예전처럼 다시 배치한다. 수정 화면 안내 문구도 맞췄다. 테이블·컬럼 변경 없음(`ai_jobs.request_json` 키 1개, DB 정의서 1.17 반영). 요구분석서 [변경 내역](requirements/요구분석서_3.1_변경내역.md) 2026-11-02 절, DOCX 본문은 바꾸지 않았다.
 - 확인: `ItineraryRevisionIntegrationTests` 14개(새 4개: 나머지 유지, 그날 전부 뺌, 다른 조건과 함께 뺌, 수정 화면 열기·`direct-revisions`) 포함 일정 테스트 121개 중 120개 통과. 실패 1개 `SavedItineraryRevisionIntegrationTests.restoredDraftKeepsPlacesOutsideCurrentCandidatesAndSavedStay`는 이번 수정 전 `804134f`·`caa99a5`에서도 같은 오류로 실패한다(`caa99a5`는 실제 서버 확인 전에는 통과, 시간만 바꾼 수정안에서 일어나 이번 코드를 타지 않는다). DB 장소 데이터가 바뀐 영향으로 보이나 원인은 확인하지 못했다. 전체 테스트는 돌리지 않았다.
 - 브라우저(실제 GPT·카카오, 확인용 계정은 끝나고 탈퇴): 강릉 1박 2일 저장 일정에서 경포대를 빼자 바뀐 부분이 '뺌 1건, 방문 시각만 바뀐 곳 11곳'으로 나오고 나머지 장소·날짜·순서가 같았다. 적용·되돌리기도 이어서 동작했다. 2026-11-02 앞선 확인에서 식당·숙소 바꾸기, 더하기, 시작 시간 변경, 잘못된 시간 거절, 되돌리기 취소는 통과했다. 대중교통 전환, 관광지 '바꾸기', AI 문장 수정은 브라우저로 확인하지 않았다.
+- 2026-11-04 main(전체 점검 1~6번 묶음 포함)과 합친 뒤 SQL Server `clean verify` **739개 실행, 실패·오류 0, 건너뜀 13**, `BUILD SUCCESS`. 위 실패 1개는 3~6번 묶음의 `ExternalPlaceCache.expireExisting`으로 고쳐져 통과했다.
 - 남은 것: 식당·숙소·시간을 바꾸면 여전히 일정 전체를 다시 배치한다(화면에 안내 있음).
 
 ## 2026-11-02 전체 점검 3~6번 묶음: 로그인 제한·화면·실행기·테스트 (`fix/review-login-ui-worker`, 데스크탑)
