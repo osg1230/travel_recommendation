@@ -133,13 +133,22 @@ public final class TripConstraints {
      * 종류를 돌아가며 섞지 않고(mixKinds), 같은 종류가 MAX_KIND_RUN번을 넘겨 이어질 때만 순서를 조정한다.
      */
     public static List<PlaceCandidate> byPicks(List<PlaceCandidate> pool, List<Long> centerIds, List<Long> picks, List<Long> skips) {
+        return byPicks(pool, centerIds, picks, skips, Map.of());
+    }
+
+    /**
+     * activities(AI가 고른 관광지별 주된 활동)가 있으면 이어지는 종류를 분류 이름 대신 활동으로 센다(2026-11-03).
+     * 해수욕장·해안길·숲길처럼 분류는 달라도 모두 걷는 곳이 일정 앞쪽에 몰려, 고른 관광지가 거의 다 걷기가 됐기 때문이다.
+     */
+    public static List<PlaceCandidate> byPicks(List<PlaceCandidate> pool, List<Long> centerIds, List<Long> picks, List<Long> skips,
+                                               Map<Long, String> activities) {
         var result = new ArrayList<PlaceCandidate>();
         for (Long id : centerIds) pool.stream().filter(p -> p.placeId().equals(id) && !result.contains(p)).findFirst().ifPresent(result::add);
         var wanted = new ArrayList<PlaceCandidate>();
         for (Long id : picks)
             pool.stream().filter(p -> p.placeId().equals(id) && !result.contains(p) && !wanted.contains(p)).findFirst().ifPresent(wanted::add);
         pool.stream().filter(p -> !result.contains(p) && !wanted.contains(p) && !skips.contains(p.placeId())).forEach(wanted::add);
-        result.addAll(limitKindRuns(wanted));
+        result.addAll(limitKindRuns(wanted, p -> activities.getOrDefault(p.placeId(), kind(p))));
         pool.stream().filter(p -> !result.contains(p)).forEach(result::add);
         return List.copyOf(result);
     }
@@ -150,11 +159,16 @@ public final class TripConstraints {
      * 분류가 없거나 '관광,명소'로만 된 곳은 종류를 알 수 없어 이어진 것으로 세지 않는다.
      */
     static List<PlaceCandidate> limitKindRuns(List<PlaceCandidate> ordered) {
+        return limitKindRuns(ordered, TripConstraints::kind);
+    }
+
+    /** kindOf로 종류를 정해 같은 종류가 MAX_KIND_RUN번을 넘겨 이어지지 않게 한다. */
+    static List<PlaceCandidate> limitKindRuns(List<PlaceCandidate> ordered, java.util.function.Function<PlaceCandidate, String> kindOf) {
         var waiting = new ArrayList<>(ordered);
         var result = new ArrayList<PlaceCandidate>();
         while (!waiting.isEmpty()) {
-            String run = repeatedKind(result);
-            var next = waiting.stream().filter(p -> run == null || !run.equals(kind(p))).findFirst().orElse(waiting.getFirst());
+            String run = repeatedKind(result, kindOf);
+            var next = waiting.stream().filter(p -> run == null || !run.equals(kindOf.apply(p))).findFirst().orElse(waiting.getFirst());
             waiting.remove(next);
             result.add(next);
         }
@@ -184,11 +198,11 @@ public final class TripConstraints {
     }
 
     /** 목록의 마지막 MAX_KIND_RUN곳이 모두 같은 종류면 그 종류, 아니면 null. */
-    private static String repeatedKind(List<PlaceCandidate> placed) {
+    private static String repeatedKind(List<PlaceCandidate> placed, java.util.function.Function<PlaceCandidate, String> kindOf) {
         if (placed.size() < MAX_KIND_RUN) return null;
-        String kind = kind(placed.getLast());
+        String kind = kindOf.apply(placed.getLast());
         if (kind.isEmpty() || kind.equals("관광,명소")) return null;
-        for (int i = placed.size() - MAX_KIND_RUN; i < placed.size(); i++) if (!kind.equals(kind(placed.get(i)))) return null;
+        for (int i = placed.size() - MAX_KIND_RUN; i < placed.size(); i++) if (!kind.equals(kindOf.apply(placed.get(i)))) return null;
         return kind;
     }
 

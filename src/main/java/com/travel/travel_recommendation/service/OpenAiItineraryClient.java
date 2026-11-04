@@ -132,6 +132,7 @@ public class OpenAiItineraryClient {
             throw invalid("안내 문구에 HTML·링크·연락처를 넣지 않아야 해요.");
         return value;
     }
+    private static final java.util.regex.Pattern FOREIGN_SCRIPT=java.util.regex.Pattern.compile("[\\p{IsHan}\\p{IsHiragana}\\p{IsKatakana}]");
     /** 형식이 맞지 않는 활동 문장은 그 장소만 버린다. 한 문장이 잘못됐다고 안내 전체를 다시 요청하지 않는다. */
     private static Map<Long,String> placeReasons(JsonNode places,Result plan) {
         var allowed=placeIds(plan);
@@ -144,6 +145,8 @@ public class OpenAiItineraryClient {
             // 지시대로 '~해 보세요'·'~할 수 있어요'처럼 '요'로 끝나지 않는 문장은 버리고 그 장소는 활동 줄 없이 둔다.
             // 지시문이 새어 나온 "부드러운 대화 tone" 같은 응답이 화면에 나온 적이 있기 때문이다(2026-10-30 브라우저 확인).
             if(!reason.matches(".*요[.!]?")) continue;
+            // 한자·일본 문자가 섞인 문장도 버린다. "木立 사이의 숲길"처럼 섞여 나온 적이 있다(2026-11-03 영덕 초안).
+            if(FOREIGN_SCRIPT.matcher(reason).find()) continue;
             reasons.put(id.longValue(),reason);
         }
         return reasons;

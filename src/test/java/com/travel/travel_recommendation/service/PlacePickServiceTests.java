@@ -39,4 +39,17 @@ class PlacePickServiceTests {
         assertThat(picked.nightPlaceIds()).isEmpty();
         assertThat(picked.evening()).extracting(PlaceCandidate::placeId).doesNotContain(1L);
     }
+
+    // AI가 고른 활동은 작업 입력에 남아 일정 생성이 쓴다. 분류는 모두 '문화유적'이어도 활동이 다르면 다른 종류로 본다.
+    @Test void activitiesAreRememberedForTheGenerator() {
+        var activities = Map.of(2L, "걷기·풍경", 3L, "걷기·풍경", 4L, "걷기·풍경", 5L, "역사·문화");
+        var picks = new OpenAiPlacePickClient.Picks(List.of(2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L), List.of(), List.of(), activities);
+        var picked = PlacePickService.picked(input(List.of()), picks);
+        assertThat(picked.picking().activities()).isEqualTo(activities);
+        assertThat(picked.activityOf(place(3, "여행 > 관광,명소 > 문화유적"))).isEqualTo("걷기·풍경");
+        // AI가 활동을 고르지 않은 곳은 분류 이름으로 본다.
+        assertThat(picked.activityOf(place(6, "여행 > 관광,명소 > 문화유적"))).isEqualTo("문화유적");
+        // 걷기가 세 번 이어지지 않게 역사·문화(5)를 앞으로 당긴다.
+        assertThat(picked.places().attractions()).extracting(PlaceCandidate::placeId).startsWith(2L, 3L, 5L);
+    }
 }

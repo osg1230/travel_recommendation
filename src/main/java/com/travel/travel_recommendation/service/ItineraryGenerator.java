@@ -19,6 +19,8 @@ public class ItineraryGenerator {
     private static final Pattern ROAD=Pattern.compile("^(.+?(?:로|길)\\s+\\d+(?:-\\d+)?)(?:\\s+.*)?$");
     /** 같은 종류 관광지를 연달아 고르지 않도록 거리(제곱값)에 곱하는 수. 4는 실제 거리 두 배에 해당한다. */
     private static final double SAME_KIND_PENALTY=4;
+    /** 하루에 같은 활동(예: 걷기·풍경)을 넣는 수. 넘기면 그 활동은 다른 곳이 없을 때만 고른다(2026-11-03). */
+    static final int MAX_SAME_ACTIVITY_DAILY=2;
     /** 저녁 식사는 이 시각 이후에만 넣는다. */
     private static final LocalTime DINNER_FROM=LocalTime.of(17,0);
     /** 이 시각이 지났는데 다음 관광지를 마치면 LUNCH_UNTIL을 넘기면 관광지보다 점심을 먼저 넣는다. */
@@ -184,17 +186,22 @@ public class ItineraryGenerator {
                 }
                 // 하루의 첫 관광지는 그날의 중심 장소다. 그 뒤로는 가까운 관광지를 이어서 고른다. 최단 경로 보장은 아니다.
                 // 직전 관광지와 종류가 같으면(예: 해수욕장 다음 해수욕장) 거리를 두 배로 쳐서, 조금 멀어도 다른 종류를 먼저 고른다.
+                // 종류는 AI가 고른 주된 활동(예: 해변·해안길·숲길은 모두 걷기·풍경)이 있으면 그것으로 본다(2026-11-03).
                 boolean forceCenter=!spare && !centerTried && dayCenter!=null && remaining.contains(dayCenter);
                 centerTried=true;
+                // 그날 같은 활동을 MAX_SAME_ACTIVITY_DAILY곳 넣었으면 그 활동은 다른 곳이 없을 때만 고른다.
+                Map<String,Long> activityCount=new HashMap<>();
+                placed.forEach(p->activityCount.merge(input.activityOf(p),1L,Long::sum));
                 // 빠지면 안 되는 곳(필수·수정 요청으로 더한 곳)을 그날 먼저 넣고, 그 안에서는 가까운 곳부터 고른다.
                 var next=forceCenter?dayCenter:pool.stream().min(Comparator.<PlaceCandidate>comparingInt(p->mustVisit.contains(p.placeId())?0:1)
+                    .thenComparingInt(p->tooMany(input,activityCount,p)?1:0)
                     .thenComparing(order(builder.date,p->anchor==null?remaining.indexOf(p)
                     :distance(locations.get(anchor.placeId()),locations.get(p.placeId()))
-                        *(!previousKind.isEmpty() && previousKind.equals(TripConstraints.kind(p))?SAME_KIND_PENALTY:1)))).orElseThrow();
+                        *(!previousKind.isEmpty() && previousKind.equals(input.activityOf(p))?SAME_KIND_PENALTY:1)))).orElseThrow();
                 // 거리만 봤다면 직전과 같은 종류를 골랐을 때만 "다른 종류로 골랐다"고 이유에 적는다.
                 boolean variedKind=!forceCenter && anchor!=null && !previousKind.isEmpty() && pool.stream()
                     .min(order(builder.date,p->distance(locations.get(anchor.placeId()),locations.get(p.placeId()))))
-                    .filter(p->!p.equals(next) && previousKind.equals(TripConstraints.kind(p))).isPresent();
+                    .filter(p->!p.equals(next) && previousKind.equals(input.activityOf(p))).isPresent();
                 var mark=builder.mark();
                 boolean hadLunch=builder.lunch;
                 String spareReason=spare?spareNote(locations,next,anchor,lastDraft,visits):null;
@@ -222,7 +229,7 @@ public class ItineraryGenerator {
                     builder.reset(mark); skipToday.add(next.placeId()); misses++; continue;
                 }
                 if(spare) reserve.remove(next); else remaining.remove(next);
-                last=next; visits++; lastKind=TripConstraints.kind(next);
+                last=next; visits++; lastKind=input.activityOf(next);
                 placed.add(next); if(spare) spareNotes.put(next.placeId(),spareReason);
                 dineIfLate(builder,next,null,stay,dinnerDay,hadLunch);
             }
@@ -241,7 +248,7 @@ public class ItineraryGenerator {
                 // 길찾기가 도중에 안 돼 직선거리 추정이 섞이면, 이미 길찾기로 확인한 처음 순서를 쓴다.
                 if(placedAll && routes.mapDown==mapWasDown) {
                     builder=other; usedRestaurants.clear(); usedRestaurants.addAll(other.usedRestaurants);
-                    last=shorter.getLast(); lastKind=TripConstraints.kind(last);
+                    last=shorter.getLast(); lastKind=input.activityOf(last);
                 }
             }
             // 점심을 아직 넣지 못했으면 마지막 관광지 뒤에 넣는다(숙박하는 날은 숙소 쪽 식당). 들어가는지는 위에서 확인했다.
@@ -285,6 +292,15 @@ public class ItineraryGenerator {
      * 고른 취향에 맞는 분류·종류 섞기 같은 배치 규칙은 거의 모든 항목에 되풀이돼 적지 않는다(취향 반영은 조건 확인표에 있다).
      * 이 장소에서 무엇을 할지는 AI 추천 활동 줄이 따로 붙는다(PlaceReasons). spareNote는 남는 시간을 채운 예비 관광지의 꼬리표이고, 아니면 null이다.
      */
+    /**
+     * 그날 이 장소의 활동을 이미 MAX_SAME_ACTIVITY_DAILY곳 넣었는지. AI가 활동을 고른 일정에서만 본다.
+     * 분류 이름만 있는 일정은 종류가 잘게 나뉘어(해변·숲·공원) 이 기준을 쓰지 않고, 전처럼 직전 종류만 본다.
+     */
+    static boolean tooMany(Input input,Map<String,Long> activityCount,PlaceCandidate place) {
+        if(input.picking()==null || !input.picking().activities().containsKey(place.placeId())) return false;
+        return activityCount.getOrDefault(input.activityOf(place),0L)>=MAX_SAME_ACTIVITY_DAILY;
+    }
+
     private static String visitNote(Input input,PlaceCandidate place,String spareNote,boolean dayCenter,boolean chosenCenter,String avoidedKind) {
         var tags=new ArrayList<String>();
         if(input.constraints()!=null && input.constraints().requiredPlaceIds().contains(place.placeId())) tags.add("필수 방문");
