@@ -43,5 +43,7 @@ class ExpiringCache<K, V> {
         return entry != null && clock.get().isBefore(entry.expiresAt()) ? entry.value() : null;
     }
 
+    void remove(K key) { entries.remove(key); }
+
     void clear() { entries.clear(); }
 }

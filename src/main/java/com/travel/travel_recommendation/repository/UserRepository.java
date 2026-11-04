@@ -24,6 +24,17 @@ public interface UserRepository extends JpaRepository<User, Long> {
         @org.springframework.data.repository.query.Param("status") UserStatus status,
         org.springframework.data.domain.Pageable pageable);
 
+    // 가입 아이디에는 '-'를 쓸 수 없어 대체 아이디가 새 회원과 겹치지 않고, 이미 바꾼 회원은 다시 바꾸지 않는다.
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
+    @org.springframework.data.jpa.repository.Query("""
+        update User u set u.loginId = concat('withdrawn-', cast(u.id as string)), u.updatedAt = :now
+        where u.status = :withdrawn and u.withdrawnAt < :withdrawnBefore and u.loginId not like 'withdrawn-%'
+        """)
+    int replaceWithdrawnLoginIds(
+        @org.springframework.data.repository.query.Param("withdrawn") UserStatus withdrawn,
+        @org.springframework.data.repository.query.Param("withdrawnBefore") java.time.LocalDateTime withdrawnBefore,
+        @org.springframework.data.repository.query.Param("now") java.time.LocalDateTime now);
+
     // 탈퇴 계정의 공통 닉네임은 중복 검사에서 제외한다.
     boolean existsByNicknameAndStatusNot(String nickname, UserStatus status);
 

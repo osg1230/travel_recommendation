@@ -6,8 +6,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Profile;
 import org.springframework.context.event.EventListener;
+import org.springframework.dao.DataAccessException;
 import org.springframework.scheduling.annotation.*;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.TransactionException;
 
 @Component
 @Profile({"sqlserver","sqlserver-windows"})
@@ -28,6 +30,7 @@ public class RecommendationJobWorker {
     private final PlacePickService placePicks;
     private final DestinationLandmarkService landmarks;
     private final DestinationProfileService profiles;
+    private final WithdrawalService withdrawals;
     private volatile boolean ready;
 
     @EventListener(ApplicationReadyEvent.class)
@@ -50,10 +53,12 @@ public class RecommendationJobWorker {
             // 문장으로 입력했고 여행지가 5곳보다 많으면 AI가 여행지별 근거를 보고 후보 5곳을 고른다. 실패하면 기존 기준으로 고른다.
             try { picks.enrich(id); } catch(RuntimeException e) { log.warn("후보 고르기를 건너뜀 job={} ({})",id,e.toString()); }
             try { service.prepare(id); }
-            catch(RuntimeException e) { service.fail(id); }
+            catch(RuntimeException e) { recordFailure(id,()->service.fail(id)); }
         }
         for(UUID id:recommendations.queued()) {
-            var work=recommendations.claim(id);
+            DestinationRecommendationService.Work work;
+            try { work=recommendations.claim(id); }
+            catch(RuntimeException e) { claimFailed(id,e,()->recommendations.failClaim(id)); continue; }
             if(work==null) continue;
             try {
                 var ranked=recommendations.generate(work);
@@ -72,8 +77,8 @@ public class RecommendationJobWorker {
                 // 처음 한 번은 28곳을 모두 채워 몇 분 걸리고, 이미 채우는 중이면 바로 돌아간다.
                 Thread.ofVirtual().name("destination-profiles").start(profiles::prepareMissing);
             }
-            catch(RecommendationException e) { recommendations.fail(work,e.getCode(),e.getMessage()); }
-            catch(RuntimeException e) { recommendations.fail(work,"RECOMMENDATION_FAILED","추천 결과를 저장하지 못했어요. 잠시 후 다시 시도해 주세요."); }
+            catch(RecommendationException e) { recordFailure(id,()->recommendations.fail(work,e.getCode(),e.getMessage())); }
+            catch(RuntimeException e) { recordFailure(id,()->recommendations.fail(work,"RECOMMENDATION_FAILED","추천 결과를 저장하지 못했어요. 잠시 후 다시 시도해 주세요.")); }
         }
     }
 
@@ -85,7 +90,9 @@ public class RecommendationJobWorker {
             try { placePicks.enrich(id); } catch(RuntimeException e) { log.warn("AI 관광지 순서 정하기를 건너뜀 job={} ({})",id,e.toString()); }
             // 고른 관광지·숙소 주변의 음식점을 먼저 찾아 요청에 더한다. 실패해도 기존 음식점 후보로 일정을 만든다.
             try { restaurants.enrich(id); } catch(RuntimeException e) { log.warn("주변 음식점 찾기를 건너뜀 job={} ({})",id,e.toString()); }
-            var work=itineraries.claim(id);
+            ItineraryJobService.Work work;
+            try { work=itineraries.claim(id); }
+            catch(RuntimeException e) { claimFailed(id,e,()->itineraries.failClaim(id)); continue; }
             if(work==null) continue;
             var started=java.time.Instant.now();
             try {
@@ -99,14 +106,32 @@ public class RecommendationJobWorker {
             catch(RecommendationException e) {
                 // 어느 단계에서 실패했는지 로그로 남긴다(장소 이름만 들어가고 사용자 정보는 없다).
                 log.warn("일정 생성 실패 job={} code={} ({})",id,e.getCode(),e.getMessage(),e);
-                itineraries.fail(work,e.getCode(),e.getMessage());
+                recordFailure(id,()->itineraries.fail(work,e.getCode(),e.getMessage()));
             }
             catch(RuntimeException e) {
                 log.warn("일정 생성 오류 job={}",id,e);
-                itineraries.fail(work,"SCHEDULE_FAILED","일정을 만들지 못했어요. 잠시 후 다시 요청해 주세요.");
+                recordFailure(id,()->itineraries.fail(work,"SCHEDULE_FAILED","일정을 만들지 못했어요. 잠시 후 다시 요청해 주세요."));
             }
         }
     }
+    /**
+     * 작업을 시작하지 못했을 때. DB 문제는 잠시 뒤 나아질 수 있어 작업을 그대로 두고 다음 차례에 다시 시도한다.
+     * 그 밖의 오류(저장된 요청을 읽지 못함 등)는 다시 해도 같으므로 실패로 끝내, 뒤에 있는 작업을 막지 않게 한다.
+     */
+    private void claimFailed(UUID id,RuntimeException error,Runnable fail) {
+        log.warn("작업을 시작하지 못함 job={} ({})",id,error.toString());
+        if(error instanceof DataAccessException || error instanceof TransactionException) return;
+        recordFailure(id,fail);
+    }
+    /** 실패 표시가 안 되어도 실행기는 다음 작업을 이어 간다. 남은 작업은 cleanup이 시간이 지나면 마감한다. */
+    private void recordFailure(UUID id,Runnable fail) {
+        try { fail.run(); }
+        catch(RuntimeException e) { log.warn("실패를 기록하지 못함 job={} ({})",id,e.toString()); }
+    }
     @Scheduled(fixedDelay=60000)
     public void cleanup() { if(ready) service.cleanup(); }
+
+    // 하루 한 번이면 충분하다. 서버를 자주 껐다 켜도 빠지지 않게 시작 1분 뒤에도 한 번 돌린다.
+    @Scheduled(initialDelay=60000,fixedDelay=24*60*60*1000)
+    public void anonymizeWithdrawn() { if(ready) withdrawals.anonymizeExpired(); }
 }

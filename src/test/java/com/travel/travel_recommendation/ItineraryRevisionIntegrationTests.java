@@ -50,6 +50,7 @@ class ItineraryRevisionIntegrationTests {
     @org.springframework.test.context.bean.override.mockito.MockitoBean com.travel.travel_recommendation.service.DestinationLandmarkService landmarks;
     @MockitoBean TourApiClient tour;
     @MockitoBean OpenAiRevisionClient ai;
+    @MockitoBean OpenAiVerificationClient verifier;
     private MockHttpSession session;
     private byte[] hash;
     private UUID parent;
@@ -421,5 +422,96 @@ class ItineraryRevisionIntegrationTests {
         assertThat(jobs.count()).isEqualTo(count);
         mvc.perform(get("/travel/recommendations/itineraries/"+original).session(session)).andExpect(status().isOk())
             .andExpect(content().string(containsString("AI 없이 시간만 바꾸기")));
+    }
+
+    private String draftUrl(UUID id) { return "/travel/recommendations/itineraries/"+id; }
+    // 직접 수정을 보내고, 실패했을 때 수정 화면에 보여 줄 문장을 확인한다. 초안은 새로 생기지 않는다.
+    private void directChangeIsRefused(UUID id,String param,String value,String reason) throws Exception {
+        long count=jobs.count();
+        var request=post(draftUrl(id)+"/direct-revisions").session(session).with(csrf());
+        if(param!=null) request.param(param,value);
+        mvc.perform(request).andExpect(redirectedUrl(draftUrl(id)+"/edit"))
+            .andExpect(flash().attribute("editError",containsString(reason)));
+        assertThat(jobs.count()).isEqualTo(count);
+    }
+
+    @Test void editScreenOpensOnlyForTheSameSession() throws Exception {
+        var draft=completedDraft();
+        mvc.perform(get(draftUrl(draft)+"/edit").session(session)).andExpect(status().isOk()).andExpect(view().name("travel/itinerary-edit"))
+            .andExpect(content().string(containsString("일정")));
+        mvc.perform(get(draftUrl(draft)+"/edit").session(new MockHttpSession())).andExpect(status().isNotFound());
+        mvc.perform(post(draftUrl(draft)+"/direct-revisions").session(new MockHttpSession()).with(csrf()).param("visitMinutes","60"))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test void directRevisionRemovesOnlyTheChosenPlaceAndKeepsTheOriginal() throws Exception {
+        var original=completedDraft();
+        var before=schedules.view(original,null,hash).result();
+        Long removed=attractionIds(original).getFirst();
+        String location=mvc.perform(post(draftUrl(original)+"/direct-revisions").session(session).with(csrf()).param("remove",removed.toString()))
+            .andExpect(status().is3xxRedirection()).andReturn().getResponse().getRedirectedUrl();
+        var revision=UUID.fromString(location.substring(location.lastIndexOf('/')+1));
+        assertThat(revision).isNotEqualTo(original);
+        finish(revision);
+        var changed=schedules.view(revision,null,hash).result().days().stream().flatMap(d->d.items().stream()).filter(i->"VISIT".equals(i.type())).map(ItineraryPlan.Item::placeId).toList();
+        assertThat(changed).doesNotContain(removed);
+        assertThat(schedules.view(original,null,hash).result()).isEqualTo(before);
+    }
+
+    @Test void directRevisionRefusesValuesOutsideTheDraft() throws Exception {
+        var draft=completedDraft();
+        directChangeIsRefused(draft,"remove","999999999","이 일정에 있는 관광지만 뺄 수 있어요");
+        directChangeIsRefused(draft,"avoidRestaurant","999999999","이 일정에 있는 식당만 바꿀 수 있어요");
+        directChangeIsRefused(draft,"stay","999999999","이 일정의 숙소 후보 중에서 골라 주세요");
+        directChangeIsRefused(draft,null,null,"바꾼 내용이 없어요");
+    }
+
+    @Test void directRevisionCannotRemoveARequiredPlace() throws Exception {
+        Long required=attractionIds(completedDraft()).getFirst();
+        var draft=schedules.create(parent,destination,null,hash,LocalTime.of(9,0),LocalTime.of(16,0),KakaoMapClient.Transport.CAR,90,
+            new ItineraryPlan.Constraints(List.of(required),null,false,null,List.of(),null,null),null,null,null,null);
+        finish(draft);
+        directChangeIsRefused(draft,"remove",required.toString(),"필수 방문 장소는 뺄 수 없어요");
+    }
+
+    // AI 확인 검색은 유료 호출이다. 찾을 항목이 없으면 부르지 않고, 저장한 결과가 있으면 다시 부르지 않으며, 검색 중 초안이 바뀌면 붙이지 않는다.
+    @Test void verificationIsReusedAndRefusedWhenTheDraftChanged() throws Exception {
+        when(verifier.configured()).thenReturn(true);
+        var draft=completedDraft();
+        assertThatThrownBy(()->schedules.lookupVerifications(draft,null,hash))
+            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("찾아볼 확인 필요 항목이 없어요");
+        var saved=new ItineraryPlan.Verifications(List.of(),Instant.now());
+        String resultJson=jobs.findById(draft).orElseThrow().getResultJson();
+        assertThatThrownBy(()->schedules.saveVerifications(draft,null,hash,"{}",saved))
+            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("일정이 바뀌었어요");
+        schedules.saveVerifications(draft,null,hash,resultJson,saved);
+        em.flush(); em.clear();
+        assertThat(schedules.lookupVerifications(draft,null,hash).checkedAt()).isEqualTo(saved.checkedAt());
+        verify(verifier,never()).lookup(any());
+    }
+
+    // 버스·비행기 안내와 실제 경로는 세션마다 10초에 한 번 받고, 다른 세션의 초안은 없는 것처럼 답한다.
+    @Test void guidesWaitTenSecondsAndAreHiddenFromOtherSessions() throws Exception {
+        var draft=completedDraft();
+        var bus=draftUrl(draft)+"/bus-guide";
+        mvc.perform(post(bus).session(session).with(csrf()).param("to","강릉").param("from","동서울")).andExpect(status().is3xxRedirection());
+        mvc.perform(post(bus).session(session).with(csrf()).param("to","강릉").param("from","동서울"))
+            .andExpect(flash().attribute("busError",containsString("방금 조회했어요")));
+        mvc.perform(post(bus).session(new MockHttpSession()).with(csrf()).param("to","강릉").param("from","동서울")).andExpect(status().isNotFound());
+        var flight=draftUrl(draft)+"/flight-guide";
+        mvc.perform(post(flight).session(session).with(csrf())).andExpect(status().is3xxRedirection());
+        mvc.perform(post(flight).session(session).with(csrf())).andExpect(flash().attribute("flightError",containsString("방금 조회했어요")));
+        mvc.perform(post(flight).session(new MockHttpSession()).with(csrf())).andExpect(status().isNotFound());
+    }
+
+    @Test void dayPathsWorkOnlyForTransitDraftsAndWaitTenSeconds() throws Exception {
+        mvc.perform(get(draftUrl(completedDraft())+"/day-paths").session(session).param("day","1")).andExpect(status().isBadRequest());
+        var transit=schedules.create(parent,destination,null,hash,LocalTime.of(9,0),LocalTime.of(16,0),KakaoMapClient.Transport.PUBLIC_TRANSIT,90);
+        finish(transit);
+        var url=draftUrl(transit)+"/day-paths";
+        mvc.perform(get(url).session(new MockHttpSession()).param("day","1")).andExpect(status().isNotFound());
+        mvc.perform(get(url).session(session).param("day","1")).andExpect(status().isOk());
+        mvc.perform(get(url).session(session).param("day","1")).andExpect(status().isTooManyRequests())
+            .andExpect(content().string(containsString("방금 경로를 찾았어요")));
     }
 }

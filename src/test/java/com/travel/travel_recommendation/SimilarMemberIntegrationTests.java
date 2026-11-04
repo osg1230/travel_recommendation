@@ -6,6 +6,7 @@ import com.travel.travel_recommendation.repository.*;
 import com.travel.travel_recommendation.service.*;
 import java.time.LocalDate;
 import java.util.*;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,7 +53,14 @@ class SimilarMemberIntegrationTests {
         String suffix=UUID.randomUUID().toString().substring(0,8);
         return users.saveAndFlush(new User("test_"+prefix+"_"+suffix,encoder.encode("Travel123!"),"비슷_"+prefix+suffix));
     }
-    // 강원(여행지 8곳)에서 1박 2일, 동행자·계절만 고른 조건. 여행 취향이 없어 후보 순서는 회원 가점과 등록 순서로만 정해진다.
+    // 후보 5곳에 들지 못하는 여행지가 PC마다 있도록 강원 여행지를 6곳 더 넣는다(롤백됨).
+    @BeforeEach void addDestinations() {
+        for(int i=1;i<=6;i++) jdbc.update("""
+            INSERT INTO dbo.places(place_type,source_provider,source_place_id,place_name,region,address,subtype,description,source_url,verified_at)
+            VALUES('DESTINATION','SYSTEM',?,?,N'강원특별자치도 테스트시',N'강원특별자치도 테스트시',N'테스트',N'테스트 여행지',N'https://www.gn.go.kr/',DATEADD(day,-1,SYSDATETIME()))""",
+            "TEST_SIMILAR_"+i,"테스트시"+i);
+    }
+    // 강원에서 1박 2일, 동행자·계절만 고른 조건. 여행 취향이 없어 후보 순서는 회원 가점과 등록 순서로만 정해진다.
     private ConfirmedTravelConditions conditions() {
         var choices=keywords.findActiveChoices();
         var selected=List.of(first(choices,"COMPANION"),first(choices,"SEASON"));

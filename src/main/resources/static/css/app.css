@@ -562,6 +562,10 @@ button.map-badge:hover { background: var(--badge, var(--brand)); transform: scal
 .my-nav a { flex: 1 0 auto; padding: 8px 14px; border-radius: 999px; text-align: center; font-size: 14px; font-weight: 600; color: var(--text-muted); text-decoration: none; white-space: nowrap; }
 .my-nav a:hover { background: var(--brand-soft); color: var(--brand-strong); }
 .my-nav a.active { background: var(--brand); color: #fff; }
+/* 휴대폰에서는 뒤쪽 탭이 화면 밖으로 숨지 않게 줄을 바꿔 모두 보여 준다. */
+@media (max-width: 600px) {
+    .my-nav { flex-wrap: wrap; border-radius: var(--radius-sm); }
+}
 /* 넓은 화면의 마이페이지: 메뉴를 왼쪽에 세로로 두고 내용을 오른쪽에 둔다. 좁은 화면은 위의 가로 메뉴 그대로다. */
 @media (min-width: 900px) {
     .my-page { display: grid; grid-template-columns: 190px minmax(0, 1fr); column-gap: 28px; align-content: start; width: min(100% - 32px, 1080px); }

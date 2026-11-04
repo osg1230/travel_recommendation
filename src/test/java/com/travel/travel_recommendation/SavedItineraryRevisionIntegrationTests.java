@@ -52,11 +52,15 @@ class SavedItineraryRevisionIntegrationTests {
     // 장소 수집(refresh)이 실제 관광공사·GPT에 대표 관광지를 묻지 않게 한다(모의 객체는 빈 목록을 돌려준다).
     @org.springframework.test.context.bean.override.mockito.MockitoBean com.travel.travel_recommendation.service.DestinationLandmarkService landmarks;
     @MockitoBean TourApiClient tour;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     private User owner;
     private UUID original;
     private Long itineraryId;
 
     @BeforeEach void setup() {
+        // 개발 DB에 최근 확인한 카카오 장소가 있으면 후보가 PC마다 달라지므로 쓰지 않게 하고, 강릉 기본 관광지 2곳에 테스트 관광지 3곳을 더한다(롤백됨).
+        ExternalPlaceCache.expireExisting(jdbc);
+        for(int i=1;i<=3;i++) insertAttraction("TEST_SAVED_"+i,300+i,"하슬라 테스트 관광지"+i,"테스트");
         owner=member();
         when(maps.locate(anyString())).thenAnswer(call->new KakaoMapClient.Location(call.getArgument(0),128.9+(Math.abs(call.getArgument(0).hashCode()%1000))/100000.0,37.7,Instant.now()));
         when(maps.travelTime(any(),any(),any())).thenAnswer(call->new KakaoMapClient.TravelTime(call.getArgument(2),300,3000,Instant.now()));

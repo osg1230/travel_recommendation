@@ -27,4 +27,12 @@ public interface AiJobRepository extends JpaRepository<AiJob,UUID> {
         where j.status in ('ANALYZING_CONDITIONS','SEARCHING_CANDIDATES','RANKING_CANDIDATES','GENERATING_SCHEDULE','VALIDATING_SCHEDULE')
         """)
     int recoverInterrupted(LocalDateTime now);
+    @Modifying(clearAutomatically=true,flushAutomatically=true)
+    @Query("""
+        update AiJob j set j.status='FAILED', j.errorCode='TIMEOUT',
+        j.message='처리가 너무 오래 걸려 마치지 못했어요. 다시 요청해 주세요.', j.completedAt=:now
+        where j.status in ('ANALYZING_CONDITIONS','SEARCHING_CANDIDATES','RANKING_CANDIDATES','GENERATING_SCHEDULE','VALIDATING_SCHEDULE')
+        and j.startedAt<:startedBefore
+        """)
+    int failStuck(LocalDateTime startedBefore,LocalDateTime now);
 }

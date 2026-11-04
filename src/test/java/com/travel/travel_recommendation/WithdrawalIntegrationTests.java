@@ -84,6 +84,27 @@ class WithdrawalIntegrationTests {
         assertThat(users.existsByLoginId(member.getLoginId())).isTrue();
     }
 
+    @Test void loginIdIsReplacedOnlyAfterThirtyDays() {
+        var recent=account();
+        withdrawals.withdraw(member.getLoginId(),PASSWORD,true);
+        withdrawals.withdraw(recent.getLoginId(),PASSWORD,true);
+        var active=account();
+        clear();
+        String oldLoginId=member.getLoginId();
+        jdbc.update("UPDATE dbo.users SET withdrawn_at=DATEADD(day,-31,withdrawn_at) WHERE user_id=?",member.getId());
+        jdbc.update("UPDATE dbo.users SET withdrawn_at=DATEADD(day,-29,withdrawn_at) WHERE user_id=?",recent.getId());
+
+        assertThat(withdrawals.anonymizeExpired()).isEqualTo(1);
+        clear();
+        assertThat(users.findById(member.getId()).orElseThrow().getLoginId()).isEqualTo("withdrawn-"+member.getId());
+        // 원래 아이디가 어디에도 남지 않아 다시 가입할 수 있고, 30일이 안 된 탈퇴 회원과 이용 중인 회원은 그대로다.
+        assertThat(users.existsByLoginId(oldLoginId)).isFalse();
+        assertThat(users.findById(recent.getId()).orElseThrow().getLoginId()).isEqualTo(recent.getLoginId());
+        assertThat(users.findById(active.getId()).orElseThrow().getLoginId()).isEqualTo(active.getLoginId());
+        // 이미 바꾼 회원은 다시 바꾸지 않는다.
+        assertThat(withdrawals.anonymizeExpired()).isZero();
+    }
+
     @Test void wrongPasswordMissingConsentAndAdminAreRefusedWithoutChanges() {
         favorites.add(placeOf("ATTRACTION"),member.getLoginId());
         clear();

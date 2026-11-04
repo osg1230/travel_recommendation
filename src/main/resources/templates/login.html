@@ -30,6 +30,7 @@
         <p class="notice" role="alert" th:if="${param.changed}">다른 곳에서 비밀번호가 바뀌어 로그아웃됐어요. 새 비밀번호로 다시 로그인해 주세요.</p>
         <p class="notice" role="alert" th:if="${param.restricted}">이용이 제한된 계정이라 로그인할 수 없어요. 자세한 내용은 운영자에게 문의해 주세요.</p>
         <p class="notice" role="alert" th:if="${param.error}">로그인할 수 없습니다. 아이디와 비밀번호를 확인해 주세요. 탈퇴한 계정은 로그인할 수 없습니다.</p>
+        <p class="notice" role="alert" th:if="${param.limited}">로그인 시도가 너무 많아 잠시 막아 두었어요. 15분쯤 뒤에 다시 시도해 주세요. 그래도 안 되면 1시간 뒤에 시도해 주세요.</p>
         <p class="notice" role="alert" th:if="${param.unavailable}">일시적으로 로그인하지 못했습니다. 잠시 후 다시 시도해 주세요.</p>
         <form th:action="@{/login}" method="post">
             <div class="field">
