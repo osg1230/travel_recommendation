@@ -27,6 +27,7 @@ public class ItineraryController {
     private final ObjectProvider<SavedItineraryService> savedItineraries;
     private final ObjectProvider<BusGuideService> busGuides;
     private final ObjectProvider<FlightGuideService> flightGuides;
+    private final ObjectProvider<TrainGuideService> trainGuides;
     private final ObjectProvider<PlaceCandidateService> candidates;
     private final ObjectProvider<PlaceDiscoveryService> discoveries;
     private final ObjectProvider<PlacePhotoService> photos;
@@ -684,8 +685,8 @@ public class ItineraryController {
     private static final String BUS_COOLDOWN_KEY="itineraryBusGuideNext";
 
     /**
-     * 요청 시 지역 간 버스 안내(SFR-06-05·06). 출발 위치에서 나온 결과라 저장하지 않고 다음 화면에 한 번만 보여 준다.
-     * 좌표는 도시 이름을 찾는 데만 쓰고 세션·로그·DB에 남기지 않는다.
+     * 요청 시 지역 간 버스·기차 안내(SFR-06-05·06). 출발 위치에서 나온 결과라 저장하지 않고 다음 화면에 한 번만 보여 준다.
+     * 좌표는 도시 이름과 가까운 역을 찾는 데만 쓰고 세션·로그·DB에 남기지 않는다.
      */
     @PostMapping("/itineraries/{id}/bus-guide")
     String busGuide(@PathVariable UUID id,@RequestParam(defaultValue="") String to,@RequestParam(defaultValue="") String from,
@@ -704,11 +705,18 @@ public class ItineraryController {
             session.setAttribute(BUS_COOLDOWN_KEY,java.time.Instant.now().plusSeconds(10));
         }
         var guides=busGuides.getIfAvailable();
-        if(guides==null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"버스 안내는 DB 연결 후 이용할 수 있어요.");
+        var trains=trainGuides.getIfAvailable();
+        if(guides==null || trains==null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"대중교통 안내는 DB 연결 후 이용할 수 있어요.");
+        // 찾기 버튼 하나로 버스와 기차를 함께 찾는다. 한쪽이 실패해도 다른 쪽 결과는 보여 준다.
         try {
             redirect.addFlashAttribute("busGuide",guides.guide(id,login(principal),hash(session),to,from,longitude,latitude));
         } catch(RecommendationException e) {
             redirect.addFlashAttribute("busError",e.getMessage());
+        }
+        try {
+            redirect.addFlashAttribute("trainGuide",trains.guide(id,login(principal),hash(session),to,from,longitude,latitude));
+        } catch(RecommendationException e) {
+            redirect.addFlashAttribute("trainError",e.getMessage());
         }
         return back;
     }
@@ -848,7 +856,8 @@ public class ItineraryController {
         boolean empty=!request.located() && !request.typed();
         if(service==null || empty) return null;
         try {
-            return service.resolve(request,service().options(id,destinationId,login(principal),hash(session)).places(),transport);
+            var input=service().options(id,destinationId,login(principal),hash(session));
+            return service.resolve(request,input.places(),transport,input.conditions().startDate());
         } catch(RecommendationException error) {
             if(!error.getCode().startsWith("HOME_") && !error.getCode().startsWith("MAP_ORIGIN") && !"MAP_LOCATION".equals(error.getCode())) throw error;
             throw new TripConstraints.ConflictException(List.of(new TripConstraints.Conflict(error.getMessage(),

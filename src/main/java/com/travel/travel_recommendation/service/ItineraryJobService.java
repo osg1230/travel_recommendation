@@ -632,7 +632,7 @@ public class ItineraryJobService {
         Integer typedOut=home!=null && proposal.homeMinutes()!=null && proposal.homeMinutes()!=home.minutes()?proposal.homeMinutes():null;
         Integer typedBack=home!=null && proposal.returnMinutes()!=null && !proposal.returnMinutes().equals(home.returnMinutes())?proposal.returnMinutes():null;
         if(home!=null && (transport!=original.transport() || typedOut!=null || typedBack!=null)) {
-            try { home=homeFor(home,original.places(),transport,typedOut,typedBack); }
+            try { home=homeFor(home,original.places(),original.conditions().startDate(),transport,typedOut,typedBack); }
             catch(RecommendationException error) {
                 if(!error.getCode().startsWith("HOME_") && !error.getCode().startsWith("MAP_")) throw error;
                 return new AiRevision(null,"이동수단을 바꾸면 집 ↔ 여행지 이동시간도 다시 찾아야 하는데 찾지 못했어요. "
@@ -672,7 +672,7 @@ public class ItineraryJobService {
      * 집 ↔ 여행지 편도 시간을 새 이동수단·요청한 시간으로 다시 정한다. 요청 문장에 적은 시간 → 전에 직접 적은 시간 → 새로 찾기 순서다.
      * 출발지·돌아갈 곳은 저장해 둔 시·구 이름으로 다시 위치를 찾는다. 가는 길만 적으면 돌아올 곳이 같을 때 오는 길도 같게 본다.
      */
-    private HomeTrip homeFor(HomeTrip home,PlaceCandidateView places,KakaoMapClient.Transport transport,Integer typedOut,Integer typedBack) {
+    private HomeTrip homeFor(HomeTrip home,PlaceCandidateView places,LocalDate tripDate,KakaoMapClient.Transport transport,Integer typedOut,Integer typedBack) {
         String manual="직접 입력한 편도 시간";
         boolean sameReturn=home.returnPlace().equals(home.origin());
         Integer out=typedOut!=null?typedOut:manual.equals(home.basis())?Integer.valueOf(home.minutes()):null;
@@ -683,7 +683,7 @@ public class ItineraryJobService {
         var service=homeTrips.getIfAvailable();
         if(service==null) return home;
         return service.resolve(new HomeTripService.Request(home.origin(),null,null,home.departAt(),home.arriveBy(),out,
-            sameReturn?null:home.returnPlace(),back),places,transport);
+            sameReturn?null:home.returnPlace(),back),places,transport,tripDate);
     }
 
     /** 콕 집은 장소가 후보에 없을 때 되묻는 서버 고정 문구. GPT 문장 대신 써서 할 수 있는 일을 정확히 알린다. */
@@ -765,7 +765,7 @@ public class ItineraryJobService {
         // 이동수단이 바뀌면 집 ↔ 여행지 편도 시간도 새 이동수단으로 다시 찾는다.
         var home=original.home();
         if(home!=null && transport!=original.transport()) {
-            try { home=homeFor(home,original.places(),transport,null,null); }
+            try { home=homeFor(home,original.places(),original.conditions().startDate(),transport,null,null); }
             catch(RecommendationException error) {
                 if(!error.getCode().startsWith("HOME_") && !error.getCode().startsWith("MAP_")) throw error;
                 throw new ResponseStatusException(HttpStatus.CONFLICT,"이동수단을 바꾸면 집 ↔ 여행지 이동시간도 다시 찾아야 하는데 찾지 못했어요. 잠시 후 다시 시도해 주세요.");

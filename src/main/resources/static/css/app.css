@@ -730,6 +730,10 @@ button.map-badge:hover { background: var(--badge, var(--brand)); transform: scal
 .region-tab { padding: 6px 13px; font-size: 14px; background: var(--surface); color: var(--text-muted); border: 1px solid var(--line-strong); border-radius: 999px; text-decoration: none; }
 .region-tab:hover { background: var(--brand-soft); color: var(--brand-strong); }
 .region-tab[aria-current] { background: var(--brand); color: #fff; border-color: var(--brand); }
+/* 버스·기차 탭은 버튼이라 기본 버튼 모양 대신 지역 탭 모양을 쓴다. */
+button.region-tab { min-height: 0; font-weight: 500; line-height: 1.4; }
+button.region-tab:hover { background: var(--brand-soft); color: var(--brand-strong); }
+button.region-tab[aria-current] { background: var(--brand); color: #fff; }
 .festival-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin: 0 0 12px; padding: 0; list-style: none; }
 .festival { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
 .festival-photo { margin: 0; }
