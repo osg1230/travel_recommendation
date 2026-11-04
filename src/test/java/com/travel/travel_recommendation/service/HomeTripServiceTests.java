@@ -13,7 +13,8 @@ class HomeTripServiceTests {
     private final BusGuideService buses = mock(BusGuideService.class);
     private final FlightGuideService flights = mock(FlightGuideService.class);
     private final FerryGuideService ferries = mock(FerryGuideService.class);
-    private final HomeTripService service = new HomeTripService(maps, buses, flights, ferries);
+    private final TrainGuideService trains = mock(TrainGuideService.class);
+    private final HomeTripService service = new HomeTripService(maps, buses, flights, ferries, trains);
     private final KakaoMapClient.Origin songpa = new KakaoMapClient.Origin("서울특별시 송파구", "서울",
         new KakaoMapClient.Location("서울특별시 송파구", 127.1, 37.5, Instant.now()));
 
@@ -64,6 +65,34 @@ class HomeTripServiceTests {
                 assertThat(e.getCode()).isEqualTo("HOME_MINUTES");
                 assertThat(e.getMessage()).contains("출발지를 비우면 여행지 도착부터");
             });
+    }
+
+    // 대중교통 길찾기가 없으면 버스와 기차를 모두 찾아 빠른 쪽을 쓴다. 가는 길은 여행 날짜 시간표, 오는 길은 오늘 시간표로 찾는다.
+    @Test void transitUsesTrainWhenFasterThanBus() {
+        LocalDate trip = LocalDate.now().plusDays(4);
+        when(maps.findOrigin("잠실")).thenReturn(songpa);
+        when(maps.travelTime(any(), any(), eq(KakaoMapClient.Transport.PUBLIC_TRANSIT)))
+            .thenThrow(new RecommendationException("MAP_NO_ROUTE", "경로 없음"));
+        when(buses.fastestMinutes("서울", "강릉")).thenReturn(OptionalInt.of(165));
+        when(trains.fastest(eq(songpa.location()), any(), eq(trip)))
+            .thenReturn(Optional.of(new TrainGuideService.Leg(150, "기차 · 서울역 → 강릉역 약 114분(여행 날짜 운행 기준)", Instant.now())));
+        when(trains.fastest(any(), eq(songpa.location()), isNull()))
+            .thenReturn(Optional.of(new TrainGuideService.Leg(170, "기차 · 강릉역 → 서울역 약 118분(오늘 운행 기준)", Instant.now())));
+        var home = service.resolve(request("잠실", null), places(), KakaoMapClient.Transport.PUBLIC_TRANSIT, trip);
+        assertThat(home.minutes()).isEqualTo(150);
+        assertThat(home.basis()).startsWith("기차").contains("여행 날짜 운행 기준");
+        // 오는 길은 기차(170분)보다 버스(165분)가 빨라 버스를 쓴다.
+        assertThat(home.returnMinutes()).isEqualTo(165);
+        assertThat(home.returnBasis()).contains("직행 시외·고속버스");
+
+        // 버스가 없어도 기차만으로 찾는다. 자동차 일정에서는 기차를 찾지 않는다.
+        when(buses.fastestMinutes("서울", "강릉")).thenReturn(OptionalInt.empty());
+        assertThat(service.resolve(request("잠실", null), places(), KakaoMapClient.Transport.PUBLIC_TRANSIT, trip).returnMinutes()).isEqualTo(170);
+        clearInvocations(trains);
+        when(maps.travelTime(any(), any(), eq(KakaoMapClient.Transport.CAR)))
+            .thenReturn(new KakaoMapClient.TravelTime(KakaoMapClient.Transport.CAR, 150 * 60, 230000, Instant.now()));
+        service.resolve(request("잠실", null), places(), KakaoMapClient.Transport.CAR, trip);
+        verifyNoInteractions(trains);
     }
 
     // 돌아갈 곳을 따로 적으면 여행지 → 그곳 방향으로 따로 찾고, 비우면 여행지 → 출발지 방향을 따로 찾아 돌아온다.

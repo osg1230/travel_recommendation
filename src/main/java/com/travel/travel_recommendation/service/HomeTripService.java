@@ -9,7 +9,8 @@ import org.springframework.stereotype.Service;
 
 /**
  * 첫날 집 출발·마지막 날 귀가 설정(2026-09-24 결정)을 만든다. 출발지와 돌아갈 곳은 따로 받으며, 돌아갈 곳을 비우면 출발지로 돌아온다.
- * 편도 이동시간은 사용자가 직접 적은 값이 먼저이고, 없으면 자동차는 카카오 길찾기, 대중교통은 카카오 대중교통 길찾기 → 직행 시외·고속버스 순서로 찾는다.
+ * 편도 이동시간은 사용자가 직접 적은 값이 먼저이고, 없으면 자동차는 카카오 길찾기, 대중교통은 카카오 대중교통 길찾기를 쓴다.
+ * 카카오가 장거리 대중교통 경로를 찾지 못하면 직행 시외·고속버스와 기차(역까지 이동 + 승차 대기 + 열차) 가운데 빠른 쪽을 쓴다.
  * 바다를 건너는 여행은 제주는 비행기(공항까지 이동 + 공항 대기 + 비행), 울릉도는 배(항구까지 이동 + 승선 대기 + 운항)로 찾는다.
  * 찾지 못하면 추정하지 않고 출발지를 다시 적거나 비우라고 안내한다
  * (일정 화면은 편도 시간을 받지 않는다). 좌표는 조회에만 쓰고 저장하지 않는다.
@@ -22,6 +23,7 @@ public class HomeTripService {
     private final BusGuideService buses;
     private final FlightGuideService flights;
     private final FerryGuideService ferries;
+    private final TrainGuideService trains;
 
     /**
      * 일정 입력 화면에서 받은 값. 출발지 좌표는 '내 위치로 찾기'를 눌렀을 때만 오고, minutes는 직접 적은 여행지까지 편도 시간(분)이다.
@@ -41,6 +43,11 @@ public class HomeTripService {
     private record Leg(String place, int minutes, String basis, Instant checkedAt) {}
 
     public HomeTrip resolve(Request request, PlaceCandidateView places, KakaoMapClient.Transport transport) {
+        return resolve(request, places, transport, null);
+    }
+
+    /** tripDate는 여행 첫날(미정이면 null)이며 기차 시간표를 고를 때만 쓴다. */
+    public HomeTrip resolve(Request request, PlaceCandidateView places, KakaoMapClient.Transport transport, LocalDate tripDate) {
         if (request == null || request.departAt() == null || request.arriveBy() == null)
             throw failure("HOME_REQUIRED", "첫날 집에서 출발할 시각과 마지막 날 집에 도착할 시각을 적어 주세요.");
         checkMinutes(request.minutes(), "여행지까지");
@@ -56,18 +63,18 @@ public class HomeTripService {
             out = new Leg("집", request.minutes(), "직접 입력한 편도 시간", null);
         } else {
             origin = request.located() ? maps.originAt(request.longitude(), request.latitude()) : maps.findOrigin(request.origin());
-            out = leg(origin, request.minutes(), target, destination, transport, true);
+            out = leg(origin, request.minutes(), target, destination, transport, true, tripDate);
         }
 
         // 오는 길: 돌아갈 곳을 따로 적었으면 그곳까지 따로 찾고, 아니면 출발지로 돌아온다(편도 시간만 따로 적었으면 그 값).
         // 같은 곳으로 돌아와도 가는 길과 오는 길의 소요시간이 다를 수 있어, 가는 길을 자동으로 찾았으면 여행지 → 출발지 방향도 따로 찾는다.
         Leg back;
         if (request.separateReturn()) {
-            back = leg(maps.findOrigin(request.returnPlace()), request.returnMinutes(), target, destination, transport, false);
+            back = leg(maps.findOrigin(request.returnPlace()), request.returnMinutes(), target, destination, transport, false, null);
         } else if (request.returnMinutes() != null) {
             back = new Leg(out.place(), request.returnMinutes(), "직접 입력한 편도 시간", null);
         } else if (origin != null && request.minutes() == null) {
-            back = leg(origin, null, target, destination, transport, false);
+            back = leg(origin, null, target, destination, transport, false, null);
         } else {
             back = out;
         }
@@ -76,10 +83,12 @@ public class HomeTripService {
     }
 
     /**
-     * 집(place)과 여행지 사이 편도 시간. 직접 적은 시간이 있으면 그 값을, 없으면 길찾기 → 버스 순서로 찾는다.
+     * 집(place)과 여행지 사이 편도 시간. 직접 적은 시간이 있으면 그 값을, 없으면 길찾기 → 버스·기차 순서로 찾는다.
      * 오는 길(outbound=false)은 여행지 → 집 방향으로 길을 찾고, 버스는 운행표가 여행지행만 있어 같은 구간의 최단 소요를 쓴다.
+     * 기차는 tripDate(가는 길만) 시간표를 먼저 보고, 오는 길은 오늘 시간표를 쓴다.
      */
-    private Leg leg(KakaoMapClient.Origin home, Integer typed, Target target, String destination, KakaoMapClient.Transport transport, boolean outbound) {
+    private Leg leg(KakaoMapClient.Origin home, Integer typed, Target target, String destination, KakaoMapClient.Transport transport, boolean outbound,
+                    LocalDate tripDate) {
         if (typed != null) return new Leg(home.label(), typed, "직접 입력한 편도 시간", null);
         if (target == null)
             throw failure("HOME_MINUTES", destination + " 관광지 위치를 확인하지 못해 이동시간을 계산하지 못했어요. "
@@ -112,13 +121,20 @@ public class HomeTripService {
         } catch (RecommendationException error) {
             if ("MAP_AUTH".equals(error.getCode())) throw error;
         }
-        if (transport == KakaoMapClient.Transport.PUBLIC_TRANSIT && home.city() != null) {
-            var bus = buses.fastestMinutes(home.city(), destination);
+        // 카카오가 대중교통 경로를 찾지 못한 장거리 구간은 직행 버스와 기차를 각각 찾아 더 빠른 쪽을 쓴다.
+        // 버스 시간에는 집 ↔ 터미널 이동이 빠져 있고, 기차 시간에는 집 ↔ 역 이동이 들어 있다(근거에 적는다).
+        if (transport == KakaoMapClient.Transport.PUBLIC_TRANSIT) {
+            var bus = home.city() == null ? java.util.OptionalInt.empty() : buses.fastestMinutes(home.city(), destination);
+            var train = outbound ? trains.fastest(home.location(), target.location(), tripDate)
+                : trains.fastest(target.location(), home.location(), null);
+            boolean trainUsable = train.isPresent() && train.get().minutes() <= 600;
+            if (trainUsable && (bus.isEmpty() || train.get().minutes() <= bus.getAsInt()))
+                return new Leg(home.label(), train.get().minutes(), train.get().basis(), train.get().checkedAt());
             if (bus.isPresent()) return new Leg(home.label(), bus.getAsInt(),
                 "직행 시외·고속버스 최단 소요" + (outbound ? "" : "(여행지행 기준)") + ", 집 ↔ 터미널 이동 제외", Instant.now());
         }
         throw failure("HOME_MINUTES", (outbound ? home.label() + "에서 " + destination : destination + "에서 " + home.label()) + "까지 "
-            + (transport == KakaoMapClient.Transport.CAR ? "자동차 경로" : "대중교통·직행 버스") + "를 찾지 못했어요. 출발지를 역이나 시·구 이름으로 다시 적거나, 출발지를 비우면 여행지 도착부터 일정을 짜요.");
+            + (transport == KakaoMapClient.Transport.CAR ? "자동차 경로" : "대중교통·직행 버스·기차") + "를 찾지 못했어요. 출발지를 역이나 시·구 이름으로 다시 적거나, 출발지를 비우면 여행지 도착부터 일정을 짜요.");
     }
 
     /**

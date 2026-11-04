@@ -514,4 +514,28 @@ class ItineraryRevisionIntegrationTests {
         mvc.perform(get(url).session(session).param("day","1")).andExpect(status().isTooManyRequests())
             .andExpect(content().string(containsString("방금 경로를 찾았어요")));
     }
+
+    // 대중교통 안내는 찾기 한 번으로 버스와 기차를 함께 찾고, 화면에서는 버스·기차 탭으로 나눠 보여 준다.
+    @Test void transitGuideShowsBusAndTrainTabs() throws Exception {
+        var transit=schedules.create(parent,destination,null,hash,LocalTime.of(9,0),LocalTime.of(16,0),KakaoMapClient.Transport.PUBLIC_TRANSIT,90);
+        finish(transit);
+        // 여행지로 가는데 출발지를 비우면 두 안내 모두 출발지를 물어본다(외부 조회 없음).
+        var flashed=mvc.perform(post(draftUrl(transit)+"/bus-guide").session(session).with(csrf()).param("to","강릉"))
+            .andExpect(flash().attribute("busError",containsString("출발 도시나 터미널")))
+            .andExpect(flash().attribute("trainError",containsString("출발 도시나 역")))
+            .andReturn().getFlashMap();
+        session.removeAttribute(org.springframework.web.servlet.support.SessionFlashMapManager.class.getName()+".FLASH_MAPS");
+        mvc.perform(get(draftUrl(transit)).session(session).flashAttrs(flashed))
+            .andExpect(content().string(containsString("대중교통으로 가는 방법")))
+            .andExpect(content().string(containsString("data-transit-tabs")))
+            .andExpect(content().string(containsString("출발 도시나 역 이름을 적거나")));
+        // 기차 안내는 열차 종류별 요약으로 보여 주고, 여행 날짜 시간표가 없으면 오늘 기준이라고 알린다.
+        var today=LocalDate.now(ZoneId.of("Asia/Seoul"));
+        var guide=new com.travel.travel_recommendation.dto.TrainGuide("서울역","강릉","서울역","강릉역",today,today.plusDays(30),
+            List.of(new com.travel.travel_recommendation.dto.TrainGuide.Route("KTX-이음",18,"05:06","22:10",114,27600)),null);
+        mvc.perform(get(draftUrl(transit)).session(session).flashAttr("trainGuide",guide))
+            .andExpect(content().string(containsString("서울역 → 강릉역")))
+            .andExpect(content().string(containsString("하루 18회 · 첫차 05:06 · 막차 22:10 · 가장 빠른 소요 약 114분 · 어른 27,600원부터")))
+            .andExpect(content().string(containsString("오늘 기준으로 보여 드려요")));
+    }
 }
