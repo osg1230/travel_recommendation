@@ -12,10 +12,6 @@
 - 문서: 요구분석서 변경 내역(SFR-06-02·05·06), 화면 요구사항 추적표, 계획 문서에 구현 결과를 적었다. 요구분석서 DOCX 본문은 고치지 않았다.
 - 확인: 단위 `TrainClientTests` 3·`TrainGuideServiceTests` 5·`HomeTripServiceTests` 8(새 1)·버스·비행기·배 안내 테스트 통과. SQL Server `ItineraryRevisionIntegrationTests` 18(새 1: 버스·기차 동시 조회와 탭·기차 요약 렌더링) 통과. 전체 `clean verify` **746개 실행, 실패·오류 0, 건너뜀 14**(`TrainLiveTests` 포함), `BUILD SUCCESS`. 실제 TAGO 열차 API로 서울→부산·서울→강릉 오늘 시간표를 읽는 `TrainLiveTests`(`RUN_TAGO_TESTS=true`) 통과. 탭 전환·키보드 이동·375px 화면은 같은 마크업의 임시 화면으로 확인했다. 실제 일정에서 기차 시간이 쓰이는 흐름(카카오가 장거리 경로를 못 찾는 경우)은 실제 서버로 확인하지 않았다.
 
-기준일: 2026-11-03 | 프로젝트: travel_recommendation | 서비스 이름: 다녀올게
-
-작업 시작 시 이 요약과 Git 상태를 확인한다. 기능별 상세 구현·검증 기록은 [2026-09-22 정리 전 원문](progress-history/2026-09-22-before-cleanup.md)에 있으며, 과거 결정·검증 근거가 필요할 때 해당 부분만 읽는다.
-
 ## 2026-11-02 일정 수정 '빼기'가 나머지 일정을 유지 (`fix/remove-keeps-itinerary`, 데스크탑)
 
 - 배경: 사용자 요청으로 실제 서버에서 일정 수정을 눌러 보니, 강문해변 하나만 뺐는데 오죽헌·경포대가 빠지고 식당 3곳과 관광지 날짜까지 바뀌었다. 남는 시간에 더한 관광지가 예비 관광지로 밀린 뒤(예비가 `SPARE_KEPT` 이하라 쓰이지 않음) 일정을 처음부터 다시 배치했기 때문이다.
