@@ -86,6 +86,9 @@ class OpenAiItineraryClientTests {
         assertThat(client("key",Duration.ofSeconds(2)).assist(conditions(),plan(),null).placeReasons()).isEmpty();
         output("{\"summary\":\"안내\",\"days\":[{\"number\":1,\"advice\":\"안내\"}],\"places\":[{\"placeId\":10,\"activity\":\"몽룡실과 율곡기념관을 둘러보세요.\"}]}");
         assertThat(client("key",Duration.ofSeconds(2)).assist(conditions(),plan(),null).placeReasons()).containsEntry(10L,"몽룡실과 율곡기념관을 둘러보세요.");
+        // 한자·일본 문자가 섞인 문장도 버린다(2026-11-03 "木立 사이의 숲길").
+        output("{\"summary\":\"안내\",\"days\":[{\"number\":1,\"advice\":\"안내\"}],\"places\":[{\"placeId\":10,\"activity\":\"木立 사이의 숲길을 걸어 보세요.\"}]}");
+        assertThat(client("key",Duration.ofSeconds(2)).assist(conditions(),plan(),null).placeReasons()).isEmpty();
     }
     // 관광 항목에는 서버가 조회한 관광공사 소개문을 추천 활동의 근거로 보내고, 식사 항목은 활동을 받지 않아 소개문도 보내지 않는다.
     @Test void sendsOverviewsOnlyForVisitsAndAcceptsActivitiesOnlyForVisits() {

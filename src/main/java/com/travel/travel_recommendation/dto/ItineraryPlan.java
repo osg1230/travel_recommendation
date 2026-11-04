@@ -80,13 +80,23 @@ public final class ItineraryPlan {
         /**
          * AI가 정한 순서로 다시 고른 관광지·예비 관광지·저녁 관광 후보로 바꾼다. 고르기 전 후보는 더 쓰지 않으므로 비운다.
          * '다른 관광지로 다시 만들기'의 이전 초안 기록(previous·previousJobId)은 결과 화면의 비교에 쓰므로 그대로 둔다.
-         * night는 저녁 관광 후보 맨 앞에 둔 AI 밤 명소의 ID다.
+         * night는 저녁 관광 후보 맨 앞에 둔 AI 밤 명소의 ID, activities는 AI가 고른 관광지별 주된 활동이다.
          */
-        public Input withPicked(List<PlaceCandidate> attractions, List<PlaceCandidate> reserve, List<PlaceCandidate> evening, List<Long> night) {
+        public Input withPicked(List<PlaceCandidate> attractions, List<PlaceCandidate> reserve, List<PlaceCandidate> evening, List<Long> night,
+                                Map<Long, String> activities) {
             var view = new PlaceCandidateView(places.jobId(), places.destination(), places.durationDays(), places.accommodationNeeded(),
                 attractions, places.accommodations(), places.restaurants());
             return new Input(recommendationId, view, conditions, start, end, transport, visitMinutes, revision, constraints, reserve, evening, home, choices,
-                new Picking(List.of(), true, picking == null ? List.of() : picking.previous(), picking == null ? null : picking.previousJobId(), night));
+                new Picking(List.of(), true, picking == null ? List.of() : picking.previous(), picking == null ? null : picking.previousJobId(), night,
+                    activities));
+        }
+        public Input withPicked(List<PlaceCandidate> attractions, List<PlaceCandidate> reserve, List<PlaceCandidate> evening, List<Long> night) {
+            return withPicked(attractions, reserve, evening, night, Map.of());
+        }
+        /** 관광지의 주된 활동. AI가 고른 값이 없으면 분류 이름의 마지막 단계(예: 해변)를 쓴다. */
+        public String activityOf(PlaceCandidate place) {
+            String activity = picking == null ? null : picking.activities().get(place.placeId());
+            return activity != null ? activity : com.travel.travel_recommendation.service.TripConstraints.kind(place);
         }
         /** AI가 밤에 둘러보기 좋다고 꼽아 저녁 관광으로 아껴 둔 관광지 ID. 없으면 빈 목록이다. */
         public List<Long> nightPlaceIds() { return picking == null ? List.of() : picking.night(); }
@@ -139,11 +149,20 @@ public final class ItineraryPlan {
      * night는 AI가 낮보다 밤에 둘러보기 좋다고 꼽아 낮 일정에서 빼고 저녁 관광 후보 맨 앞에 둔 관광지 ID다(2026-10-31).
      * 일정 생성은 저녁 관광에서 이곳을 먼저 본다. 이전 JSON에는 없다.
      */
-    public record Picking(List<PlaceCandidate> pool, boolean byAi, List<Long> previous, UUID previousJobId, List<Long> night) {
+    /**
+     * activities는 관광지 ID별로 AI가 고른 주된 활동(예: 걷기·풍경)이다(2026-11-03). 일정 생성은 이 값으로 같은 활동이 이어지거나
+     * 하루에 몰리지 않게 하고, 값이 없는 곳은 분류 이름(TripConstraints.kind)으로 본다. 이전 JSON에는 없다.
+     */
+    public record Picking(List<PlaceCandidate> pool, boolean byAi, List<Long> previous, UUID previousJobId, List<Long> night,
+                          Map<Long, String> activities) {
         public Picking {
             pool = pool == null ? List.of() : List.copyOf(pool);
             previous = previous == null ? List.of() : List.copyOf(previous);
             night = night == null ? List.of() : List.copyOf(night);
+            activities = activities == null ? Map.of() : Map.copyOf(activities);
+        }
+        public Picking(List<PlaceCandidate> pool, boolean byAi, List<Long> previous, UUID previousJobId, List<Long> night) {
+            this(pool, byAi, previous, previousJobId, night, null);
         }
         public Picking(List<PlaceCandidate> pool, boolean byAi, List<Long> previous, UUID previousJobId) { this(pool, byAi, previous, previousJobId, null); }
         public Picking(List<PlaceCandidate> pool, boolean byAi, List<Long> previous) { this(pool, byAi, previous, null); }
@@ -209,9 +228,18 @@ public final class ItineraryPlan {
      * choiceNotices는 원래 고른 식당·숙소를 지금 다시 확인하지 못해 다른 곳으로 고른 경우의 안내 문장이다.
      * 이 값이 생기기 전의 작업 JSON에는 없으므로 null이면 빈 목록으로 본다.
      */
+    /**
+     * keptDays는 관광지를 빼기만 한 수정안에서 날짜별로 그대로 둘 일정이다(2026-11-02). 관광지를 뺐다고 다른 날의 일정까지 바뀌지 않게 한다.
+     * 다른 수정안과 이 값이 생기기 전의 작업 JSON에는 없으며(null), 그때는 일정을 처음부터 다시 배치한다.
+     */
     public record Revision(UUID sourceJobId, List<PlaceRef> kept, List<PlaceRef> replaced, List<PlaceRef> added,
                            String reason, Instant requestedAt, String request, String explanation, List<String> unavailablePlaces,
-                           List<String> choiceNotices) {
+                           List<String> choiceNotices, List<KeptDay> keptDays) {
+        public Revision(UUID sourceJobId, List<PlaceRef> kept, List<PlaceRef> replaced, List<PlaceRef> added,
+                        String reason, Instant requestedAt, String request, String explanation, List<String> unavailablePlaces,
+                        List<String> choiceNotices) {
+            this(sourceJobId, kept, replaced, added, reason, requestedAt, request, explanation, unavailablePlaces, choiceNotices, null);
+        }
         public Revision(UUID sourceJobId, List<PlaceRef> kept, List<PlaceRef> replaced, List<PlaceRef> added,
                         String reason, Instant requestedAt, String request, String explanation, List<String> unavailablePlaces) {
             this(sourceJobId, kept, replaced, added, reason, requestedAt, request, explanation, unavailablePlaces, null);
@@ -227,7 +255,11 @@ public final class ItineraryPlan {
         }
         public List<String> missingPlaces() { return unavailablePlaces == null ? List.of() : unavailablePlaces; }
         public List<String> choiceChanges() { return choiceNotices == null ? List.of() : choiceNotices; }
+        /** n일차에 그대로 둘 일정. 없으면 null이다. */
+        public KeptDay keptDay(int day) { return keptDays == null || day > keptDays.size() ? null : keptDays.get(day - 1); }
     }
+    /** 빼기 수정안에서 하루에 그대로 둘 낮 관광지·식당(둘 다 방문 순서대로)과 저녁 관광(없으면 null)이다. */
+    public record KeptDay(List<Long> visits, List<Long> meals, Long evening) {}
     public record Item(String type, Long placeId, String name, LocalTime start, LocalTime end,
                        String note, String mapUrl, String sourceUrl, Integer travelSeconds, Instant checkedAt) {
         /** 화면용 조회 시각(한국 시간, 분 단위). 저장 JSON에는 들어가지 않는다. */

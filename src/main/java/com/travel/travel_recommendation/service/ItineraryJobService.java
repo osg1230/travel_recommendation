@@ -497,9 +497,14 @@ public class ItineraryJobService {
         var added=spare.subList(0,add==null?need:add.size());
         // 원본이 남는 시간에 더 넣은 관광지는 '유지해야 하는 곳'으로 묶지 않고 예비 관광지 맨 앞에 둔다.
         // 하루 시간이 남으면 다시 들어가고, 시간을 줄인 수정안에서는 빠진다.
+        // 관광지를 빼기만 하는 수정안은 나머지 일정을 날짜·순서 그대로 두므로, 남는 시간에 더 넣은 곳까지 모두 유지한다(2026-11-02).
+        boolean removeOnly=!changes.remove().isEmpty() && need==0 && add==null && start.equals(original.start()) && end.equals(original.end())
+            && visitMinutes==original.visitMinutes() && (changes.transport()==null || changes.transport()==original.transport())
+            && (changes.choices()==null || changes.choices().equals(original.choices()));
+        var keptDays=removeOnly?keptDays(originalResult,placed,chosen):null;
         var firm=firmPlaceIds(original);
         var keptFirm=kept.stream().filter(p->firm.contains(p.placeId())).toList();
-        if(keptFirm.isEmpty()) keptFirm=kept;
+        if(keptFirm.isEmpty() || keptDays!=null) keptFirm=kept;
         final var keptIds=keptFirm.stream().map(PlaceCandidate::placeId).toList();
         var extras=kept.stream().filter(p->!keptIds.contains(p.placeId())).toList();
         var attractions=new ArrayList<>(keptFirm); attractions.addAll(added);
@@ -514,6 +519,9 @@ public class ItineraryJobService {
         String region=pool.destination().region();
         var choiceNotices=new ArrayList<String>();
         var restaurants=new ArrayList<>(pool.restaurants());
+        // 그대로 둘 식당이 후보 목록(개수 제한) 밖이면 지금도 확인된 장소인지 다시 읽어 넣는다. 확인하지 못한 식당만 다른 곳으로 고른다.
+        if(keptDays!=null) for(var day:keptDays) for(Long id:day.meals())
+            if(findPlace(restaurants,id)==null) candidates.usableRestaurant(id,region).ifPresent(restaurants::add);
         var prefer=new ArrayList<Long>();
         for(Long id:choices.preferRestaurants()) {
             var before=findPlace(original.places().restaurants(),id);
@@ -538,7 +546,7 @@ public class ItineraryJobService {
             pool.accommodationNeeded(),List.copyOf(attractions),List.copyOf(stays),List.copyOf(restaurants));
         var revision=new Revision(sourceId,refs(keptFirm),refs(placed.stream().filter(p->chosen.contains(p.placeId())).toList()),
             refs(added),chosen.isEmpty() && reason!=ReplaceReason.AI_REQUEST?null:reason.name(),Instant.now(),request,explanation,
-            List.copyOf(unavailable),List.copyOf(choiceNotices));
+            List.copyOf(unavailable),List.copyOf(choiceNotices),keptDays);
         // 새로 넣지 않고 남은 후보는 이 수정안의 예비 관광지로 둔다.
         var spareLeft=new ArrayList<>(extras);
         // 관광지를 뺀 수정안은 빈 시간을 다른 예비 관광지로 다시 채우지 않는다(뺀 자리는 자유 시간으로 남는다).
@@ -1017,6 +1025,26 @@ public class ItineraryJobService {
             source.revision().added().forEach(p->ids.add(p.placeId()));
         }
         return ids;
+    }
+
+    /**
+     * 관광지를 뺀 뒤 날짜별로 그대로 둘 일정. placed는 낮 관광지라, 방문 중 여기에 없는 곳은 저녁 관광이다.
+     * 관광지가 하나도 남지 않는 날이 있으면 다른 날에서 옮겨 와야 하므로 null이다(그때는 일정을 처음부터 다시 배치한다).
+     */
+    private static List<KeptDay> keptDays(Result result,List<PlaceCandidate> placed,Set<Long> removed) {
+        Set<Long> daytime=new HashSet<>(); placed.forEach(p->daytime.add(p.placeId()));
+        var days=new ArrayList<KeptDay>();
+        for(var day:result.days()) {
+            var visits=new ArrayList<Long>(); var meals=new ArrayList<Long>(); Long evening=null;
+            for(var item:day.items()) {
+                if("MEAL".equals(item.type())) meals.add(item.placeId());
+                else if("VISIT".equals(item.type()) && !daytime.contains(item.placeId())) evening=item.placeId();
+                else if("VISIT".equals(item.type()) && !removed.contains(item.placeId())) visits.add(item.placeId());
+            }
+            if(visits.isEmpty()) return null;
+            days.add(new KeptDay(List.copyOf(visits),List.copyOf(meals),evening));
+        }
+        return List.copyOf(days);
     }
 
     /** 초안에 실제로 배치된 관광지. 시간이 부족하거나 너무 멀어 빠진 관광지(skipped)는 유지·교체 대상에서 뺀다. */
