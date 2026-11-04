@@ -83,6 +83,7 @@
 - `ai_jobs.request_json`(ITINERARY)에 두 키를 더했다. 예전 JSON에 없으면 각각 null과 빈 목록으로 읽는다.
   - `picking.previousJobId`: '다른 관광지로 다시 만들기'로 만든 초안이 가리키는 이전 초안 ID다. 결과 화면이 이전 초안 링크와 비교를 보여 줄 때 쓴다.
   - `revision.choiceNotices`: 수정안에서 고른 식당·숙소를 지금 다시 확인하지 못해 다른 곳으로 바꿨다는 안내다.
+  - `revision.keptDays`(2026-11-02): 관광지를 빼기만 한 수정안에서 날짜별로 그대로 둘 낮 관광지·식당(순서대로)·저녁 관광이다. 다른 수정안과 예전 JSON에는 없으며(null) 그때는 일정을 처음부터 다시 배치한다.
 - `ai_jobs.error_code`
   - `AI_REASON_SKIPPED`: 추천 작업이 COMPLETED이면서 이 값을 가질 수 있다. AI 순위가 실패해 사용자가 'AI 추천 이유 없이 계속하기'를 고른 경우다.
   - 일정 작업이 앞선 요청을 기다리다 대기 제한(5분)에 걸리면 `TIMEOUT`이다. 전에는 생성 후 2분이 지나면 `SCHEDULE_UNAVAILABLE`이었다.

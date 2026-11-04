@@ -157,7 +157,18 @@ public class ItineraryGenerator {
             final int today=day;
             PlaceCandidate dayCenter=day<=centers.size()?centers.get(day-1):null;
             boolean centerTried=false; Set<Long> skipToday=new HashSet<>(); int misses=0;
-            while(misses<MAX_MISSES) {
+            // 관광지를 빼기만 한 수정안은 그날 가기로 했던 곳을 같은 순서로 다시 넣는다. 시간·운영시간이 맞지 않으면 아래에서 평소처럼 고른다.
+            var keptVisits=keptVisits(input,day,remaining);
+            boolean keptOrder=false;
+            if(!keptVisits.isEmpty()) {
+                var mark=builder.mark();
+                keptOrder=placeInOrder(builder,keptVisits,stay,dinnerDay,p->visitNote(input,p,null,centers.contains(p),chosenCenters.contains(p),null));
+                if(keptOrder) {
+                    remaining.removeAll(keptVisits); placed.addAll(keptVisits);
+                    visits=keptVisits.size(); last=keptVisits.getLast(); lastKind=TripConstraints.kind(last);
+                } else builder.reset(mark);
+            }
+            while(!keptOrder && misses<MAX_MISSES) {
                 // 오늘 몫을 다 넣었거나 남은 관광지가 오늘 시간에 들어가지 않으면, 하루 시간이 남는 한 예비 관광지 중 가까운 곳을 더 넣는다.
                 boolean spare=visits>=target || remaining.stream().allMatch(p->skipToday.contains(p.placeId()));
                 if(spare && (!fillSpareTime || visits==0)) break;
@@ -237,7 +248,7 @@ public class ItineraryGenerator {
             if(visits==0) throw routeError!=null?routeError:failure("INSUFFICIENT_PLACES",day+"일차에 넣을 관광지가 부족해요. 여행 기간을 줄이거나 장소 목록에서 후보를 더 찾아 주세요.");
             // 그날 넣을 관광지를 정한 뒤, 같은 곳들을 더 짧게 도는 순서가 있으면 그 순서로 다시 넣어 본다(2026-10-31).
             // 가까운 곳부터 이어 고르면 남쪽 → 북쪽 → 다시 남쪽처럼 오갈 수 있기 때문이다. 시간·운영시간이 맞지 않으면 처음 순서를 쓴다.
-            var shorter=shorterOrder(placed,previous,stay,locations);
+            var shorter=keptOrder?null:shorterOrder(placed,previous,stay,locations);
             if(shorter!=null) {
                 boolean mapWasDown=routes.mapDown;
                 var other=new DayBuilder(input,locations,routes,deadline,previous,day,new HashSet<>(restaurantsBefore),foods);
@@ -356,6 +367,18 @@ public class ItineraryGenerator {
         }
     }
 
+    /** 빼기 수정안에서 n일차에 그대로 둘 일정. 다른 초안이면 null이다. */
+    private static KeptDay keptDay(Input input,int day) {
+        return input.revision()==null?null:input.revision().keptDay(day);
+    }
+
+    /** 빼기 수정안에서 그날 그대로 둘 낮 관광지 중 아직 넣지 않은 곳을 원래 순서대로 돌려준다. */
+    private static List<PlaceCandidate> keptVisits(Input input,int day,List<PlaceCandidate> remaining) {
+        var kept=keptDay(input,day);
+        if(kept==null) return List.of();
+        return kept.visits().stream().flatMap(id->remaining.stream().filter(p->p.placeId().equals(id))).toList();
+    }
+
     /**
      * 그날 넣은 관광지를 직선거리로 더 짧게 도는 순서(DayRoute). 하루는 시작점(전날 숙소)에서 출발하고, 숙박하는 날은 숙소에서 끝난다.
      * 같은 종류가 바로 이어지는 구간은 두 배로 쳐서, 가까운 곳을 고를 때의 '종류 섞기'(SAME_KIND_PENALTY)와 맞춘다.
@@ -421,6 +444,13 @@ public class ItineraryGenerator {
         var all=allowed.isEmpty()?builder.input.places().restaurants():allowed;
         var meals=all.stream().filter(p->!PlaceCandidate.notForMeals(p.subtype())).toList();
         var restaurants=meals.isEmpty()?all:meals;
+        // 빼기 수정안은 그날 먹기로 했던 식당을 같은 순서로 쓴다. 이미 쓴 곳을 건너뛰면 다음 끼니의 식당이 된다.
+        var kept=keptDay(builder.input,builder.day);
+        if(kept!=null) for(Long id:kept.meals()) {
+            if(builder.usedRestaurants.contains(id)) continue;
+            var same=all.stream().filter(p->p.placeId().equals(id)).findFirst();
+            if(same.isPresent()) return same.get();
+        }
         var fresh=restaurants.stream().filter(p->!builder.usedRestaurants.contains(p.placeId())).toList();
         var from=builder.locations.get(after.placeId());
         var to=toward==null || toward.equals(after)?null:builder.locations.get(toward.placeId());
@@ -571,6 +601,9 @@ public class ItineraryGenerator {
             try { builder.locations.computeIfAbsent(place.placeId(),id->locate(place,addresses)); choices.add(place); }
             catch(RecommendationException error) { if("SCHEDULE_TIMEOUT".equals(error.getCode())) throw error; }
         }
+        // 빼기 수정안은 그날의 저녁 관광을 그대로 둔다. 원래 저녁 관광이 없던 날에 새로 넣지 않는다.
+        var kept=keptDay(builder.input,builder.day);
+        if(kept!=null) choices.removeIf(p->!p.placeId().equals(kept.evening()));
         // AI가 밤에 둘러보기 좋다고 꼽아 낮 일정에서 뺀 곳(2026-10-31)을 먼저 보고, 그다음 가까운 곳을 본다. 오가는 시간이 길면 다음 후보로 넘어간다.
         var night=Set.copyOf(builder.input.nightPlaceIds());
         choices.sort(Comparator.<PlaceCandidate>comparingInt(p->night.contains(p.placeId())?0:1)
@@ -1097,10 +1130,10 @@ public class ItineraryGenerator {
         LocalTime limit;
         /** 그날 관광을 마치는 시각. 마지막 날 귀가 시각을 정했으면 집에 제때 도착하도록 앞당겨진다. */
         final LocalTime end;
-        final LocalDate date; final Set<Long> usedRestaurants; final Optional<RegionalFoods.Guide> foods;
+        final int day; final LocalDate date; final Set<Long> usedRestaurants; final Optional<RegionalFoods.Guide> foods;
         DayBuilder(Input input,Map<Long,KakaoMapClient.Location> locations,RouteBook routes,Instant deadline,
                    PlaceCandidate previous,int day,Set<Long> usedRestaurants,Optional<RegionalFoods.Guide> foods) {
-            this.input=input; this.locations=locations; this.routes=routes; this.deadline=deadline; this.previous=previous;
+            this.input=input; this.locations=locations; this.routes=routes; this.deadline=deadline; this.previous=previous; this.day=day;
             time=input.dayStart(day); end=input.dayEnd(day); limit=end;
             date=input.conditions().startDate()==null?null:input.conditions().startDate().plusDays(day-1);
             this.usedRestaurants=usedRestaurants; this.foods=foods;
