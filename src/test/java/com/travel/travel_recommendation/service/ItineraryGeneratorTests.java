@@ -583,6 +583,14 @@ class ItineraryGeneratorTests {
         assertThat(ItineraryGenerator.tooMany(input,two,beachB)).isFalse();
         // 활동을 고르지 않은 일정은 이 기준을 쓰지 않는다.
         assertThat(ItineraryGenerator.tooMany(new Input(base.recommendationId(),pool,base.conditions(),base.start(),base.end(),base.transport(),60),two,view)).isFalse();
+        // 바다 취향을 고르면 걷기·풍경은 하루 3곳까지 넣는다(2026-11-05). 취향과 맞지 않는 활동은 그대로 2곳이다.
+        var sea=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,1),1,null,2,false,false,
+            List.of(new TravelKeyword(1L,"THEME","바다",null)),"");
+        var seaInput=new Input(base.recommendationId(),pool,sea,base.start(),base.end(),base.transport(),60)
+            .withPicking(new Picking(List.of(),true,List.of(),null,List.of(),Map.of(1L,"걷기·풍경",4L,"걷기·풍경",3L,"체험·놀이")));
+        assertThat(ItineraryGenerator.tooMany(seaInput,two,view)).isFalse();
+        assertThat(ItineraryGenerator.tooMany(seaInput,Map.of("걷기·풍경",3L),view)).isTrue();
+        assertThat(ItineraryGenerator.tooMany(seaInput,Map.of("체험·놀이",2L),beachB)).isTrue();
     }
     // 필수 방문 장소는 시간이 부족해도 빼지 않고, 어느 장소 때문인지 알린다.
     @Test void requiredPlaceThatDoesNotFitFailsWithItsName() {
