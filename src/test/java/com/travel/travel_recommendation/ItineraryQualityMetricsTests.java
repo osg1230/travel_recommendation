@@ -38,4 +38,22 @@ class ItineraryQualityMetricsTests {
         assertThat(measured.idleMinutes()).containsExactly(240);
         assertThat(measured.days()).singleElement().asString().startsWith("1일차: A → C → B");
     }
+
+    // 일정에 3곳을 넣었는데 고른 순서의 앞 3곳(1·2·3) 중 1·3만 들어갔으면 2/3이다.
+    @Test void measuresAiTopShare() {
+        assertThat(ItineraryQualityReportTests.aiTopShare(List.of(1L, 2L, 3L, 4L, 5L), List.of(1L, 3L, 5L))).isCloseTo(2 / 3.0, within(0.001));
+        assertThat(ItineraryQualityReportTests.aiTopShare(List.of(1L, 2L), List.of(2L, 1L))).isEqualTo(1.0);
+        assertThat(ItineraryQualityReportTests.aiTopShare(List.of(), List.of())).isEqualTo(0.0);
+    }
+
+    // 취향 하나면 맞는 관광지 비율, 둘이면 취향별 수가 고른지 본다(바다 3·문화 1이면 1 - (|0.75-0.5|+|0.25-0.5|)/2 = 0.75).
+    @Test void measuresThemeBalance() {
+        Map<Long, String> activities = Map.of(1L, "걷기·풍경", 2L, "걷기·풍경", 3L, "걷기·풍경", 4L, "역사·문화", 5L, "체험·놀이");
+        var visited = List.of(1L, 2L, 3L, 4L, 5L);
+        assertThat(ItineraryQualityReportTests.themeBalance(List.of("바다"), activities, visited)).isCloseTo(0.6, within(0.001));
+        assertThat(ItineraryQualityReportTests.themeBalance(List.of("바다", "문화·역사"), activities, visited)).isCloseTo(0.75, within(0.001));
+        assertThat(ItineraryQualityReportTests.themeBalance(List.of("바다", "문화·역사"), activities, List.of(1L, 4L))).isEqualTo(1.0);
+        assertThat(ItineraryQualityReportTests.themeBalance(List.of(), activities, visited)).isNull();
+        assertThat(ItineraryQualityReportTests.themeBalance(List.of("맛집", "휴식"), activities, visited)).isNull();
+    }
 }

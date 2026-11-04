@@ -62,23 +62,29 @@ class ItineraryQualityReportTests {
     @Autowired EntityManager em;
     @Autowired JdbcTemplate jdbc;
 
-    /** 측정 시나리오. theme은 여행 취향 키워드 이름이고 없으면 null이다. */
-    record Scenario(String name, String destination, int days, String theme) {}
+    /** 측정 시나리오. themes는 여행 취향 키워드 이름들이고 없으면 빈 목록이다. */
+    record Scenario(String name, String destination, int days, List<String> themes) {}
     static final List<Scenario> SCENARIOS = List.of(
-        new Scenario("강릉 1박 2일", "강릉", 2, null),
-        new Scenario("강릉 1박 2일·바다", "강릉", 2, "바다"),
-        new Scenario("경주 1박 2일·문화·역사", "경주", 2, "문화·역사"),
-        new Scenario("부산 2박 3일", "부산", 3, null),
-        new Scenario("전주 당일", "전주", 1, null),
-        new Scenario("제주 2박 3일·자연", "제주", 3, "자연"));
+        new Scenario("강릉 1박 2일", "강릉", 2, List.of()),
+        new Scenario("강릉 1박 2일·바다", "강릉", 2, List.of("바다")),
+        new Scenario("경주 1박 2일·문화·역사", "경주", 2, List.of("문화·역사")),
+        new Scenario("부산 2박 3일", "부산", 3, List.of()),
+        new Scenario("전주 당일", "전주", 1, List.of()),
+        new Scenario("제주 2박 3일·자연", "제주", 3, List.of("자연")),
+        // 취향 2개 시나리오(2026-11-05 추가). 취향 비율 맞추기(개선 계획 3단계)가 필요한지 본다.
+        new Scenario("부산 2박 3일·바다·문화·역사", "부산", 3, List.of("바다", "문화·역사")));
     /** 출발일은 같은 계절(가을 주말)로 고정해 실행하는 날에 따라 계절 판단이 바뀌지 않게 한다. */
     static final LocalDate START = LocalDate.of(2026, 11, 14);
 
     /** official은 관광공사 등록 여부이고, 관광공사 조회에 실패하면 null이다. */
-    record Visit(String name, String kind, Boolean official, Double longitude, Double latitude) {}
-    /** aiOrdered는 GPT가 관광지 순서를 정했는지다. false면 GPT 응답 실패 등으로 서버 규칙 순서를 썼다. */
+    record Visit(long placeId, String name, String kind, Boolean official, Double longitude, Double latitude) {}
+    /**
+     * aiOrdered는 GPT가 관광지 순서를 정했는지다. false면 GPT 응답 실패 등으로 서버 규칙 순서를 썼다.
+     * aiOrder는 관광지 후보를 고른 순서(GPT 순서 또는 서버 규칙 순서), activities는 GPT가 고른 장소별 주된 활동이다.
+     */
     record Draft(UUID id, List<Visit> visits, int dailyMoveMinutes, int longestMoveMinutes, boolean aiOrdered,
-                 int meals, int popularMeals, int stays, int popularStays, Arrangement arrangement) {}
+                 int meals, int popularMeals, int stays, int popularStays, Arrangement arrangement,
+                 List<Long> aiOrder, Map<Long, String> activities) {}
     /** 배치 지표. routeRatios·idleMinutes는 날마다, mealDetours는 끼니마다 하나씩이고, days는 보고서에 적을 날짜별 동선이다. */
     record Arrangement(int minVisit, int maxVisit, List<Double> routeRatios, List<Double> mealDetours, List<Integer> idleMinutes, List<String> days) {}
     record Measured(Scenario scenario, int candidateCount, Map<String, Long> candidateKinds, Draft first, Draft second, String error) {}
@@ -102,7 +108,7 @@ class ItineraryQualityReportTests {
     private Measured measure(Scenario s) throws Exception {
         String token = UUID.randomUUID().toString();
         byte[] hash = MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8));
-        var keywords = s.theme() == null ? List.<TravelKeyword>of() : List.of(theme(s.theme()));
+        var keywords = s.themes().stream().map(this::theme).toList();
         var conditions = new ConfirmedTravelConditions("KEYWORD", "", s.destination(), START, START.plusDays(s.days() - 1),
             s.days(), null, 2, s.days() > 1, false, keywords, "", false, null);
         // 여행지 추천(GPT 순위)은 측정 대상이 아니라서 건너뛰고, 시나리오의 여행지를 추천 결과로 바로 둔다.
@@ -158,12 +164,50 @@ class ItineraryQualityReportTests {
             }
             if (!"VISIT".equals(item.type()) || item.placeId() == null) continue;
             var place = places.findById(item.placeId()).orElseThrow();
-            visits.add(new Visit(place.getName(), TripConstraints.kind(candidates.candidate(place)), official(place),
+            visits.add(new Visit(place.getId(), place.getName(), TripConstraints.kind(candidates.candidate(place)), official(place),
                 place.getLongitude() == null ? null : place.getLongitude().doubleValue(),
                 place.getLatitude() == null ? null : place.getLatitude().doubleValue()));
         }
         return new Draft(id, visits, moveSeconds / 60 / result.days().size(), longestSeconds / 60, aiOrdered,
-            meals, popularMeals, stays.size(), popularStays.size(), arrangement(input, result));
+            meals, popularMeals, stays.size(), popularStays.size(), arrangement(input, result),
+            // 고른 순서: 일정에 넣으려고 고른 관광지(AI 순서로 줄 세움) 다음에 예비 관광지를 잇는다.
+            java.util.stream.Stream.concat(input.places().attractions().stream(), input.reserve().stream()).map(PlaceCandidate::placeId).toList(),
+            picking == null ? Map.of() : picking.activities());
+    }
+
+    /**
+     * AI 상위 후보 반영률(2026-11-05 추가, 개선 계획 0단계). 일정에 넣은 관광지 수가 n이면, 고른 순서의 앞 n곳 가운데 일정에 들어간 비율이다.
+     * 1.0이면 AI가 앞에 둔 곳을 모두 썼다는 뜻이고, 낮으면 거리 위주 배치로 뒤쪽 후보가 대신 들어갔다는 뜻이다.
+     */
+    static double aiTopShare(List<Long> order, Collection<Long> visited) {
+        var used = new HashSet<>(visited);
+        int n = Math.min(used.size(), order.size());
+        if (n == 0) return 0;
+        return order.subList(0, n).stream().filter(used::contains).count() / (double) n;
+    }
+
+    /** 여행 취향과 GPT가 고른 주된 활동의 대응. 활동 정보가 없는 장소는 어느 취향에도 세지 않는다. */
+    static final Map<String, Set<String>> THEME_ACTIVITIES = Map.of(
+        "바다", Set.of("걷기·풍경"), "자연", Set.of("걷기·풍경"), "휴식", Set.of("휴식·온천"),
+        "맛집", Set.of("시장·먹거리"), "문화·역사", Set.of("역사·문화", "관람·전시"), "체험·액티비티", Set.of("체험·놀이"));
+
+    /**
+     * 취향 비율 일치도(2026-11-05 추가). 고른 취향마다 그 취향에 맞는 활동의 관광지 수를 세고, 취향끼리 같은 비율(1/k)과의 차이로 점수를 낸다.
+     * 1 - (각 취향 비율과 1/k의 차이 합) / 2 이며, 1.0이면 취향끼리 고르게 담겼다는 뜻이다. 취향이 하나면 그 취향에 맞는 관광지 비율이다.
+     * 취향이 없거나 맞는 관광지가 하나도 없으면 null이다.
+     */
+    static Double themeBalance(List<String> themes, Map<Long, String> activities, List<Long> visited) {
+        if (themes.isEmpty() || visited.isEmpty()) return null;
+        if (themes.size() == 1) {
+            var wanted = THEME_ACTIVITIES.getOrDefault(themes.getFirst(), Set.of());
+            return visited.stream().filter(id -> wanted.contains(activities.get(id))).count() / (double) visited.size();
+        }
+        List<Long> counts = themes.stream().map(t -> visited.stream()
+            .filter(id -> THEME_ACTIVITIES.getOrDefault(t, Set.of()).contains(activities.get(id))).count()).toList();
+        long total = counts.stream().mapToLong(Long::longValue).sum();
+        if (total == 0) return null;
+        double gap = counts.stream().mapToDouble(c -> Math.abs(c / (double) total - 1.0 / themes.size())).sum();
+        return 1 - gap / 2;
     }
 
     /** 배치 지표를 잰다. 저녁 관광(숙소 도착 뒤)은 낮 동선·체류시간에서 뺀다. */
@@ -303,6 +347,22 @@ class ItineraryQualityReportTests {
                 .append(" | ").append(m.first().popularMeals()).append("/").append(m.first().meals())
                 .append(" | ").append(m.first().stays() == 0 ? "-" : m.first().popularStays() + "/" + m.first().stays()).append(" |\n");
         }
+        // 개선 계획(2026-11-03) 0단계에서 더한 지표. 다음 장소 고르기를 바꾸면 올라야 하는 값이다.
+        out.append("\n### 가치 지표 (첫 초안·두 번째 초안)\n\n")
+            .append("| 시나리오 | 취향 | AI 상위 후보 반영률 | 취향 비율 일치도 | 활동 분포 |\n")
+            .append("|---|---|---|---|---|\n");
+        for (var m : measured) {
+            if (m.error() != null) continue;
+            out.append("| ").append(m.scenario().name())
+                .append(" | ").append(m.scenario().themes().isEmpty() ? "-" : String.join("·", m.scenario().themes()))
+                .append(" | ").append(percent(aiTopShare(m.first().aiOrder(), ids(m.first())))).append(" / ").append(percent(aiTopShare(m.second().aiOrder(), ids(m.second()))))
+                .append(" | ").append(percent(themeBalance(m.scenario().themes(), m.first().activities(), ids(m.first()))))
+                .append(" / ").append(percent(themeBalance(m.scenario().themes(), m.second().activities(), ids(m.second()))))
+                .append(" | ").append(activityText(m.first())).append(" |\n");
+        }
+        out.append("\nAI 상위 후보 반영률은 일정 관광지 수가 n일 때 고른 순서(AI 순서로 줄 세운 선택 + 예비)의 앞 n곳 중 일정에 들어간 비율이다. ")
+            .append("취향 비율 일치도는 취향이 하나면 그 취향에 맞는 활동(GPT가 고른 주된 활동 기준)의 관광지 비율, ")
+            .append("둘 이상이면 취향별 관광지 수가 고른지(1.0이면 같은 비율)다. 활동 분포는 첫 초안 관광지의 GPT 활동이다.\n");
         out.append("\n공식 관광지는 관광공사 이름 검색 결과가 1km 안에 있는지로 판단해, 이름이 크게 다르면 등록된 곳도 빠질 수 있다(개선 전후 같은 기준). ")
             .append("괄호 안 '확인 못 함'은 관광공사 조회 실패 수다. 관광지 분포는 일정 관광지 중 서로 가장 먼 두 곳의 직선거리다. ")
             .append("AI 순서는 첫/두 번째 초안에서 GPT가 관광지 순서를 정했는지이며, 실패하면 서비스처럼 서버 규칙 순서로 만들었다. ")
@@ -335,6 +395,16 @@ class ItineraryQualityReportTests {
         var file = folder.resolve("itinerary-quality-" + now.format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")) + ".md");
         Files.writeString(file, out.toString(), StandardCharsets.UTF_8);
         return file;
+    }
+
+    private static List<Long> ids(Draft draft) { return draft.visits().stream().map(Visit::placeId).toList(); }
+
+    private static String percent(Double value) { return value == null ? "-" : Math.round(value * 100) + "%"; }
+
+    private static String activityText(Draft draft) {
+        var counts = draft.visits().stream().collect(Collectors.groupingBy(v -> draft.activities().getOrDefault(v.placeId(), "정보 없음"),
+            TreeMap::new, Collectors.counting()));
+        return counts.entrySet().stream().map(e -> e.getKey() + " " + e.getValue()).collect(Collectors.joining(", "));
     }
 
     private static double average(List<Double> values) {
