@@ -564,6 +564,26 @@ class ItineraryGeneratorTests {
             .doesNotContain("고른 이유");
         generator.validate(input,result);
     }
+    // AI가 활동을 고른 일정은 분류 대신 활동으로 같은 종류를 본다(2026-11-03). 해변A와 전망대가 모두 '걷기·풍경'이면
+    // 전망대가 다른 분류여도 이어서 가지 않고, 해변B를 '체험·놀이'로 본 경우 가까운 해변B를 먼저 간다.
+    @Test void aiActivitiesDecideWhatCountsAsTheSameKind() {
+        var beachA=new PlaceCandidate(1L,"해변A","강원 강릉시 경포로 1","여행 > 관광,명소 > 해수욕장,해변","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var beachB=new PlaceCandidate(3L,"해변B","강원 강릉시 경포로 3","여행 > 관광,명소 > 해수욕장,해변","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var view=new PlaceCandidate(4L,"전망대","강원 강릉시 경포로 4","여행 > 관광,명소 > 전망대","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var base=input(1,LocalTime.of(18,0));
+        var pool=new PlaceCandidateView(base.places().jobId(),base.places().destination(),1,false,
+            List.of(beachA,beachB,view),List.of(),List.of(place(30)));
+        var input=new Input(base.recommendationId(),pool,base.conditions(),base.start(),base.end(),base.transport(),60)
+            .withPicking(new Picking(List.of(),true,List.of(),null,List.of(),Map.of(1L,"걷기·풍경",4L,"걷기·풍경",3L,"체험·놀이")));
+        var result=generator.generate(input);
+        assertThat(result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).map(Item::placeId)).containsExactly(1L,3L,4L);
+        // 그날 같은 활동을 2곳 넣었으면 그 활동은 다른 곳이 없을 때만 고른다.
+        var two=Map.of("걷기·풍경",2L);
+        assertThat(ItineraryGenerator.tooMany(input,two,view)).isTrue();
+        assertThat(ItineraryGenerator.tooMany(input,two,beachB)).isFalse();
+        // 활동을 고르지 않은 일정은 이 기준을 쓰지 않는다.
+        assertThat(ItineraryGenerator.tooMany(new Input(base.recommendationId(),pool,base.conditions(),base.start(),base.end(),base.transport(),60),two,view)).isFalse();
+    }
     // 필수 방문 장소는 시간이 부족해도 빼지 않고, 어느 장소 때문인지 알린다.
     @Test void requiredPlaceThatDoesNotFitFailsWithItsName() {
         var base=input(1,LocalTime.of(13,0));

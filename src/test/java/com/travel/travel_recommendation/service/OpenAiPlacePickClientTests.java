@@ -63,7 +63,7 @@ class OpenAiPlacePickClientTests {
         assertThat(body.path("model").asText()).isEqualTo("gpt-4.1-mini");
         assertThat(body.path("store").booleanValue()).isFalse();
         assertThat(body.path("reasoning").path("effort").asText()).isEqualTo("none");
-        assertThat(body.path("max_output_tokens").intValue()).isEqualTo(1500);
+        assertThat(body.path("max_output_tokens").intValue()).isEqualTo(3000);
     }
 
     // 비슷한 조건 회원 기록이 있는 관광지에만 회원 수를 붙여 보낸다.
@@ -92,6 +92,26 @@ class OpenAiPlacePickClientTests {
         assertThat(pick().night()).isEmpty();
         // 응답 형식에 night를 넣어 요청하고, 밤에 문을 닫는 곳은 적지 말라고 알린다.
         assertThat(request.get()).contains("\"night\"").contains("야경");
+    }
+
+    // 활동은 정해진 이름만 받고, 모르는 ID·이름은 버린다. 응답 형식에 activities·sameGroups를 넣어 요청한다.
+    @Test void readsActivitiesWithKnownNamesOnly() {
+        output("{\"order\":[4,1,2],\"skip\":[3],\"activities\":[{\"placeId\":4,\"activity\":\"걷기·풍경\"},"
+            +"{\"placeId\":2,\"activity\":\"역사·문화\"},{\"placeId\":1,\"activity\":\"수영\"},{\"placeId\":99,\"activity\":\"걷기·풍경\"}]}");
+        assertThat(pick().activities()).containsExactlyInAnyOrderEntriesOf(Map.of(4L,"걷기·풍경",2L,"역사·문화"));
+        assertThat(request.get()).contains("\"activities\"","\"sameGroups\"","걷기·풍경");
+    }
+
+    // 사실상 같은 곳으로 묶인 후보는 order에서 앞에 있는 한 곳만 남기고 나머지는 뺄 곳으로 보낸다. 사용자가 넣기로 한 곳(fixed)은 남긴다.
+    @Test void keepsOnePlaceFromEachSameGroup() {
+        output("{\"order\":[4,1,3],\"skip\":[],\"sameGroups\":[[1,4],[2,3]]}");
+        var picks=pick();
+        // 4가 1보다 앞이라 4만 남고, 2(오죽헌)는 fixed라 3을 뺀다.
+        assertThat(picks.order()).containsExactly(4L);
+        assertThat(picks.skip()).containsExactlyInAnyOrder(1L,3L);
+        // 묶음으로 뺀 곳은 '절반 넘게 빼면 쓰지 않는다'에 세지 않는다.
+        output("{\"order\":[4,1],\"skip\":[3],\"sameGroups\":[[4,1]]}");
+        assertThat(pick().skip()).containsExactlyInAnyOrder(3L,1L);
     }
 
     // 갈 만한 곳이 없거나 후보의 절반 넘게 빼라고 하면 응답을 쓰지 않는다. 호출한 쪽이 서버 규칙으로 고른 관광지를 그대로 쓴다.
