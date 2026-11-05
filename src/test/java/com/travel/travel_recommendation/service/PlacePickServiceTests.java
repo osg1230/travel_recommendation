@@ -22,6 +22,16 @@ class PlacePickServiceTests {
             .withPicking(new Picking(pool, false, previous));
     }
 
+    // AI 순서로 고른 입력에는 고른 관광지·예비 관광지의 가치 점수가 담기고, AI 순서 맨 앞(2)이 가장 높다(2026-11-05).
+    @Test void pickedInputCarriesValueScores() {
+        var picks = new OpenAiPlacePickClient.Picks(List.of(2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L, 1L), List.of(), List.of());
+        var picked = PlacePickService.picked(input(List.of()), picks, Map.of(2L, 0), Map.of());
+        var values = picked.picking().values();
+        assertThat(values).containsKeys(2L, 3L);
+        assertThat(values.get(2L)).isEqualTo(values.values().stream().mapToDouble(Double::doubleValue).max().orElseThrow());
+        assertThat(picked.valueOf(picked.places().attractions().getFirst())).isPositive();
+    }
+
     // AI가 순서 맨 앞에 두고 밤 명소로도 꼽은 해변(1)은 낮 관광지에서 빠지고 저녁 관광 후보 맨 앞에 가며, 그 ID가 작업 입력에 남는다.
     @Test void nightSpotIsKeptForTheEveningAndRemembered() {
         var picks = new OpenAiPlacePickClient.Picks(List.of(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L), List.of(), List.of(1L));

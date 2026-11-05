@@ -592,6 +592,28 @@ class ItineraryGeneratorTests {
         assertThat(ItineraryGenerator.tooMany(seaInput,Map.of("걷기·풍경",3L),view)).isTrue();
         assertThat(ItineraryGenerator.tooMany(seaInput,Map.of("체험·놀이",2L),beachB)).isTrue();
     }
+    // 다음 장소는 '이동 부담 − 가치'로 고른다(2026-11-05, 개선 계획 2단계). 해변 다음으로 가까운 유적(0점)보다
+    // 조금 더 먼 박물관(80점 = 4km만큼)을 먼저 간다. 점수가 없는 작업은 예전처럼 가까운 유적부터 간다. 세 곳은 종류가 모두 다르다.
+    @Test void nextPlaceWeighsValueAgainstDistance() {
+        var beachA=new PlaceCandidate(1L,"해변","강원 강릉시 경포로 1","여행 > 관광,명소 > 해수욕장,해변","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var beachB=new PlaceCandidate(3L,"유적","강원 강릉시 경포로 3","여행 > 관광,명소 > 문화유적","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var view=new PlaceCandidate(4L,"박물관","강원 강릉시 경포로 4","문화시설 > 박물관","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var base=input(1,LocalTime.of(18,0));
+        var pool=new PlaceCandidateView(base.places().jobId(),base.places().destination(),1,false,
+            List.of(beachA,beachB,view),List.of(),List.of(place(30)));
+        var plain=new Input(base.recommendationId(),pool,base.conditions(),base.start(),base.end(),base.transport(),60)
+            .withPicking(new Picking(List.of(),true));
+        assertThat(visits(generator.generate(plain))).containsExactly(1L,3L,4L);
+        var valued=plain.withValues(Map.of(1L,50.0,3L,0.0,4L,80.0));
+        assertThat(visits(generator.generate(valued))).containsExactly(1L,4L,3L);
+        // 비용 = 직선거리(km) − 점수 × 0.05
+        var locations=Map.of(1L,new KakaoMapClient.Location("강원 강릉시 경포로 1",128.80,37.7,Instant.now()),
+            4L,new KakaoMapClient.Location("강원 강릉시 경포로 4",128.80,37.71,Instant.now()));
+        assertThat(ItineraryGenerator.nextCost(valued,locations,beachA,view,"",true)).isCloseTo(1.11-4.0,within(0.01));
+    }
+    private static List<Long> visits(Result result) {
+        return result.days().stream().flatMap(d->d.items().stream()).filter(i->i.type().equals("VISIT")).map(Item::placeId).toList();
+    }
     // 필수 방문 장소는 시간이 부족해도 빼지 않고, 어느 장소 때문인지 알린다.
     @Test void requiredPlaceThatDoesNotFitFailsWithItsName() {
         var base=input(1,LocalTime.of(13,0));

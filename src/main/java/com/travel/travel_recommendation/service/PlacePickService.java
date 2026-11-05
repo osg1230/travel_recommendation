@@ -32,8 +32,12 @@ public class PlacePickService {
     private final ObjectProvider<PlacePickService> self;
     private final SimilarMemberService similarMembers;
 
-    /** members는 관광지 ID별로 비슷한 조건으로 여행한 다른 회원의 기록이다. 기록이 없으면 비어 있다. */
-    public record Task(UUID jobId, String requestJson, Input input, Map<Long,MemberStats> members) {
+    /**
+     * members는 관광지 ID별로 비슷한 조건으로 여행한 다른 회원의 기록이다. 기록이 없으면 비어 있다.
+     * ranks는 관광지 ID별 카카오 검색 순서(PlaceRankDetails, 대표 관광지가 앞)로, 가치 점수에 쓴다.
+     */
+    public record Task(UUID jobId, String requestJson, Input input, Map<Long,MemberStats> members, Map<Long,Integer> ranks) {
+        public Task(UUID jobId, String requestJson, Input input, Map<Long,MemberStats> members) { this(jobId,requestJson,input,members,Map.of()); }
         public Task(UUID jobId, String requestJson, Input input) { this(jobId,requestJson,input,Map.of()); }
     }
 
@@ -55,8 +59,12 @@ public class PlacePickService {
         // 처음 만드는 초안만 다시 고른다. 수정안은 사용자가 본 초안의 장소를 유지해야 한다.
         if(input.revision()!=null || input.picking()==null || input.picking().byAi() || input.picking().pool().isEmpty()) return null;
         // 순서를 정할 때 참고할 비슷한 조건 회원 기록. 본인 기록은 뺀다.
-        var members=similarMembers.places(input.conditions(),job.getUserId(),input.picking().pool().stream().map(PlaceCandidate::placeId).toList());
-        return new Task(jobId,job.getRequestJson(),input,members);
+        var ids=input.picking().pool().stream().map(PlaceCandidate::placeId).toList();
+        var members=similarMembers.places(input.conditions(),job.getUserId(),ids);
+        // 가치 점수의 대표 관광지 기준: 장소 수집 때 저장한 카카오 검색 순서.
+        Map<Long,Integer> ranks=new HashMap<>();
+        places.findAllById(ids).forEach(p->ranks.put(p.getId(),PlaceRankDetails.read(p,mapper)));
+        return new Task(jobId,job.getRequestJson(),input,members,ranks);
     }
 
     static List<OpenAiPlacePickClient.Candidate> candidates(Input input) { return candidates(input,Map.of()); }
@@ -91,7 +99,7 @@ public class PlacePickService {
         if(job==null || !"QUEUED".equals(job.getStatus()) || !task.requestJson().equals(job.getRequestJson())) return;
         Input picked;
         try {
-            picked=picked(task.input(),picks);
+            picked=picked(task.input(),picks,task.ranks(),task.members());
             generator.checkInput(picked);
         } catch(RuntimeException error) {
             log.warn("AI 순서로 관광지를 다시 고르지 못해 기존 선택을 씁니다 job={} ({})",task.jobId(),error.toString());
@@ -105,7 +113,19 @@ public class PlacePickService {
      * AI 순서(picks)로 일정에 넣을 관광지·예비 관광지·저녁 관광 후보를 다시 고른 입력. 조건과 맞지 않으면 예외가 난다.
      * AI가 밤에 둘러보기 좋다고 꼽은 곳은 숙박하는 밤 수만큼 저녁 관광 후보 맨 앞에 두고 그 ID를 남긴다(2026-10-31).
      */
-    static Input picked(Input input,OpenAiPlacePickClient.Picks picks) {
+    static Input picked(Input input,OpenAiPlacePickClient.Picks picks) { return picked(input,picks,Map.of(),Map.of()); }
+
+    /**
+     * picked에 관광지 가치 점수(PlaceValueScore)를 더한 입력. 일정 생성이 다음 장소를 고를 때 가치와 이동 부담을 함께 본다(개선 계획 2단계).
+     */
+    static Input picked(Input input,OpenAiPlacePickClient.Picks picks,Map<Long,Integer> ranks,Map<Long,MemberStats> members) {
+        var picked=pickedPlaces(input,picks);
+        Map<Long,Double> values=new HashMap<>();
+        PlaceValueScore.score(picked,ranks,members).forEach((id,score)->values.put(id,score.total()));
+        return picked.withValues(values);
+    }
+
+    private static Input pickedPlaces(Input input,OpenAiPlacePickClient.Picks picks) {
         var c=input.constraints();
         // 같은 활동(예: 걷기·풍경)이 앞쪽에 몰리지 않게 AI가 고른 활동으로 줄 세운다. 같은 길로 묶인 곳은 skip에 들어 있어 맨 뒤로 간다.
         var ordered=TripConstraints.byPicks(input.picking().pool(),c==null?List.of():c.centerPlaceIds(),picks.order(),picks.skip(),picks.activities());

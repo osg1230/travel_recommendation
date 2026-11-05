@@ -17,8 +17,10 @@ public class ItineraryGenerator {
     /** 도보로 추정한 이동 항목 메모의 시작 문구. 조건 확인 결과에서 추정 구간을 구분하는 데 쓴다. */
     static final String WALK_NOTE_PREFIX="도보 추정 ";
     private static final Pattern ROAD=Pattern.compile("^(.+?(?:로|길)\\s+\\d+(?:-\\d+)?)(?:\\s+.*)?$");
-    /** 같은 종류 관광지를 연달아 고르지 않도록 거리(제곱값)에 곱하는 수. 4는 실제 거리 두 배에 해당한다. */
-    private static final double SAME_KIND_PENALTY=4;
+    /** 같은 종류 관광지를 연달아 고르지 않도록 거리(km)에 곱하는 수. 예전 제곱 거리 4배와 같은 실제 거리 두 배다. */
+    private static final double SAME_KIND_FACTOR=2;
+    /** 가치 점수 1점을 거리 몇 km로 볼지(경험값). 100점 차이가 5km다. */
+    static final double KM_PER_VALUE_POINT=0.05;
     /** 하루에 같은 활동(예: 걷기·풍경)을 넣는 수. 넘기면 그 활동은 다른 곳이 없을 때만 고른다(2026-11-03). */
     static final int MAX_SAME_ACTIVITY_DAILY=2;
     /** 사용자가 고른 취향에 맞는 활동(예: 바다 → 걷기·풍경)은 하루에 이만큼 넣는다. 2곳에서 막혀 바다 취향 일정의 걷기·풍경이 40%에 머물렀다(2026-11-05). */
@@ -205,15 +207,14 @@ public class ItineraryGenerator {
                 // 그날 같은 활동을 MAX_SAME_ACTIVITY_DAILY곳 넣었으면 그 활동은 다른 곳이 없을 때만 고른다.
                 Map<String,Long> activityCount=new HashMap<>();
                 placed.forEach(p->activityCount.merge(input.activityOf(p),1L,Long::sum));
-                // 빠지면 안 되는 곳(필수·수정 요청으로 더한 곳)을 그날 먼저 넣고, 그 안에서는 가까운 곳부터 고른다.
+                // 빠지면 안 되는 곳(필수·수정 요청으로 더한 곳)을 그날 먼저 넣고, 그 안에서는 '이동 부담 − 가치'가 가장 작은 곳을 고른다(nextCost).
                 var next=forceCenter?dayCenter:pool.stream().min(Comparator.<PlaceCandidate>comparingInt(p->mustVisit.contains(p.placeId())?0:1)
                     .thenComparingInt(p->tooMany(input,activityCount,p)?1:0)
                     .thenComparing(order(builder.date,p->anchor==null?remaining.indexOf(p)
-                    :distance(locations.get(anchor.placeId()),locations.get(p.placeId()))
-                        *(!previousKind.isEmpty() && previousKind.equals(input.activityOf(p))?SAME_KIND_PENALTY:1)))).orElseThrow();
-                // 거리만 봤다면 직전과 같은 종류를 골랐을 때만 "다른 종류로 골랐다"고 이유에 적는다.
+                        :nextCost(input,locations,anchor,p,previousKind,true)))).orElseThrow();
+                // 종류를 보지 않았다면 직전과 같은 종류를 골랐을 때만 "다른 종류로 골랐다"고 이유에 적는다.
                 boolean variedKind=!forceCenter && anchor!=null && !previousKind.isEmpty() && pool.stream()
-                    .min(order(builder.date,p->distance(locations.get(anchor.placeId()),locations.get(p.placeId()))))
+                    .min(order(builder.date,p->nextCost(input,locations,anchor,p,previousKind,false)))
                     .filter(p->!p.equals(next) && previousKind.equals(input.activityOf(p))).isPresent();
                 var mark=builder.mark();
                 boolean hadLunch=builder.lunch;
@@ -316,6 +317,19 @@ public class ItineraryGenerator {
         return activityCount.getOrDefault(activity,0L)>=limit;
     }
 
+    /**
+     * 다음 장소를 고르는 비용(2026-11-05, 일정 품질 개선 계획 2단계). 작을수록 먼저 고른다.
+     * 이동 부담은 직전 장소에서의 직선거리(km)이고, 직전과 같은 종류면 SAME_KIND_FACTOR배로 친다(kindPenalty가 true일 때).
+     * 가치는 관광지 가치 점수(0~100)에 KM_PER_VALUE_POINT를 곱해 거리로 바꿔 뺀다. 예) 점수가 40점 높으면 2km 더 먼 곳까지 같게 본다.
+     * 점수가 없는 작업(이전 작업·AI 순서 실패)은 예전처럼 거리만 본다. 시간·운영시간·2시간 이동 제한 검사는 넣을 때 그대로 한다.
+     */
+    static double nextCost(Input input,Map<Long,KakaoMapClient.Location> locations,PlaceCandidate from,PlaceCandidate to,
+                           String previousKind,boolean kindPenalty) {
+        double km=kilometers(locations.get(from.placeId()),locations.get(to.placeId()));
+        if(kindPenalty && !previousKind.isEmpty() && previousKind.equals(input.activityOf(to))) km*=SAME_KIND_FACTOR;
+        return km-input.valueOf(to)*KM_PER_VALUE_POINT;
+    }
+
     /** 이 활동이 사용자가 고른 여행 취향에 맞는지. */
     static boolean themeActivity(Input input,String activity) {
         return input.conditions().themeNames().stream()
@@ -391,7 +405,7 @@ public class ItineraryGenerator {
 
     /**
      * 그날 넣은 관광지를 직선거리로 더 짧게 도는 순서(DayRoute). 하루는 시작점(전날 숙소)에서 출발하고, 숙박하는 날은 숙소에서 끝난다.
-     * 같은 종류가 바로 이어지는 구간은 두 배로 쳐서, 가까운 곳을 고를 때의 '종류 섞기'(SAME_KIND_PENALTY)와 맞춘다.
+     * 같은 종류가 바로 이어지는 구간은 두 배로 쳐서, 가까운 곳을 고를 때의 '종류 섞기'(SAME_KIND_FACTOR)와 맞춘다.
      * REORDER_MIN_KM·REORDER_MIN_RATE만큼 짧아지지 않으면 null이다.
      */
     private static List<PlaceCandidate> shorterOrder(List<PlaceCandidate> placed,PlaceCandidate start,PlaceCandidate end,
@@ -725,9 +739,10 @@ public class ItineraryGenerator {
         today.items.forEach(i->{ if("VISIT".equals(i.type())) visits.add(i.placeId()); });
         today.input.attractionsWithReserve().stream().filter(p->visits.contains(p.placeId())).forEach(p->kinds.add(TripConstraints.kind(p)));
         while(!reserve.isEmpty()) {
-            // min은 우선순위가 같으면 예비 관광지 순서에서 앞의 곳을 고른다.
+            // 그다음은 가치 점수가 높은 곳이고(2026-11-05), 그것도 같으면 예비 관광지 순서에서 앞의 곳을 고른다.
             var pick=reserve.stream().min(Comparator.<PlaceCandidate>comparingInt(p->lastDraft.contains(p.placeId())?1:0)
-                .thenComparingInt(p->kinds.contains(TripConstraints.kind(p))?1:0)).orElseThrow();
+                .thenComparingInt(p->kinds.contains(TripConstraints.kind(p))?1:0)
+                .thenComparingDouble(p->-today.input.valueOf(p))).orElseThrow();
             reserve.remove(pick);
             checkDeadline(deadline);
             try { locations.put(pick.placeId(),locate(pick,addresses)); return pick; }

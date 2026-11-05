@@ -4,6 +4,11 @@
 
 작업 시작 시 이 요약과 Git 상태를 확인한다. 기능별 상세 구현·검증 기록은 [2026-09-22 정리 전 원문](progress-history/2026-09-22-before-cleanup.md)에 있으며, 과거 결정·검증 근거가 필요할 때 해당 부분만 읽는다.
 
+## 2026-11-05 일정 품질 개선 2단계: 다음 장소를 '가치 − 이동 부담'으로 (`feature/place-value-score`, 노트북)
+
+- 구현: `PlacePickService`가 AI 순서로 고른 뒤 가치 점수를 `picking.values`(작업 JSON 키 1개, DB 정의서 반영, 테이블 변경 없음)에 담고, `ItineraryGenerator.nextCost`가 `직선거리 − 점수 × 0.05km`로 다음 장소·예비 관광지를 고른다. 자세한 내용은 [개선 계획](quality/2026-11-03_일정품질_개선계획.md)의 '2단계 구현'.
+- 확인: `ItineraryGeneratorTests` 54(새 1)·`PlacePickServiceTests` 4(새 1) 등 통과. DB 없이 도는 전체 테스트 763개 실행, 실패·오류 0, 건너뜀 230(SQL Server 테스트), `BUILD SUCCESS`. SQL Server 테스트와 실제 API 품질 보고서는 돌리지 않았다.
+
 ## 2026-11-05 일정 품질 개선 1단계: 장소 가치 점수 (`feature/place-value-score`, 노트북)
 
 - `PlaceValueScore`(새 클래스): 고른 관광지·예비 관광지마다 고른 순서 40·대표 관광지(저장된 카카오 검색 순서) 25·취향 일치 25·비슷한 회원 기록 10을 더한 0~100점. 필수·중심 장소는 표시만 한다. 일정 결과·DB·작업 JSON 변경 없음. 근거와 기준은 [개선 계획](quality/2026-11-03_일정품질_개선계획.md)의 '1단계 구현'.
