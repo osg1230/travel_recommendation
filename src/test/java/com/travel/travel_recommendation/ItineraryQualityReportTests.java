@@ -224,10 +224,11 @@ class ItineraryQualityReportTests {
         if (themes.isEmpty() || visited.isEmpty()) return null;
         if (themes.size() == 1) {
             var wanted = THEME_ACTIVITIES.getOrDefault(themes.getFirst(), Set.of());
-            return visited.stream().filter(id -> wanted.contains(activities.get(id))).count() / (double) visited.size();
+            return visited.stream().filter(id -> activities.get(id) != null && wanted.contains(activities.get(id))).count() / (double) visited.size();
         }
+        // Set.of는 null을 찾으면 예외가 나므로 활동 정보가 없는 곳(저녁 관광 등)은 먼저 거른다.
         List<Long> counts = themes.stream().map(t -> visited.stream()
-            .filter(id -> THEME_ACTIVITIES.getOrDefault(t, Set.of()).contains(activities.get(id))).count()).toList();
+            .filter(id -> activities.get(id) != null && THEME_ACTIVITIES.getOrDefault(t, Set.of()).contains(activities.get(id))).count()).toList();
         long total = counts.stream().mapToLong(Long::longValue).sum();
         if (total == 0) return null;
         double gap = counts.stream().mapToDouble(c -> Math.abs(c / (double) total - 1.0 / themes.size())).sum();
