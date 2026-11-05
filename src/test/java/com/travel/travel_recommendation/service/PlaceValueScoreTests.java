@@ -1,0 +1,59 @@
+package com.travel.travel_recommendation.service;
+
+import com.travel.travel_recommendation.dto.*;
+import com.travel.travel_recommendation.dto.ItineraryPlan.*;
+import java.time.*;
+import java.util.*;
+import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.*;
+
+class PlaceValueScoreTests {
+    private static PlaceCandidate place(long id, String subtype) {
+        return new PlaceCandidate(id, "장소" + id, "강원 강릉시 경포로 " + id, subtype, "", "https://www.gn.go.kr/", "", LocalDateTime.of(2026, 9, 1, 0, 0));
+    }
+
+    // 강릉 1박 2일, 취향 바다. 고른 관광지 1·2·3, 예비 4. AI가 1을 걷기·풍경, 2를 관람·전시로 골랐다(3·4는 활동 없음).
+    private static Input input(List<Long> required) {
+        var conditions = new ConfirmedTravelConditions("KEYWORD", "", "강릉", LocalDate.of(2026, 11, 14), LocalDate.of(2026, 11, 15), 2, null, 2, true, false,
+            List.of(new TravelKeyword(1L, "THEME", "바다", null)), "");
+        var view = new PlaceCandidateView(UUID.randomUUID(), new DestinationCandidate(99L, "강릉", "강원", "소개", "https://www.gn.go.kr/", LocalDateTime.of(2026, 9, 1, 0, 0)),
+            2, true, List.of(place(1, "여행 > 관광,명소 > 해수욕장,해변"), place(2, "문화시설 > 박물관"), place(3, "여행 > 관광,명소 > 해수욕장,해변")),
+            List.of(), List.of());
+        var constraints = new Constraints(required, null, false, null, null);
+        return new Input(view.jobId(), view, conditions, LocalTime.of(9, 0), LocalTime.of(18, 0), KakaoMapClient.Transport.CAR, 90, null, constraints,
+            List.of(place(4, "문화시설 > 미술관")))
+            .withPicking(new Picking(List.of(), true, List.of(), null, List.of(), Map.of(1L, "걷기·풍경", 2L, "관람·전시")));
+    }
+
+    // 순서·대표·취향·회원 기록이 모두 앞서는 1이 가장 높고, 맨 뒤 예비 관광지(4)는 회원 기록만 있어 가장 낮다.
+    @Test void combinesOrderLandmarkThemeAndMembers() {
+        var ranks = Map.of(1L, 0, 2L, 5, 3L, 9);  // 4는 검색 순서가 없다(UNRANKED)
+        var members = Map.of(1L, new MemberStats(3, 0, 0), 4L, new MemberStats(0, 1, 0));
+        var scores = PlaceValueScore.score(input(List.of()), ranks, members);
+        assertThat(scores.keySet()).containsExactly(1L, 2L, 3L, 4L);
+        assertThat(scores.get(1L).total()).isEqualTo(100.0);
+        assertThat(scores.get(4L).order()).isZero();
+        assertThat(scores.get(4L).landmark()).isZero();
+        assertThat(scores.get(4L).total()).isCloseTo(10.0 / 3, within(0.01));
+        // 3은 활동이 없어 분류 이름(해변)으로 바다 취향에 맞는다고 보고, 2는 AI 활동이 관람·전시라 맞지 않는다.
+        assertThat(scores.get(3L).theme()).isTrue();
+        assertThat(scores.get(2L).theme()).isFalse();
+        assertThat(scores.values()).noneMatch(PlaceValueScore.Score::fixed);
+    }
+
+    // 필수 장소는 점수와 따로 표시만 한다(점수 자체는 바뀌지 않는다).
+    @Test void marksRequiredPlacesWithoutChangingTheScore() {
+        var plain = PlaceValueScore.score(input(List.of()), Map.of(), Map.of());
+        var required = PlaceValueScore.score(input(List.of(4L)), Map.of(), Map.of());
+        assertThat(required.get(4L).fixed()).isTrue();
+        assertThat(required.get(4L).total()).isEqualTo(plain.get(4L).total());
+        assertThat(required.get(4L).text()).contains("필수/중심");
+    }
+
+    @Test void sharesAndMemberCap() {
+        assertThat(PlaceValueScore.share(0, 1)).isEqualTo(1.0);
+        assertThat(PlaceValueScore.share(1, 3)).isEqualTo(0.5);
+        assertThat(PlaceValueScore.memberShare(null)).isZero();
+        assertThat(PlaceValueScore.memberShare(new MemberStats(2, 2, 2))).isEqualTo(1.0);
+    }
+}

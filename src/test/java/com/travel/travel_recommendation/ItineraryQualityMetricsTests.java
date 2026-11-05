@@ -56,4 +56,12 @@ class ItineraryQualityMetricsTests {
         assertThat(ItineraryQualityReportTests.themeBalance(List.of(), activities, visited)).isNull();
         assertThat(ItineraryQualityReportTests.themeBalance(List.of("맛집", "휴식"), activities, visited)).isNull();
     }
+
+    // 일정에 들어간 1(80점)·2(50점) 평균 65, 빠진 3(60점)·4(20점) 평균 40. 3은 일정 최저점(50)보다 높아 1곳으로 센다.
+    @Test void summarizesValueScoresOfVisitedAndLeftOutPlaces() {
+        var values = new LinkedHashMap<Long, com.travel.travel_recommendation.service.PlaceValueScore.Score>();
+        for (var e : Map.of(1L, 80.0, 2L, 50.0, 3L, 60.0, 4L, 20.0).entrySet())
+            values.put(e.getKey(), new com.travel.travel_recommendation.service.PlaceValueScore.Score(e.getValue(), 0, 0, false, 0, false));
+        assertThat(ItineraryQualityReportTests.valueSummary(values, List.of(1L, 2L))).isEqualTo("65 | 40 | 1/2");
+    }
 }

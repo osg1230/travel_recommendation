@@ -54,6 +54,7 @@ class ItineraryQualityReportTests {
     @Autowired PlaceDiscoveryService discovery;
     @Autowired ItineraryJobService schedules;
     @Autowired PlacePickService placePicks;
+    @Autowired SimilarMemberService similarMembers;
     @Autowired NearbyRestaurantService restaurants;
     @Autowired PlaceRepository places;
     @Autowired AiJobRepository jobs;
@@ -81,10 +82,11 @@ class ItineraryQualityReportTests {
     /**
      * aiOrdered는 GPT가 관광지 순서를 정했는지다. false면 GPT 응답 실패 등으로 서버 규칙 순서를 썼다.
      * aiOrder는 관광지 후보를 고른 순서(GPT 순서 또는 서버 규칙 순서), activities는 GPT가 고른 장소별 주된 활동이다.
+     * values는 고른 관광지·예비 관광지의 가치 점수(개선 계획 1단계), names는 그 장소 이름이다.
      */
     record Draft(UUID id, List<Visit> visits, int dailyMoveMinutes, int longestMoveMinutes, boolean aiOrdered,
                  int meals, int popularMeals, int stays, int popularStays, Arrangement arrangement,
-                 List<Long> aiOrder, Map<Long, String> activities) {}
+                 List<Long> aiOrder, Map<Long, String> activities, Map<Long, PlaceValueScore.Score> values, Map<Long, String> names) {}
     /** 배치 지표. routeRatios·idleMinutes는 날마다, mealDetours는 끼니마다 하나씩이고, days는 보고서에 적을 날짜별 동선이다. */
     record Arrangement(int minVisit, int maxVisit, List<Double> routeRatios, List<Double> mealDetours, List<Integer> idleMinutes, List<String> days) {}
     record Measured(Scenario scenario, int candidateCount, Map<String, Long> candidateKinds, Draft first, Draft second, String error) {}
@@ -168,11 +170,35 @@ class ItineraryQualityReportTests {
                 place.getLongitude() == null ? null : place.getLongitude().doubleValue(),
                 place.getLatitude() == null ? null : place.getLatitude().doubleValue()));
         }
+        // 가치 점수(1단계): 일정 결과는 바꾸지 않고, 고른 관광지·예비 관광지마다 점수만 계산해 보고서에 적는다.
+        var chosen = java.util.stream.Stream.concat(input.places().attractions().stream(), input.reserve().stream()).toList();
+        Map<Long, Integer> ranks = new HashMap<>();
+        Map<Long, String> names = new HashMap<>();
+        for (var p : chosen) {
+            names.put(p.placeId(), p.name());
+            ranks.put(p.placeId(), places.findById(p.placeId()).map(place -> PlaceRankDetails.read(place, mapper)).orElse(PlaceRankDetails.UNRANKED));
+        }
+        var members = similarMembers.places(input.conditions(), null, chosen.stream().map(PlaceCandidate::placeId).toList());
         return new Draft(id, visits, moveSeconds / 60 / result.days().size(), longestSeconds / 60, aiOrdered,
             meals, popularMeals, stays.size(), popularStays.size(), arrangement(input, result),
             // 고른 순서: 일정에 넣으려고 고른 관광지(AI 순서로 줄 세움) 다음에 예비 관광지를 잇는다.
-            java.util.stream.Stream.concat(input.places().attractions().stream(), input.reserve().stream()).map(PlaceCandidate::placeId).toList(),
-            picking == null ? Map.of() : picking.activities());
+            chosen.stream().map(PlaceCandidate::placeId).toList(),
+            picking == null ? Map.of() : picking.activities(), PlaceValueScore.score(input, ranks, members), names);
+    }
+
+    /**
+     * 가치 점수 요약(1단계). 일정에 들어간 관광지와 들어가지 않은 후보(고른 관광지 중 빠진 곳 + 예비)의 평균 점수,
+     * 그리고 빠진 곳 중 점수가 높은 곳 수(들어간 곳의 최저 점수보다 높은 곳)다. 이 수가 크면 2단계로 바꿀 여지가 크다.
+     */
+    static String valueSummary(Map<Long, PlaceValueScore.Score> values, Collection<Long> visited) {
+        var used = new HashSet<>(visited);
+        var in = values.entrySet().stream().filter(e -> used.contains(e.getKey())).mapToDouble(e -> e.getValue().total()).toArray();
+        var out = values.entrySet().stream().filter(e -> !used.contains(e.getKey())).mapToDouble(e -> e.getValue().total()).toArray();
+        if (in.length == 0) return "- | - | -";
+        double lowestIn = Arrays.stream(in).min().orElse(0);
+        long better = Arrays.stream(out).filter(v -> v > lowestIn).count();
+        return String.format("%.0f | %s | %d/%d", Arrays.stream(in).average().orElse(0),
+            out.length == 0 ? "-" : String.format("%.0f", Arrays.stream(out).average().orElse(0)), better, out.length);
     }
 
     /**
@@ -361,6 +387,16 @@ class ItineraryQualityReportTests {
         out.append("\nAI 상위 후보 반영률은 일정 관광지 수가 n일 때 고른 순서(AI 순서로 줄 세운 선택 + 예비)의 앞 n곳 중 일정에 들어간 비율이다. ")
             .append("취향 비율 일치도는 취향이 하나면 그 취향에 맞는 활동(GPT가 고른 주된 활동 기준)의 관광지 비율, ")
             .append("둘 이상이면 취향별 관광지 수가 고른지(1.0이면 같은 비율)다. 활동 분포는 첫 초안 관광지의 GPT 활동이다.\n");
+        // 개선 계획 1단계: 장소 가치 점수. 일정 결과는 바꾸지 않고 점수만 잰다.
+        out.append("\n### 가치 점수 (첫 초안, 1단계)\n\n")
+            .append("| 시나리오 | 일정 관광지 평균 | 빠진 후보 평균 | 빠졌지만 일정 최저점보다 높은 후보 |\n")
+            .append("|---|---|---|---|\n");
+        for (var m : measured) {
+            if (m.error() != null) continue;
+            out.append("| ").append(m.scenario().name()).append(" | ").append(valueSummary(m.first().values(), ids(m.first()))).append(" |\n");
+        }
+        out.append("\n가치 점수(0~100)는 고른 순서 40·대표 관광지(카카오 검색 순서) 25·취향 일치 25·비슷한 회원 기록 10을 더한 값이다(PlaceValueScore). ")
+            .append("빠진 후보는 고른 관광지 중 일정에 못 들어간 곳과 예비 관광지다. 마지막 열이 크면 다음 장소 고르기(2단계)로 바꿀 여지가 크다.\n");
         out.append("\n공식 관광지는 관광공사 이름 검색 결과가 1km 안에 있는지로 판단해, 이름이 크게 다르면 등록된 곳도 빠질 수 있다(개선 전후 같은 기준). ")
             .append("괄호 안 '확인 못 함'은 관광공사 조회 실패 수다. 관광지 분포는 일정 관광지 중 서로 가장 먼 두 곳의 직선거리다. ")
             .append("AI 순서는 첫/두 번째 초안에서 GPT가 관광지 순서를 정했는지이며, 실패하면 서비스처럼 서버 규칙 순서로 만들었다. ")
@@ -386,7 +422,8 @@ class ItineraryQualityReportTests {
                     .map(e -> e.getKey() + " " + e.getValue()).collect(Collectors.joining(", "))).append("\n")
                 .append("- 첫 초안: ").append(visitText(m.first())).append("\n")
                 .append("- 두 번째 초안: ").append(visitText(m.second())).append("\n")
-                .append("- 첫 초안 동선: ").append(String.join(" / ", m.first().arrangement().days())).append("\n");
+                .append("- 첫 초안 동선: ").append(String.join(" / ", m.first().arrangement().days())).append("\n")
+                .append("- 첫 초안 가치 점수(높은 순, ✓는 일정에 들어간 곳): ").append(valueText(m.first())).append("\n");
         }
         var folder = Path.of("target", "quality");
         Files.createDirectories(folder);
@@ -396,6 +433,14 @@ class ItineraryQualityReportTests {
     }
 
     private static List<Long> ids(Draft draft) { return draft.visits().stream().map(Visit::placeId).toList(); }
+
+    private static String valueText(Draft draft) {
+        var used = new HashSet<>(ids(draft));
+        return draft.values().entrySet().stream()
+            .sorted(Map.Entry.<Long, PlaceValueScore.Score>comparingByValue(Comparator.comparingDouble(PlaceValueScore.Score::total)).reversed())
+            .map(e -> (used.contains(e.getKey()) ? "✓" : "") + draft.names().get(e.getKey()) + " " + e.getValue().text())
+            .collect(Collectors.joining(" · "));
+    }
 
     private static String percent(Double value) { return value == null ? "-" : Math.round(value * 100) + "%"; }
 
