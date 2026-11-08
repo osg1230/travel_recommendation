@@ -37,6 +37,14 @@ class ExpiringCache<K, V> {
         return value;
     }
 
+    /** 이 키를 지금 보관하고 있거나, 만료된 값을 정리하면 새로 넣을 자리가 있는지. 가득 찼을 때 새 키를 받지 않으려는 쪽에서 쓴다. */
+    boolean hasRoomFor(K key) {
+        if (peek(key) != null || entries.size() < maxEntries) return true;
+        Instant now = clock.get();
+        entries.values().removeIf(e -> !now.isBefore(e.expiresAt()));
+        return entries.size() < maxEntries;
+    }
+
     /** 보관 중이고 만료되지 않은 값만 돌려준다. 없으면 null이며 새로 불러오지 않는다. */
     V peek(K key) {
         var entry = entries.get(key);

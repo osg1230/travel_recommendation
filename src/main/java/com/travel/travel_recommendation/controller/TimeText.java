@@ -20,6 +20,14 @@ public class TimeText {
     /** 오늘 날짜(한국 시각, yyyy-MM-dd). 날짜 입력의 최소 날짜에 쓴다. 서버 시간대가 UTC여도 한국 0~9시에 하루 이른 날짜가 되지 않는다. */
     public String today() { return LocalDate.now(KOREA).toString(); }
 
+    /** 여행 기간을 "2026.11.05 ~ 2026.11.06 (1박 2일)"처럼 보여 준다. 내 일정 목록과 상세가 같은 표기를 쓰게 한 곳에 둔다. */
+    public String period(LocalDate start, LocalDate end) {
+        if (start == null || end == null) return "날짜 미정";
+        var format = DateTimeFormatter.ofPattern("yyyy.MM.dd");
+        long days = java.time.temporal.ChronoUnit.DAYS.between(start, end) + 1;
+        return start.format(format) + " ~ " + end.format(format) + " (" + (days == 1 ? "당일" : (days - 1) + "박 " + days + "일") + ")";
+    }
+
     /** 여행 날짜(시간대 없는 날짜)를 "10월 15일(목)"처럼 보여 준다. 일정의 일차 제목에 쓴다. 날짜가 없으면 "날짜 미정"이다. */
     public String day(LocalDate date) {
         if (date == null) return "날짜 미정";

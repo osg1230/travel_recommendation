@@ -3,11 +3,14 @@ package com.travel.travel_recommendation.entity;
 import com.travel.travel_recommendation.service.KoreaTime;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.Nationalized;
 import java.time.*;
 
 /** 회원이 저장한 여행 일정의 기본정보. 세부 항목은 ItineraryItem에 저장한다. */
+// 바뀐 컬럼만 UPDATE한다. 잠금 없이 읽은 엔티티를 고쳐도 다른 요청이 그사이 바꾼 컬럼(예: 장소의 가격·사진 details_json)을 덮어쓰지 않게 한다.
 @Entity
+@DynamicUpdate
 @Table(name="itineraries", schema="dbo")
 @Getter
 @NoArgsConstructor(access=AccessLevel.PROTECTED)

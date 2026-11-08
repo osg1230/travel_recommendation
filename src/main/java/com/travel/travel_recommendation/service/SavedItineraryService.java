@@ -237,9 +237,16 @@ public class SavedItineraryService {
     @Transactional(readOnly=true,timeout=10)
     public Map<Long,ListExtra> listExtras(String loginId) {
         var extras=new HashMap<Long,ListExtra>();
-        for(var itinerary:itineraries.findByUserIdOrderByStartDateDescIdDesc(member(loginId))) {
-            var visitIds=items.findByItineraryIdOrderByDayNoAscSequenceNoAsc(itinerary.getId()).stream()
-                .filter(item->"VISIT".equals(item.getItemType()) && item.getPlaceId()!=null).map(ItineraryItem::getPlaceId).toList();
+        var owned=itineraries.findByUserIdOrderByStartDateDescIdDesc(member(loginId));
+        if(owned.isEmpty()) return extras;
+        // 일정마다 항목을 따로 읽지 않고 방문 항목을 한 번에 읽은 뒤, 일정별로 나눠 방문 순서(일차·순서)대로 정렬한다.
+        var visits=new HashMap<Long,List<ItineraryItem>>();
+        for(var item:items.findByItineraryIdInAndItemType(owned.stream().map(Itinerary::getId).toList(),"VISIT"))
+            if(item.getPlaceId()!=null) visits.computeIfAbsent(item.getItineraryId(),id->new ArrayList<>()).add(item);
+        for(var itinerary:owned) {
+            var visitIds=visits.getOrDefault(itinerary.getId(),List.of()).stream()
+                .sorted(Comparator.comparingInt(ItineraryItem::getDayNo).thenComparingInt(ItineraryItem::getSequenceNo))
+                .map(ItineraryItem::getPlaceId).toList();
             extras.put(itinerary.getId(),new ListExtra(transportName(itinerary.getTransportation()),visitIds));
         }
         return extras;
@@ -305,7 +312,10 @@ public class SavedItineraryService {
         String trimmed=title==null?"":title.strip();
         if(trimmed.isEmpty() || trimmed.length()>150) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
             "일정 이름은 1자 이상 150자 이하로 입력해 주세요.");
-        owned(id,loginId).rename(trimmed);
+        // 행 잠금으로 읽은 뒤 바꾼다. 잠금 없이 읽으면 그사이 적용된 수정안(행 잠금 사용)의 내용을 예전 값으로 덮어쓸 수 있다.
+        var itinerary=itineraries.lockByIdAndUserId(id,member(loginId))
+            .orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"저장한 일정을 찾을 수 없어요."));
+        itinerary.rename(trimmed);
         itineraries.flush();
     }
 

@@ -57,7 +57,7 @@ public class ProfileService {
                 .orElseThrow(() -> new AccessDeniedException("Account unavailable"));
         checkActive(user);
         if (!encoder.matches(form.getCurrentPassword(), user.getPasswordHash())) {
-            throw new ProfileUpdateException("currentPassword", "현재 비밀번호가 올바르지 않습니다.");
+            throw new ProfileUpdateException("currentPassword", "현재 비밀번호가 올바르지 않아요.");
         }
         // 현재 비밀번호는 바로 위에서 확인했으므로, 같은 값을 새 비밀번호로 적었는지는 글자로 비교한다.
         if (!form.getNewPassword().isEmpty() && form.getNewPassword().equals(form.getCurrentPassword())) {
@@ -71,7 +71,7 @@ public class ProfileService {
         String homeArea = form.getHomeArea().isEmpty() ? null : form.getHomeArea();
         boolean homeAreaChanged = !java.util.Objects.equals(user.getHomeArea(), homeArea);
         if (!nicknameChanged && !passwordChanged && !homeAreaChanged) {
-            throw new ProfileUpdateException(null, "변경할 내용이 없습니다.");
+            throw new ProfileUpdateException(null, "변경할 내용이 없어요.");
         }
         // 모든 검증을 마친 뒤 함께 저장한다. 실패하면 트랜잭션이 전체 변경을 취소한다.
         if (nicknameChanged) user.changeNickname(form.getNickname());

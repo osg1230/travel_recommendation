@@ -63,9 +63,9 @@ public class SignupController {
             } catch (DuplicateUserException ex) {
                 result.rejectValue(ex.getField(), "duplicate", ex.getMessage());
             } catch (DataIntegrityViolationException ex) {
-                result.reject("signup.conflict", "가입 정보를 저장하지 못했습니다. 아이디나 닉네임이 사용 중인지 확인하고 다시 시도해 주세요.");
+                result.reject("signup.conflict", "가입 정보를 저장하지 못했어요. 아이디나 닉네임이 사용 중인지 확인하고 다시 시도해 주세요.");
             } catch (DataAccessException | TransactionException ex) {
-                result.reject("signup.unavailable", "일시적으로 가입하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+                result.reject("signup.unavailable", "일시적으로 가입하지 못했어요. 잠시 후 다시 시도해 주세요.");
             }
         }
         // 실패 시 아이디와 닉네임만 유지한다. 비밀번호는 다시 입력받는다.

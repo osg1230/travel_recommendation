@@ -71,7 +71,7 @@ public class ProfileController {
                            HttpServletRequest request, HttpServletResponse response) {
         var service = withdrawals.getIfAvailable();
         if (service == null) {
-            redirect.addFlashAttribute("withdrawError", "지금은 탈퇴를 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.");
+            redirect.addFlashAttribute("withdrawError", "지금은 탈퇴를 처리할 수 없어요. 잠시 후 다시 시도해 주세요.");
             return "redirect:/account#withdraw-title";
         }
         try {
@@ -80,7 +80,7 @@ public class ProfileController {
             redirect.addFlashAttribute("withdrawError", ex.getMessage());
             return "redirect:/account#withdraw-title";
         } catch (DataAccessException | TransactionException ex) {
-            redirect.addFlashAttribute("withdrawError", "일시적으로 탈퇴를 처리하지 못했습니다. 계정과 기록은 그대로입니다. 잠시 후 다시 시도해 주세요.");
+            redirect.addFlashAttribute("withdrawError", "일시적으로 탈퇴를 처리하지 못했어요. 계정과 기록은 그대로예요. 잠시 후 다시 시도해 주세요.");
             return "redirect:/account#withdraw-title";
         }
         new SecurityContextLogoutHandler().logout(request, response, authentication);
@@ -110,7 +110,7 @@ public class ProfileController {
             } catch (DataIntegrityViolationException ex) {
                 result.reject("profile.conflict", "닉네임이 사용 중이거나 저장할 수 없는 값입니다. 확인 후 다시 시도해 주세요.");
             } catch (DataAccessException | TransactionException ex) {
-                result.reject("profile.unavailable", "일시적으로 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+                result.reject("profile.unavailable", "일시적으로 저장하지 못했어요. 잠시 후 다시 시도해 주세요.");
             }
         }
         profileForm.setCurrentPassword(null);

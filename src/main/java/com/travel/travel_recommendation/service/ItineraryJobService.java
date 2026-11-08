@@ -909,8 +909,10 @@ public class ItineraryJobService {
     /** 검색하는 동안 초안이 바뀌지 않았을 때만 가격을 붙인다. */
     @Transactional(timeout=10)
     public void savePrices(UUID id,String login,byte[] hash,String expectedResult,Prices prices) {
-        access.owned(id,login,hash,"ITINERARY");
+        // 잠금을 먼저 걸어 최신 행을 읽는다. 소유 확인을 먼저 하면 잠금 전에 읽은 결과와 비교하게 되어,
+        // 두 탭에서 동시에 끝날 때 먼저 붙은 결과가 지워질 수 있다.
         var job=jobs.lockById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
+        access.owned(id,login,hash,"ITINERARY");
         if(!"COMPLETED".equals(job.getStatus()) || !Objects.equals(job.getResultJson(),expectedResult))
             throw new ResponseStatusException(HttpStatus.CONFLICT,"가격을 찾는 동안 일정이 바뀌었어요. 다시 시도해 주세요.");
         job.attachToResult(mapper.writeValueAsString(mapper.readValue(expectedResult,Result.class).withPrices(prices)));
@@ -998,8 +1000,9 @@ public class ItineraryJobService {
     /** 검색하는 동안 초안이 바뀌지 않았을 때만 결과를 붙인다. */
     @Transactional(timeout=10)
     public void saveVerifications(UUID id,String login,byte[] hash,String expectedResult,Verifications verifications) {
-        access.owned(id,login,hash,"ITINERARY");
+        // 가격 저장과 같이 잠금을 먼저 걸고 소유를 확인한다.
         var job=jobs.lockById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
+        access.owned(id,login,hash,"ITINERARY");
         if(!"COMPLETED".equals(job.getStatus()) || !Objects.equals(job.getResultJson(),expectedResult))
             throw new ResponseStatusException(HttpStatus.CONFLICT,"AI 확인 검색 중에 일정이 바뀌었어요. 다시 시도해 주세요.");
         job.attachToResult(mapper.writeValueAsString(mapper.readValue(expectedResult,Result.class).withVerifications(verifications)));

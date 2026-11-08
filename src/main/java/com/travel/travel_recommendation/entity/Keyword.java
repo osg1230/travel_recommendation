@@ -6,9 +6,12 @@ import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.Nationalized;
 
+// 바뀐 컬럼만 UPDATE한다. 잠금 없이 읽은 엔티티를 고쳐도 다른 요청이 그사이 바꾼 컬럼(예: 장소의 가격·사진 details_json)을 덮어쓰지 않게 한다.
 @Entity
+@DynamicUpdate
 @Table(name = "keywords", schema = "dbo")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

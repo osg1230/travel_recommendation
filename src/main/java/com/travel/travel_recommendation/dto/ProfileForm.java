@@ -21,7 +21,7 @@ public class ProfileForm {
     private String currentPassword;
 
     @Pattern(regexp = "^$|(?=.*[a-zA-Z])(?=.*[0-9])[!-~]{8,64}",
-            message = "새 비밀번호는 영문과 숫자를 포함한 8~64자여야 합니다. 공백은 사용할 수 없습니다.")
+            message = "새 비밀번호는 영문과 숫자를 포함한 8~64자여야 해요. 공백은 사용할 수 없어요.")
     private String newPassword = "";
 
     @Size(max = 64, message = "새 비밀번호 확인은 64자 이내로 입력해 주세요.")
@@ -43,7 +43,7 @@ public class ProfileForm {
         this.newPasswordConfirm = password == null ? "" : password;
     }
 
-    @AssertTrue(message = "새 비밀번호 확인이 일치하지 않습니다.")
+    @AssertTrue(message = "새 비밀번호 확인이 일치하지 않아요.")
     public boolean isPasswordMatching() {
         return newPassword.equals(newPasswordConfirm);
     }

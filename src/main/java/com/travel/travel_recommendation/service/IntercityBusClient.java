@@ -39,6 +39,8 @@ public class IntercityBusClient {
     }
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
     static final int TRIP_PAGE_SIZE = 100, MAX_TRIP_PAGES = 5;
+    /** TAGO ì¡°í ê²°ê³¼ë¥¼ ë¤ì ì°ë ìê°. ë²ì¤Â·í­ê³µÂ·ì´ì°¨Â·ì¬ê°ì  í´ë¼ì´ì¸í¸ê° ê°ì ê°ì ì´ë¤. */
+    static final Duration TAGO_CACHE_TTL = Duration.ofMinutes(20);
     // 실제 응답은 초까지 붙은 14자리 숫자(20260921071000)다. 12자리도 함께 받는다.
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyyMMddHHmm");
     private static final DateTimeFormatter TIME_SECONDS = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
@@ -100,7 +102,15 @@ public class IntercityBusClient {
         return searchTerminals(service, terminalName, 20).stream().filter(t -> t.name().equals(terminalName)).map(Terminal::id).toList();
     }
 
+    /** 터미널 이름 검색도 배차와 같이 잠시 다시 쓴다. 버스 안내 한 번에 출발·도착 후보마다 같은 이름을 여러 번 찾기 때문이다. */
+    private final ExpiringCache<String, List<Terminal>> terminalCache = new ExpiringCache<>(TAGO_CACHE_TTL, 500);
+
     public List<Terminal> searchTerminals(Service service, String keyword, int limit) {
+        if (keyword == null || keyword.isBlank() || keyword.length() > 30 || limit < 1) throw invalid();
+        return terminalCache.get(service + ":" + keyword.strip() + ":" + limit, () -> loadTerminals(service, keyword, limit));
+    }
+
+    private List<Terminal> loadTerminals(Service service, String keyword, int limit) {
         if (keyword == null || keyword.isBlank() || keyword.length() > 30 || limit < 1) throw invalid();
         List<Terminal> result = new ArrayList<>();
         for (var item : items(get(service, service.terminalOperation, "&pageNo=1&numOfRows=50&terminalNm="
@@ -116,7 +126,14 @@ public class IntercityBusClient {
     /** 오늘(date) 출발하는 직행 시외버스 배차. 출발 시각 순서로 돌려준다. */
     public List<Trip> trips(String departureId, String arrivalId, LocalDate date) { return trips(Service.INTERCITY, departureId, arrivalId, date); }
 
+    /** 같은 구간·날짜를 TAGO_CACHE_TTL 동안 다시 부르지 않는다. TAGO는 당일 배차·운항 자료라 그 사이 결과가 같고, 버스 안내 한 번에 수십 번 부르던 호출을 줄인다. 실패는 보관하지 않는다. */
+    private final ExpiringCache<String, List<Trip>> tripsCache = new ExpiringCache<>(TAGO_CACHE_TTL, 500);
+
     public List<Trip> trips(Service service, String departureId, String arrivalId, LocalDate date) {
+        return tripsCache.get(service+":"+departureId+":"+arrivalId+":"+date, () -> loadTrips(service, departureId, arrivalId, date));
+    }
+
+    private List<Trip> loadTrips(Service service, String departureId, String arrivalId, LocalDate date) {
         if (departureId == null || arrivalId == null || date == null || departureId.equals(arrivalId)
                 || !departureId.matches("[A-Za-z0-9]{1,20}") || !arrivalId.matches("[A-Za-z0-9]{1,20}")) throw invalid();
         List<Trip> result = new ArrayList<>();

@@ -11,6 +11,9 @@ public interface AiJobRepository extends JpaRepository<AiJob,UUID> {
     Optional<AiJob> lockById(UUID id);
     List<AiJob> findTop5ByStatusOrderByCreatedAtAsc(String status);
     List<AiJob> findByRequestIdAndUserId(Long requestId, Long userId);
+    /** 회원의 처리 중인 작업이 걸린 추천 요청 ID들. 추천 이력 목록에서 요청마다 따로 묻지 않으려고 한 번에 읽는다. */
+    @Query("select distinct j.requestId from AiJob j where j.userId=:userId and j.requestId is not null and j.status in :statuses")
+    Set<Long> findRequestIdsByUserIdAndStatusIn(Long userId, Collection<String> statuses);
     @Modifying(clearAutomatically=true,flushAutomatically=true)
     @Query("delete from AiJob j where j.requestId=:requestId and j.userId=:userId")
     int deleteByRequest(Long requestId, Long userId);

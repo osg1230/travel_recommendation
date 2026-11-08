@@ -40,14 +40,28 @@ public class DestinationProfileService {
         var saved=DestinationProfile.read(destination,Instant.now(),mapper);
         if(saved!=null) return saved;
         if(!tour.configured() || failed.peek(destinationId)!=null) return Map.of();
+        // 여행지마다 한 스레드만 만든다(대표 관광지 목록과 같은 이유). 기다린 쪽은 먼저 만든 목록을 다시 읽어 쓴다.
+        var lock=building.computeIfAbsent(destinationId,id->new java.util.concurrent.locks.ReentrantLock());
+        lock.lock();
         try {
-            var made=build(destination.getRegion());
+            var fresh=places.findById(destinationId).map(p->DestinationProfile.read(p,Instant.now(),mapper)).orElse(null);
+            if(fresh!=null) return fresh;
+            if(failed.peek(destinationId)!=null) return Map.of();
+            return buildAndSave(destinationId,destination.getRegion(),destination.getName());
+        } finally { lock.unlock(); }
+    }
+    /** 여행지 ID별 '만드는 중' 잠금. */
+    private final Map<Long,java.util.concurrent.locks.ReentrantLock> building=new java.util.concurrent.ConcurrentHashMap<>();
+
+    private Map<String,DestinationProfile.Category> buildAndSave(long destinationId,String region,String name) {
+        try {
+            var made=build(region);
             if(made.isEmpty()) { failed.get(destinationId,()->true); return Map.of(); }
             save(destinationId,made);
             return made;
         } catch(RecommendationException error) {
             // 관광공사 오류·한도면 이번에는 근거 없이 넘어가고 하루 뒤에 다시 만든다(일부만 모은 목록은 보관하지 않는다).
-            log.warn("여행지 목록을 만들지 못함 destination={} ({})",destination.getName(),error.getCode());
+            log.warn("여행지 목록을 만들지 못함 destination={} ({})",name,error.getCode());
             failed.get(destinationId,()->true);
             return Map.of();
         }

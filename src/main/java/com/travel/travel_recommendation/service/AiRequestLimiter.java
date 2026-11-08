@@ -59,8 +59,10 @@ public class AiRequestLimiter {
     private String acquire(String prefix, String loginId, String remoteAddress, int memberLimit, int guestLimit) {
         if (!enabled) return null;
         boolean member = loginId != null;
-        String key = prefix + (member ? "member:" + loginId : "guest:" + remoteAddress);
+        String key = prefix + (member ? "member:" + loginId : "guest:" + guestKey(remoteAddress));
         int limit = member ? memberLimit : guestLimit;
+        // 기억할 사용자 수가 가득 차면 새 비회원은 받지 않는다. 그대로 넣으면 ExpiringCache가 전부 비워 회원 횟수까지 초기화된다.
+        if (!member && !windows.hasRoomFor(key)) return "요청이 많아 잠시 뒤 다시 시도해 주세요.";
         Window window = windows.get(key, () -> new Window(clock.get(), new AtomicInteger()));
         // 동시에 들어온 요청도 한도를 넘지 않게 늘리기 전에 확인한다.
         int used = window.count().getAndUpdate(count -> count < limit ? count + 1 : count);
@@ -68,5 +70,24 @@ public class AiRequestLimiter {
         long seconds = Duration.between(clock.get(), window.start().plus(WINDOW)).toSeconds();
         long minutes = Math.max(1, (seconds + 59) / 60);
         return "요청이 많아 잠시 뒤 다시 시도해 주세요(약 " + minutes + "분 뒤).";
+    }
+
+    /**
+     * 비회원을 셀 때 쓰는 주소. IPv6는 한 가입자가 앞 64비트(/64)가 같은 주소를 여러 개 받으므로 그 부분만 써서,
+     * 주소를 바꿔 가며 한도를 피하지 못하게 한다. IPv4와 읽을 수 없는 값은 그대로 쓴다.
+     * 학교 와이파이처럼 여러 사람이 IP 하나를 함께 쓰면 함께 세어지는 한계는 남는다.
+     */
+    static String guestKey(String remoteAddress) {
+        if (remoteAddress == null || !remoteAddress.contains(":")) return String.valueOf(remoteAddress);
+        try {
+            // IP 글자를 바이트로 바꾼다. 글자가 IP 주소이면 이름 조회(DNS)를 하지 않는다.
+            byte[] bytes = java.net.InetAddress.getByName(remoteAddress.replaceAll("%.*$", "")).getAddress();
+            if (bytes.length != 16) return remoteAddress;
+            var prefix = new StringBuilder();
+            for (int i = 0; i < 8; i++) prefix.append(String.format("%02x", bytes[i] & 0xff));
+            return prefix + "::/64";
+        } catch (java.net.UnknownHostException invalid) {
+            return remoteAddress;
+        }
     }
 }

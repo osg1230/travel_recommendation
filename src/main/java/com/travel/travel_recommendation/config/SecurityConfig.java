@@ -52,7 +52,7 @@ public class SecurityConfig {
                 .addFilterBefore(accountCheck, CsrfFilter.class)
                 .authenticationManager(loginManager(userDetailsService, passwordEncoder))
                 .authorizeHttpRequests(auth -> auth
-                    .requestMatchers("/", "/login", "/css/**", "/js/**", "/images/**", "/error",
+                    .requestMatchers("/", "/login", "/css/**", "/js/**", "/images/**", "/favicon.ico", "/error",
                             "/travel/conditions", "/travel/conditions/check", "/travel/conditions/analyze",
                             "/travel/conditions/review", "/travel/conditions/confirm", "/travel/conditions/confirmed",
                             "/travel/conditions/recommend", "/travel/conditions/edit",
