@@ -15,6 +15,8 @@
 	<description>AI domestic travel itinerary service</description>
 	<properties>
 		<java.version>21</java.version>
+		<!-- 테스트 JVM에 더할 옵션(명령줄 -DargLine=... 으로 DB 인증 DLL 경로 등을 넣는다). 비워 두면 아무것도 더하지 않는다. -->
+		<argLine></argLine>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -71,7 +73,8 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
-				<configuration><systemPropertyVariables><travel.jobs.enabled>false</travel.jobs.enabled></systemPropertyVariables></configuration>
+				<!-- 테스트도 서버와 같은 한국 시간으로 돌려, PC 시간대에 따라 '오늘'이 달라지지 않게 한다. -->
+				<configuration><argLine>-Duser.timezone=Asia/Seoul ${argLine}</argLine><systemPropertyVariables><travel.jobs.enabled>false</travel.jobs.enabled></systemPropertyVariables></configuration>
 			</plugin>
 			<plugin>
 				<groupId>org.springframework.boot</groupId>

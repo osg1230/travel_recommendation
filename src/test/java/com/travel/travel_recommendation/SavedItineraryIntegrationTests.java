@@ -121,6 +121,12 @@ class SavedItineraryIntegrationTests {
             .andExpect(status().isNotFound()).andExpect(content().string(containsString("찾을 수 없어요")));
         mvc.perform(post("/my/itineraries/"+id+"/delete").with(user(other.getLoginId())).with(csrf()))
             .andExpect(status().isNotFound());
+        // 이름 변경도 다른 회원이면 찾을 수 없다고 하고, 제목은 그대로 둔다.
+        String title=itineraries.findById(id).orElseThrow().getTitle();
+        mvc.perform(post("/my/itineraries/"+id+"/title").with(user(other.getLoginId())).with(csrf()).param("title","남의 일정"))
+            .andExpect(status().isNotFound());
+        em.clear();
+        assertThat(itineraries.findById(id).orElseThrow().getTitle()).isEqualTo(title);
         mvc.perform(get("/my/itineraries").with(user(other.getLoginId())))
             .andExpect(status().isOk()).andExpect(content().string(containsString("아직 저장한 일정이 없어요")));
         assertThat(itineraries.findById(id)).isPresent();

@@ -292,6 +292,8 @@ class VirtualReservationIntegrationTests {
         assertThatThrownBy(()->service.detail(id,other.getLoginId())).satisfies(e->assertThat(statusOf(e)).isEqualTo(HttpStatus.NOT_FOUND));
         assertThatThrownBy(()->service.cancel(other.getLoginId(),id)).satisfies(e->assertThat(statusOf(e)).isEqualTo(HttpStatus.NOT_FOUND));
         assertThatThrownBy(()->service.pay(other.getLoginId(),id,UUID.randomUUID(),false)).satisfies(e->assertThat(statusOf(e)).isEqualTo(HttpStatus.NOT_FOUND));
+        // 다른 회원은 수량·인원도 바꾸지 못한다(예약과 재고는 그대로).
+        assertThatThrownBy(()->service.change(other.getLoginId(),id,stock,2,2)).satisfies(e->assertThat(statusOf(e)).isEqualTo(HttpStatus.NOT_FOUND));
         assertThat(service.mine(other.getLoginId())).isEmpty();
         assertThat(reservationStatus(id)).isEqualTo("PENDING");
         assertThat(remaining(stock)).isEqualTo(1);
