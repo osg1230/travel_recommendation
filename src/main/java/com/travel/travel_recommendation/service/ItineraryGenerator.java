@@ -358,7 +358,10 @@ public class ItineraryGenerator {
             +(tags.isEmpty()?"":"\n고른 이유: "+String.join(" · ",tags))
             +(festivalPlace?"\n축제: 여행 기간에 이곳이나 바로 근처에서 "+festival.title()+"("+festival.period()
                 +") 행사가 열려요. 정확한 행사 장소와 일정은 출발 전에 확인해 주세요.":"")
-            +(place.religiousSite()?"\n종교 시설이라 미사·예불 등 행사 중에는 관람이 제한될 수 있어요. 방문 전 관람 가능 시간을 확인해 주세요.":"");
+            +(place.religiousSite()?"\n종교 시설이라 미사·예불 등 행사 중에는 관람이 제한될 수 있어요. 방문 전 관람 가능 시간을 확인해 주세요.":"")
+            // 산 한가운데 대신 탐방로 입구로 오가므로, 이동시간과 머무는 시간의 기준을 알려 준다.
+            +TrailEntrances.of(place).map(e->"\n탐방: "+e.name()+"에서 오르내리는 기준(약 "+e.visitMinutes()/60
+                +"시간)으로 잡았어요. 입산 통제와 날씨는 출발 전에 확인해 주세요.").orElse("");
     }
 
     /** 꼬리표에 넣을 짧은 글. max자보다 길면 잘라 '…'을 붙인다. */
@@ -781,11 +784,16 @@ public class ItineraryGenerator {
     }
 
     // 카카오 후보는 조회해 둔 좌표를, 그 밖에는 도로명 주소로 좌표를 찾는다. 같은 건물 주소는 한 번만 조회한다.
+    // 좌표가 산 한가운데라 길찾기가 안 되는 산(한라산)은 탐방로 입구 좌표를 쓴다(TrailEntrances).
     private KakaoMapClient.Location locate(PlaceCandidate place,Map<String,KakaoMapClient.Location> addresses) {
         if("KAKAO".equals(place.sourceProvider()) && place.longitude()!=null && place.latitude()!=null) {
             if(place.verifiedAt()==null || place.verifiedAt().isBefore(KoreaTime.now().minusHours(24)))
                 throw failure("PLACE_STALE","장소 조회 결과가 오래됐어요. 장소 목록에서 다시 조회해 주세요.");
-            return new KakaoMapClient.Location(place.address(),place.longitude(),place.latitude(),place.verifiedAt().atZone(KoreaTime.ZONE).toInstant());
+            var checkedAt=place.verifiedAt().atZone(KoreaTime.ZONE).toInstant();
+            var entrance=TrailEntrances.of(place);
+            if(entrance.isPresent())
+                return new KakaoMapClient.Location(entrance.get().address(),entrance.get().longitude(),entrance.get().latitude(),checkedAt);
+            return new KakaoMapClient.Location(place.address(),place.longitude(),place.latitude(),checkedAt);
         }
         var matcher=ROAD.matcher(place.address());
         if(!matcher.matches()) throw failure("ADDRESS_REQUIRED","장소의 도로명 주소를 확인해야 해요.");

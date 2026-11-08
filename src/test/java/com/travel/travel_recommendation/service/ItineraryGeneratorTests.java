@@ -66,6 +66,26 @@ class ItineraryGeneratorTests {
         assertThat(first.getLast().placeId()).isNotEqualTo(6L);
         verify(maps,atLeastOnce()).travelTime(argThat(l->l!=null && l.address().endsWith(" 5")),argThat(l->l!=null && l.address().endsWith(" 6")),any());
     }
+    // 한라산은 카카오 좌표(산 한가운데)로는 길이 없어 예전에는 빠졌다. 어리목 입구 좌표로 길을 찾아 일정에 넣고, 탐방 기준을 적는다.
+    @Test void hallasanIsReachedThroughItsTrailEntrance() {
+        var center=new KakaoMapClient.Location("제주특별자치도 제주시 오등동 산 182",126.54218215526396,33.37668525552216,Instant.now());
+        when(maps.travelTime(any(),any(),any())).thenAnswer(invocation->{
+            KakaoMapClient.Location from=invocation.getArgument(0), to=invocation.getArgument(1);
+            if(center.longitude()==to.longitude() || center.longitude()==from.longitude()) throw new RecommendationException("MAP_NO_ROUTE","도로 없음");
+            return new KakaoMapClient.TravelTime(invocation.getArgument(2),601,3000,Instant.now());
+        });
+        var hallasan=new PlaceCandidate(50L,"한라산국립공원",center.address(),"여행 > 관광,명소 > 국립공원","소개","https://place.map.kakao.com/50",
+            "https://map.kakao.com/",LocalDateTime.now(),center.longitude(),center.latitude(),"KAKAO");
+        var conditions=new ConfirmedTravelConditions("KEYWORD","","제주",LocalDate.of(2026,10,1),LocalDate.of(2026,10,1),1,null,2,false,false,List.of(),"");
+        var pool=new PlaceCandidateView(UUID.randomUUID(),new DestinationCandidate(99L,"제주","제주","소개","https://www.jeju.go.kr/",LocalDateTime.of(2026,9,1,0,0)),1,false,
+            List.of(hallasan,place(2)),List.of(),List.of(place(3),place(6)));
+        var input=new Input(pool.jobId(),pool,conditions,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90);
+        var result=generator.generate(input);
+        var visit=result.days().getFirst().items().stream().filter(i->Long.valueOf(50L).equals(i.placeId())).findFirst().orElseThrow();
+        assertThat(java.time.Duration.between(visit.start(),visit.end()).toMinutes()).isEqualTo(240);
+        assertThat(visit.note()).contains("탐방: 한라산 어리목탐방안내소");
+        generator.validate(input,result);
+    }
     @Test void picksHotelNearestToAttractionsAndDoesNotRepeatRestaurants() {
         // 관광지 1·2 근처의 숙소 5와 멀리 있는 숙소 40. 목록의 첫 후보(40)가 아니라 가까운 5를 골라야 한다.
         var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,null,2,true,false,List.of(),"");

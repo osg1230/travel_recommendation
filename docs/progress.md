@@ -4,6 +4,12 @@
 
 작업 시작 시 이 요약과 Git 상태를 확인한다. 기능별 상세 구현·검증 기록은 [2026-09-22 정리 전 원문](progress-history/2026-09-22-before-cleanup.md)에 있으며, 과거 결정·검증 근거가 필요할 때 해당 부분만 읽는다.
 
+## 2026-11-09 한라산을 어리목 입구로 (`feature/place-value-score`, 노트북)
+
+- 결정(사용자): 한라산국립공원이 길찾기 103으로 빠지던 문제는 탐방로 입구 좌표로 고친다. 입구는 어리목탐방안내소, 머무는 시간은 윗세오름 왕복 기준 240분.
+- 구현: `TrailEntrances`(제주 주소의 '한라산국립공원'·'한라산'만), `ItineraryGenerator.locate`가 입구 좌표를 쓰고 방문 안내에 탐방 기준·입산 통제 확인 문구를 붙인다. `VisitMinutes`는 240분을 그대로 쓴다. DB·작업 JSON 변경 없음.
+- 확인: 카카오 길찾기 제주시청→어리목 입구 33분(성공), 산 중심 좌표는 103. 새 테스트 `hallasanIsReachedThroughItsTrailEntrance`·`hallasanUsesTheTrailTimeFromItsEntrance` 통과. 실제 API 제주 품질 측정(01:47)에서 첫·두 번째 초안 모두 한라산국립공원이 들어갔다. 다른 산·국립공원은 확인하지 않았다.
+
 ## 2026-11-09 전체 점검 남은 항목 이어서 (`feature/place-value-score`, 노트북)
 
 - 고친 것([점검 보고](quality/2026-11-01_전체점검_보고.md) 제목 끝에 표시):
@@ -37,7 +43,7 @@
 - 구현: 바다 취향이면 카카오 '{도시} 해안산책로'(관광명소 분류, 3곳까지)를 더 찾는다(`ThemePlaces.searchWords`, `KakaoMapClient.searchThemeAttractions`). 품질 보고서는 `QUALITY_SCENARIO`로 한 시나리오만 돌릴 수 있고, 실패 칸에 서비스 코드 위치 8곳을 적는다.
 - 수정: 숙소에서 저녁 음식점까지 경로가 없으면 일정 전체가 실패하던 것을, 다음 음식점을 3곳까지 보게 고쳤다(`ItineraryGenerator.arriveAndDine`, 새 테스트 `unreachableDinnerRestaurantIsSkippedForTheNextOne`).
 - 측정: AI 상위 후보 반영률 78~92%(0단계 75~91%), 취향 2개 75~95%라 3단계는 생략. 강릉·바다는 0~50%로 흔들린다. 21:56 실행은 관광공사 시간 초과 48번으로 공식 관광지 지표를 쓰지 않는다. 자세한 내용은 [측정 기록](quality/2026-10-30_일정품질_기준측정.md)의 '가치 기반 배치 2단계 뒤'.
-- 남은 것: 4단계 사람 평가(지인 5~10명, 직접 진행 필요), 한라산국립공원이 길찾기 103으로 빠지는 문제(입구 좌표를 쓸지 사용자 결정 필요), 다른 PC의 SQL 013/014 적용 확인.
+- 남은 것: 4단계 사람 평가(지인 5~10명, 직접 진행 필요), 다른 PC의 SQL 013/014 적용 확인.
 
 ## 2026-11-08 전체 점검 '나중에 해도 될 것' 정리 (`feature/place-value-score`, 노트북)
 
