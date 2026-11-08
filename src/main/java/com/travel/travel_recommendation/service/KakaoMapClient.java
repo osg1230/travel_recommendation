@@ -141,6 +141,21 @@ public class KakaoMapClient {
     }
 
     /**
+     * 고른 여행 취향의 관광지를 "○○ 해안산책로"처럼 따로 찾는다({@link ThemePlaces#searchWords}). 바다 취향은 "○○ 명소" 검색 앞쪽이
+     * 해변으로 채워지는데 해변은 같은 종류 상한에 걸려 일정에 더 넣을 수 없어, 해변이 아닌 바다 장소를 후보에 더하려고 쓴다.
+     * 정확도 순 앞 THEME_SEARCH_LIMIT곳만 쓴다. 부산은 해안산책로가 8곳이라 다 넣으면 잘 알려지지 않은 곳까지 일정에 들어갔다(2026-11-08 측정).
+     */
+    static final int THEME_SEARCH_LIMIT=3;
+    public List<KakaoPlace> searchThemeAttractions(String region,String word) {
+        String city=searchWord(region);
+        if(city==null) throw failure("MAP_REGION","여행지 지역 이름을 확인하지 못해 장소를 찾을 수 없어요.");
+        var root=get(localEndpoint.resolve("/v2/local/search/keyword.json?query="
+            +URLEncoder.encode(city+" "+word,StandardCharsets.UTF_8)+"&rect=124,33,132,39&size=15&page=1&sort=accuracy"));
+        return withoutSubPlaces(places(root,item->item.path("category_name").asText("").startsWith("여행 > 관광,명소"),List.of(region),"ATTRACTION",15))
+            .stream().limit(THEME_SEARCH_LIMIT).toList();
+    }
+
+    /**
      * 불국사·전동성당 같은 사찰·성당은 카카오 분류가 '문화,예술 > 종교'라 "○○ 명소" 검색에 나오지 않아 따로 찾는다.
      * 사찰은 "○○ 사찰" 검색의 정확도 앞 5곳을 후보로 돌려준다(예: 경주 → 불국사·석굴암 …). 동네 절도 섞여 나오므로
      * 관광지로 볼지는 성당처럼 호출하는 쪽({@link PlaceDiscoveryService})에서 관광공사 등록 여부로 판단한다.

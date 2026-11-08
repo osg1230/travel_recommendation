@@ -34,6 +34,16 @@ public final class ThemePlaces {
         return themes == null ? List.of() : themes.stream().filter(RULES::containsKey).distinct().toList();
     }
 
+    /**
+     * 장소 목록을 모을 때 취향별로 더 찾을 검색어. 바다 취향은 "○○ 명소" 검색의 바다 장소가 거의 해변이라(강릉 16곳 중 바다 5~6곳, 2026-11-05 측정)
+     * 해변이 아닌 바다 장소(예: 소돌해안일주 산책로, 이기대해안산책로)를 더 찾는다. 다른 취향은 "○○ 명소" 검색으로 충분해 두지 않았다.
+     */
+    private static final Map<String, String> SEARCH_WORDS = Map.of("바다", "해안산책로");
+
+    public static List<String> searchWords(List<String> themes) {
+        return placeThemes(themes).stream().map(SEARCH_WORDS::get).filter(Objects::nonNull).toList();
+    }
+
     /** 이 장소가 맞는 취향. themes 중에서만 찾는다. */
     public static List<String> matched(String name, String subtype, List<String> themes) {
         var segments = Arrays.stream((subtype == null ? "" : subtype).split(">")).map(String::strip).toList();

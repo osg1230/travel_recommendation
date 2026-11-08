@@ -97,14 +97,24 @@ class ItineraryQualityReportTests {
         // 전에 조회해 둔 카카오 장소가 후보에 섞이지 않게 만료 처리하고 이번 실행에서 새로 찾은 장소만 쓴다(롤백되므로 실제 DB는 그대로).
         ExternalPlaceCache.expireExisting(jdbc);
         List<Measured> measured = new ArrayList<>();
+        // QUALITY_SCENARIO에 이름 일부(예: 제주)를 넣으면 그 시나리오만 잰다. 실패 원인을 다시 볼 때 비용을 줄이려고 쓴다.
+        String only = System.getenv("QUALITY_SCENARIO");
         for (var scenario : SCENARIOS) {
-            // 한 시나리오가 실패해도 나머지는 계속 재고, 실패 이유를 보고서에 남긴다.
+            if (only != null && !only.isBlank() && !scenario.name().contains(only)) continue;
+            // 한 시나리오가 실패해도 나머지는 계속 재고, 실패 이유와 서비스 코드의 위치를 보고서에 남긴다.
             try { measured.add(measure(scenario)); }
-            catch (Exception error) { measured.add(new Measured(scenario, 0, Map.of(), null, null, error.toString())); }
+            catch (Exception error) { measured.add(new Measured(scenario, 0, Map.of(), null, null, error + " @ " + where(error))); }
         }
         var file = writeReport(measured);
         System.out.println("일정 품질 보고서: " + file.toAbsolutePath());
         assertThat(measured).anySatisfy(m -> assertThat(m.error()).isNull());
+    }
+
+    /** 예외가 난 서비스 코드 위치(앞 4곳). 보고서의 실패 칸에 적는다. */
+    private static String where(Throwable error) {
+        return Arrays.stream(error.getStackTrace()).filter(f -> f.getClassName().startsWith("com.travel.travel_recommendation.service"))
+            .limit(4).map(f -> f.getClassName().substring(f.getClassName().lastIndexOf('.') + 1) + ":" + f.getLineNumber())
+            .collect(Collectors.joining(" < "));
     }
 
     private Measured measure(Scenario s) throws Exception {

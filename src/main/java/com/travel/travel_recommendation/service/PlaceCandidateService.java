@@ -49,6 +49,16 @@ public class PlaceCandidateService {
             c.purposeSearch().placesIn(destinationId).stream().map(p -> p.placeId()).toList(), c.purposeLabel());
     }
 
+    /** 이 추천 요청에서 고른 여행 취향 이름. 장소 목록을 모을 때 취향별 검색어를 정하는 데 쓴다(PlaceDiscoveryService). */
+    @Transactional(readOnly = true, timeout = 10)
+    public List<String> themeNames(UUID jobId, String loginId, byte[] guestHash) {
+        jobs.view(jobId, loginId, guestHash);
+        var stored = jobRepository.findById(jobId).orElse(null);
+        if (stored == null) return List.of();
+        var themes = mapper.readValue(stored.getRequestJson(), ConfirmedTravelConditions.class).themeNames();
+        return themes == null ? List.of() : themes;
+    }
+
     @Transactional(readOnly = true, timeout = 10)
     public PlaceCandidateView find(UUID jobId, long destinationId, String loginId, byte[] guestHash) {
         return findForSchedule(jobId, destinationId, loginId, guestHash, null);

@@ -275,6 +275,16 @@ class KakaoMapClientTests {
         assertThat(client("key").searchCathedrals("전북특별자치도 전주시")).extracting(com.travel.travel_recommendation.dto.KakaoPlace::name)
             .containsExactly("전동성당");
     }
+    // 취향 검색어(바다 → 해안산책로)는 "○○ 해안산책로"로 찾고 '여행 > 관광,명소' 분류만 받는다(주차장 등은 뺀다).
+    @Test void themeSearchKeepsAttractionsOnly() {
+        var trail=searchItem("701","강원 강릉시 주문진읍 주문리 1"); trail.put("place_name","소돌해안일주 산책로");
+        trail.put("category_name","여행 > 관광,명소 > 도보여행");
+        var parking=searchItem("702","강원 강릉시 주문진읍 주문리 2"); parking.put("category_name","교통,수송 > 교통시설 > 주차장");
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(parking,trail))));
+        assertThat(client("key").searchThemeAttractions("강원특별자치도 강릉시","해안산책로"))
+            .extracting(com.travel.travel_recommendation.dto.KakaoPlace::name).containsExactly("소돌해안일주 산책로");
+        assertThat(java.net.URLDecoder.decode(path.get(),StandardCharsets.UTF_8)).contains("query=강릉 해안산책로");
+    }
     // 목적 시설 전국 검색은 관광명소·문화시설만 받고, 주소가 서비스 여행지 안인 곳을 그 여행지 지역으로 돌려준다.
     @Test void nationwideSearchKeepsFacilitiesInsideServiceRegions() {
         var yeosu=searchItem("201","전남광주통합특별시 여수시 오동도로 61-11"); yeosu.put("category_group_code","CT1");
