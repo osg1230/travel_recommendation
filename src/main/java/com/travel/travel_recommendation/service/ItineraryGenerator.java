@@ -569,15 +569,28 @@ public class ItineraryGenerator {
         builder.move(stay);
         PlaceCandidate restaurant=null; int rest=30;
         if(!builder.dinner) {
-            var candidate=pickRestaurant(builder,stay,null);
-            int toDinner=builder.travelMinutes(stay,candidate);
-            var dinnerStart=builder.time.plusMinutes(rest+toDinner);
-            if(dinnerStart.isBefore(TripConstraints.STAY_DINNER_AT)) dinnerStart=TripConstraints.STAY_DINNER_AT;
-            // 저녁이 자정을 넘기거나 저녁 한도보다 늦게 끝나면 넣지 않는다.
-            var dinnerEnd=dinnerStart.plusMinutes(60);
-            if(dinnerEnd.isAfter(dinnerStart) && !dinnerEnd.isAfter(builder.limit)) {
-                restaurant=candidate;
-                rest=(int)Duration.between(builder.time,dinnerStart).toMinutes()-toDinner;
+            // 숙소에서 길찾기가 안 되는 음식점(도로에서 먼 좌표 등)은 건너뛰고 다음으로 가까운 곳을 3곳까지 본다.
+            // 모두 안 되면 저녁 없이 숙소 휴식으로 마친다(예전에는 일정 전체가 실패했다).
+            PlaceCandidate candidate=null; int toDinner=0; var skipped=new ArrayList<Long>();
+            for(int tries=0;tries<3 && candidate==null;tries++) {
+                var picked=pickRestaurant(builder,stay,null);
+                try { toDinner=builder.travelMinutes(stay,picked); candidate=picked; }
+                catch(RecommendationException error) {
+                    if(!UNREACHABLE_CODES.contains(error.getCode())) throw error;
+                    // 잠시 '이미 쓴 식당'으로 두어 다음 고르기에서 빠지게 한다. 다 고른 뒤 되돌린다.
+                    if(builder.usedRestaurants.add(picked.placeId())) skipped.add(picked.placeId());
+                }
+            }
+            skipped.forEach(builder.usedRestaurants::remove);
+            if(candidate!=null) {
+                var dinnerStart=builder.time.plusMinutes(rest+toDinner);
+                if(dinnerStart.isBefore(TripConstraints.STAY_DINNER_AT)) dinnerStart=TripConstraints.STAY_DINNER_AT;
+                // 저녁이 자정을 넘기거나 저녁 한도보다 늦게 끝나면 넣지 않는다.
+                var dinnerEnd=dinnerStart.plusMinutes(60);
+                if(dinnerEnd.isAfter(dinnerStart) && !dinnerEnd.isAfter(builder.limit)) {
+                    restaurant=candidate;
+                    rest=(int)Duration.between(builder.time,dinnerStart).toMinutes()-toDinner;
+                }
             }
         }
         builder.add("STAY",stay,stay.name(),rest,note,null,null);
@@ -585,8 +598,8 @@ public class ItineraryGenerator {
         var beforeDinner=builder.mark();
         try { eatAt(builder,stay,true,restaurant,null); }
         catch(RecommendationException error) {
-            // 운영시간이 맞지 않는 등으로 저녁이 들어가지 않으면 숙소 휴식으로 마친다.
-            if(!DAY_FULL_CODES.contains(error.getCode())) throw error;
+            // 운영시간이 맞지 않거나 길이 없는 등으로 저녁이 들어가지 않으면 숙소 휴식으로 마친다.
+            if(!DAY_FULL_CODES.contains(error.getCode()) && !UNREACHABLE_CODES.contains(error.getCode())) throw error;
             builder.reset(beforeDinner);
         }
     }

@@ -49,6 +49,23 @@ class ItineraryGeneratorTests {
         assertThat(result.days().get(1).items().getFirst().name()).startsWith("장소4 →");
         assertThat(result.days().stream().flatMap(d->d.items().stream()).filter(i->i.type().equals("VISIT")).map(Item::placeId)).containsExactly(1L,2L);
     }
+    // 숙소에서 가장 가까운 음식점까지 길찾기가 안 되면(2026-11-08 제주 품질 측정에서 일정 전체가 실패) 다음 음식점에서 저녁을 먹는다.
+    @Test void unreachableDinnerRestaurantIsSkippedForTheNextOne() {
+        when(maps.travelTime(any(),any(),any())).thenAnswer(invocation->{
+            KakaoMapClient.Location from=invocation.getArgument(0), to=invocation.getArgument(1);
+            if(from.address().endsWith(" 5") && to.address().endsWith(" 6")) throw new RecommendationException("MAP_NO_ROUTE","경로 없음");
+            return new KakaoMapClient.TravelTime(invocation.getArgument(2),601,3000,Instant.now());
+        });
+        var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,null,2,true,false,List.of(),"");
+        var pool=new PlaceCandidateView(UUID.randomUUID(),new DestinationCandidate(99L,"강릉","강원","소개","https://www.gn.go.kr/",LocalDateTime.of(2026,9,1,0,0)),2,true,
+            List.of(place(1),place(2)),List.of(place(5)),List.of(place(3),place(6),place(7)));
+        var result=generator.generate(new Input(pool.jobId(),pool,conditions,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90));
+        var first=result.days().getFirst().items();
+        // 숙소(5) 뒤 저녁은 길이 없는 6이 아닌 다른 음식점이다.
+        assertThat(first.getLast().type()).isEqualTo("MEAL");
+        assertThat(first.getLast().placeId()).isNotEqualTo(6L);
+        verify(maps,atLeastOnce()).travelTime(argThat(l->l!=null && l.address().endsWith(" 5")),argThat(l->l!=null && l.address().endsWith(" 6")),any());
+    }
     @Test void picksHotelNearestToAttractionsAndDoesNotRepeatRestaurants() {
         // 관광지 1·2 근처의 숙소 5와 멀리 있는 숙소 40. 목록의 첫 후보(40)가 아니라 가까운 5를 골라야 한다.
         var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,null,2,true,false,List.of(),"");

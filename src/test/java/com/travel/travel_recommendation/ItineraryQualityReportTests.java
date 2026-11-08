@@ -110,10 +110,10 @@ class ItineraryQualityReportTests {
         assertThat(measured).anySatisfy(m -> assertThat(m.error()).isNull());
     }
 
-    /** 예외가 난 서비스 코드 위치(앞 4곳). 보고서의 실패 칸에 적는다. */
+    /** 예외가 난 서비스 코드 위치(앞 8곳). 보고서의 실패 칸에 적는다. */
     private static String where(Throwable error) {
         return Arrays.stream(error.getStackTrace()).filter(f -> f.getClassName().startsWith("com.travel.travel_recommendation.service"))
-            .limit(4).map(f -> f.getClassName().substring(f.getClassName().lastIndexOf('.') + 1) + ":" + f.getLineNumber())
+            .limit(8).map(f -> f.getClassName().substring(f.getClassName().lastIndexOf('.') + 1) + ":" + f.getLineNumber())
             .collect(Collectors.joining(" < "));
     }
 
