@@ -38,6 +38,8 @@ public class RecommendationJobService {
     public static final long POLL_SECONDS=WAIT_LIMIT.plus(SEARCH_LIMIT).toSeconds();
     /** 처리 시작 후 이만큼 지나도 끝나지 않은 작업은 멈춘 것으로 본다. 모든 처리 제한(2분 이하)보다 넉넉하게 둔다. */
     static final Duration STUCK_AFTER=Duration.ofMinutes(10);
+    /** 만료된 회원 일정 초안·수정안 작업을 지우기 전에 두는 날 수. 만료 직후 화면의 '만료됐어요' 안내와 원인 확인에 쓸 여유다. */
+    static final int MEMBER_DRAFT_KEEP_DAYS=7;
     public static final String WAIT_MESSAGE="요청이 많아 처리하지 못했어요. 다시 요청해 주세요.";
     /** 대기 중이라고 알리기까지의 시간. 실행기는 1초마다 확인하므로 몇 초가 지나도 시작하지 않았으면 앞선 요청을 처리하는 중이다. */
     private static final Duration WAITING_NOTICE_AFTER=Duration.ofSeconds(3);
@@ -235,6 +237,9 @@ public class RecommendationJobService {
     @Transactional(timeout=10)
     public void cleanup() {
         jobs.deleteExpiredGuests(now());
+        // 회원의 일정 초안·수정안은 만료되면 다시 열 수 없는데 행(후보·입력 원문·출발지 포함)이 계속 쌓였다.
+        // 만료 MEMBER_DRAFT_KEEP_DAYS일 뒤 지운다. 저장한 일정은 itineraries에 따로 있고, 수정할 때 새 초안을 다시 만든다.
+        jobs.deleteExpiredMemberDrafts(now().minusDays(MEMBER_DRAFT_KEEP_DAYS));
         // 실행기가 끝맺지 못한 작업이 화면에 '처리 중'으로 계속 남지 않게 마감한다.
         jobs.failStuck(now().minus(STUCK_AFTER),now());
     }

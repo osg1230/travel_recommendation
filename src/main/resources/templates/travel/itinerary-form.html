@@ -32,7 +32,7 @@
 <option value="true" th:selected="${values.accommodationNeeded == true}">숙소 포함</option>
 <option value="false" th:selected="${values.accommodationNeeded == false}">숙소는 따로 정할게요</option></select></p>
 <p th:if="${options.conditions.startDate == null}"><label for="startDate">출발일 (선택)</label>
-<input id="startDate" name="startDate" type="date" th:min="${#temporals.format(#temporals.createToday(), 'yyyy-MM-dd')}" th:value="${values.startDate}"></p>
+<input id="startDate" name="startDate" type="date" th:min="${@timeText.today()}" th:value="${values.startDate}"></p>
 <p class="help" th:if="${options.conditions.startDate == null}">출발일을 정하면 날짜별 운영 여부를 확인하고 내 일정으로 저장할 수 있어요. 비워 두면 날짜 없는 초안만 만들어져 저장할 수 없어요.</p>
 </section>
 <div class="condition-section">

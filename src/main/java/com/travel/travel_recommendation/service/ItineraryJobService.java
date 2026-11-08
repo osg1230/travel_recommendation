@@ -1105,20 +1105,19 @@ public class ItineraryJobService {
         // 반려동물 동반 여행이면 일정에 들어간 장소의 관광공사 동반 정보를 먼저 찾아 AI 안내와 조건 확인에 쓴다. 실패해도 초안은 그대로다.
         if(PetTravel.wanted(work.input().conditions())) {
             var petService=pets.getIfAvailable();
-            if(petService!=null) try { draft=draft.withPets(petService.lookup(work.input(),draft,Instant.now().plusSeconds(25))); }
+            if(petService!=null) try { draft=draft.withPets(petService.lookup(work.input(),draft,stepUntil(deadline,25))); }
             catch(RuntimeException error) { log.warn("반려동물 동반 정보 조회를 건너뜀 job={} ({})",work.id(),error.toString()); }
         }
         // 자동 실행 설정이면 확인 필요 항목(반려동물 동반·여행 목적 활동)을 AI 웹 검색으로 찾아 AI 준비 안내에도 넘긴다. 유료라 기본은 버튼이다.
         if(verification.auto() && verificationClient.configured()) {
-            try { draft=draft.withVerifications(verifyNow(work.input(),draft,Instant.now().plusSeconds(40))); }
+            try { draft=draft.withVerifications(verifyNow(work.input(),draft,stepUntil(deadline,40))); }
             catch(RuntimeException error) { log.warn("AI 확인 검색을 건너뜀 job={} ({})",work.id(),error.toString()); }
         }
         // 일정에 들어간 관광지의 관광공사 소개문을 찾아 AI 추천 활동의 근거로 넘긴다(2026-10-31). 최대 12초만 쓰고
         // AI 안내에 쓸 시간(60초)을 남긴다. 처음 조회한 소개문은 보관해 다음 초안부터는 다시 부르지 않는다. 실패해도 초안은 그대로다.
         Map<Long,String> overviews=Map.of();
         var overviewService=placeOverviews.getIfAvailable();
-        var overviewUntil=Instant.now().plusSeconds(12);
-        if(overviewUntil.isAfter(deadline.minusSeconds(60))) overviewUntil=deadline.minusSeconds(60);
+        var overviewUntil=stepUntil(deadline,12);
         if(overviewService!=null && Instant.now().isBefore(overviewUntil)) {
             try { overviews=overviewService.lookup(work.input(),draft,overviewUntil); }
             catch(RuntimeException error) { log.warn("장소 소개문 조회를 건너뜀 job={} ({})",work.id(),error.toString()); }
@@ -1128,6 +1127,17 @@ public class ItineraryJobService {
         if(Instant.now().isAfter(deadline.minusSeconds(40))) return plan;
         try { return plan.withNearby(nearby.recommend(work.input(),plan)); }
         catch(RuntimeException error) { return plan; }
+    }
+
+    /** AI 안내에 남겨 둘 시간. 보조 단계(반려동물 정보·AI 확인 검색·소개문)는 마감에서 이만큼 앞에서 끝낸다. */
+    static final int ASSIST_RESERVE_SECONDS=60;
+    /**
+     * 보조 단계 하나의 마감: 지금부터 seconds초와 '작업 마감 − AI 안내 시간' 중 이른 쪽이다.
+     * 단계마다 따로 시간을 재면 합이 처리 제한(2분)을 넘어 다 만든 초안이 SCHEDULE_TIMEOUT으로 버려지기 때문이다.
+     */
+    static Instant stepUntil(Instant deadline,int seconds) {
+        var own=Instant.now().plusSeconds(seconds); var last=deadline.minusSeconds(ASSIST_RESERVE_SECONDS);
+        return own.isBefore(last)?own:last;
     }
 
     @Transactional(timeout=10)

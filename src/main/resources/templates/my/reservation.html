@@ -110,10 +110,10 @@
             <thead><tr><th scope="col">결제번호</th><th scope="col">상태</th><th scope="col">금액</th><th scope="col">처리 시각</th></tr></thead>
             <tbody>
             <tr th:each="p : ${reservation.payments}">
-                <td th:text="${p.id}"></td>
-                <td th:text="${p.statusName() + (p.failureCode != null ? ' (' + p.failureName() + ')' : '')}"></td>
-                <td th:text="${#numbers.formatInteger(p.amount, 1, 'COMMA') + '원'}"></td>
-                <td th:text="${(p.processedAt != null ? @timeText.seconds(p.processedAt) : '-')
+                <td data-label="결제번호" th:text="${p.id}"></td>
+                <td data-label="상태" th:text="${p.statusName() + (p.failureCode != null ? ' (' + p.failureName() + ')' : '')}"></td>
+                <td data-label="금액" th:text="${#numbers.formatInteger(p.amount, 1, 'COMMA') + '원'}"></td>
+                <td data-label="처리 시각" th:text="${(p.processedAt != null ? @timeText.seconds(p.processedAt) : '-')
                     + (p.refundedAt != null ? ' · 환불 ' + @timeText.seconds(p.refundedAt) : '')}"></td>
             </tr>
             </tbody>
@@ -126,10 +126,10 @@
             <thead><tr><th scope="col">내용</th><th scope="col">남은 수량</th><th scope="col">상태</th><th scope="col">시각</th></tr></thead>
             <tbody>
             <tr th:each="l : ${reservation.logs}">
-                <td th:text="${l.reason}"></td>
-                <td th:text="${l.beforeQuantity + ' → ' + l.afterQuantity + ' (' + (l.delta > 0 ? '+' : '') + l.delta + ')'}"></td>
-                <td th:text="${l.statusText()}"></td>
-                <td th:text="${@timeText.seconds(l.createdAt)}"></td>
+                <td data-label="내용" th:text="${l.reasonText()}"></td>
+                <td data-label="남은 수량" th:text="${l.beforeQuantity + ' → ' + l.afterQuantity + ' (' + (l.delta > 0 ? '+' : '') + l.delta + ')'}"></td>
+                <td data-label="상태" th:text="${l.statusText()}"></td>
+                <td data-label="시각" th:text="${@timeText.seconds(l.createdAt)}"></td>
             </tr>
             </tbody>
         </table>

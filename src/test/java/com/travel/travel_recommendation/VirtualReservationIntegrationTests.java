@@ -134,6 +134,25 @@ class VirtualReservationIntegrationTests {
         assertThat(remaining(stock)).isEqualTo(2);
     }
 
+    // 결제 대기 예약은 회원당 MAX_PENDING_PER_MEMBER건까지 받고, 30분 넘게 결제하지 않으면 취소해 수량을 되돌린다.
+    @Test void pendingReservationsAreLimitedAndExpireAfterThirtyMinutes() {
+        var owner=member(); long trip=trip(owner); long stock=stock(10);
+        var ids=new ArrayList<Long>();
+        for(int i=0;i<VirtualReservationService.MAX_PENDING_PER_MEMBER;i++) ids.add(service.reserve(owner.getLoginId(),stock,trip,1,1,UUID.randomUUID()));
+        assertThatThrownBy(()->service.reserve(owner.getLoginId(),stock,trip,1,1,UUID.randomUUID()))
+            .satisfies(e->assertThat(statusOf(e)).isEqualTo(HttpStatus.CONFLICT));
+        assertThat(remaining(stock)).isEqualTo(10-VirtualReservationService.MAX_PENDING_PER_MEMBER);
+        // 한 건만 31분 전에 마지막으로 바꾼 것처럼 옮긴다. 그 한 건만 취소되고 수량이 돌아온다.
+        jdbc.update("UPDATE dbo.virtual_reservations SET updated_at=DATEADD(MINUTE,-31,SYSDATETIME()) WHERE reservation_id=?",ids.get(0));
+        assertThat(service.expirePending()).isGreaterThanOrEqualTo(1);
+        assertThat(reservationStatus(ids.get(0))).isEqualTo("CANCELED");
+        assertThat(reservationStatus(ids.get(1))).isEqualTo("PENDING");
+        assertThat(remaining(stock)).isEqualTo(10-VirtualReservationService.MAX_PENDING_PER_MEMBER+1);
+        assertThat(count("SELECT COUNT(*) FROM dbo.reservation_logs WHERE reservation_id=? AND event_type='CANCEL' AND delta_quantity=1",ids.get(0))).isEqualTo(1);
+        // 한 건이 풀렸으니 다시 신청할 수 있다.
+        assertThat(service.reserve(owner.getLoginId(),stock,trip,1,1,UUID.randomUUID())).isPositive();
+    }
+
     @Test void twoConcurrentRequestsForTheLastUnitProduceOneReservation() throws Exception {
         long stock=stock(1);
         var members=List.of(member(),member());

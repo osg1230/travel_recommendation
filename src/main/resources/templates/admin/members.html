@@ -41,11 +41,11 @@
             <th scope="col">상태</th><th scope="col">가입일</th><th scope="col">상세</th></tr></thead>
         <tbody>
         <tr th:each="member : ${members.members}">
-            <td th:text="${member.loginId}"></td>
-            <td th:text="${member.nickname}"></td>
-            <td th:text="${member.role}"></td>
-            <td th:text="${member.statusName}"></td>
-            <td th:text="${@timeText.date(member.joinedAt)}"></td>
+            <td data-label="아이디" th:text="${member.loginId}"></td>
+            <td data-label="닉네임" th:text="${member.nickname}"></td>
+            <td data-label="구분" th:text="${member.role}"></td>
+            <td data-label="상태" th:text="${member.statusName}"></td>
+            <td data-label="가입일" th:text="${@timeText.date(member.joinedAt)}"></td>
             <td><a th:href="@{/admin/members/{id}(id=${member.id})}">상세 보기</a></td>
         </tr>
         </tbody>

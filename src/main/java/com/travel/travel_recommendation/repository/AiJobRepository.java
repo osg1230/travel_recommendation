@@ -20,6 +20,10 @@ public interface AiJobRepository extends JpaRepository<AiJob,UUID> {
     @Modifying(clearAutomatically=true,flushAutomatically=true)
     @Query("delete from AiJob j where j.userId is null and j.expiresAt<=:now")
     int deleteExpiredGuests(LocalDateTime now);
+    /** 회원의 일정 초안·수정안 작업 중 expiredBefore보다 먼저 만료된 것. 회원 추천 작업(추천 이력)은 지우지 않는다. */
+    @Modifying(clearAutomatically=true,flushAutomatically=true)
+    @Query("delete from AiJob j where j.userId is not null and j.jobType='ITINERARY' and j.expiresAt<=:expiredBefore")
+    int deleteExpiredMemberDrafts(LocalDateTime expiredBefore);
     @Modifying(clearAutomatically=true,flushAutomatically=true)
     @Query("""
         update AiJob j set j.status='FAILED', j.errorCode='SERVER_RESTART',

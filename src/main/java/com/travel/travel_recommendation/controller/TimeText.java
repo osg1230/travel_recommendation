@@ -17,6 +17,9 @@ public class TimeText {
     public String date(Object utc) { return format(utc, "yyyy-MM-dd"); }
     public String seconds(Object utc) { return format(utc, "yyyy-MM-dd HH:mm:ss"); }
 
+    /** 오늘 날짜(한국 시각, yyyy-MM-dd). 날짜 입력의 최소 날짜에 쓴다. 서버 시간대가 UTC여도 한국 0~9시에 하루 이른 날짜가 되지 않는다. */
+    public String today() { return LocalDate.now(KOREA).toString(); }
+
     /** 여행 날짜(시간대 없는 날짜)를 "10월 15일(목)"처럼 보여 준다. 일정의 일차 제목에 쓴다. 날짜가 없으면 "날짜 미정"이다. */
     public String day(LocalDate date) {
         if (date == null) return "날짜 미정";

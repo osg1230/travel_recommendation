@@ -50,11 +50,11 @@
             <th scope="col">처리자</th><th scope="col">사유</th></tr></thead>
         <tbody>
         <tr th:each="change : ${member.history}">
-            <td th:text="${@timeText.dateTime(change.changedAt)}"></td>
-            <td th:text="${change.beforeStatus}"></td>
-            <td th:text="${change.afterStatus}"></td>
-            <td th:text="${change.adminLoginId}"></td>
-            <td th:text="${change.reason}"></td>
+            <td data-label="변경 시각" th:text="${@timeText.dateTime(change.changedAt)}"></td>
+            <td data-label="이전" th:text="${change.beforeStatus}"></td>
+            <td data-label="변경 후" th:text="${change.afterStatus}"></td>
+            <td data-label="처리자" th:text="${change.adminLoginId}"></td>
+            <td data-label="사유" th:text="${change.reason}"></td>
         </tr>
         </tbody>
     </table>

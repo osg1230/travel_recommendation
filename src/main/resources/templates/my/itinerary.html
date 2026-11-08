@@ -121,7 +121,7 @@
             <tbody><tr th:each="check : ${itinerary.checks}">
                 <th scope="row" th:text="${check.name}"></th>
                 <td><span class="status-badge" th:classappend="${'status-' + #strings.toLowerCase(check.status)}" th:text="${check.label}"></span></td>
-                <td th:text="${check.detail}"></td>
+                <td data-label="내용" th:text="${check.detail}"></td>
             </tr></tbody>
         </table>
         <th:block th:if="${!itinerary.prices.isEmpty()}">
