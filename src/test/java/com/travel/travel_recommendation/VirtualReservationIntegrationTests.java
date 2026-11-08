@@ -53,9 +53,27 @@ class VirtualReservationIntegrationTests {
     private final List<Long> placeIds=new ArrayList<>();
     private long hotel;
     private static final Random RANDOM=new Random();
+    /** 이 테스트가 만든 장소의 원본 ID 앞부분. 지역도 실제 시·군이 아닌 '예약테스트'로 둬 장소 검색에 나오지 않게 한다. */
+    private static final String TEST_PLACE="rvtest_";
+    private static boolean leftoversRemoved;
 
     @BeforeEach void setup() {
         hotel=jdbc.queryForObject("SELECT TOP 1 place_id FROM dbo.places WHERE place_type='ACCOMMODATION' AND source_place_id='R1_GN_SEAMARQ'",Long.class);
+        if(!leftoversRemoved) { removeLeftovers(); leftoversRemoved=true; }
+    }
+
+    /**
+     * 예전 실행이 중간에 멈춰 남긴 행을 지운다(점검 보고 25번). 지금 다른 곳에서 도는 테스트의 행은 건드리지 않도록 1시간 넘은 것만 고른다.
+     * 회원은 rv_ 아이디, 장소는 rvtest_ 원본 ID, 수량은 그 장소이거나 씨마크의 2031년 이후 구간(이 테스트만 쓰는 날짜)이다.
+     */
+    private void removeLeftovers() {
+        String old="DATEADD(HOUR,-1,SYSDATETIME())";
+        userIds.addAll(jdbc.queryForList("SELECT user_id FROM dbo.users WHERE login_id LIKE 'rv[_]%' AND created_at<"+old,Long.class));
+        placeIds.addAll(jdbc.queryForList("SELECT place_id FROM dbo.places WHERE source_place_id LIKE 'rvtest[_]%' AND created_at<"+old,Long.class));
+        stockIds.addAll(jdbc.queryForList("""
+            SELECT s.stock_id FROM dbo.reservation_stock s JOIN dbo.places p ON p.place_id=s.place_id
+            WHERE s.created_at<%s AND (p.source_place_id LIKE 'rvtest[_]%%' OR (s.place_id=? AND s.usage_start_at>='2031-01-01'))""".formatted(old),Long.class,hotel));
+        cleanup();
     }
 
     @AfterEach void cleanup() {
@@ -86,7 +104,13 @@ class VirtualReservationIntegrationTests {
         return user;
     }
     /** 시드와 겹치지 않는 먼 미래(2031년)의 1박 구간을 만든다. */
-    private long stock(int remaining) { return stockAt(LocalDateTime.of(2031,1,1,15,0).plusMinutes(RANDOM.nextInt(400_000)),remaining); }
+    private long stock(int remaining) {
+        // 무작위 시각이 남아 있던 구간과 겹치면(UNIQUE) 다른 시각으로 몇 번 더 만든다.
+        for(int attempt=1;;attempt++) {
+            try { return stockAt(LocalDateTime.of(2031,1,1,15,0).plusMinutes(RANDOM.nextInt(400_000)),remaining); }
+            catch(org.springframework.dao.DuplicateKeyException e) { if(attempt==5) throw e; }
+        }
+    }
     private long stockAt(LocalDateTime start, int remaining) {
         long id=jdbc.queryForObject("""
             INSERT INTO dbo.reservation_stock(place_id, usage_start_at, usage_end_at, total_quantity, remaining_quantity, unit_price, quantity_unit)
@@ -130,6 +154,11 @@ class VirtualReservationIntegrationTests {
         assertThat(count("SELECT COUNT(*) FROM dbo.reservation_logs WHERE reservation_id=? AND event_type='CREATE' AND delta_quantity=-1",id)).isEqualTo(1);
         // 객실당 최대 2명(씨마크)을 넘거나 객실보다 인원이 적으면 저장하지 않는다.
         assertThatThrownBy(()->service.reserve(owner.getLoginId(),stock,trip,1,3,UUID.randomUUID()))
+            .satisfies(e->assertThat(statusOf(e)).isEqualTo(HttpStatus.BAD_REQUEST));
+        // 경계값: 객실은 1~5실이라 0실과 6실은 거절한다(점검 보고 29번).
+        assertThatThrownBy(()->service.reserve(owner.getLoginId(),stock,trip,0,1,UUID.randomUUID()))
+            .satisfies(e->assertThat(statusOf(e)).isEqualTo(HttpStatus.BAD_REQUEST));
+        assertThatThrownBy(()->service.reserve(owner.getLoginId(),stock,trip,6,6,UUID.randomUUID()))
             .satisfies(e->assertThat(statusOf(e)).isEqualTo(HttpStatus.BAD_REQUEST));
         assertThat(remaining(stock)).isEqualTo(2);
     }
@@ -175,6 +204,22 @@ class VirtualReservationIntegrationTests {
         assertThat(remaining(stock)).isZero();
         assertThat(count("SELECT COUNT(*) FROM dbo.virtual_reservations WHERE stock_id=?",stock)).isEqualTo(5);
         assertThat(count("SELECT COUNT(*) FROM dbo.reservation_logs WHERE stock_id=?",stock)).isEqualTo(5);
+    }
+
+    // 날짜 변경과 취소가 동시에 와도 어느 순서로 처리되든 예약은 취소로 끝나고 두 날짜의 수량이 모두 돌아온다(점검 보고 28번).
+    @Test void changeAndCancelAtOnceLeaveNoStockHeld() throws Exception {
+        for(int round=0;round<3;round++) {
+            var owner=member();
+            var start=LocalDateTime.of(2031,1,1,15,0).plusMinutes(RANDOM.nextInt(400_000));
+            long day1=stockAt(start,3), day2=stockAt(start.plusDays(1),3);
+            long id=service.reserve(owner.getLoginId(),day1,trip(owner),1,1,UUID.randomUUID());
+            var results=race(2,i->i==0?service.change(owner.getLoginId(),id,day2,2,2):service.cancel(owner.getLoginId(),id));
+            // 취소가 먼저면 변경은 '취소된 예약'으로 거절(409)된다.
+            assertThat(results.successes()+results.conflicts()).isEqualTo(2);
+            assertThat(reservationStatus(id)).isEqualTo("CANCELED");
+            assertThat(remaining(day1)).isEqualTo(3);
+            assertThat(remaining(day2)).isEqualTo(3);
+        }
     }
 
     @Test void theSamePaymentKeyIsProcessedOnceEvenConcurrently() throws Exception {
@@ -405,13 +450,18 @@ class VirtualReservationIntegrationTests {
         assertThat(count("SELECT COUNT(*) FROM dbo.reservation_stock WHERE place_id=?",beach)).isZero();
         long id=service.reserve(owner.getLoginId(),bookable.get(0).stock().stockId(),itinerary,3,3,UUID.randomUUID());
         assertThat(service.detail(id,owner.getLoginId()).summary().amount()).isEqualByComparingTo("75000");
+        // 경계값: 관광시설은 1~20명이라 21명은 거절하고 20명은 받는다(점검 보고 29번).
+        long ticket=bookable.get(0).stock().stockId();
+        assertThatThrownBy(()->service.reserve(owner.getLoginId(),ticket,itinerary,21,21,UUID.randomUUID()))
+            .satisfies(e->assertThat(statusOf(e)).isEqualTo(HttpStatus.BAD_REQUEST));
+        assertThat(service.reserve(owner.getLoginId(),ticket,itinerary,20,20,UUID.randomUUID())).isPositive();
     }
 
     private long attraction(String name, String subtype) {
         long id=jdbc.queryForObject("""
             INSERT INTO dbo.places(place_type, source_provider, source_place_id, place_name, region, address, subtype, verified_at)
-            OUTPUT inserted.place_id VALUES ('ATTRACTION','KAKAO',?,?,N'강원특별자치도 강릉시',?,?,SYSDATETIME())""",
-            Long.class,"test_"+UUID.randomUUID(),name,"강원특별자치도 강릉시 시험로 "+RANDOM.nextInt(100_000),subtype);
+            OUTPUT inserted.place_id VALUES ('ATTRACTION','KAKAO',?,?,N'예약테스트',?,?,SYSDATETIME())""",
+            Long.class,TEST_PLACE+UUID.randomUUID(),name,"강원특별자치도 강릉시 시험로 "+RANDOM.nextInt(100_000),subtype);
         placeIds.add(id);
         return id;
     }
@@ -419,8 +469,8 @@ class VirtualReservationIntegrationTests {
     private long kakaoPlace(String name, String address) {
         long id=jdbc.queryForObject("""
             INSERT INTO dbo.places(place_type, source_provider, source_place_id, place_name, region, address, verified_at)
-            OUTPUT inserted.place_id VALUES ('ACCOMMODATION','KAKAO',?,?,N'강원특별자치도 강릉시',?,SYSDATETIME())""",
-            Long.class,"test_"+UUID.randomUUID(),name,address);
+            OUTPUT inserted.place_id VALUES ('ACCOMMODATION','KAKAO',?,?,N'예약테스트',?,SYSDATETIME())""",
+            Long.class,TEST_PLACE+UUID.randomUUID(),name,address);
         placeIds.add(id);
         return id;
     }

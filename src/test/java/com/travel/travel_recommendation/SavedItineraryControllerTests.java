@@ -192,7 +192,7 @@ class SavedItineraryControllerTests {
     }
 
     @Test void listsEmptyStateAndRenamesTitle() throws Exception {
-        when(service.list("member")).thenReturn(List.of());
+        when(service.listPage("member")).thenReturn(new SavedItineraryService.ListPage(List.of(),java.util.Map.of()));
         mvc.perform(get("/my/itineraries").with(user("member"))).andExpect(status().isOk())
             .andExpect(content().string(containsString("아직 저장한 일정이 없어요")));
         mvc.perform(post("/my/itineraries/7/title").with(user("member")).with(csrf()).param("title","가을 강릉 여행"))

@@ -42,9 +42,10 @@ public class SavedItineraryController {
     @GetMapping
     String list(Principal principal, HttpServletResponse response, Model model) {
         response.setHeader("Cache-Control","no-store");
-        model.addAttribute("itineraries",service().list(login(principal)));
+        var page=service().listPage(login(principal));
+        model.addAttribute("itineraries",page.itineraries());
         // 목록 카드의 이동수단과 대표 사진(그 일정에서 사진이 있는 첫 관광지). 사진을 찾지 못해도 목록은 그대로 보여 준다.
-        var extras=service().listExtras(login(principal));
+        var extras=page.extras();
         var thumbs=new java.util.HashMap<Long,Object>();
         var photo=photos.getIfAvailable();
         try {

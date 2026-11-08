@@ -64,7 +64,7 @@ public class ProfileService {
             throw new ProfileUpdateException("newPassword", "현재 비밀번호와 같아요. 비밀번호를 바꾸지 않으려면 비워 두세요.");
         }
         if (users.existsByNicknameAndStatusNotAndIdNot(form.getNickname(), UserStatus.WITHDRAWN, user.getId())) {
-            throw new ProfileUpdateException("nickname", "이미 사용 중인 닉네임입니다.");
+            throw new ProfileUpdateException("nickname", "이미 사용 중인 닉네임이에요.");
         }
         boolean nicknameChanged = !user.getNickname().equals(form.getNickname());
         boolean passwordChanged = !form.getNewPassword().isEmpty();

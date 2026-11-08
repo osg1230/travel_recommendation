@@ -226,19 +226,17 @@ public class SavedItineraryService {
         items.flush();
     }
 
-    @Transactional(readOnly=true,timeout=10)
-    public List<SavedItinerary.Summary> list(String loginId) {
-        return itineraries.findByUserIdOrderByStartDateDescIdDesc(member(loginId)).stream().map(this::summary).toList();
-    }
-
     /** 목록 카드에 더 보여 줄 정보: 이동수단 이름과, 대표 사진 후보가 되는 관광지 ID(방문 순서). */
     public record ListExtra(String transportName, List<Long> visitPlaceIds) {}
+    /** 목록 화면에 필요한 일정 요약과 카드별 추가 정보. 내 일정은 한 번만 읽는다(점검 보고 15번). */
+    public record ListPage(List<SavedItinerary.Summary> itineraries, Map<Long,ListExtra> extras) {}
 
     @Transactional(readOnly=true,timeout=10)
-    public Map<Long,ListExtra> listExtras(String loginId) {
+    public ListPage listPage(String loginId) {
         var extras=new HashMap<Long,ListExtra>();
         var owned=itineraries.findByUserIdOrderByStartDateDescIdDesc(member(loginId));
-        if(owned.isEmpty()) return extras;
+        var summaries=owned.stream().map(this::summary).toList();
+        if(owned.isEmpty()) return new ListPage(summaries,extras);
         // 일정마다 항목을 따로 읽지 않고 방문 항목을 한 번에 읽은 뒤, 일정별로 나눠 방문 순서(일차·순서)대로 정렬한다.
         var visits=new HashMap<Long,List<ItineraryItem>>();
         for(var item:items.findByItineraryIdInAndItemType(owned.stream().map(Itinerary::getId).toList(),"VISIT"))
@@ -249,7 +247,7 @@ public class SavedItineraryService {
                 .map(ItineraryItem::getPlaceId).toList();
             extras.put(itinerary.getId(),new ListExtra(transportName(itinerary.getTransportation()),visitIds));
         }
-        return extras;
+        return new ListPage(summaries,extras);
     }
 
     @Transactional(readOnly=true,timeout=10)

@@ -273,6 +273,14 @@ class ItineraryRevisionIntegrationTests {
         when(ai.propose(any(),any(),any(),any(),any(),any(),eq("그대로"),any())).thenReturn(revise(List.of(),List.of(),null));
         assertThat(schedules.aiRevise(original,null,hash,"그대로").question()).contains("바꿀 내용을 찾지 못했어요");
         assertThat(ownJobs()).isEqualTo(before);
+        // 경계값: 수정 요청은 1~300자라 301자는 AI를 부르기 전에 거절하고, 300자는 AI에 넘긴다(점검 보고 29번).
+        String tooLong="가".repeat(301), longest="가".repeat(300);
+        assertThatThrownBy(()->schedules.aiRevise(original,null,hash,tooLong))
+            .isInstanceOfSatisfying(org.springframework.web.server.ResponseStatusException.class,
+                e->assertThat(e.getStatusCode().value()).isEqualTo(400));
+        verify(ai,never()).propose(any(),any(),any(),any(),any(),any(),eq(tooLong),any());
+        when(ai.propose(any(),any(),any(),any(),any(),any(),eq(longest),any())).thenReturn(revise(List.of(),List.of(),null));
+        assertThat(schedules.aiRevise(original,null,hash,longest).question()).contains("바꿀 내용을 찾지 못했어요");
         assertThatThrownBy(()->schedules.aiRevise(original,null,hash," ")).isInstanceOf(ResponseStatusException.class);
     }
 

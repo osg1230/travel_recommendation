@@ -141,6 +141,13 @@ class SavedItineraryIntegrationTests {
         assertThat(itineraries.findById(id).orElseThrow().getTitle()).isEqualTo("가을 강릉 여행");
         mvc.perform(post("/my/itineraries/"+id+"/title").with(user(owner.getLoginId())).with(csrf()).param("title","  "))
             .andExpect(status().isBadRequest());
+        // 경계값: 150자는 저장하고 151자는 거절한다(점검 보고 29번).
+        mvc.perform(post("/my/itineraries/"+id+"/title").with(user(owner.getLoginId())).with(csrf()).param("title","가".repeat(151)))
+            .andExpect(status().isBadRequest());
+        mvc.perform(post("/my/itineraries/"+id+"/title").with(user(owner.getLoginId())).with(csrf()).param("title","가".repeat(150)))
+            .andExpect(redirectedUrl("/my/itineraries/"+id));
+        em.clear();
+        assertThat(itineraries.findById(id).orElseThrow().getTitle()).hasSize(150);
         mvc.perform(post("/my/itineraries/"+id+"/delete").with(user(owner.getLoginId())).with(csrf()))
             .andExpect(redirectedUrl("/my/itineraries"));
         em.clear();

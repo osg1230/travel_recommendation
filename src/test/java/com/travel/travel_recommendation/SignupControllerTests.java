@@ -49,9 +49,9 @@ class SignupControllerTests {
 
     @Test
     void duplicateLoginIdIsCheckedBeforeLimitAndMap() throws Exception {
-        doThrow(new DuplicateUserException("loginId", "이미 사용 중인 아이디입니다.")).when(users).checkAvailable(any());
+        doThrow(new DuplicateUserException("loginId", "이미 사용 중인 아이디예요.")).when(users).checkAvailable(any());
         mvc.perform(validRequest().with(csrf()).param("homeArea", "수원역")).andExpect(status().isOk())
-                .andExpect(content().string(containsString("이미 사용 중인 아이디입니다.")));
+                .andExpect(content().string(containsString("이미 사용 중인 아이디예요.")));
         verifyNoInteractions(limiter);
         verify(maps, never()).findOrigin(any());
     }

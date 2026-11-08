@@ -21,7 +21,7 @@
     <div class="notice" th:if="${discoveryMessage == null and festivalMessage == null}">
         <p>어떤 여행을 원하는지 아직 잘 모르겠다면 <a th:href="@{/travel/conditions/discover}">여행 장면 고르기로 취향 찾기</a>부터 해 보세요. 5개 질문이며 건너뛸 수 있어요.</p>
     </div>
-    <p th:if="${preview}" class="notice">화면 확인용 예시 선택지입니다.</p>
+    <p th:if="${preview}" class="notice">화면 확인용 예시 선택지예요.</p>
     <p th:if="${choicesUnavailable}" class="notice" role="alert">조건 목록을 불러오지 못했어요. 잠시 후 다시 시도하거나 문장으로 적어 주세요.</p>
     <p th:if="${analysisError}" class="notice" role="alert" th:text="${analysisError}"></p>
     <form th:action="@{/travel/conditions/recommend}" th:object="${travelForm}" method="post" novalidate data-analysis-form>

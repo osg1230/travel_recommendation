@@ -108,7 +108,7 @@ public class ProfileController {
                 if (ex.getField() == null) result.reject("profile.unchanged", ex.getMessage());
                 else result.rejectValue(ex.getField(), "profile.invalid", ex.getMessage());
             } catch (DataIntegrityViolationException ex) {
-                result.reject("profile.conflict", "닉네임이 사용 중이거나 저장할 수 없는 값입니다. 확인 후 다시 시도해 주세요.");
+                result.reject("profile.conflict", "닉네임이 사용 중이거나 저장할 수 없는 값이에요. 확인 후 다시 시도해 주세요.");
             } catch (DataAccessException | TransactionException ex) {
                 result.reject("profile.unavailable", "일시적으로 저장하지 못했어요. 잠시 후 다시 시도해 주세요.");
             }

@@ -97,13 +97,20 @@ public class PlaceCandidateService {
         // 고른 여행 취향(예: 문화·역사)에 맞는 관광지는 목적 시설 다음으로 둔다. 관광지 후보 수는 여행 일수로 정해져(TripConstraints.candidateLimit) 뒤쪽은 잘리기 때문이다.
         // 경주처럼 대표 분류가 문화·역사인 여행지는 취향을 고르지 않아도 문화유산이 잘리지 않게 한다.
         var themes = ThemePlaces.withHeritageDestination(conditions.themeNames(), current.getName(), current.getSubtype());
-        var candidates = places.findLocalPlaces(current.getRegion()).stream()
-            .filter(place -> usable(place, current.getRegion()))
+        var usablePlaces = places.findLocalPlaces(current.getRegion()).stream()
+            .filter(place -> usable(place, current.getRegion())).toList();
+        // 정렬은 장소를 여러 번 비교하므로, details_json의 검색 순서와 취향 일치 여부는 장소마다 한 번만 계산해 둔다(점검 보고 14번).
+        var ranks = new HashMap<Long,Integer>(); var themeMissed = new HashMap<Long,Boolean>();
+        for (var place : usablePlaces) {
+            ranks.put(place.getId(), PlaceRankDetails.read(place, mapper));
+            themeMissed.put(place.getId(), ThemePlaces.matched(place.getName(), place.getSubtype(), themes).isEmpty());
+        }
+        var candidates = usablePlaces.stream()
             .sorted(Comparator.comparing((Place p)->!purposeIds.contains(p.getId()) && !festivalIds.contains(p.getId()))
-                .thenComparing((Place p)->ThemePlaces.matched(p.getName(),p.getSubtype(),themes).isEmpty())
+                .thenComparing((Place p)->themeMissed.get(p.getId()))
                 .thenComparing((Place p)->!"KAKAO".equals(p.getSourceProvider()))
                 // 카카오 검색 결과에 먼저 나온 곳부터 둔다. 이름순으로 자르면 뒤쪽 글자로 시작하는 곳(정동진 등)이 빠진다.
-                .thenComparingInt((Place p)->PlaceRankDetails.read(p,mapper))
+                .thenComparingInt((Place p)->ranks.get(p.getId()))
                 .thenComparing(Place::getName).thenComparing(Place::getId)).toList();
         var distinct=new ArrayList<Place>(); Set<String> seen=new HashSet<>();
         for(var place:candidates) {

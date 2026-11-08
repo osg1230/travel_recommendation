@@ -17,7 +17,7 @@
     <p>현재 상태 <strong th:text="${member.summary.statusName}"></strong></p>
     <p th:text="${'가입 ' + @timeText.dateTime(member.summary.joinedAt)}"></p>
     <p th:text="${'최근 변경 ' + @timeText.dateTime(member.updatedAt)}"></p>
-    <p class="help">운영에 필요한 최소 정보만 표시합니다.</p>
+    <p class="help">운영에 필요한 최소 정보만 표시해요.</p>
 
     <h2>상태 변경</h2>
     <!--/* 상태 변경이 거절되면 이유를 보이고, 적었던 사유를 아래 칸에 다시 채운다. */-->
@@ -31,19 +31,19 @@
                 <option value="ACTIVE" th:selected="${member.summary.status == 'RESTRICTED'}">정상</option>
                 <option value="RESTRICTED" th:selected="${member.summary.status == 'ACTIVE'}">이용 제한</option>
             </select>
-            <p class="help">이용 제한으로 바꾸면 해당 회원은 로그인할 수 없습니다. 탈퇴 처리는 이 화면에서 하지 않습니다.</p>
+            <p class="help">이용 제한으로 바꾸면 해당 회원은 로그인할 수 없어요. 탈퇴 처리는 이 화면에서 하지 않아요.</p>
         </div>
         <div class="field">
             <label for="reason">변경 사유 (필수)</label>
             <textarea id="reason" name="reason" required maxlength="1000" rows="3"
                       aria-describedby="reason-help" th:text="${statusReason}"></textarea>
-            <p id="reason-help" class="help">사유는 운영 이력에 남습니다. 회원의 이메일·실명 같은 개인정보는 적지 마세요.</p>
+            <p id="reason-help" class="help">사유는 운영 이력에 남아요. 회원의 이메일·실명 같은 개인정보는 적지 마세요.</p>
         </div>
         <button type="submit">상태 변경</button>
     </form>
 
     <h2>상태 변경 이력</h2>
-    <p role="status" th:if="${member.history.isEmpty()}">아직 상태를 바꾼 기록이 없습니다.</p>
+    <p role="status" th:if="${member.history.isEmpty()}">아직 상태를 바꾼 기록이 없어요.</p>
     <table th:unless="${member.history.isEmpty()}">
         <caption>최근 10건</caption>
         <thead><tr><th scope="col">변경 시각</th><th scope="col">이전</th><th scope="col">변경 후</th>

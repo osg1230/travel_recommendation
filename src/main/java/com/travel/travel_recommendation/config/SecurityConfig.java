@@ -9,6 +9,7 @@ import java.io.IOException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -35,6 +36,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.servlet.FlashMap;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
+import org.springframework.web.util.ServletRequestPathUtils;
 import org.springframework.web.servlet.support.SessionFlashMapManager;
 
 @Configuration
@@ -44,7 +47,8 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, UserDetailsService userDetailsService,
                                             PasswordEncoder passwordEncoder, ObjectProvider<UserRepository> users,
-                                            LoginAttemptLimiter loginLimiter) throws Exception {
+                                            LoginAttemptLimiter loginLimiter,
+                                            @Qualifier("requestMappingHandlerMapping") ObjectProvider<RequestMappingHandlerMapping> controllerMappings) throws Exception {
         var accountCheck = new AccountSessionFilter(users);
         // 회원가입에도 CSRF 보호를 유지한다. 새 기능은 구현할 때 접근 규칙을 추가한다.
         return http.addFilterBefore(new LoginInputFilter(loginLimiter), org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
@@ -63,6 +67,9 @@ public class SecurityConfig {
                     .requestMatchers("/admin", "/admin/**").hasRole("ADMIN")
                     .requestMatchers("/account", "/account/withdraw").authenticated()
                     .requestMatchers("/my", "/my/**").authenticated()
+                    // 어느 컨트롤러에도 없는 주소는 막지 않고 넘겨 404 화면이 나오게 한다.
+                    // 컨트롤러가 있는 주소는 위에 규칙을 적지 않으면 그대로 막힌다.
+                    .requestMatchers(request -> unknownPath(request, controllerMappings)).permitAll()
                     .anyRequest().denyAll())
                 .formLogin(form -> form.loginPage("/login").usernameParameter("loginId")
                     .successHandler((request, response, authentication) -> {
@@ -176,6 +183,25 @@ public class SecurityConfig {
         flash.put("failedLoginId", kept.length() > 50 ? kept.substring(0, 50) : kept);
         flash.setTargetRequestPath(request.getContextPath() + "/login");
         new SessionFlashMapManager().saveOutputFlashMap(flash, request, response);
+    }
+
+    /**
+     * 컨트롤러가 받지 않는 주소인지 본다(점검 보고 20번). 예전에는 이런 주소도 막혀 로그인 화면이나 403이 나왔다.
+     * 주소는 있지만 방식(GET/POST)이 다른 경우처럼 확인 중 예외가 나면 알 수 없는 주소로 보지 않고 원래 규칙을 따른다.
+     */
+    static boolean unknownPath(HttpServletRequest request, ObjectProvider<RequestMappingHandlerMapping> controllerMappings) {
+        RequestMappingHandlerMapping mappings = controllerMappings.getIfAvailable();
+        if (mappings == null) return false;
+        // 보안 필터는 DispatcherServlet보다 먼저 돌아 주소 분석 결과가 없을 수 있다. 여기서 만든 것은 끝나면 지운다.
+        boolean parsedHere = !ServletRequestPathUtils.hasParsedRequestPath(request);
+        if (parsedHere) ServletRequestPathUtils.parseAndCache(request);
+        try {
+            return mappings.getHandler(request) == null;
+        } catch (Exception e) {
+            return false;
+        } finally {
+            if (parsedHere) ServletRequestPathUtils.clearParsedRequestPath(request);
+        }
     }
 
     private static String pathOf(HttpServletRequest request) {
