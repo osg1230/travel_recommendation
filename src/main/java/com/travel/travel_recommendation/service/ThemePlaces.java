@@ -29,6 +29,9 @@ public final class ThemePlaces {
             List.of("테마파크", "유원지", "레일바이크", "케이블카", "루지", "체험", "놀이", "레저", "아쿠아리움", "짚라인", "동물원")));
     }
 
+    /** 관광지 선택에 쓰는 취향 전체. 내 기록 취향 점수(MyTasteService)는 고른 취향과 상관없이 모든 종류를 센다. */
+    public static List<String> allPlaceThemes() { return List.copyOf(RULES.keySet()); }
+
     /** 고른 취향 중 관광지 선택에 쓰는 것만 돌려준다(맛집 등은 뺀다). */
     public static List<String> placeThemes(List<String> themes) {
         return themes == null ? List.of() : themes.stream().filter(RULES::containsKey).distinct().toList();

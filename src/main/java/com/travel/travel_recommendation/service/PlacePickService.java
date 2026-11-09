@@ -31,12 +31,18 @@ public class PlacePickService {
     private final ObjectMapper mapper;
     private final ObjectProvider<PlacePickService> self;
     private final SimilarMemberService similarMembers;
+    private final MyTasteService myTaste;
 
     /**
      * members는 관광지 ID별로 비슷한 조건으로 여행한 다른 회원의 기록이다. 기록이 없으면 비어 있다.
      * ranks는 관광지 ID별 카카오 검색 순서(PlaceRankDetails, 대표 관광지가 앞)로, 가치 점수에 쓴다.
+     * myTaste는 이 회원이 즐겨찾기·4점 이상 평가한 관광지의 종류별 수로, 가치 점수에만 쓰고 GPT에는 보내지 않는다.
      */
-    public record Task(UUID jobId, String requestJson, Input input, Map<Long,MemberStats> members, Map<Long,Integer> ranks) {
+    public record Task(UUID jobId, String requestJson, Input input, Map<Long,MemberStats> members, Map<Long,Integer> ranks,
+                       Map<String,Integer> myTaste) {
+        public Task(UUID jobId, String requestJson, Input input, Map<Long,MemberStats> members, Map<Long,Integer> ranks) {
+            this(jobId,requestJson,input,members,ranks,Map.of());
+        }
         public Task(UUID jobId, String requestJson, Input input, Map<Long,MemberStats> members) { this(jobId,requestJson,input,members,Map.of()); }
         public Task(UUID jobId, String requestJson, Input input) { this(jobId,requestJson,input,Map.of()); }
     }
@@ -64,7 +70,8 @@ public class PlacePickService {
         // 가치 점수의 대표 관광지 기준: 장소 수집 때 저장한 카카오 검색 순서.
         Map<Long,Integer> ranks=new HashMap<>();
         places.findAllById(ids).forEach(p->ranks.put(p.getId(),PlaceRankDetails.read(p,mapper)));
-        return new Task(jobId,job.getRequestJson(),input,members,ranks);
+        // 가치 점수의 내 기록 기준: 이 회원이 좋아한 관광지 종류(비회원은 빈 값).
+        return new Task(jobId,job.getRequestJson(),input,members,ranks,myTaste.themeCounts(job.getUserId()));
     }
 
     static List<OpenAiPlacePickClient.Candidate> candidates(Input input) { return candidates(input,Map.of()); }
@@ -99,7 +106,7 @@ public class PlacePickService {
         if(job==null || !"QUEUED".equals(job.getStatus()) || !task.requestJson().equals(job.getRequestJson())) return;
         Input picked;
         try {
-            picked=picked(task.input(),picks,task.ranks(),task.members());
+            picked=picked(task.input(),picks,task.ranks(),task.members(),task.myTaste());
             generator.checkInput(picked);
         } catch(RuntimeException error) {
             log.warn("AI 순서로 관광지를 다시 고르지 못해 기존 선택을 씁니다 job={} ({})",task.jobId(),error.toString());
@@ -119,10 +126,20 @@ public class PlacePickService {
      * picked에 관광지 가치 점수(PlaceValueScore)를 더한 입력. 일정 생성이 다음 장소를 고를 때 가치와 이동 부담을 함께 본다(개선 계획 2단계).
      */
     static Input picked(Input input,OpenAiPlacePickClient.Picks picks,Map<Long,Integer> ranks,Map<Long,MemberStats> members) {
+        return picked(input,picks,ranks,members,Map.of());
+    }
+
+    /** myTaste(내가 좋아한 관광지 종류별 수)까지 점수에 넣고, 내 기록 점수를 받은 관광지 ID를 고른 이유용으로 남긴다. */
+    static Input picked(Input input,OpenAiPlacePickClient.Picks picks,Map<Long,Integer> ranks,Map<Long,MemberStats> members,
+                        Map<String,Integer> myTaste) {
         var picked=pickedPlaces(input,picks);
         Map<Long,Double> values=new HashMap<>();
-        PlaceValueScore.score(picked,ranks,members).forEach((id,score)->values.put(id,score.total()));
-        return picked.withValues(values);
+        List<Long> liked=new ArrayList<>();
+        PlaceValueScore.score(picked,ranks,members,myTaste).forEach((id,score)->{
+            values.put(id,score.total());
+            if(score.myTaste()>0) liked.add(id);
+        });
+        return picked.withValues(values,liked);
     }
 
     private static Input pickedPlaces(Input input,OpenAiPlacePickClient.Picks picks) {

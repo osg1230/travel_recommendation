@@ -7,34 +7,44 @@ import java.util.*;
 
 /**
  * 관광지 가치 점수(일정 품질 개선 계획 1단계, 2026-11-05). 일정에 넣을 만한 정도를 0~100점으로 나타낸다.
- * 기준은 네 가지이고 가중치는 경험값이다.
+ * 기준은 다섯 가지이고 가중치는 경험값이다.
  * - 고른 순서(40): AI가 정한 순서(실패하면 서버 규칙 순서)에서 앞일수록 높다.
  * - 대표 관광지(25): 카카오 검색 순서(PlaceRankDetails)에서 앞일수록 높다. 관광공사 인기 순서·GPT 제안 대표 관광지가 맨 앞에 저장된다.
  * - 취향 일치(25): AI가 고른 주된 활동이 고른 취향에 맞으면(활동이 없으면 분류 이름으로 판단) 만점이다.
  * - 비슷한 회원 기록(10): 비슷한 조건 회원이 저장·즐겨찾기·4점 이상 평가한 수(3명 이상이면 만점). 기록이 적어 가중치를 가장 낮게 둔다.
+ * - 내 기록(10, 2026-11-09): 내가 즐겨찾기·4점 이상 평가한 관광지 중 이곳과 같은 종류인 곳의 수(3곳 이상이면 만점, MyTasteService).
+ *   앞의 네 기준에 더한 뒤 100점에서 자르므로, 내 기록이 없으면 점수가 전과 같다.
  * 필수·중심 장소(fixed)는 점수와 관계없이 일정에 넣는다는 규칙이 우선한다.
- * 지금은 품질 보고서에만 쓰고 일정 결과는 바꾸지 않는다. 다음 장소 고르기(2단계)에서 이 점수를 쓸 예정이다.
+ * 품질 보고서에 표시하고, 일정 생성이 다음 장소를 '가치 − 이동 부담'으로 고를 때 쓴다(2단계, picking.values).
  */
 public final class PlaceValueScore {
-    static final double ORDER_WEIGHT = 40, LANDMARK_WEIGHT = 25, THEME_WEIGHT = 25, MEMBER_WEIGHT = 10;
+    static final double ORDER_WEIGHT = 40, LANDMARK_WEIGHT = 25, THEME_WEIGHT = 25, MEMBER_WEIGHT = 10, MY_TASTE_WEIGHT = 10;
     /** 회원 기록 만점 기준(명). */
     static final int MEMBER_FULL = 3;
+    /** 내 기록 만점 기준(같은 종류로 좋아한 관광지 수). */
+    static final int MY_TASTE_FULL = 3;
     private PlaceValueScore() {}
 
-    /** 한 관광지의 점수와 기준별 값. order·landmark·members는 0~1이고 total은 0~100이다. */
-    public record Score(double total, double order, double landmark, boolean theme, double members, boolean fixed) {
-        /** 보고서에 적을 한 줄. 예) 72점(순서 0.90·대표 0.60·취향 O·회원 0.00) */
+    /** 한 관광지의 점수와 기준별 값. order·landmark·members·myTaste는 0~1이고 total은 0~100이다. */
+    public record Score(double total, double order, double landmark, boolean theme, double members, double myTaste, boolean fixed) {
+        /** 보고서에 적을 한 줄. 예) 72점(순서 0.90·대표 0.60·취향 O·회원 0.00·내 기록 0.33) */
         public String text() {
-            return String.format("%d점(순서 %.2f·대표 %.2f·취향 %s·회원 %.2f%s)", Math.round(total), order, landmark,
-                theme ? "O" : "X", members, fixed ? "·필수/중심" : "");
+            return String.format("%d점(순서 %.2f·대표 %.2f·취향 %s·회원 %.2f·내 기록 %.2f%s)", Math.round(total), order, landmark,
+                theme ? "O" : "X", members, myTaste, fixed ? "·필수/중심" : "");
         }
+    }
+
+    /** 내 기록 없이 계산한 점수(비회원, 품질 보고서). */
+    public static Map<Long, Score> score(Input input, Map<Long, Integer> ranks, Map<Long, MemberStats> members) {
+        return score(input, ranks, members, Map.of());
     }
 
     /**
      * 고른 관광지와 예비 관광지(고른 순서대로)의 점수. ranks는 장소 ID별 카카오 검색 순서(없으면 UNRANKED),
-     * members는 비슷한 조건 회원 기록이다. 저녁 관광 후보는 낮 일정과 따로 고르므로 넣지 않는다.
+     * members는 비슷한 조건 회원 기록, myTaste는 내가 좋아한 관광지의 종류별 수(MyTasteService)다.
+     * 저녁 관광 후보는 낮 일정과 따로 고르므로 넣지 않는다.
      */
-    public static Map<Long, Score> score(Input input, Map<Long, Integer> ranks, Map<Long, MemberStats> members) {
+    public static Map<Long, Score> score(Input input, Map<Long, Integer> ranks, Map<Long, MemberStats> members, Map<String, Integer> myTaste) {
         List<PlaceCandidate> ordered = new ArrayList<>(input.places().attractions());
         input.reserve().stream().filter(p -> !ordered.contains(p)).forEach(ordered::add);
         var themes = ThemePlaces.placeThemes(input.conditions() == null ? List.of() : input.conditions().themeNames());
@@ -48,10 +58,23 @@ public final class PlaceValueScore {
             double landmark = landmarkShare.getOrDefault(place.placeId(), 0.0);
             boolean theme = matchesTheme(input, place, themes);
             double member = memberShare(members.get(place.placeId()));
-            double total = ORDER_WEIGHT * order + LANDMARK_WEIGHT * landmark + (theme ? THEME_WEIGHT : 0) + MEMBER_WEIGHT * member;
-            scores.put(place.placeId(), new Score(total, order, landmark, theme, member, fixed.contains(place.placeId())));
+            double taste = myTasteShare(place, myTaste);
+            double total = Math.min(100, ORDER_WEIGHT * order + LANDMARK_WEIGHT * landmark + (theme ? THEME_WEIGHT : 0)
+                + MEMBER_WEIGHT * member + MY_TASTE_WEIGHT * taste);
+            scores.put(place.placeId(), new Score(total, order, landmark, theme, member, taste, fixed.contains(place.placeId())));
         }
         return scores;
+    }
+
+    /**
+     * 내 기록 정도. 이곳이 맞는 종류 중 내가 가장 많이 좋아한 종류의 곳 수를 3곳 기준으로 나눈다(예: 자연 2곳이면 0.67).
+     * 종류는 내 기록을 셀 때와 같게 분류·이름(ThemePlaces)으로 본다.
+     */
+    static double myTasteShare(PlaceCandidate place, Map<String, Integer> myTaste) {
+        if (myTaste.isEmpty()) return 0;
+        int liked = ThemePlaces.matched(place.name(), place.subtype(), ThemePlaces.allPlaceThemes()).stream()
+            .mapToInt(theme -> myTaste.getOrDefault(theme, 0)).max().orElse(0);
+        return Math.min(1, liked / (double) MY_TASTE_FULL);
     }
 
     /** n곳 중 i번째(0부터)의 앞쪽 정도. 맨 앞이 1, 맨 뒤가 0이고 한 곳뿐이면 1이다. */

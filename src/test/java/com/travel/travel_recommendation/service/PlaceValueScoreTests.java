@@ -50,6 +50,21 @@ class PlaceValueScoreTests {
         assertThat(required.get(4L).text()).contains("필수/중심");
     }
 
+    // 내 기록(2026-11-09): 문화·역사를 3곳 좋아했으면 박물관(2)·미술관(4)은 만점, 바다를 1곳 좋아했으면 해변(1·3)은 1/3이다.
+    // 합계는 100점에서 자르고, 내 기록이 없으면 전과 같은 점수다.
+    @Test void myTasteAddsUpToTenPointsAndCapsAtHundred() {
+        var ranks = Map.of(1L, 0, 2L, 5, 3L, 9);
+        var members = Map.of(1L, new MemberStats(3, 0, 0), 4L, new MemberStats(0, 1, 0));
+        var plain = PlaceValueScore.score(input(List.of()), ranks, members);
+        var liked = PlaceValueScore.score(input(List.of()), ranks, members, Map.of("문화·역사", 3, "바다", 1));
+        assertThat(liked.get(2L).myTaste()).isEqualTo(1.0);
+        assertThat(liked.get(4L).total()).isCloseTo(plain.get(4L).total() + 10, within(0.01));
+        assertThat(liked.get(3L).myTaste()).isCloseTo(1.0 / 3, within(0.01));
+        assertThat(liked.get(1L).total()).isEqualTo(100.0);
+        assertThat(PlaceValueScore.score(input(List.of()), ranks, members, Map.of())).isEqualTo(plain);
+        assertThat(liked.get(2L).text()).contains("내 기록 1.00");
+    }
+
     @Test void sharesAndMemberCap() {
         assertThat(PlaceValueScore.share(0, 1)).isEqualTo(1.0);
         assertThat(PlaceValueScore.share(1, 3)).isEqualTo(0.5);

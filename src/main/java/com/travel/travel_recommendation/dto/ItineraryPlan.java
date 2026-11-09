@@ -102,6 +102,14 @@ public final class ItineraryPlan {
         public Input withValues(Map<Long, Double> values) {
             return picking == null ? this : withPicking(picking.withValues(values));
         }
+        /** 가치 점수와 내 기록 점수를 받은 관광지 ID를 함께 담은 입력. */
+        public Input withValues(Map<Long, Double> values, List<Long> myTaste) {
+            return picking == null ? this : withPicking(picking.withValues(values, myTaste));
+        }
+        /** 내가 즐겨찾기·높게 평가한 관광지와 같은 종류라 내 기록 점수를 받은 곳인지. */
+        public boolean likedKind(PlaceCandidate place) {
+            return picking != null && picking.myTaste().contains(place.placeId());
+        }
         /** 관광지 가치 점수(0~100). 점수가 없으면(이전 작업·AI 순서 실패) 0이라 거리만으로 고르게 된다. */
         public double valueOf(PlaceCandidate place) {
             return picking == null ? 0 : picking.values().getOrDefault(place.placeId(), 0.0);
@@ -165,21 +173,33 @@ public final class ItineraryPlan {
      * values는 관광지 ID별 가치 점수(0~100, PlaceValueScore, 2026-11-05)다. 일정 생성은 다음 장소를 '가치 − 이동 부담'으로 고를 때 쓴다.
      * AI가 순서를 정하지 못한 작업과 이전 JSON에는 없고, 그때는 예전처럼 거리만 본다.
      */
+    /**
+     * myTaste는 내 기록 점수(즐겨찾기·4점 이상 평가한 관광지와 같은 종류)를 받은 관광지 ID다(2026-11-09, MyTasteService).
+     * 일정 생성은 이곳의 고른 이유에 '즐겨찾기·높게 평가한 곳과 비슷한 종류'를 붙인다. 비회원·기록 없음·이전 JSON에는 없다.
+     */
     public record Picking(List<PlaceCandidate> pool, boolean byAi, List<Long> previous, UUID previousJobId, List<Long> night,
-                          Map<Long, String> activities, Map<Long, Double> values) {
+                          Map<Long, String> activities, Map<Long, Double> values, List<Long> myTaste) {
         public Picking {
             pool = pool == null ? List.of() : List.copyOf(pool);
             previous = previous == null ? List.of() : List.copyOf(previous);
             night = night == null ? List.of() : List.copyOf(night);
             activities = activities == null ? Map.of() : Map.copyOf(activities);
             values = values == null ? Map.of() : Map.copyOf(values);
+            myTaste = myTaste == null ? List.of() : List.copyOf(myTaste);
+        }
+        public Picking(List<PlaceCandidate> pool, boolean byAi, List<Long> previous, UUID previousJobId, List<Long> night,
+                       Map<Long, String> activities, Map<Long, Double> values) {
+            this(pool, byAi, previous, previousJobId, night, activities, values, null);
         }
         public Picking(List<PlaceCandidate> pool, boolean byAi, List<Long> previous, UUID previousJobId, List<Long> night,
                        Map<Long, String> activities) {
             this(pool, byAi, previous, previousJobId, night, activities, null);
         }
         public Picking withValues(Map<Long, Double> values) {
-            return new Picking(pool, byAi, previous, previousJobId, night, activities, values);
+            return new Picking(pool, byAi, previous, previousJobId, night, activities, values, myTaste);
+        }
+        public Picking withValues(Map<Long, Double> values, List<Long> myTaste) {
+            return new Picking(pool, byAi, previous, previousJobId, night, activities, values, myTaste);
         }
         public Picking(List<PlaceCandidate> pool, boolean byAi, List<Long> previous, UUID previousJobId, List<Long> night) {
             this(pool, byAi, previous, previousJobId, night, null);

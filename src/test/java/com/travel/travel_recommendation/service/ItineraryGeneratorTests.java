@@ -348,6 +348,17 @@ class ItineraryGeneratorTests {
         assertThat(result.days().get(1).items().stream().filter(i->i.type().equals("MEAL"))).hasSize(1);
         generator.validate(late,result);
     }
+    // 내 기록 점수를 받은 관광지(picking.myTaste)에만 고른 이유 '즐겨찾기·높게 평가한 곳과 비슷한 종류'를 붙인다(2026-11-09).
+    @Test void likedKindPlacesShowTheReason() {
+        var plain=input(2,LocalTime.of(18,0));
+        var visits=generator.generate(plain).days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).toList();
+        long liked=visits.getFirst().placeId();
+        var input=plain.withPicking(new Picking(List.of(),true,List.of(),null,List.of(),Map.of(),Map.of(),List.of(liked)));
+        var day1=generator.generate(input).days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).toList();
+        assertThat(day1.stream().filter(i->i.placeId()==liked).findFirst().orElseThrow().note())
+            .contains("즐겨찾기·높게 평가한 곳과 비슷한 종류");
+        assertThat(day1.stream().filter(i->i.placeId()!=liked)).allSatisfy(i->assertThat(i.note()).doesNotContain("즐겨찾기"));
+    }
     // 중심 장소가 둘이면 날마다 하나씩 그날 첫 관광지로 넣고, 가까운 관광지는 그 중심 장소의 날에 넣는다.
     @Test void eachDayStartsAtItsCenterPlaceWithNearbyAttractions() {
         var conditions=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,null,2,true,false,List.of(),"");
