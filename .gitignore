@@ -32,3 +32,6 @@ bin/
 
 # 주간 보고서 (학교 제출용, 로컬에서만 관리)
 docs/weekly-reports/
+
+# 페르소나 테스트 계정 비밀번호 (로컬 DB 전용)
+docs/quality/personas/계정.md
