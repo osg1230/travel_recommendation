@@ -68,7 +68,7 @@ public final class ItineraryConditionReport {
             .filter(p -> !visited.contains(p.placeId()) && !skipped.contains(p.placeId())).map(p -> p.name()).toList();
         if (!missing.isEmpty()) return new Check("선택한 관광지 포함", Status.UNMET, "빠진 관광지: " + String.join(", ", missing));
         if (!skipped.isEmpty()) return new Check("선택한 관광지 포함", Status.MET, "하루 시간에 맞춰 관광지 " + (input.places().attractions().size() - skipped.size())
-            + "곳을 배치했어요. 하루 시간이 부족하거나 가는 길이 2시간을 넘어(섬 등) " + String.join(", ", result.skipped().stream().map(PlaceRef::name).toList()) + "은(는) 넣지 않았어요.");
+            + "곳을 배치했어요. 하루 시간이 부족하거나 가는 길이 너무 멀어(자동차 2시간·대중교통 1시간 30분 초과, 섬 등)" + String.join(", ", result.skipped().stream().map(PlaceRef::name).toList()) + "은(는) 넣지 않았어요.");
         return new Check("선택한 관광지 포함", Status.MET, "일정에 쓰기로 고른 관광지 " + input.places().attractions().size() + "곳을 모두 배치했어요.");
     }
 

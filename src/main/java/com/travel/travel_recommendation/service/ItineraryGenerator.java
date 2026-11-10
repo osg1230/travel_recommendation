@@ -68,7 +68,12 @@ public class ItineraryGenerator {
     private static final int EVENING_MAX_MOVE=45;
     /** 저녁 관광을 마치고 숙소로 돌아와 쉬는 항목의 길이(분). */
     static final int RETURN_REST_MINUTES=30;
-    /** 이 오류가 나면 그 관광지만 뺀다. 한 구간 2시간 초과(섬 등)와 경로 없음이다. */
+    /** 한 구간 이동 상한(분, 여유 10분 제외). 자동차는 2시간, 대중교통은 1시간 30분이다. */
+    static final int CAR_LEG_LIMIT=120, TRANSIT_LEG_LIMIT=90;
+    static String legLimitText(KakaoMapClient.Transport transport) {
+        return transport==KakaoMapClient.Transport.PUBLIC_TRANSIT?"1시간 30분":"2시간";
+    }
+    /** 이 오류가 나면 그 관광지만 뺀다. 한 구간 이동 상한 초과(섬 등)와 경로 없음이다. */
     private static final Set<String> UNREACHABLE_CODES=Set.of("TRAVEL_TIME_EXCEEDED","MAP_NO_ROUTE");
     /**
      * 카카오 길찾기가 잠시 안 될 때(응답 시간 초과·사용량 제한·연결 실패)의 오류. 이때는 초안 전체를 실패시키지 않고
@@ -231,10 +236,10 @@ public class ItineraryGenerator {
                 } catch(RecommendationException error) {
                     // 더 넣어 보던 예비 관광지가 멀면 그곳만 빼고 다른 예비 관광지를 본다.
                     if(spare && UNREACHABLE_CODES.contains(error.getCode())) { builder.reset(mark); reserve.remove(next); continue; }
-                    // 이 관광지를 넣으려다 한 구간이 2시간을 넘거나 경로가 없으면 이 곳만 빼고 다음 후보를 본다.
+                    // 이 관광지를 넣으려다 한 구간이 이동 상한(자동차 2시간·대중교통 1시간 30분)을 넘거나 경로가 없으면 이 곳만 빼고 다음 후보를 본다.
                     if(UNREACHABLE_CODES.contains(error.getCode())) {
                         if(mustVisit.contains(next.placeId()))
-                            throw failure(error.getCode(),"'"+next.name()+"'까지 가는 길이 2시간을 넘거나 경로를 찾지 못했어요. 필수 방문 장소에서 빼거나 이동수단을 바꿔 주세요.");
+                            throw failure(error.getCode(),"'"+next.name()+"'까지 가는 길이 "+legLimitText(input.transport())+"을 넘거나 경로를 찾지 못했어요. 필수 방문 장소에서 빼거나 이동수단을 바꿔 주세요.");
                         builder.reset(mark); remaining.remove(next); unreachable.add(next); routeError=error;
                         // 빠진 자리는 예비 관광지로 채운다. 이미 일정에 있는 종류와 다른 곳을 먼저 쓴다.
                         var replacement=takeReserve(reserve,remaining,days,builder,locations,addresses,deadline,lastDraft);
@@ -1254,7 +1259,10 @@ public class ItineraryGenerator {
                     add("TRANSIT",next,previous.name()+" → "+next.name(),5,"같은 주소 안이거나 바로 옆이라 이동 여유 5분 · 실제 내부 동선 확인 필요",null,null);
                 } else {
                     var route=route(previous,next);
-                    if(route.minutes()>120) throw failure("TRAVEL_TIME_EXCEEDED","한 구간의 이동시간이 2시간을 넘어요. 다른 지역이나 이동수단을 선택해 주세요.");
+                    // 한 구간 상한: 자동차 2시간, 대중교통 1시간 30분(2026-11-10). 대중교통은 갈아타기·배차 대기까지 겹쳐 같은 시간이라도 부담이 커서 더 낮게 둔다.
+                    // 예전에는 대중교통도 2시간까지 넣어 여수 숙소 → 향일암 105분 같은 구간이 들어갔다. 넘으면 그 관광지만 빼고 다른 곳을 본다.
+                    int limit=input.transport()==KakaoMapClient.Transport.PUBLIC_TRANSIT?TRANSIT_LEG_LIMIT:CAR_LEG_LIMIT;
+                    if(route.minutes()>limit) throw failure("TRAVEL_TIME_EXCEEDED","한 구간의 이동시간이 "+legLimitText(input.transport())+"을 넘어요. 다른 지역이나 이동수단을 선택해 주세요.");
                     // 카카오 길찾기에 연결하지 못해 직선거리로 추정한 구간은 조회 시각 없이 추정임을 적는다.
                     if(route.checkedAt()==null) {
                         add("TRANSIT",next,previous.name()+" → "+next.name(),route.minutes()+10,

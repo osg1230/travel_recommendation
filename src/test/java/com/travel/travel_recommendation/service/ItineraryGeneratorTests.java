@@ -519,6 +519,23 @@ class ItineraryGeneratorTests {
         assertThatThrownBy(()->generator.generate(required)).isInstanceOfSatisfying(RecommendationException.class,e->{
             assertThat(e.getCode()).isEqualTo("TRAVEL_TIME_EXCEEDED"); assertThat(e.getMessage()).contains("장소90"); });
     }
+    // 대중교통은 한 구간 1시간 30분까지만 넣는다. 100분 걸리는 곳은 대중교통이면 빼고, 자동차면 그대로 넣는다(여수 숙소 → 향일암 105분).
+    @Test void longTransitLegIsLeftOutButTheSameLegByCarStays() {
+        when(maps.travelTime(any(),any(),any())).thenAnswer(invocation->{
+            KakaoMapClient.Location a=invocation.getArgument(0), b=invocation.getArgument(1);
+            boolean far=Math.max(a.longitude(),b.longitude())>128.885;
+            return new KakaoMapClient.TravelTime(invocation.getArgument(2),far?100*60:601,3000,Instant.now());
+        });
+        var base=input(1,LocalTime.of(18,0));
+        var pool=new PlaceCandidateView(base.places().jobId(),base.places().destination(),1,false,
+            List.of(place(1),place(90),place(2)),List.of(),base.places().restaurants());
+        var transit=new Input(base.recommendationId(),pool,base.conditions(),base.start(),base.end(),KakaoMapClient.Transport.PUBLIC_TRANSIT,60);
+        var byTransit=generator.generate(transit);
+        assertThat(byTransit.skipped()).extracting(PlaceRef::placeId).containsExactly(90L);
+        generator.validate(transit,byTransit);
+        var car=new Input(base.recommendationId(),pool,base.conditions(),base.start(),base.end(),KakaoMapClient.Transport.CAR,60);
+        assertThat(generator.generate(car).days().getFirst().items()).anyMatch(i->Long.valueOf(90L).equals(i.placeId()));
+    }
     private PlaceCandidate restaurant(long id,String subtype) {
         return new PlaceCandidate(id,"식당"+id,"강원 강릉시 경포로 "+id,subtype,"소개","https://www.gn.go.kr/","https://map.kakao.com/",LocalDateTime.of(2026,9,1,0,0));
     }
