@@ -272,6 +272,19 @@ public class ItineraryGenerator {
             }
             // 점심을 아직 넣지 못했으면 마지막 관광지 뒤에 넣는다(숙박하는 날은 숙소 쪽 식당). 들어가는지는 위에서 확인했다.
             if(!builder.lunch) eat(builder,last,stay,false);
+            // 오후 2시 이후에 시작해 점심을 넣지 않은 날은 숙박하지 않으면 저녁을 따로 챙긴다(2026-11-10).
+            // 관광이 17시 전에 끝나면 그때까지 자유시간을 두고 마지막 관광지 근처에서 저녁을 먹는다. 시간이 안 되면 저녁 없이 마친다.
+            if(!input.dayStart(day).isBefore(NO_LUNCH_FROM) && stay==null && dinnerDay && !builder.dinner) {
+                var beforeDinner=builder.mark();
+                try {
+                    if(builder.time.isBefore(DINNER_FROM))
+                        builder.add("FREE",last,"저녁 전 자유시간",(int)Duration.between(builder.time,DINNER_FROM).toMinutes(),"주변 산책·자유시간",null,null);
+                    eat(builder,last,null,true);
+                } catch(RecommendationException error) {
+                    if(!DAY_FULL_CODES.contains(error.getCode()) && !UNREACHABLE_CODES.contains(error.getCode())) throw error;
+                    builder.reset(beforeDinner);
+                }
+            }
             // 숙소를 고른 이유는 따로 적지 않고, 다른 후보와 체크인 확인 안내는 초안의 첫 숙박 항목에 한 번만 보여 준다.
             // 하루 방문 수를 정했으면 저녁 관광도 그 수에 센다(예: 하루 5곳 = 낮 4곳 + 저녁 1곳).
             // 낮 관광으로 이미 정한 수를 채웠으면 저녁 관광은 넣지 않고 숙소에서 쉰다.

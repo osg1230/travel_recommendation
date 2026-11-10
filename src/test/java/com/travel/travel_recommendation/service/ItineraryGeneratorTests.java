@@ -75,6 +75,14 @@ class ItineraryGeneratorTests {
         var meals=items.stream().filter(i->"MEAL".equals(i.type())).toList();
         assertThat(meals).hasSize(1);
         assertThat(meals.getFirst().start()).isAfterOrEqualTo(LocalTime.of(17,0));
+        // 관광이 17시 전에 끝나도 저녁은 빠지지 않는다. 17시까지 자유시간을 두고 저녁을 먹는다(부산 오후 반나절에서 저녁이 빠졌던 경우).
+        var oneSpot=new PlaceCandidateView(UUID.randomUUID(),base.places().destination(),1,false,List.of(place(1)),List.of(),List.of(place(3)));
+        var shortDay=generator.generate(new Input(oneSpot.jobId(),oneSpot,base.conditions(),LocalTime.of(15,0),LocalTime.of(21,0),KakaoMapClient.Transport.CAR,60))
+            .days().getFirst().items();
+        assertThat(shortDay).anyMatch(i->"FREE".equals(i.type()));
+        var dinner=shortDay.stream().filter(i->"MEAL".equals(i.type())).toList();
+        assertThat(dinner).hasSize(1);
+        assertThat(dinner.getFirst().start()).isAfterOrEqualTo(LocalTime.of(17,0));
         // 오후 1시에 시작하면 전처럼 점심부터 먹는다.
         var earlier=new Input(base.places().jobId(),base.places(),base.conditions(),LocalTime.of(13,0),LocalTime.of(21,0),KakaoMapClient.Transport.CAR,60);
         assertThat(generator.generate(earlier).days().getFirst().items().getFirst().type()).isEqualTo("MEAL");
