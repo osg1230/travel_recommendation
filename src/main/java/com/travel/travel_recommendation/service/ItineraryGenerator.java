@@ -29,6 +29,11 @@ public class ItineraryGenerator {
     private static final LocalTime DINNER_FROM=LocalTime.of(17,0);
     /** 이 시각이 지났는데 다음 관광지를 마치면 LUNCH_UNTIL을 넘기면 관광지보다 점심을 먼저 넣는다. */
     private static final LocalTime LUNCH_FROM=LocalTime.of(11,0), LUNCH_UNTIL=LocalTime.of(13,30);
+    /**
+     * 그날 관광을 이 시각 이후에 시작하면 점심때가 지났으므로 점심을 넣지 않는다(2026-11-10).
+     * 예전에는 15:00에 시작해도 점심부터 먹고 3시간 뒤 저녁을 또 넣었다(부산 오후 반나절 페르소나).
+     */
+    static final LocalTime NO_LUNCH_FROM=LocalTime.of(14,0);
     /** 남는 시간을 예비 관광지로 채울 때도 수정안의 교체 후보로 남겨 둘 예비 관광지 수. */
     private static final int SPARE_KEPT=2;
     /**
@@ -1079,7 +1084,9 @@ public class ItineraryGenerator {
                 end=item.end();
             }
             // 식사는 하루 점심 1번, 종료 시간이 늦은 날이나 숙박하는 날은 저녁까지 최대 2번이다.
-            if(meals<1 || meals>(TripConstraints.includesDinner(dayEnd) || stayDay?2:1) || visits==0 || transferred) throw invalid();
+            // 관광을 오후 2시 이후에 시작하는 날은 점심이 없어 식사가 0번일 수 있다.
+            boolean noLunchDay=!input.dayStart(dayNumber).isBefore(NO_LUNCH_FROM);
+            if(meals<(noLunchDay?0:1) || meals>(TripConstraints.includesDinner(dayEnd) || stayDay?2:1) || visits==0 || transferred) throw invalid();
             // 하루 방문 수는 저녁 관광까지 센다. 정한 수를 넘으면 안 되고, 필수 조건이면 매일 그 수를 지켜야 한다.
             if(constraints!=null && constraints.dailyVisits()!=null && visits+eveningVisits>constraints.dailyVisits()) throw invalid();
             if(constraints!=null && constraints.dailyVisitsRequired() && visits+eveningVisits!=constraints.dailyVisits()) throw invalid();
@@ -1183,6 +1190,8 @@ public class ItineraryGenerator {
                    PlaceCandidate previous,int day,Set<Long> usedRestaurants,Optional<RegionalFoods.Guide> foods) {
             this.input=input; this.locations=locations; this.routes=routes; this.deadline=deadline; this.previous=previous; this.day=day;
             time=input.dayStart(day); end=input.dayEnd(day); limit=end;
+            // 관광을 오후 2시 이후에 시작하는 날은 점심을 이미 먹은 것으로 보고 넣지 않는다. 저녁은 평소 규칙대로 넣는다.
+            lunch=!time.isBefore(NO_LUNCH_FROM);
             date=input.conditions().startDate()==null?null:input.conditions().startDate().plusDays(day-1);
             this.usedRestaurants=usedRestaurants; this.foods=foods;
         }
@@ -1228,8 +1237,8 @@ public class ItineraryGenerator {
             if(previous!=null && !previous.placeId().equals(next.placeId())) {
                 checkDeadline(deadline);
                 var a=locations.get(previous.placeId()); var b=locations.get(next.placeId());
-                if(a.longitude()==b.longitude() && a.latitude()==b.latitude()) {
-                    add("TRANSIT",next,previous.name()+" → "+next.name(),5,"같은 주소 내 이동 여유 5분 · 실제 내부 동선 확인 필요",null,null);
+                if(samePlace(a,b)) {
+                    add("TRANSIT",next,previous.name()+" → "+next.name(),5,"같은 주소 안이거나 바로 옆이라 이동 여유 5분 · 실제 내부 동선 확인 필요",null,null);
                 } else {
                     var route=route(previous,next);
                     if(route.minutes()>120) throw failure("TRAVEL_TIME_EXCEEDED","한 구간의 이동시간이 2시간을 넘어요. 다른 지역이나 이동수단을 선택해 주세요.");
@@ -1256,7 +1265,7 @@ public class ItineraryGenerator {
         int travelMinutes(PlaceCandidate from,PlaceCandidate to) {
             if(from.placeId().equals(to.placeId())) return 0;
             var a=locations.get(from.placeId()); var b=locations.get(to.placeId());
-            if(a.longitude()==b.longitude() && a.latitude()==b.latitude()) return 5;
+            if(samePlace(a,b)) return 5;
             return route(from,to).minutes()+10;
         }
         /**
@@ -1319,6 +1328,16 @@ public class ItineraryGenerator {
     /** 화면에 보여 줄 직선거리(km). 위도 1도를 약 111km로 보는 근사값이다. */
     static double kilometers(KakaoMapClient.Location a,KakaoMapClient.Location b) {
         return Math.sqrt(distance(a,b))*111.0;
+    }
+    /** 이 직선거리(km, 50m) 안의 두 장소는 같은 곳으로 보고 길찾기를 부르지 않는다. */
+    static final double SAME_PLACE_KM=0.05;
+    /**
+     * 같은 건물이나 바로 옆이라 길찾기 없이 5분 여유만 두는 구간인지(2026-11-10).
+     * 카카오 자동차 길찾기는 출발지와 도착지가 5m 안이면 경로를 주지 않아(result_code 104) '경로 없음'이 된다.
+     * 숙소 건물 안 음식점(예: 리조트 식당)에서 점심을 먹고 숙소로 가는 구간이 그래서, 좌표가 조금 달라도 같은 곳으로 본다.
+     */
+    static boolean samePlace(KakaoMapClient.Location a,KakaoMapClient.Location b) {
+        return kilometers(a,b)<=SAME_PLACE_KM;
     }
     private static String kilometersText(KakaoMapClient.Location a,KakaoMapClient.Location b) {
         double km=kilometers(a,b);

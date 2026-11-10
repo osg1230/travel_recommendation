@@ -10,7 +10,8 @@ import org.springframework.stereotype.Service;
 /**
  * 첫날 집 출발·마지막 날 귀가 설정(2026-09-24 결정)을 만든다. 출발지와 돌아갈 곳은 따로 받으며, 돌아갈 곳을 비우면 출발지로 돌아온다.
  * 편도 이동시간은 사용자가 직접 적은 값이 먼저이고, 없으면 자동차는 카카오 길찾기, 대중교통은 카카오 대중교통 길찾기를 쓴다.
- * 카카오가 장거리 대중교통 경로를 찾지 못하면 직행 시외·고속버스와 기차(역까지 이동 + 승차 대기 + 열차) 가운데 빠른 쪽을 쓴다.
+ * 카카오가 장거리 대중교통 경로를 찾지 못하거나 2시간 이상 걸린다고 하면 직행 시외·고속버스와 기차(역까지 이동 + 승차 대기 + 열차)도 찾아 가장 빠른 쪽을 쓴다.
+ * 자동차는 가운데 관광지까지 경로가 없으면 다음으로 가까운 관광지 두 곳까지 더 찾아 본다.
  * 바다를 건너는 여행은 제주는 비행기(공항까지 이동 + 공항 대기 + 비행), 울릉도는 배(항구까지 이동 + 승선 대기 + 운항)로 찾는다.
  * 찾지 못하면 추정하지 않고 출발지를 다시 적거나 비우라고 안내한다
  * (일정 화면은 편도 시간을 받지 않는다). 좌표는 조회에만 쓰고 저장하지 않는다.
@@ -53,7 +54,8 @@ public class HomeTripService {
         checkMinutes(request.minutes(), "여행지까지");
         checkMinutes(request.returnMinutes(), "돌아갈 곳까지");
         String destination = places.destination().name();
-        var target = center(places);
+        var targets = centers(places);
+        var target = targets.isEmpty() ? null : targets.getFirst();
 
         // 가는 길: 출발지(적은 이름 또는 현재 위치) → 여행지
         Leg out;
@@ -63,18 +65,18 @@ public class HomeTripService {
             out = new Leg("집", request.minutes(), "직접 입력한 편도 시간", null);
         } else {
             origin = request.located() ? maps.originAt(request.longitude(), request.latitude()) : maps.findOrigin(request.origin());
-            out = leg(origin, request.minutes(), target, destination, transport, true, tripDate);
+            out = leg(origin, request.minutes(), target, targets, destination, transport, true, tripDate);
         }
 
         // 오는 길: 돌아갈 곳을 따로 적었으면 그곳까지 따로 찾고, 아니면 출발지로 돌아온다(편도 시간만 따로 적었으면 그 값).
         // 같은 곳으로 돌아와도 가는 길과 오는 길의 소요시간이 다를 수 있어, 가는 길을 자동으로 찾았으면 여행지 → 출발지 방향도 따로 찾는다.
         Leg back;
         if (request.separateReturn()) {
-            back = leg(maps.findOrigin(request.returnPlace()), request.returnMinutes(), target, destination, transport, false, null);
+            back = leg(maps.findOrigin(request.returnPlace()), request.returnMinutes(), target, targets, destination, transport, false, null);
         } else if (request.returnMinutes() != null) {
             back = new Leg(out.place(), request.returnMinutes(), "직접 입력한 편도 시간", null);
         } else if (origin != null && request.minutes() == null) {
-            back = leg(origin, null, target, destination, transport, false, null);
+            back = leg(origin, null, target, targets, destination, transport, false, null);
         } else {
             back = out;
         }
@@ -87,7 +89,7 @@ public class HomeTripService {
      * 오는 길(outbound=false)은 여행지 → 집 방향으로 길을 찾고, 버스는 운행표가 여행지행만 있어 같은 구간의 최단 소요를 쓴다.
      * 기차는 tripDate(가는 길만) 시간표를 먼저 보고, 오는 길은 오늘 시간표를 쓴다.
      */
-    private Leg leg(KakaoMapClient.Origin home, Integer typed, Target target, String destination, KakaoMapClient.Transport transport, boolean outbound,
+    private Leg leg(KakaoMapClient.Origin home, Integer typed, Target target, java.util.List<Target> targets, String destination, KakaoMapClient.Transport transport, boolean outbound,
                     LocalDate tripDate) {
         if (typed != null) return new Leg(home.label(), typed, "직접 입력한 편도 시간", null);
         if (target == null)
@@ -113,25 +115,38 @@ public class HomeTripService {
                 + "까지는 배로 가야 하는데 오늘 운항하는 여객선이나 항구까지 가는 길을 찾지 못했어요. 출발지를 비우면 여행지 도착부터 일정을 짜요.");
         }
         // 여행지 관광지들의 가운데까지 조회한다. 첫 관광지까지와는 조금 다를 수 있다고 일정에 적는다.
-        try {
-            var time = outbound ? maps.travelTime(home.location(), target.location(), transport)
-                : maps.travelTime(target.location(), home.location(), transport);
-            if (time.minutes() <= 600) return new Leg(home.label(), time.minutes(),
-                (transport == KakaoMapClient.Transport.CAR ? "자동차" : "대중교통") + " · 카카오 길찾기, " + target.name() + " 부근 기준", time.checkedAt());
-        } catch (RecommendationException error) {
-            if ("MAP_AUTH".equals(error.getCode())) throw error;
+        // 가운데 관광지가 차로 갈 수 없는 곳(산 위 호수 등, 카카오 '경로 없음')이면 다음으로 가까운 관광지까지 찾아 본다(2026-11-10).
+        // 예전에는 가평의 가운데가 호명호수라 어느 출발지를 적어도 자동차 경로를 찾지 못했다.
+        Leg kakao = null;
+        for (var place : targets) {
+            try {
+                var time = outbound ? maps.travelTime(home.location(), place.location(), transport)
+                    : maps.travelTime(place.location(), home.location(), transport);
+                if (time.minutes() <= 600) kakao = new Leg(home.label(), time.minutes(),
+                    (transport == KakaoMapClient.Transport.CAR ? "자동차" : "대중교통") + " · 카카오 길찾기, " + place.name() + " 부근 기준", time.checkedAt());
+                break;
+            } catch (RecommendationException error) {
+                if ("MAP_AUTH".equals(error.getCode())) throw error;
+                // 대중교통은 장거리면 어느 관광지든 경로가 없으므로 다시 묻지 않고 아래에서 버스·기차를 본다.
+                if (transport != KakaoMapClient.Transport.CAR || !"MAP_NO_ROUTE".equals(error.getCode())) break;
+            }
         }
-        // 카카오가 대중교통 경로를 찾지 못한 장거리 구간은 직행 버스와 기차를 각각 찾아 더 빠른 쪽을 쓴다.
+        // 자동차이거나, 대중교통이라도 카카오 경로가 길지 않으면 그대로 쓴다.
+        if (kakao != null && (transport == KakaoMapClient.Transport.CAR || kakao.minutes() < DIRECT_CHECK_MINUTES)) return kakao;
+        // 카카오가 대중교통 경로를 찾지 못했거나 2시간 이상 걸린다고 한 구간은 직행 버스와 기차도 찾아 가장 빠른 쪽을 쓴다.
+        // 카카오는 직행편이 있어도 다른 도시를 거쳐 갈아타는 경로를 줄 때가 있다(전주 → 신갈 → 대전 약 280분, 2026-11-10 확인).
         // 버스 시간에는 집 ↔ 터미널 이동이 빠져 있고, 기차 시간에는 집 ↔ 역 이동이 들어 있다(근거에 적는다).
         if (transport == KakaoMapClient.Transport.PUBLIC_TRANSIT) {
-            var bus = home.city() == null ? java.util.OptionalInt.empty() : buses.fastestMinutes(home.city(), destination);
+            Leg best = kakao;
             var train = outbound ? trains.fastest(home.location(), target.location(), tripDate)
                 : trains.fastest(target.location(), home.location(), null);
-            boolean trainUsable = train.isPresent() && train.get().minutes() <= 600;
-            if (trainUsable && (bus.isEmpty() || train.get().minutes() <= bus.getAsInt()))
-                return new Leg(home.label(), train.get().minutes(), train.get().basis(), train.get().checkedAt());
-            if (bus.isPresent()) return new Leg(home.label(), bus.getAsInt(),
-                "직행 시외·고속버스 최단 소요" + (outbound ? "" : "(여행지행 기준)") + ", 집 ↔ 터미널 이동 제외", Instant.now());
+            if (train.isPresent() && train.get().minutes() <= 600 && (best == null || train.get().minutes() < best.minutes()))
+                best = new Leg(home.label(), train.get().minutes(), train.get().basis(), train.get().checkedAt());
+            var bus = home.city() == null ? java.util.OptionalInt.empty() : buses.fastestMinutes(home.city(), destination);
+            if (bus.isPresent() && (best == null || bus.getAsInt() < best.minutes()))
+                best = new Leg(home.label(), bus.getAsInt(),
+                    "직행 시외·고속버스 최단 소요" + (outbound ? "" : "(여행지행 기준)") + ", 집 ↔ 터미널 이동 제외", Instant.now());
+            if (best != null) return best;
         }
         throw failure("HOME_MINUTES", (outbound ? home.label() + "에서 " + destination : destination + "에서 " + home.label()) + "까지 "
             + (transport == KakaoMapClient.Transport.CAR ? "자동차 경로" : "대중교통·직행 버스·기차") + "를 찾지 못했어요. 출발지를 역이나 시·구 이름으로 다시 적거나, 출발지를 비우면 여행지 도착부터 일정을 짜요.");
@@ -151,12 +166,17 @@ public class HomeTripService {
     }
 
     private record Target(String name, KakaoMapClient.Location location) {}
-    /** 관광지 후보 가운데와 가장 가까운 관광지. 좌표가 있는 후보가 없으면 null이다. */
-    private static Target center(PlaceCandidateView places) {
+    /** 카카오 대중교통 길찾기가 이 시간(분) 이상이면 직행 버스·기차도 찾아 비교한다. */
+    static final int DIRECT_CHECK_MINUTES = 120;
+    /** 집 이동의 도착점으로 시도할 관광지 수. 가운데 관광지까지 자동차 경로가 없을 때만 다음 곳을 본다. */
+    static final int TARGET_TRIES = 3;
+
+    /** 관광지 후보 가운데와 가까운 관광지를 가까운 순서로 TARGET_TRIES곳까지. 좌표가 있는 후보가 없으면 비어 있다. */
+    private static java.util.List<Target> centers(PlaceCandidateView places) {
         return TripConstraints.nearCenterFirst(places.attractions()).stream()
-            .filter(p -> p.longitude() != null && p.latitude() != null).findFirst()
+            .filter(p -> p.longitude() != null && p.latitude() != null).limit(TARGET_TRIES)
             .map(p -> new Target(p.name(), new KakaoMapClient.Location(p.address(), p.longitude(), p.latitude(), Instant.now())))
-            .orElse(null);
+            .toList();
     }
 
     private static RecommendationException failure(String code, String message) { return new RecommendationException(code, message); }

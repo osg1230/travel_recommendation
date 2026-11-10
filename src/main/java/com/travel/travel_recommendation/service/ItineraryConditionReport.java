@@ -190,7 +190,7 @@ public final class ItineraryConditionReport {
         if (estimated > 0) notes.add(estimated + "구간은 카카오 길찾기에 연결하지 못해 직선거리로 이동시간을 추정했어요(" + estimatedNames(result)
             + "). 출발 전에 길찾기로 이동시간을 확인해 주세요.");
         long sameAddress = moves.stream().filter(i -> i.travelSeconds() == null).count();
-        if (sameAddress > 0) notes.add(sameAddress + "구간은 같은 주소 안 이동이라 실제 내부 동선을 확인해야 해요.");
+        if (sameAddress > 0) notes.add(sameAddress + "구간은 같은 주소 안이거나 바로 옆이라 실제 내부 동선을 확인해야 해요.");
         long walking = moves.stream().filter(i -> i.note() != null && i.note().startsWith(ItineraryGenerator.WALK_NOTE_PREFIX)).count();
         if (walking > 0) notes.add(walking + "구간은 가까워서 대중교통 경로가 없어 도보 시간을 직선거리로 추정했어요. 실제 보행 경로를 확인해 주세요.");
         if (!notes.isEmpty()) return new Check("이동시간", Status.NEEDS_CHECK, "이동 " + moves.size() + "구간 중 " + String.join(" ", notes) + home);

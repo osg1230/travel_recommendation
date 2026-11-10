@@ -40,6 +40,52 @@ class HomeTripServiceTests {
         verifyNoInteractions(buses);
     }
 
+    // 가운데 관광지가 차로 갈 수 없는 곳이면(가평 호명호수, 카카오 '도착 지점 주변 도로 없음') 다음으로 가까운 관광지까지 찾는다.
+    @Test void carTriesTheNextAttractionWhenTheCenterHasNoRoad() {
+        var lake = new PlaceCandidate(1L, "호명호수", "경기 가평군 청평면 상지로 370", "여행 > 관광,명소", "", "https://place.map.kakao.com/1",
+            "", LocalDateTime.of(2026, 9, 1, 0, 0), 127.47, 37.75, "KAKAO", null);
+        var garden = new PlaceCandidate(2L, "쁘띠프랑스", "경기 가평군 청평면 호반로 1063", "여행 > 관광,명소", "", "https://place.map.kakao.com/2",
+            "", LocalDateTime.of(2026, 9, 1, 0, 0), 127.49, 37.72, "KAKAO", null);
+        var far = new PlaceCandidate(3L, "강씨봉자연휴양림", "경기 가평군 북면 논남기길 520", "여행 > 관광,명소", "", "https://place.map.kakao.com/3",
+            "", LocalDateTime.of(2026, 9, 1, 0, 0), 127.40, 37.97, "KAKAO", null);
+        var gapyeong = new PlaceCandidateView(UUID.randomUUID(), new DestinationCandidate(9L, "가평", "경기", "", "https://www.gp.go.kr/",
+            LocalDateTime.of(2026, 9, 1, 0, 0)), 1, false, List.of(far, lake, garden), List.of(), List.of());
+        when(maps.findOrigin("마포구")).thenReturn(songpa);
+        when(maps.travelTime(any(), any(), eq(KakaoMapClient.Transport.CAR))).thenAnswer(invocation -> {
+            KakaoMapClient.Location from = invocation.getArgument(0), to = invocation.getArgument(1);
+            if (from.longitude() == 127.47 || to.longitude() == 127.47) throw new RecommendationException("MAP_NO_ROUTE", "도로 없음");
+            return new KakaoMapClient.TravelTime(KakaoMapClient.Transport.CAR, 81 * 60, 60000, Instant.now());
+        });
+        var home = service.resolve(request("마포구", null), gapyeong, KakaoMapClient.Transport.CAR);
+        assertThat(home.minutes()).isEqualTo(81);
+        assertThat(home.basis()).contains("쁘띠프랑스");
+        assertThat(home.returnBasis()).contains("쁘띠프랑스");
+    }
+
+    // 카카오 대중교통이 2시간 이상이면 직행 버스·기차도 찾아 빠른 쪽을 쓴다(전주 → 신갈 → 대전 280분 대신 직행 버스).
+    // 2시간보다 짧으면 카카오 결과를 그대로 쓰고 버스·기차는 찾지 않는다.
+    @Test void transitComparesDirectBusAndTrainWhenTheKakaoRouteIsLong() {
+        when(maps.findOrigin("전주")).thenReturn(songpa);
+        when(maps.travelTime(any(), any(), eq(KakaoMapClient.Transport.PUBLIC_TRANSIT)))
+            .thenReturn(new KakaoMapClient.TravelTime(KakaoMapClient.Transport.PUBLIC_TRANSIT, 280 * 60, 310000, Instant.now()));
+        when(buses.fastestMinutes("서울", "강릉")).thenReturn(OptionalInt.of(80));
+        var home = service.resolve(request("전주", null), places(), KakaoMapClient.Transport.PUBLIC_TRANSIT);
+        assertThat(home.minutes()).isEqualTo(80);
+        assertThat(home.basis()).contains("직행 시외·고속버스");
+
+        // 버스·기차가 더 느리거나 없으면 카카오 결과를 쓴다.
+        when(buses.fastestMinutes("서울", "강릉")).thenReturn(OptionalInt.of(300));
+        var slow = service.resolve(request("전주", null), places(), KakaoMapClient.Transport.PUBLIC_TRANSIT);
+        assertThat(slow.minutes()).isEqualTo(280);
+        assertThat(slow.basis()).contains("카카오 길찾기");
+
+        reset(buses, trains);
+        when(maps.travelTime(any(), any(), eq(KakaoMapClient.Transport.PUBLIC_TRANSIT)))
+            .thenReturn(new KakaoMapClient.TravelTime(KakaoMapClient.Transport.PUBLIC_TRANSIT, 100 * 60, 90000, Instant.now()));
+        assertThat(service.resolve(request("전주", null), places(), KakaoMapClient.Transport.PUBLIC_TRANSIT).minutes()).isEqualTo(100);
+        verifyNoInteractions(buses, trains);
+    }
+
     // 직접 적은 편도 시간이 자동 조회보다 먼저다. 출발지를 적지 않았으면 '집'으로 보여 준다.
     @Test void typedMinutesWinAndNeedNoLookup() {
         var home = service.resolve(request(null, 200), places(), KakaoMapClient.Transport.PUBLIC_TRANSIT);

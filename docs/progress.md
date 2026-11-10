@@ -1,8 +1,28 @@
 # 프로젝트 진행 요약
 
-기준일: 2026-11-09 | 프로젝트: travel_recommendation | 서비스 이름: 다녀올게
+기준일: 2026-11-10 | 프로젝트: travel_recommendation | 서비스 이름: 다녀올게
 
 작업 시작 시 이 요약과 Git 상태를 확인한다. 기능별 상세 구현·검증 기록은 [2026-09-22 정리 전 원문](progress-history/2026-09-22-before-cleanup.md)에 있으며, 과거 결정·검증 근거가 필요할 때 해당 부분만 읽는다.
+
+## 2026-11-10 숙소 안 음식점 때문에 일정이 실패하던 문제 (`feature/place-value-score`)
+
+- 배경: [페르소나 채점](quality/2026-11-09_페르소나_일정_채점.md)의 문제 1. P6(제주 2박 3일, 자동차)이 3번 모두 `MAP_NO_ROUTE`로 실패했다.
+- 원인: 숙소로 고른 한화리조트 제주와 같은 주소에 음식점 후보 3곳(파크가든·오름·클럽하우스그릴)이 있었다. 점심을 숙소 쪽으로 덜 돌아가는 곳에서 고르면 이 음식점이 골라지고, 음식점 → 숙소는 카카오 자동차 길찾기가 5m 이내라 경로를 주지 않는다(result_code 104). 서버는 이를 경로 없음으로 보고 방금 넣은 관광지를 빼서, 그날 관광지가 0곳이 됐다. 좌표가 완전히 같을 때만 '같은 주소 내 이동 5분'으로 처리하던 탓이다.
+- 확인(카카오 길찾기 직접 호출, 실패 작업 3건의 요청 JSON 기준): 관광지 6곳 → 숙소 후보 3곳은 모두 정상. 음식점 32곳 → 한화리조트는 29곳 정상, 숙소 안 3곳만 104.
+- 수정(사용자 승인): 직선 50m 안의 두 장소는 길찾기 없이 5분 여유로 넣는다(`ItineraryGenerator.samePlace`, `SAME_PLACE_KM`). 안내 문구(일정 항목·조건 확인표·일정 입력 화면 도움말)와 [시간대별 일정 초안](ai/시간대별_일정_초안.md)을 맞췄다. DB·작업 JSON 변경 없음.
+- 테스트: 새 `restaurantInsideTheHotelIsAFiveMinuteMoveWithoutRouting`은 수정 전 코드에서 `MAP_NO_ROUTE`로 실패하고 수정 뒤 통과한다. `ItineraryGeneratorTests` 58개·`ItineraryConditionReportTests` 11개 실패 0.
+- 실제 확인(웹 서버 8080, 어제 추천 결과로 일정만 다시 만듦): P6이 같은 입력으로 3일 일정을 받았고 숙소 → 숙소 안 음식점이 5분 이동으로 들어갔다. 서버는 확인 뒤 껐다.
+- 페르소나 다시 실행에서 원인을 확인한 문제(코드는 고치지 않음, 표는 [채점 문서](quality/2026-11-09_페르소나_일정_채점.md)의 '2026-11-10 다시 실행'):
+  - P3 가평: 집 이동의 도착점이 가운데 관광지 한 곳(호명호수)인데 자동차 길찾기가 103이라 어느 출발지든 거절된다(`HomeTripService.center`).
+  - P5 전주 → 대전 279분: 카카오 대중교통이 신갈을 거치는 310km 경로를 주고, 서버는 직행 버스·기차와 비교하지 않는다(`HomeTripService.leg`).
+  - P8 부산 오후: 15:00에 시작해도 점심부터 넣는다(`ItineraryGenerator.lunchFirst`).
+  - 제주: 공항 → 첫 장소, 마지막 장소 → 공항 이동이 일정에 없다. 하루 시작 시간을 적어도 09:00에 출발한다(2026-09-29 결정, 방향 결정 필요).
+- 이어서 고친 3개(사용자 승인, DB·작업 JSON 변경 없음):
+  - 가평: 집 이동의 도착점을 가운데에서 가까운 관광지 3곳까지 둔다. 자동차 길찾기가 '경로 없음'이면 다음 곳을 본다(`HomeTripService.centers`, `TARGET_TRIES`).
+  - 전주 → 대전: 카카오 대중교통이 120분 이상이면 직행 버스·기차도 찾아 가장 빠른 쪽을 쓴다(`DIRECT_CHECK_MINUTES`). 버스 시간에는 집 ↔ 터미널 이동이 빠져 있어 실제보다 짧을 수 있다(근거 문구에 적힘).
+  - 늦은 시작: 관광을 14:00 이후에 시작하는 날은 점심을 넣지 않는다(`ItineraryGenerator.NO_LUNCH_FROM`). 그런 날은 식사 0번도 검증을 통과한다. 수정 안내 문구(`fragments/revision-scope.html`)에 한 줄을 더했다.
+  - 테스트: 새 `carTriesTheNextAttractionWhenTheCenterHasNoRoad`·`transitComparesDirectBusAndTrainWhenTheKakaoRouteIsLong`·`dayStartingInTheAfternoonHasNoLunch`. DB 없이 도는 전체 테스트 786개 실행, 실패·오류 0, 건너뜀 233(SQL Server 테스트), `BUILD SUCCESS`.
+- 하지 않은 것: SQL Server 전체 테스트. 위 3개를 고친 뒤 웹 서버에서 P3·P5·P8을 다시 만들어 보지 않았다. 점심 음식점 → 숙소 구간이 다른 이유로 막힐 때 다음 음식점을 보는 처리. 제주 공항 ↔ 첫·마지막 장소 이동과 '출발 09:00 고정'은 방향 결정이 필요해 그대로 뒀다.
 
 ## 2026-11-09 내 기록 취향 점수 계획 (`feature/place-value-score`, 노트북)
 

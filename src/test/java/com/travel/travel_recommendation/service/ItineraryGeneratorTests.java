@@ -66,6 +66,42 @@ class ItineraryGeneratorTests {
         assertThat(first.getLast().placeId()).isNotEqualTo(6L);
         verify(maps,atLeastOnce()).travelTime(argThat(l->l!=null && l.address().endsWith(" 5")),argThat(l->l!=null && l.address().endsWith(" 6")),any());
     }
+    // 오후 3시에 시작하는 날은 점심을 넣지 않고 관광부터 한다. 저녁은 평소처럼 넣는다(부산 오후 반나절 페르소나).
+    @Test void dayStartingInTheAfternoonHasNoLunch() {
+        var base=input(1,LocalTime.of(21,0));
+        var input=new Input(base.places().jobId(),base.places(),base.conditions(),LocalTime.of(15,0),LocalTime.of(21,0),KakaoMapClient.Transport.CAR,60);
+        var items=generator.generate(input).days().getFirst().items();
+        assertThat(items.getFirst().type()).isNotEqualTo("MEAL");
+        var meals=items.stream().filter(i->"MEAL".equals(i.type())).toList();
+        assertThat(meals).hasSize(1);
+        assertThat(meals.getFirst().start()).isAfterOrEqualTo(LocalTime.of(17,0));
+        // 오후 1시에 시작하면 전처럼 점심부터 먹는다.
+        var earlier=new Input(base.places().jobId(),base.places(),base.conditions(),LocalTime.of(13,0),LocalTime.of(21,0),KakaoMapClient.Transport.CAR,60);
+        assertThat(generator.generate(earlier).days().getFirst().items().getFirst().type()).isEqualTo("MEAL");
+    }
+    // 숙소 건물 안 음식점은 숙소와 좌표가 몇 m만 달라 카카오가 경로를 주지 않는다(5m 이내, result_code 104).
+    // 예전에는 점심 뒤 숙소로 가는 구간이 '경로 없음'이 되어 관광지가 모두 빠지고 일정이 실패했다(2026-11-09 제주 3세대 가족 페르소나).
+    @Test void restaurantInsideTheHotelIsAFiveMinuteMoveWithoutRouting() {
+        when(maps.travelTime(any(),any(),any())).thenAnswer(invocation->{
+            KakaoMapClient.Location from=invocation.getArgument(0), to=invocation.getArgument(1);
+            if(Math.abs(from.longitude()-to.longitude())<0.0001) throw new RecommendationException("MAP_NO_ROUTE","5m 이내");
+            return new KakaoMapClient.TravelTime(invocation.getArgument(2),601,3000,Instant.now());
+        });
+        var hotel=new PlaceCandidate(5L,"리조트","제주특별자치도 제주시 명림로 575-107","숙박 > 리조트","소개","https://place.map.kakao.com/5",
+            "https://map.kakao.com/",LocalDateTime.now(),128.81,37.7,"KAKAO");
+        var hotelRestaurant=new PlaceCandidate(6L,"리조트 식당","제주특별자치도 제주시 명림로 575-107","음식점 > 한식","소개","https://place.map.kakao.com/6",
+            "https://map.kakao.com/",LocalDateTime.now(),128.81002,37.70001,"KAKAO");
+        var conditions=new ConfirmedTravelConditions("KEYWORD","","제주",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,null,2,true,false,List.of(),"");
+        var pool=new PlaceCandidateView(UUID.randomUUID(),new DestinationCandidate(99L,"제주","제주","소개","https://www.jeju.go.kr/",LocalDateTime.of(2026,9,1,0,0)),2,true,
+            List.of(place(1),place(2)),List.of(hotel),List.of(hotelRestaurant));
+        var result=generator.generate(new Input(pool.jobId(),pool,conditions,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90));
+        var first=result.days().getFirst().items();
+        // 식당 → 숙소는 길찾기 없이 5분 여유로 넣는다.
+        var toHotel=first.stream().filter(i->"TRANSIT".equals(i.type()) && Long.valueOf(5L).equals(i.placeId())).findFirst().orElseThrow();
+        assertThat(java.time.Duration.between(toHotel.start(),toHotel.end()).toMinutes()).isEqualTo(5);
+        assertThat(toHotel.travelSeconds()).isNull();
+        assertThat(first.stream().filter(i->"VISIT".equals(i.type()))).isNotEmpty();
+    }
     // 한라산은 카카오 좌표(산 한가운데)로는 길이 없어 예전에는 빠졌다. 어리목 입구 좌표로 길을 찾아 일정에 넣고, 탐방 기준을 적는다.
     @Test void hallasanIsReachedThroughItsTrailEntrance() {
         var center=new KakaoMapClient.Location("제주특별자치도 제주시 오등동 산 182",126.54218215526396,33.37668525552216,Instant.now());
