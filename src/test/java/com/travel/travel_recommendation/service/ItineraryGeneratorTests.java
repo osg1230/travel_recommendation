@@ -295,6 +295,24 @@ class ItineraryGeneratorTests {
         var report=ItineraryConditionReport.evaluate(input,result);
         assertThat(report.checks()).anySatisfy(c->{ assertThat(c.name()).isEqualTo("하루 방문 수"); assertThat(c.detail()).contains("1일차 3곳(저녁 관광 1곳 포함)"); });
     }
+    // "여유롭게"라고 적은 여행은 위와 같은 조건(하루 3곳 선호, 낮 2곳)이어도 저녁 관광을 넣지 않고 저녁 식사로 하루를 마친다.
+    @Test void relaxedTripHasNoEveningSpot() {
+        var conditions=new ConfirmedTravelConditions("TEXT","강릉으로 1박 2일 여유롭게 다녀오고 싶어요","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,null,2,true,false,List.of(),"");
+        var pool=new PlaceCandidateView(UUID.randomUUID(),new DestinationCandidate(99L,"강릉","강원","소개","https://www.gn.go.kr/",LocalDateTime.of(2026,9,1,0,0)),2,true,
+            List.of(place(1),place(2),place(5),place(6)),List.of(place(4)),List.of(place(3),place(7)));
+        var tower=new PlaceCandidate(8L,"전망대8","강원 강릉시 경포로 8","여행 > 관광,명소 > 전망대","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var input=new Input(pool.jobId(),pool,conditions,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90,null,
+            RelaxedPace.apply(null,conditions),List.of()).withEvening(List.of(tower));
+        var result=generator.generate(input);
+        var first=result.days().getFirst().items();
+        assertThat(first.stream().filter(i->i.type().equals("VISIT"))).hasSize(2);
+        assertThat(first).noneMatch(i->Long.valueOf(8L).equals(i.placeId()));
+        assertThat(first.getLast().type()).isEqualTo("MEAL");
+        generator.validate(input,result);
+        var report=ItineraryConditionReport.evaluate(input,result);
+        assertThat(report.checks()).anySatisfy(c->{ assertThat(c.name()).isEqualTo("하루 방문 수");
+            assertThat(c.status()).isEqualTo(ItineraryConditionReport.Status.MET); assertThat(c.detail()).contains("여유 있는 일정"); });
+    }
     // 하루 시간이 길고 체류가 짧아도 예비 관광지로 채우는 것은 하루 4곳까지다.
     @Test void spareFillStopsAtFourVisitsADay() {
         var base=input(1,LocalTime.of(21,0));

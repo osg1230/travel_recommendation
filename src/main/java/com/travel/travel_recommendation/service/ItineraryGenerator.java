@@ -191,7 +191,7 @@ public class ItineraryGenerator {
                 // 남는 시간은 쉬거나 저녁 관광에 쓴다.
                 if(spare && visits>TripConstraints.MAX_AUTO_DAILY) break;
                 final int room=visits<TripConstraints.MAX_AUTO_DAILY?Integer.MAX_VALUE
-                    :TripConstraints.MAX_AUTO_DAILY*input.visitMinutes()-placed.stream().mapToInt(p->VisitMinutes.of(p,input.visitMinutes())).sum();
+                    :TripConstraints.MAX_AUTO_DAILY*input.visitMinutes()-placed.stream().mapToInt(p->RelaxedPace.visitMinutes(input.conditions(),p,input.visitMinutes())).sum();
                 PlaceCandidate anchor=builder.previous; String previousKind=lastKind;
                 List<PlaceCandidate> pool;
                 if(spare) {
@@ -199,7 +199,7 @@ public class ItineraryGenerator {
                     var located=locatedReserve(reserve,locations,addresses,deadline);
                     if(located.size()<=SPARE_KEPT) break;
                     pool=sparePool(builder,located.stream().filter(p->!skipToday.contains(p.placeId())
-                        && VisitMinutes.of(p,input.visitMinutes())<=room).toList(),lastDraft);
+                        && RelaxedPace.visitMinutes(input.conditions(),p,input.visitMinutes())<=room).toList(),lastDraft);
                     if(pool.isEmpty()) break;
                 } else {
                     // 오늘 고를 수 있는 곳: 다른 날의 중심 장소는 빼고, 가장 가까운 중심 장소가 오늘인 곳을 먼저 본다.
@@ -296,7 +296,9 @@ public class ItineraryGenerator {
             int eveningVisits=0;
             if(stay!=null) {
                 arriveAndDine(builder,stay,"숙소 도착·휴식");
-                if(fillSpareTime || visits<constraints.dailyVisits()) eveningVisits=addEvening(builder,stay,days,addresses)?1:0;
+                // 여유 일정은 저녁을 먹은 뒤 다시 나가지 않고 숙소에서 쉰다(2026-11-11).
+                if((fillSpareTime || visits<constraints.dailyVisits()) && !RelaxedPace.wanted(input.conditions()))
+                    eveningVisits=addEvening(builder,stay,days,addresses)?1:0;
             }
             // 마지막 날 귀가 시각을 정했으면 마지막 장소 → 집 이동을 맨 뒤에 넣는다.
             if(day==dayCount && input.home()!=null) builder.homeReturn();
@@ -403,7 +405,8 @@ public class ItineraryGenerator {
     private void placeVisit(DayBuilder builder,PlaceCandidate next,PlaceCandidate following,PlaceCandidate stay,String note) {
         if(!builder.lunch && lunchFirst(builder,next)) eat(builder,builder.previous==null?next:builder.previous,next,false);
         // 체류시간은 사용자가 정한 기본 체류시간을 장소 종류에 맞춰 늘리거나 줄인 값이다(VisitMinutes).
-        builder.visit(next,"VISIT",VisitMinutes.of(next,builder.input.visitMinutes()),note);
+        // 여유 일정에서 바다 취향을 골랐으면 해변은 더 길게 머문다(RelaxedPace).
+        builder.visit(next,"VISIT",RelaxedPace.visitMinutes(builder.input.conditions(),next,builder.input.visitMinutes()),note);
         if(!builder.lunch && !builder.time.isBefore(LocalTime.NOON)) eat(builder,next,following,false);
         checkClosing(builder,next,stay);
     }
@@ -704,7 +707,7 @@ public class ItineraryGenerator {
      */
     private boolean lunchFirst(DayBuilder builder,PlaceCandidate next) {
         if(builder.time.isBefore(LUNCH_FROM)) return false;
-        int visit=VisitMinutes.of(next,builder.input.visitMinutes());
+        int visit=RelaxedPace.visitMinutes(builder.input.conditions(),next,builder.input.visitMinutes());
         if(builder.previous==null) return builder.time.plusMinutes(visit).isAfter(LUNCH_UNTIL);
         var end=builder.time.plusMinutes(builder.travelMinutes(builder.previous,next)+visit);
         return end.isBefore(builder.time) || end.isAfter(LUNCH_UNTIL);
@@ -1077,7 +1080,7 @@ public class ItineraryGenerator {
                                 if(!(expected.contains(item.placeId()) || reserveIds.contains(item.placeId())) || !seen.add(item.placeId())) throw invalid();
                                 // 낮 관광은 그 장소 종류의 체류시간만큼 머문다(VisitMinutes, 일정을 만들 때와 같은 계산).
                                 var visited=input.attractionsWithReserve().stream().filter(p->p.placeId().equals(item.placeId())).findFirst().orElseThrow(ItineraryGenerator::invalid);
-                                if(minutes!=VisitMinutes.of(visited,input.visitMinutes())) throw invalid();
+                                if(minutes!=RelaxedPace.visitMinutes(input.conditions(),visited,input.visitMinutes())) throw invalid();
                                 visits++;
                             }
                         }
