@@ -30,6 +30,10 @@ public record PurposeSearch(String status, List<String> keywords, List<PurposePl
     public PurposeSearch withFood(String food, boolean festival) {
         return new PurposeSearch(status, keywords, places, message, checkedAt, themes, food, festival);
     }
+    /** 안내 문구만 바꾼 결과. 음식 축제를 확인한 결과(찾음·맛집 탐방으로 바꿈)를 화면에 알릴 때 쓴다. */
+    public PurposeSearch withMessage(String message) {
+        return new PurposeSearch(status, keywords, places, message, checkedAt, themes, food, festival);
+    }
     /** 목적에 음식 이름이 있는지. */
     public boolean hasFood() { return !food.isEmpty(); }
     /** placeId는 장소 목록에 저장한 관광지 ID, destinationId는 그 시설이 있는 여행지 ID다. */
