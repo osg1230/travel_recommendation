@@ -152,6 +152,9 @@ public class PlacePickService {
         var previous=input.picking().previous();
         ordered=TripConstraints.previousLast(ordered,previous,keep,Set.copyOf(picks.skip()));
         int days=input.conditions().durationDays()==null?1:input.conditions().durationDays();
+        // 여행 분위기를 골랐으면 분위기 장소를 일수만큼 앞으로 당겨 일정에 넣는다. AI가 뺀 곳과 직전 초안의 곳은 당기지 않는다.
+        Set<Long> avoid=new HashSet<>(picks.skip()); avoid.addAll(previous);
+        ordered=MoodPlaces.moodFirst(ordered,MoodPlaces.chosen(input.conditions()),days,avoid,keep);
         // 직전 초안에 있던 밤 명소는 이번에는 아끼지 않는다(다시 만들기는 다른 곳부터 고른다).
         var night=picks.night().stream().filter(id->!previous.contains(id)).toList();
         var arranged=ItineraryJobService.withoutPreviousEvening(ItineraryJobService.arrange(ordered,Set.copyOf(picks.skip()),night,true,

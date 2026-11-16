@@ -273,6 +273,8 @@ public class ItineraryJobService {
         // '다른 관광지로 다시 만들기'면 직전 초안의 관광지를 뒤로 보내 이번에는 다른 곳부터 고른다. 필수·중심·목적 시설·축제 장소는 그대로 둔다.
         var later=previous.stream().filter(id->!keepInOrder.contains(id)).toList();
         ordered=TripConstraints.previousLast(ordered,later,keepInOrder,Set.of());
+        // 여행 분위기를 골랐으면 분위기 장소를 일수만큼 앞으로 당긴다(AI 순서로 다시 고를 때도 같다, PlacePickService).
+        ordered=MoodPlaces.moodFirst(ordered,MoodPlaces.chosen(current.conditions()),days,Set.copyOf(later),keepInOrder);
         Arranged arranged;
         try {
             arranged=withoutPreviousEvening(arrange(ordered,Set.of(),false,places.accommodationNeeded(),days,start,end,visitMinutes,constraints),later);

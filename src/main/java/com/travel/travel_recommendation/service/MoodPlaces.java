@@ -81,4 +81,28 @@ public final class MoodPlaces {
         }
         return null;
     }
+
+    /**
+     * 분위기 장소를 여행 일수만큼 낮 관광지 순서 앞쪽으로 당긴다(하루 1곳 보장, 2026-11-16 사용자 결정).
+     * 일정은 이 순서의 앞쪽부터 낮 관광지를 고르므로, 앞으로 당긴 곳은 일정에 들어간다. 어느 날에 들어갈지는 동선으로 정해져
+     * 날마다 꼭 한 곳씩이 아니라 여행 전체에서 일수만큼이다.
+     * 분위기 검색으로 찾은 종류(수목원·카페거리 등)를 먼저 고르고, 그다음은 어울리는 종류를 원래 순서대로 고른다.
+     * avoid(AI가 뺀 곳, 다시 만들기에서 뒤로 보낸 곳)는 당기지 않는다. front(필수·중심·목적 장소)가 맨 앞에 있으면 그 뒤에 둔다.
+     */
+    public static List<PlaceCandidate> moodFirst(List<PlaceCandidate> ordered, List<String> moods, int count,
+                                                 java.util.Set<Long> avoid, java.util.Set<Long> front) {
+        if (moods.isEmpty() || count <= 0) return ordered;
+        var matched = ordered.stream().filter(p -> !avoid.contains(p.placeId()) && matched(p, moods) != null).toList();
+        var searched = matched.stream().filter(p -> searchedKind(p.name(), p.subtype(), moods)).toList();
+        var moved = new java.util.ArrayList<PlaceCandidate>(searched);
+        matched.stream().filter(p -> !searched.contains(p)).forEach(moved::add);
+        var pulled = moved.stream().limit(count).toList();
+        if (pulled.isEmpty()) return ordered;
+        var result = new java.util.ArrayList<PlaceCandidate>();
+        int i = 0;
+        while (i < ordered.size() && front.contains(ordered.get(i).placeId())) result.add(ordered.get(i++));
+        result.addAll(pulled);
+        for (; i < ordered.size(); i++) if (!pulled.contains(ordered.get(i))) result.add(ordered.get(i));
+        return result;
+    }
 }

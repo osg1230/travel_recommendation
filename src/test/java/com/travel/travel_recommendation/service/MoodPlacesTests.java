@@ -49,4 +49,25 @@ class MoodPlacesTests {
         assertThat(MoodPlaces.chosen(conditions)).containsExactly("한적한", "감성적인");
         assertThat(MoodPlaces.chosen(null)).isEmpty();
     }
+
+    private static PlaceCandidate place(long id, String name, String subtype) {
+        return new PlaceCandidate(id, name, "강원 강릉시 경포로 " + id, subtype, "", "https://www.gn.go.kr/", "", LocalDateTime.of(2026, 9, 1, 0, 0));
+    }
+
+    // 하루 1곳 보장: 2일 여행이면 분위기 장소 2곳을 앞으로 당긴다. 검색으로 찾는 종류(수목원)를 먼저, 그다음 어울리는 종류(산책로)를 고른다.
+    // 맨 앞의 중심 장소(1)는 그대로 두고, AI가 뺀 곳(5)은 당기지 않는다. 분위기를 고르지 않으면 순서를 바꾸지 않는다.
+    @Test void moodFirstPullsMoodPlacesUpToTheTripDays() {
+        var center = place(1, "강문해변", "여행 > 관광,명소 > 해수욕장,해변");
+        var museum = place(2, "오죽헌시립박물관", "문화시설 > 박물관");
+        var walk = place(3, "소돌해안일주 산책로", "여행 > 관광,명소 > 도보여행");
+        var arboretum = place(4, "강릉솔향수목원", "여행 > 관광,명소 > 수목원,식물원");
+        var skipped = place(5, "해파랑길 38코스", "여행 > 관광,명소 > 도보여행 > 해파랑길");
+        var ordered = List.of(center, museum, skipped, walk, arboretum);
+        var quiet = List.of("한적한");
+        assertThat(MoodPlaces.moodFirst(ordered, quiet, 2, java.util.Set.of(5L), java.util.Set.of(1L)))
+            .containsExactly(center, arboretum, walk, museum, skipped);
+        assertThat(MoodPlaces.moodFirst(ordered, quiet, 1, java.util.Set.of(5L), java.util.Set.of(1L)))
+            .containsExactly(center, arboretum, museum, skipped, walk);
+        assertThat(MoodPlaces.moodFirst(ordered, List.of(), 2, java.util.Set.of(), java.util.Set.of())).isSameAs(ordered);
+    }
 }
