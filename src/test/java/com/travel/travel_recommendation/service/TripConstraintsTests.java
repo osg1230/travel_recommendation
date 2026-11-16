@@ -183,7 +183,8 @@ class TripConstraintsTests {
         assertThat(ids(TripConstraints.byPicks(pool, List.of(), List.of(1L, 2L, 3L, 4L), List.of(), activities))).containsExactly(1L, 2L, 4L, 3L);
     }
 
-    // AI 순서로 고를 때는 앞쪽(낮에 갈 만한 곳)을 저녁 관광 몫으로 떼지 않고, AI가 뺄 곳은 예비·저녁 관광으로 쓰지 않는다.
+    // AI 순서로 고를 때는 앞쪽(낮에 갈 만한 곳)을 저녁 관광 몫으로 떼지 않고, AI가 뺄 곳은 저녁 관광으로 쓰지 않는다.
+    // 예비는 빼지 않은 곳(7)이 먼저이고, 모자라면(4곳 미만) AI가 뺀 곳(10)으로 채운다.
     @Test void aiOrderKeepsTopPicksForDaytime() {
         var ordered = new ArrayList<PlaceCandidate>();
         for (long id = 1; id <= 10; id++)
@@ -192,11 +193,21 @@ class TripConstraintsTests {
         var ai = ItineraryJobService.arrange(ordered, Set.of(10L), true, true, 2, NINE, SIX, 90, null);
         assertThat(ids(ai.selected())).containsExactly(1L, 2L, 3L, 4L, 5L, 6L);
         assertThat(ids(ai.evening())).containsExactly(8L, 9L);
-        assertThat(ids(ai.reserve())).containsExactly(7L);
+        assertThat(ids(ai.reserve())).containsExactly(7L, 10L);
         // 서버 규칙 순서일 때는 지금처럼 앞에서부터 저녁 관광 몫을 뗀다.
         var rule = ItineraryJobService.arrange(ordered, Set.of(), false, true, 2, NINE, SIX, 90, null);
         assertThat(ids(rule.evening())).containsExactly(1L, 8L, 9L);
         assertThat(ids(rule.selected())).containsExactly(2L, 3L, 4L, 5L, 6L, 7L);
+    }
+    // AI가 많이 빼서 예비가 모자라면 뺀 곳을 AI 순서대로 4곳까지 채운다. 예비가 충분하면 뺀 곳을 넣지 않는다.
+    @Test void shortReserveIsFilledWithSkippedPlacesInAiOrder() {
+        var ordered = new ArrayList<PlaceCandidate>();
+        for (long id = 1; id <= 14; id++) ordered.add(kind(id, "장소" + id, "여행 > 관광,명소 > 문화유적"));
+        var manySkips = ItineraryJobService.arrange(ordered, Set.of(8L, 9L, 10L, 11L, 12L, 13L, 14L), true, false, 2, NINE, SIX, 90, null);
+        assertThat(ids(manySkips.selected())).containsExactly(1L, 2L, 3L, 4L, 5L, 6L);
+        assertThat(ids(manySkips.reserve())).containsExactly(7L, 8L, 9L, 10L);
+        var fewSkips = ItineraryJobService.arrange(ordered, Set.of(14L), true, false, 2, NINE, SIX, 90, null);
+        assertThat(ids(fewSkips.reserve())).containsExactly(7L, 8L, 9L, 10L, 11L, 12L).doesNotContain(14L);
     }
     // AI가 밤 명소로 꼽은 곳은 숙박하는 밤 수만큼 저녁 관광 후보 맨 앞에 두고 낮 관광지에서 뺀다.
     // 저녁 관광 분류가 아닌 곳(문화유적)과 중심 장소는 밤 명소로 쓰지 않고, 당일 여행은 저녁 관광이 없어 그대로다.

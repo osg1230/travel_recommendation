@@ -348,8 +348,23 @@ public class ItineraryJobService {
         var daytimeOrder=ordered.stream().filter(p->!eveningPool.contains(p)).toList();
         var selected=TripConstraints.select(daytimeOrder,days,start,end,visitMinutes,constraints);
         // 예비 관광지는 저녁 몫을 뺀 후보에서 고른다. 저녁에 들른 곳이 낮 관광지로 다시 쓰이지 않게 한다.
-        return new Arranged(selected,reserve(daytimeOrder.stream().filter(p->!skips.contains(p.placeId())).toList(),selected),evening);
+        var reserve=new ArrayList<>(reserve(daytimeOrder.stream().filter(p->!skips.contains(p.placeId())).toList(),selected));
+        // AI가 많이 빼서 예비가 MIN_RESERVE곳보다 적으면, 뺀 곳을 AI 순서대로 예비에 채운다(2026-11-16).
+        // 분위기를 넘긴 뒤 AI가 대표 관광지까지 빼 예비가 0~1곳만 남고, 남는 시간을 채우지 못해 1일차 오후가 비었다.
+        // 예비는 남는 시간이 있을 때만 쓰이고 AI 순서 맨 뒤라, 빼지 않은 곳이 있으면 그곳이 먼저 쓰인다.
+        if(reserve.size()<MIN_RESERVE) {
+            var ids=selected.stream().map(PlaceCandidate::placeId).collect(java.util.stream.Collectors.toSet());
+            daytimeOrder.stream().filter(p->skips.contains(p.placeId()) && !ids.contains(p.placeId()))
+                .limit(MIN_RESERVE-reserve.size()).forEach(reserve::add);
+        }
+        return new Arranged(selected,List.copyOf(reserve),evening);
     }
+
+    /**
+     * 예비 관광지를 적어도 이만큼 둔다. 일정 생성은 예비가 SPARE_KEPT(2곳)보다 많을 때만 남는 시간을 채우므로(ItineraryGenerator),
+     * 4곳이면 남는 시간에 두 곳까지 더 넣을 수 있다.
+     */
+    static final int MIN_RESERVE=4;
 
     /**
      * '다른 관광지로 다시 만들기'면 직전 초안의 관광지(previous)를 저녁 관광 후보에서 뺀다. 예비 관광지에는 남겨 두되(후보 순서 맨 뒤라 뒤쪽에 온다)
