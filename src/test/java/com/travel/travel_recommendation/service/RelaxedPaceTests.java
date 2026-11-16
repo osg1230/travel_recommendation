@@ -75,13 +75,16 @@ class RelaxedPaceTests {
         assertThat(RelaxedPace.apply(null, chosen("", "느긋하게")).dailyVisits()).isEqualTo(RelaxedPace.DAILY_VISITS);
     }
 
-    // '알차게'만 하루 상한을 한 곳 늘린다. 문장에 "많이"라고 적은 것만으로는 늘리지 않고, 체류시간도 그대로다.
+    // '알차게'만 하루 상한을 한 곳 늘리고 체류시간을 0.8배로 줄인다(10분 단위, 30분부터). 문장에 "많이"라고 적은 것만으로는 바꾸지 않는다.
     @Test void onlyPackedPaceRaisesTheDailyCap() {
         assertThat(RelaxedPace.dailyCap(chosen("", "알차게"))).isEqualTo(TripConstraints.MAX_AUTO_DAILY + 1);
         assertThat(RelaxedPace.dailyCap(chosen("", "보통"))).isEqualTo(TripConstraints.MAX_AUTO_DAILY);
         assertThat(RelaxedPace.dailyCap(conditions("최대한 많이 보고 싶어요", null))).isEqualTo(TripConstraints.MAX_AUTO_DAILY);
         assertThat(RelaxedPace.dailyCap(null)).isEqualTo(TripConstraints.MAX_AUTO_DAILY);
         var beach = place("경포해수욕장", "여행 > 관광,명소 > 해수욕장,해변");
-        assertThat(RelaxedPace.visitMinutes(chosen("", "알차게"), beach, 90)).isEqualTo(60);
+        assertThat(RelaxedPace.visitMinutes(chosen("", "알차게"), beach, 90)).isEqualTo(50);
+        assertThat(RelaxedPace.visitMinutes(chosen("", "알차게"), place("오죽헌시립박물관", "박물관"), 90)).isEqualTo(70);
+        assertThat(RelaxedPace.visitMinutes(chosen("", "알차게"), place("하조대전망대", "전망대"), 60)).isEqualTo(VisitMinutes.MIN);
+        assertThat(RelaxedPace.visitMinutes(conditions("최대한 많이 보고 싶어요", null), beach, 90)).isEqualTo(60);
     }
 }

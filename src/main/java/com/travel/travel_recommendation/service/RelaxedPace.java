@@ -16,7 +16,8 @@ import java.util.regex.Pattern;
  * 속도를 골랐으면 문장의 낱말은 보지 않고, 고르지 않았을 때만 낱말로 여유 일정을 찾는다.
  * - 느긋하게: 하루 3곳, 체류시간 1.3배, 저녁 관광 없음
  * - 보통(또는 고르지 않음): 지금까지의 기준
- * - 알차게: 남는 시간을 채울 때 하루 상한을 한 곳 늘린다(4곳 → 5곳)
+ * - 알차게: 체류시간 0.8배, 남는 시간을 채울 때 하루 상한을 한 곳 늘린다(4곳 → 5곳)
+ *   상한만 늘렸을 때는 09:00~18:00 하루가 먼저 차서 보통과 같았다(2026-11-16 비교). 그래서 머무는 시간도 줄인다.
  */
 public final class RelaxedPace {
     private RelaxedPace() {}
@@ -29,6 +30,8 @@ public final class RelaxedPace {
     public static final int BEACH_MINUTES = 120;
     /** 느긋한 일정에서 종류별 체류시간에 곱하는 값. 같은 곳에서 30% 더 머문다. */
     static final double RELAXED_STAY_RATE = 1.3;
+    /** 알찬 일정에서 종류별 체류시간에 곱하는 값. 같은 곳에서 20% 짧게 머물러 하루에 더 많은 곳을 들른다. */
+    static final double PACKED_STAY_RATE = 0.8;
     /** 알찬 일정에서 남는 시간을 채울 때의 하루 관광지 상한. 따로 정하지 않았을 때(4곳)보다 한 곳 많다. */
     public static final int PACKED_DAILY_CAP = TripConstraints.MAX_AUTO_DAILY + 1;
     /** 여행 속도 키워드 이름. 관리자 키워드 관리에서 이름을 바꿀 수 없게 막아 두었다(AdminKeywordService). */
@@ -75,9 +78,12 @@ public final class RelaxedPace {
      * 낮 관광지의 체류시간(분). 보통은 종류별 체류시간(VisitMinutes)이고,
      * 느긋한 일정이면 1.3배로 늘린다(10분 단위, VisitMinutes.MAX까지).
      * 느긋한 일정에서 바다 취향을 골랐으면 해변은 BEACH_MINUTES분 이상 머문다.
+     * 알찬 일정이면 0.8배로 줄인다(10분 단위, VisitMinutes.MIN부터). 탐방로 입구로 가는 산(한라산)은 코스 시간이라 줄이지 않는다.
      */
     public static int visitMinutes(ConfirmedTravelConditions conditions, PlaceCandidate place, int base) {
         int minutes = VisitMinutes.of(place, base);
+        if (packed(conditions) && TrailEntrances.of(place).isEmpty())
+            return Math.max(VisitMinutes.MIN, (int) Math.round(minutes * PACKED_STAY_RATE / 10.0) * 10);
         if (!wanted(conditions)) return minutes;
         int longer = Math.min(VisitMinutes.MAX, (int) Math.round(minutes * RELAXED_STAY_RATE / 10.0) * 10);
         boolean beach = "해변".equals(TripConstraints.kind(place));
