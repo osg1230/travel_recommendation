@@ -189,9 +189,11 @@ public class ItineraryGenerator {
                 // 예비 관광지로 더 채워도 하루 관광지는 TripConstraints.MAX_AUTO_DAILY곳까지다. 4곳은 한 곳 90분(기본 체류시간) 기준이라,
                 // 짧게 들르는 곳이 많아 그날 체류시간 합이 기본 체류시간 4곳분에 못 미치면 그 안에 들어가는 곳을 한 곳 더 넣는다(2026-10-31).
                 // 남는 시간은 쉬거나 저녁 관광에 쓴다.
-                if(spare && visits>TripConstraints.MAX_AUTO_DAILY) break;
-                final int room=visits<TripConstraints.MAX_AUTO_DAILY?Integer.MAX_VALUE
-                    :TripConstraints.MAX_AUTO_DAILY*input.visitMinutes()-placed.stream().mapToInt(p->RelaxedPace.visitMinutes(input.conditions(),p,input.visitMinutes())).sum();
+                // '알차게'를 고른 여행은 이 상한이 한 곳 많다(RelaxedPace.dailyCap, 2026-11-16).
+                final int dailyCap=RelaxedPace.dailyCap(input.conditions());
+                if(spare && visits>dailyCap) break;
+                final int room=visits<dailyCap?Integer.MAX_VALUE
+                    :dailyCap*input.visitMinutes()-placed.stream().mapToInt(p->RelaxedPace.visitMinutes(input.conditions(),p,input.visitMinutes())).sum();
                 PlaceCandidate anchor=builder.previous; String previousKind=lastKind;
                 List<PlaceCandidate> pool;
                 if(spare) {

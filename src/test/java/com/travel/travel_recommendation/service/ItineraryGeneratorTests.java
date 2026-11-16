@@ -322,6 +322,19 @@ class ItineraryGeneratorTests {
         assertThat(result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT"))).hasSize(TripConstraints.MAX_AUTO_DAILY);
         generator.validate(input,result);
     }
+    // 같은 하루라도 여행 속도로 '알차게'를 골랐으면 예비 관광지를 한 곳 더(5곳) 넣고, 조건 확인표에 그 이유를 적는다.
+    @Test void packedPaceLetsSpareFillReachFiveVisits() {
+        var base=input(1,LocalTime.of(21,0));
+        var reserve=java.util.stream.LongStream.rangeClosed(10,17).mapToObj(this::place).toList();
+        var packed=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,1),1,null,2,false,false,
+            List.of(new TravelKeyword(1L,"PACE","알차게",null)),"");
+        var input=new Input(base.recommendationId(),base.places(),packed,LocalTime.of(8,0),LocalTime.of(21,0),base.transport(),30,null,null,reserve);
+        var result=generator.generate(input);
+        assertThat(result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT"))).hasSize(RelaxedPace.PACKED_DAILY_CAP);
+        generator.validate(input,result);
+        assertThat(ItineraryConditionReport.evaluate(input,result).checks()).anySatisfy(c->{
+            assertThat(c.name()).isEqualTo("하루 방문 수"); assertThat(c.detail()).contains("알차게를 골라"); });
+    }
     // 첫날은 집에서 출발(07:00, 편도 120분 + 여유 10분 → 09:10 도착)해 도착 뒤 관광하고, 마지막 날은 20:00까지 집에 도착하도록 마친다.
     @Test void homeDepartureAndReturnFrameTheTrip() {
         var home=new HomeTrip("서울 송파구",LocalTime.of(7,0),LocalTime.of(20,0),120,"자동차 · 카카오 길찾기",Instant.now());

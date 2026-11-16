@@ -21,6 +21,7 @@ class RelaxedPaceTests {
         assertThat(RelaxedPace.wanted(conditions("아이랑 강원도 바다로 가요. 너무 빡빡하지 않게 짜 주세요.", null))).isTrue();
         assertThat(RelaxedPace.wanted(conditions("", "여유롭게 바다 보기"))).isTrue();
         assertThat(RelaxedPace.wanted(conditions("부모님과 천천히 둘러보고 싶어요", ""))).isTrue();
+        assertThat(RelaxedPace.wanted(conditions("부모님이 계셔서 많이 걷지 않게 해 주세요", ""))).isTrue();
         assertThat(RelaxedPace.wanted(conditions("많이 보고 싶어요. 빡빡하게 짜 주세요.", "맛집"))).isFalse();
         assertThat(RelaxedPace.wanted(conditions("친구와 강릉 2박 3일", null))).isFalse();
         assertThat(RelaxedPace.wanted(null)).isFalse();
@@ -47,15 +48,40 @@ class RelaxedPaceTests {
         assertThat(RelaxedPace.apply(open, conditions("친구와 강릉", null))).isSameAs(open);
     }
 
-    // 여유 일정에서 바다 취향을 골랐을 때만 해변을 120분으로 잡는다. 다른 종류와 다른 여행은 종류별 체류시간 그대로다.
-    @Test void beachStayIsLongerOnlyForRelaxedSeaTrips() {
+    // 느긋한 일정은 종류별 체류시간을 1.3배로 늘리고(10분 단위), 바다 취향이면 해변은 120분 이상이다. 다른 여행은 그대로다.
+    @Test void relaxedTripsStayLongerAndSeaTripsLongestAtTheBeach() {
         var beach = place("경포해수욕장", "여행 > 관광,명소 > 해수욕장,해변");
         var museum = place("오죽헌시립박물관", "박물관");
         var relaxedSea = conditions("여유롭게 바다에서 놀고 싶어요", null, "바다");
         assertThat(RelaxedPace.visitMinutes(relaxedSea, beach, 90)).isEqualTo(120);
-        assertThat(RelaxedPace.visitMinutes(relaxedSea, museum, 90)).isEqualTo(90);
-        assertThat(RelaxedPace.visitMinutes(conditions("여유롭게 쉬고 싶어요", null, "휴식"), beach, 90)).isEqualTo(60);
+        assertThat(RelaxedPace.visitMinutes(relaxedSea, museum, 90)).isEqualTo(120);
+        assertThat(RelaxedPace.visitMinutes(relaxedSea, place("설악산", "산"), 180)).isEqualTo(VisitMinutes.MAX);
+        assertThat(RelaxedPace.visitMinutes(conditions("여유롭게 쉬고 싶어요", null, "휴식"), beach, 90)).isEqualTo(80);
         assertThat(RelaxedPace.visitMinutes(conditions("바다 보러 가요", null, "바다"), beach, 90)).isEqualTo(60);
         assertThat(RelaxedPace.visitMinutes(null, beach, 90)).isEqualTo(60);
+    }
+
+    private static ConfirmedTravelConditions chosen(String original, String pace) {
+        var keywords = List.of(new TravelKeyword(1L, "THEME", "바다", null), new TravelKeyword(2L, "PACE", pace, null));
+        return new ConfirmedTravelConditions("TEXT", original, "강원", null, null, 2, null, null, true, null, keywords, "", true, "", null, false, List.of());
+    }
+
+    // 고른 여행 속도가 문장의 낱말보다 먼저다. '보통'을 고르면 "여유롭게"라고 적었어도 여유 일정이 아니다.
+    @Test void chosenPaceComesBeforeWordsInTheSentence() {
+        assertThat(RelaxedPace.wanted(chosen("친구와 강릉", "느긋하게"))).isTrue();
+        assertThat(RelaxedPace.wanted(chosen("여유롭게 다녀오고 싶어요", "보통"))).isFalse();
+        assertThat(RelaxedPace.wanted(chosen("여유롭게 다녀오고 싶어요", "알차게"))).isFalse();
+        assertThat(RelaxedPace.apply(null, chosen("여유롭게", "보통"))).isNull();
+        assertThat(RelaxedPace.apply(null, chosen("", "느긋하게")).dailyVisits()).isEqualTo(RelaxedPace.DAILY_VISITS);
+    }
+
+    // '알차게'만 하루 상한을 한 곳 늘린다. 문장에 "많이"라고 적은 것만으로는 늘리지 않고, 체류시간도 그대로다.
+    @Test void onlyPackedPaceRaisesTheDailyCap() {
+        assertThat(RelaxedPace.dailyCap(chosen("", "알차게"))).isEqualTo(TripConstraints.MAX_AUTO_DAILY + 1);
+        assertThat(RelaxedPace.dailyCap(chosen("", "보통"))).isEqualTo(TripConstraints.MAX_AUTO_DAILY);
+        assertThat(RelaxedPace.dailyCap(conditions("최대한 많이 보고 싶어요", null))).isEqualTo(TripConstraints.MAX_AUTO_DAILY);
+        assertThat(RelaxedPace.dailyCap(null)).isEqualTo(TripConstraints.MAX_AUTO_DAILY);
+        var beach = place("경포해수욕장", "여행 > 관광,명소 > 해수욕장,해변");
+        assertThat(RelaxedPace.visitMinutes(chosen("", "알차게"), beach, 90)).isEqualTo(60);
     }
 }
