@@ -68,6 +68,14 @@ public class PurposePlaceService {
 
     /** 외부 호출만 하는 단계라 트랜잭션을 두지 않는다. */
     Found search(Task task) {
+        var found = searchFacilities(task);
+        // 음식 이름·축제 여부는 시설 검색 결과와 관계없이 남긴다. 지역 확인·음식점 찾기·일정 식사에서 쓴다(음식·축제 목적 계획).
+        var terms = task.conditions().travelPurpose() == null ? null : keywordCache.peek(task.conditions().travelPurpose().strip());
+        if (terms == null) return found;
+        return new Found(found.search().withFood(terms.food(), terms.festival()), found.places());
+    }
+
+    private Found searchFacilities(Task task) {
         String purpose = task.conditions().travelPurpose();
         if (!ai.configured()) return new Found(result("SKIPPED", List.of(), List.of(), "AI 연결 설정이 없어 목적 시설을 찾지 않았어요.", List.of()), List.of());
         OpenAiPurposeClient.Terms terms;
@@ -147,9 +155,11 @@ public class PurposePlaceService {
         }
         places.flush();
         var search = found.search();
+        String food = search.food(); boolean festival = search.festival();
         if ("FOUND".equals(search.status()) && saved.isEmpty())
             search = result("NONE", search.keywords(), List.of(), "찾은 시설을 여행지 관광지로 저장하지 못했어요.", search.themes());
         else if ("FOUND".equals(search.status())) search = result("FOUND", search.keywords(), saved, null, search.themes());
+        search = search.withFood(food, festival);
         job.attachRequest(mapper.writeValueAsString(task.conditions().withPurposeSearch(search)));
         jobs.flush();
     }
