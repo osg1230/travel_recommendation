@@ -377,6 +377,9 @@ public class ItineraryGenerator {
         if(dayCenter || chosenCenter) tags.add("일정의 중심");
         // 내 기록 점수(즐겨찾기·4점 이상 평가한 관광지와 같은 종류)를 받은 곳. 점수가 오른 이유를 사용자가 알 수 있게 한다.
         if(input.likedKind(place)) tags.add("즐겨찾기·높게 평가한 곳과 비슷한 종류");
+        // 고른 여행 분위기와 어울리는 종류(MoodPlaces). 실제 분위기는 확인하지 않았으므로 '어울리는 종류'라고만 적는다.
+        String mood=MoodPlaces.matched(place,MoodPlaces.chosen(conditions));
+        if(mood!=null) tags.add("고른 분위기("+mood+")와 어울리는 종류");
         if(spareNote!=null) tags.add(spareNote);
         // 취향을 골랐는데 어느 기준에도 해당하지 않고 고른 취향과도 맞지 않으면, 취향에 맞는 후보가 모자라 다른 종류로 채운 곳이다.
         // AI가 순서를 정한 일정에서는 분류 글자와 상관없이 갈 만한 곳으로 고른 것이라 이 안내를 붙이지 않는다.

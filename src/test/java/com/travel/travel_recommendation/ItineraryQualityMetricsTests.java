@@ -61,7 +61,7 @@ class ItineraryQualityMetricsTests {
     @Test void summarizesValueScoresOfVisitedAndLeftOutPlaces() {
         var values = new LinkedHashMap<Long, com.travel.travel_recommendation.service.PlaceValueScore.Score>();
         for (var e : Map.of(1L, 80.0, 2L, 50.0, 3L, 60.0, 4L, 20.0).entrySet())
-            values.put(e.getKey(), new com.travel.travel_recommendation.service.PlaceValueScore.Score(e.getValue(), 0, 0, false, 0, 0, false));
+            values.put(e.getKey(), new com.travel.travel_recommendation.service.PlaceValueScore.Score(e.getValue(), 0, 0, false, 0, 0, false, false));
         assertThat(ItineraryQualityReportTests.valueSummary(values, List.of(1L, 2L))).isEqualTo("65 | 40 | 1/2");
     }
 }

@@ -14,11 +14,13 @@ import java.util.*;
  * - 비슷한 회원 기록(10): 비슷한 조건 회원이 저장·즐겨찾기·4점 이상 평가한 수(3명 이상이면 만점). 기록이 적어 가중치를 가장 낮게 둔다.
  * - 내 기록(10, 2026-11-09): 내가 즐겨찾기·4점 이상 평가한 관광지 중 이곳과 같은 종류인 곳의 수(3곳 이상이면 만점, MyTasteService).
  *   앞의 네 기준에 더한 뒤 100점에서 자르므로, 내 기록이 없으면 점수가 전과 같다.
+ * - 분위기(10, 2026-11-16): 고른 여행 분위기와 어울리는 종류(MoodPlaces)면 만점이다. 내 기록처럼 더한 뒤 100점에서 자른다.
+ *   '한적한'을 골랐으면 유명한 곳일수록 붐빌 수 있어 대표 관광지 가중치를 절반(12.5)으로 줄인다.
  * 필수·중심 장소(fixed)는 점수와 관계없이 일정에 넣는다는 규칙이 우선한다.
  * 품질 보고서에 표시하고, 일정 생성이 다음 장소를 '가치 − 이동 부담'으로 고를 때 쓴다(2단계, picking.values).
  */
 public final class PlaceValueScore {
-    static final double ORDER_WEIGHT = 40, LANDMARK_WEIGHT = 25, THEME_WEIGHT = 25, MEMBER_WEIGHT = 10, MY_TASTE_WEIGHT = 10;
+    static final double ORDER_WEIGHT = 40, LANDMARK_WEIGHT = 25, THEME_WEIGHT = 25, MEMBER_WEIGHT = 10, MY_TASTE_WEIGHT = 10, MOOD_WEIGHT = 10;
     /** 회원 기록 만점 기준(명). */
     static final int MEMBER_FULL = 3;
     /** 내 기록 만점 기준(같은 종류로 좋아한 관광지 수). */
@@ -26,11 +28,11 @@ public final class PlaceValueScore {
     private PlaceValueScore() {}
 
     /** 한 관광지의 점수와 기준별 값. order·landmark·members·myTaste는 0~1이고 total은 0~100이다. */
-    public record Score(double total, double order, double landmark, boolean theme, double members, double myTaste, boolean fixed) {
-        /** 보고서에 적을 한 줄. 예) 72점(순서 0.90·대표 0.60·취향 O·회원 0.00·내 기록 0.33) */
+    public record Score(double total, double order, double landmark, boolean theme, double members, double myTaste, boolean mood, boolean fixed) {
+        /** 보고서에 적을 한 줄. 예) 72점(순서 0.90·대표 0.60·취향 O·회원 0.00·내 기록 0.33·분위기 O) */
         public String text() {
-            return String.format("%d점(순서 %.2f·대표 %.2f·취향 %s·회원 %.2f·내 기록 %.2f%s)", Math.round(total), order, landmark,
-                theme ? "O" : "X", members, myTaste, fixed ? "·필수/중심" : "");
+            return String.format("%d점(순서 %.2f·대표 %.2f·취향 %s·회원 %.2f·내 기록 %.2f·분위기 %s%s)", Math.round(total), order, landmark,
+                theme ? "O" : "X", members, myTaste, mood ? "O" : "X", fixed ? "·필수/중심" : "");
         }
     }
 
@@ -51,6 +53,8 @@ public final class PlaceValueScore {
         Set<Long> fixed = new HashSet<>();
         if (input.constraints() != null) { fixed.addAll(input.constraints().requiredPlaceIds()); fixed.addAll(input.constraints().centerPlaceIds()); }
         var landmarkShare = rankShares(ordered, ranks);
+        var moods = MoodPlaces.chosen(input.conditions());
+        double landmarkWeight = moods.contains(MoodPlaces.QUIET) ? LANDMARK_WEIGHT / 2 : LANDMARK_WEIGHT;
         Map<Long, Score> scores = new LinkedHashMap<>();
         for (int i = 0; i < ordered.size(); i++) {
             var place = ordered.get(i);
@@ -59,9 +63,10 @@ public final class PlaceValueScore {
             boolean theme = matchesTheme(input, place, themes);
             double member = memberShare(members.get(place.placeId()));
             double taste = myTasteShare(place, myTaste);
-            double total = Math.min(100, ORDER_WEIGHT * order + LANDMARK_WEIGHT * landmark + (theme ? THEME_WEIGHT : 0)
-                + MEMBER_WEIGHT * member + MY_TASTE_WEIGHT * taste);
-            scores.put(place.placeId(), new Score(total, order, landmark, theme, member, taste, fixed.contains(place.placeId())));
+            boolean mood = MoodPlaces.matched(place, moods) != null;
+            double total = Math.min(100, ORDER_WEIGHT * order + landmarkWeight * landmark + (theme ? THEME_WEIGHT : 0)
+                + MEMBER_WEIGHT * member + MY_TASTE_WEIGHT * taste + (mood ? MOOD_WEIGHT : 0));
+            scores.put(place.placeId(), new Score(total, order, landmark, theme, member, taste, mood, fixed.contains(place.placeId())));
         }
         return scores;
     }

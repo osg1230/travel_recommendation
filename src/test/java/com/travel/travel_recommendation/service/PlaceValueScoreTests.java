@@ -13,9 +13,11 @@ class PlaceValueScoreTests {
     }
 
     // 강릉 1박 2일, 취향 바다. 고른 관광지 1·2·3, 예비 4. AI가 1을 걷기·풍경, 2를 관람·전시로 골랐다(3·4는 활동 없음).
-    private static Input input(List<Long> required) {
+    private static Input input(List<Long> required, String... moods) {
+        var keywords = new ArrayList<TravelKeyword>(List.of(new TravelKeyword(1L, "THEME", "바다", null)));
+        for (String mood : moods) keywords.add(new TravelKeyword(2L, "MOOD", mood, null));
         var conditions = new ConfirmedTravelConditions("KEYWORD", "", "강릉", LocalDate.of(2026, 11, 14), LocalDate.of(2026, 11, 15), 2, null, 2, true, false,
-            List.of(new TravelKeyword(1L, "THEME", "바다", null)), "");
+            keywords, "");
         var view = new PlaceCandidateView(UUID.randomUUID(), new DestinationCandidate(99L, "강릉", "강원", "소개", "https://www.gn.go.kr/", LocalDateTime.of(2026, 9, 1, 0, 0)),
             2, true, List.of(place(1, "여행 > 관광,명소 > 해수욕장,해변"), place(2, "문화시설 > 박물관"), place(3, "여행 > 관광,명소 > 해수욕장,해변")),
             List.of(), List.of());
@@ -63,6 +65,22 @@ class PlaceValueScoreTests {
         assertThat(liked.get(1L).total()).isEqualTo(100.0);
         assertThat(PlaceValueScore.score(input(List.of()), ranks, members, Map.of())).isEqualTo(plain);
         assertThat(liked.get(2L).text()).contains("내 기록 1.00");
+    }
+
+    // 분위기(2026-11-16): 감성적인을 고르면 미술관(4)·해변(1·3)이 어울리는 종류라 10점 오르고 박물관(2)은 그대로다.
+    // 한적한을 고르면 대표 관광지 가중치가 절반이라, 검색 순서 맨 앞인 해변(1)의 점수가 내려간다.
+    @Test void moodAddsTenPointsAndQuietHalvesTheLandmarkWeight() {
+        var ranks = Map.of(1L, 0, 2L, 5, 3L, 9);
+        var plain = PlaceValueScore.score(input(List.of()), ranks, Map.of());
+        var emotional = PlaceValueScore.score(input(List.of(), "감성적인"), ranks, Map.of());
+        assertThat(emotional.get(4L).mood()).isTrue();
+        assertThat(emotional.get(4L).total()).isCloseTo(plain.get(4L).total() + 10, within(0.01));
+        assertThat(emotional.get(2L).mood()).isFalse();
+        assertThat(emotional.get(2L).total()).isEqualTo(plain.get(2L).total());
+        assertThat(emotional.get(4L).text()).contains("분위기 O");
+        var quiet = PlaceValueScore.score(input(List.of(), "한적한"), ranks, Map.of());
+        assertThat(quiet.get(1L).mood()).isFalse();
+        assertThat(quiet.get(1L).total()).isCloseTo(plain.get(1L).total() - 12.5, within(0.01));
     }
 
     @Test void sharesAndMemberCap() {
