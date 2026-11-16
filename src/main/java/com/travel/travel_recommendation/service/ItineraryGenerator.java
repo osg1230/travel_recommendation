@@ -548,6 +548,15 @@ public class ItineraryGenerator {
                 && kilometers(from,builder.locations.get(p.placeId()))<=PREFERRED_MEAL_KM)
             .min(Comparator.comparingDouble(p->distance(from,builder.locations.get(p.placeId()))));
         if(preferred.isPresent()) return preferred.get();
+        // 여행 목적의 음식(예: 김밥)이 있으면 그날 아직 그 음식을 먹지 않았을 때 그 음식 음식점을 먼저 쓴다(하루 한 끼, 2026-11-16 결정).
+        // 수정 요청 식당과 같은 거리 기준(PREFERRED_MEAL_KM) 안에서 덜 가는 곳이다. 멀면 평소처럼 고른다.
+        String food=builder.input.conditions().purposeFood();
+        if(!food.isEmpty() && !ateFoodToday(builder,food)) {
+            var foodMeal=fresh.stream().filter(p->PlaceCandidateService.servesFood(p.name(),p.subtype(),food)
+                    && kilometers(from,builder.locations.get(p.placeId()))<=PREFERRED_MEAL_KM)
+                .min(Comparator.comparingDouble(away));
+            if(foodMeal.isPresent()) return foodMeal.get();
+        }
         var sorted=(fresh.isEmpty()?restaurants:fresh).stream().sorted(order(builder.date,away)).toList();
         var nearest=sorted.getFirst();
         boolean nearestClosed=OperatingHoursValidator.closedOn(nearest.operatingInfo(),builder.date);
@@ -568,6 +577,13 @@ public class ItineraryGenerator {
     static final double MEAL_CHOICE_KM=2.0;
     /** 이보다 먼 음식점은 가까운 후보가 없어 넣었다고 안내한다. */
     static final double FAR_MEAL_KM=10.0;
+
+    /** 오늘 이미 목적 음식(예: 김밥) 음식점에서 먹었는지. 하루 한 끼만 그 음식으로 고르기 위해 본다. */
+    private static boolean ateFoodToday(DayBuilder builder,String food) {
+        var today=builder.items.stream().filter(i->"MEAL".equals(i.type())).map(Item::placeId).toList();
+        return builder.input.places().restaurants().stream()
+            .anyMatch(p->today.contains(p.placeId()) && PlaceCandidateService.servesFood(p.name(),p.subtype(),food));
+    }
 
     /** 이번 여행에서 이미 먹은 음식 분류(예: 한식·국수). */
     private static Set<String> eatenKinds(DayBuilder builder) {
@@ -598,6 +614,8 @@ public class ItineraryGenerator {
         String kind=restaurant.subtypeLabel();
         var reasons=new ArrayList<String>();
         if(builder.input.choices().preferRestaurants().contains(restaurant.placeId())) reasons.add("수정 요청에서 고른 식당");
+        String wantedFood=builder.input.conditions().purposeFood();
+        if(PlaceCandidateService.servesFood(restaurant.name(),restaurant.subtype(),wantedFood)) reasons.add("고른 음식("+wantedFood+") 음식점");
         if(restaurant.popular()) reasons.add("관광공사 인기 음식점");
         regionalFood(builder,restaurant).ifPresent(food->reasons.add("지역 대표 음식("+food+")"));
         if(fresh && !kind.isEmpty() && !eaten.isEmpty() && !eaten.contains(kind))

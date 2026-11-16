@@ -608,6 +608,28 @@ class ItineraryGeneratorTests {
         assertThat(meals).hasSize(3).doesNotHaveDuplicates();
         generator.validate(input,result);
     }
+    // 목적 음식(김밥, 2026-11-16): 날마다 한 끼는 김밥 음식점을 먼저 고르고 이유를 적는다. 같은 날 두 번은 고르지 않는다.
+    // 목적 음식이 없으면 김밥 음식점을 골라도 '고른 음식' 이유를 적지 않는다.
+    @Test void purposeFoodTakesOneMealADay() {
+        var base=input(2,LocalTime.of(18,0));
+        var restaurants=List.of(restaurant(3,"음식점 > 한식"),restaurant(30,"음식점 > 한식"),restaurant(31,"음식점 > 한식"),
+            restaurant(40,"음식점 > 분식 > 김밥"),restaurant(41,"음식점 > 분식 > 김밥"));
+        var pool=new PlaceCandidateView(base.places().jobId(),base.places().destination(),2,true,
+            List.of(place(1),place(2),place(5),place(6)),List.of(place(4)),restaurants);
+        var gimbap=new PurposeSearch("SKIPPED",List.of(),List.of(),"",Instant.now(),List.of("맛집")).withFood("김밥",false);
+        var conditions=base.conditions().withPurpose("김밥 맛집 탐방").withPurposeSearch(gimbap);
+        var input=new Input(base.recommendationId(),pool,conditions,base.start(),base.end(),base.transport(),60,null,null,List.of());
+        var result=generator.generate(input);
+        for(var day:result.days()) {
+            var meals=day.items().stream().filter(i->i.type().equals("MEAL")).toList();
+            assertThat(meals).filteredOn(i->i.placeId()==40L || i.placeId()==41L).hasSize(1)
+                .allSatisfy(i->assertThat(i.note()).contains("고른 음식(김밥) 음식점"));
+        }
+        generator.validate(input,result);
+        var plain=new Input(base.recommendationId(),pool,base.conditions(),base.start(),base.end(),base.transport(),60,null,null,List.of());
+        assertThat(generator.generate(plain).days().stream().flatMap(d->d.items().stream()).filter(i->i.type().equals("MEAL")))
+            .noneMatch(i->i.note().contains("고른 음식"));
+    }
     // 가장 가까운 곳이 아이스크림 가게·술집이어도 끼니로는 일반 음식점을 고른다.
     @Test void mealsSkipSnackAndBarPlaces() {
         var input=dayTrip(List.of(place(1),place(2)),List.of(restaurant(3,"음식점 > 간식 > 아이스크림"),

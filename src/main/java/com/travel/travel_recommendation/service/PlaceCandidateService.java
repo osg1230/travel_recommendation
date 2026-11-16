@@ -68,6 +68,15 @@ public class PlaceCandidateService {
         return MoodPlaces.chosen(mapper.readValue(stored.getRequestJson(), ConfirmedTravelConditions.class));
     }
 
+    /** 이 추천 요청의 목적 음식 이름(예: 김밥). 장소 목록을 모을 때 그 음식 음식점을 더 찾는 데 쓴다(PlaceDiscoveryService). */
+    @Transactional(readOnly = true, timeout = 10)
+    public String foodName(UUID jobId, String loginId, byte[] guestHash) {
+        jobs.view(jobId, loginId, guestHash);
+        var stored = jobRepository.findById(jobId).orElse(null);
+        if (stored == null) return "";
+        return mapper.readValue(stored.getRequestJson(), ConfirmedTravelConditions.class).purposeFood();
+    }
+
     @Transactional(readOnly = true, timeout = 10)
     public PlaceCandidateView find(UUID jobId, long destinationId, String loginId, byte[] guestHash) {
         return findForSchedule(jobId, destinationId, loginId, guestHash, null);
@@ -121,9 +130,17 @@ public class PlaceCandidateService {
             .filter(p -> "ATTRACTION".equals(p.getPlaceType()) && MoodPlaces.searchedKind(p.getName(), p.getSubtype(), moods))
             .sorted(Comparator.comparingInt((Place p) -> ranks.get(p.getId())).thenComparing(Place::getId))
             .limit(MoodPlaces.CANDIDATE_KEEP).map(Place::getId).collect(java.util.stream.Collectors.toSet());
+        // 목적 음식(예: 김밥)이 상호·분류에 들어간 음식점은 FOOD_RESTAURANT_KEEP곳까지 음식점 후보 앞에 둔다(2026-11-16).
+        // 음식점 후보는 8곳만 남기므로, 앞에 두지 않으면 일정 식사에서 고를 수 없었다.
+        String food = conditions.purposeFood();
+        var foodIds = food.isEmpty() ? Set.<Long>of() : usablePlaces.stream()
+            .filter(p -> "RESTAURANT".equals(p.getPlaceType()) && servesFood(p.getName(), p.getSubtype(), food))
+            .sorted(Comparator.comparingInt((Place p) -> ranks.get(p.getId())).thenComparing(Place::getId))
+            .limit(FOOD_RESTAURANT_KEEP).map(Place::getId).collect(java.util.stream.Collectors.toSet());
         var candidates = usablePlaces.stream()
             .sorted(Comparator.comparing((Place p)->!purposeIds.contains(p.getId()) && !festivalIds.contains(p.getId()))
                 .thenComparing((Place p)->!moodIds.contains(p.getId()))
+                .thenComparing((Place p)->!foodIds.contains(p.getId()))
                 .thenComparing((Place p)->themeMissed.get(p.getId()))
                 .thenComparing((Place p)->!"KAKAO".equals(p.getSourceProvider()))
                 // 카카오 검색 결과에 먼저 나온 곳부터 둔다. 이름순으로 자르면 뒤쪽 글자로 시작하는 곳(정동진 등)이 빠진다.
@@ -141,6 +158,15 @@ public class PlaceCandidateService {
         return new PlaceCandidateView(jobId, destination, conditions.durationDays(), needsAccommodation,
             ofType(spread, "ATTRACTION", TripConstraints.candidateLimit(conditions.durationDays())),
             needsAccommodation ? ofType(spread, "ACCOMMODATION", 5) : List.of(), ofType(spread, "RESTAURANT", 8));
+    }
+
+    /** 음식점 후보(8곳) 앞에 둘 목적 음식 음식점 수. 나머지 자리는 지금처럼 인기·검색 순서 음식점이다. */
+    static final int FOOD_RESTAURANT_KEEP = 4;
+
+    /** 상호나 분류에 음식 이름이 들어 있는지(예: "오다리김밥", "음식점 > 분식 > 김밥"). 메뉴를 확인한 것은 아니다. */
+    public static boolean servesFood(String name, String subtype, String food) {
+        if (food == null || food.isEmpty()) return false;
+        return (name != null && name.contains(food)) || (subtype != null && subtype.contains(food));
     }
 
     /** 관광지 후보 앞쪽에 둘 같은 종류의 수. 고른 여행 취향에 맞는 종류(예: 바다 취향의 해변)는 더 둔다. */
