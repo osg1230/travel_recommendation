@@ -70,4 +70,17 @@ class MoodPlacesTests {
             .containsExactly(center, arboretum, museum, skipped, walk);
         assertThat(MoodPlaces.moodFirst(ordered, List.of(), 2, java.util.Set.of(), java.util.Set.of())).isSameAs(ordered);
     }
+
+    // 하루 마무리: 풍경 장소를 마지막으로 옮긴 순서. 이미 마지막이 풍경이거나 거리가 5km보다 늘면 옮기지 않는다.
+    @Test void sceneryLastMovesTheViewToTheEndUnlessTheRouteGrowsTooMuch() {
+        var beach = place(1, "경포해수욕장", "여행 > 관광,명소 > 해수욕장,해변");
+        var museum = place(2, "오죽헌시립박물관", "문화시설 > 박물관");
+        var market = place(3, "강릉중앙시장", "여행 > 관광,명소 > 전통시장");
+        java.util.function.ToDoubleFunction<List<PlaceCandidate>> near = o -> o.indexOf(beach) * 1.0;
+        assertThat(MoodPlaces.sceneryLast(List.of(beach, museum, market), near)).containsExactly(museum, market, beach);
+        assertThat(MoodPlaces.sceneryLast(List.of(museum, beach), near)).isNull();
+        assertThat(MoodPlaces.sceneryLast(List.of(museum, market), near)).isNull();
+        java.util.function.ToDoubleFunction<List<PlaceCandidate>> far = o -> o.getLast().equals(beach) ? 20 : 10;
+        assertThat(MoodPlaces.sceneryLast(List.of(beach, museum, market), far)).isNull();
+    }
 }

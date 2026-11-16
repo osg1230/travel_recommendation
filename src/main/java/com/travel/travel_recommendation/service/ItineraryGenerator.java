@@ -264,6 +264,7 @@ public class ItineraryGenerator {
             // 그날 넣을 관광지를 정한 뒤, 같은 곳들을 더 짧게 도는 순서가 있으면 그 순서로 다시 넣어 본다(2026-10-31).
             // 가까운 곳부터 이어 고르면 남쪽 → 북쪽 → 다시 남쪽처럼 오갈 수 있기 때문이다. 시간·운영시간이 맞지 않으면 처음 순서를 쓴다.
             var shorter=keptOrder?null:shorterOrder(placed,previous,stay,locations);
+            List<PlaceCandidate> dayOrder=placed;
             if(shorter!=null) {
                 boolean mapWasDown=routes.mapDown;
                 var other=new DayBuilder(input,locations,routes,deadline,previous,day,new HashSet<>(restaurantsBefore),foods);
@@ -274,7 +275,27 @@ public class ItineraryGenerator {
                 // 길찾기가 도중에 안 돼 직선거리 추정이 섞이면, 이미 길찾기로 확인한 처음 순서를 쓴다.
                 if(placedAll && routes.mapDown==mapWasDown) {
                     builder=other; usedRestaurants.clear(); usedRestaurants.addAll(other.usedRestaurants);
-                    last=shorter.getLast(); lastKind=input.activityOf(last);
+                    last=shorter.getLast(); lastKind=input.activityOf(last); dayOrder=shorter;
+                }
+            }
+            // 감성적인 여행은 그날 바다·전망 장소를 하루 마지막으로 옮겨 다시 넣어 본다(하루 흐름, 2026-11-16).
+            // 직선거리가 MoodPlaces.ENDING_EXTRA_KM보다 늘거나 시간·운영시간이 맞지 않으면 지금 순서를 그대로 쓴다.
+            final PlaceCandidate dayStart=previous;
+            var ending=keptOrder || !MoodPlaces.chosen(input.conditions()).contains(MoodPlaces.EMOTIONAL)?null
+                :MoodPlaces.sceneryLast(dayOrder,o->DayRoute.length(o,dayStart,stay,(a,b)->kilometers(locations.get(a.placeId()),locations.get(b.placeId()))));
+            if(ending!=null) {
+                boolean mapWasDown=routes.mapDown;
+                var other=new DayBuilder(input,locations,routes,deadline,previous,day,new HashSet<>(restaurantsBefore),foods);
+                if(day==1 && input.home()!=null) other.homeDeparture();
+                var moved=ending.getLast();
+                boolean placedAll=placeInOrder(other,ending,stay,dinnerDay,p->{
+                    String note=spareNotes.get(p.placeId());
+                    if(p.equals(moved)) note=note==null?MoodPlaces.ENDING_NOTE:note+" · "+MoodPlaces.ENDING_NOTE;
+                    return visitNote(input,p,note,centers.contains(p),chosenCenters.contains(p),null);
+                });
+                if(placedAll && routes.mapDown==mapWasDown) {
+                    builder=other; usedRestaurants.clear(); usedRestaurants.addAll(other.usedRestaurants);
+                    last=moved; lastKind=input.activityOf(last);
                 }
             }
             // 점심을 아직 넣지 못했으면 마지막 관광지 뒤에 넣는다(숙박하는 날은 숙소 쪽 식당). 들어가는지는 위에서 확인했다.

@@ -105,4 +105,34 @@ public final class MoodPlaces {
         for (; i < ordered.size(); i++) if (!pulled.contains(ordered.get(i))) result.add(ordered.get(i));
         return result;
     }
+
+    /** 하루를 마무리하기 좋은 풍경 장소의 낱말(바다·전망). 감성적인 여행의 하루 흐름에 쓴다. */
+    private static final List<String> SCENERY_ENDING = List.of("해수욕장", "해변", "해안", "등대", "전망대", "스카이워크");
+    /** 마지막으로 옮겨서 늘어나도 되는 하루 이동 거리(직선, km). 이보다 늘면 동선이 나빠져 옮기지 않는다. */
+    public static final double ENDING_EXTRA_KM = 5.0;
+    /** 하루 마무리로 옮긴 곳의 고른 이유. */
+    public static final String ENDING_NOTE = "하루를 바다·전망 풍경으로 마무리하도록 마지막에 둠";
+
+    public static boolean sceneryEnding(PlaceCandidate place) {
+        String text = (place.name() == null ? "" : place.name()) + " " + (place.subtype() == null ? "" : place.subtype());
+        return SCENERY_ENDING.stream().anyMatch(text::contains);
+    }
+
+    /**
+     * 감성적인 여행의 하루 흐름(2026-11-16, 계획 5.3): 그날 관광지 중 바다·전망 장소를 하루 마지막으로 옮긴 순서.
+     * 이미 마지막이 풍경 장소이거나, 풍경 장소가 없거나, 옮기면 하루 거리(length)가 ENDING_EXTRA_KM보다 늘면 null이다.
+     * 풍경 장소가 여럿이면 옮긴 뒤 거리가 가장 짧은 곳을 고른다. length는 순서를 받아 하루 거리를 돌려준다.
+     */
+    public static <T extends PlaceCandidate> List<T> sceneryLast(List<T> order, java.util.function.ToDoubleFunction<List<T>> length) {
+        if (order.size() < 2 || sceneryEnding(order.getLast())) return null;
+        double before = length.applyAsDouble(order);
+        List<T> best = null; double bestLength = Double.MAX_VALUE;
+        for (T place : order) {
+            if (!sceneryEnding(place)) continue;
+            var moved = new java.util.ArrayList<T>(order); moved.remove(place); moved.add(place);
+            double after = length.applyAsDouble(moved);
+            if (after < bestLength) { bestLength = after; best = moved; }
+        }
+        return best != null && bestLength <= before + ENDING_EXTRA_KM ? best : null;
+    }
 }

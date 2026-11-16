@@ -575,6 +575,22 @@ class ItineraryGeneratorTests {
         var pool=new PlaceCandidateView(base.places().jobId(),base.places().destination(),1,false,attractions,List.of(),restaurants);
         return new Input(base.recommendationId(),pool,base.conditions(),base.start(),base.end(),base.transport(),visitMinutes,null,null,reserve);
     }
+    // 감성적인 여행(하루 흐름, 2026-11-16): 그날 바다·전망 장소(1, 해변)를 하루 마지막으로 옮기고 이유를 적는다.
+    // 분위기를 고르지 않은 같은 하루는 가까운 순서(1 → 2 → 3) 그대로다.
+    @Test void emotionalTripEndsTheDayAtTheScenery() {
+        var beach=new PlaceCandidate(1L,"해변1","강원 강릉시 경포로 1","여행 > 관광,명소 > 해수욕장,해변","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var plain=dayTrip(List.of(beach,place(2),place(5)),List.of(place(3)),60,List.of());
+        assertThat(generator.generate(plain).days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).map(Item::placeId))
+            .containsExactly(1L,2L,5L);
+        var emotional=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,1),1,null,2,false,false,
+            List.of(new TravelKeyword(1L,"MOOD","감성적인",null)),"");
+        var input=new Input(plain.recommendationId(),plain.places(),emotional,plain.start(),plain.end(),plain.transport(),60,null,null,List.of());
+        var result=generator.generate(input);
+        var visits=result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).toList();
+        assertThat(visits.stream().map(Item::placeId)).containsExactly(2L,5L,1L);
+        assertThat(visits.getLast().note()).contains(MoodPlaces.ENDING_NOTE);
+        generator.validate(input,result);
+    }
     // 가장 가까운 곳이 아이스크림 가게·술집이어도 끼니로는 일반 음식점을 고른다.
     @Test void mealsSkipSnackAndBarPlaces() {
         var input=dayTrip(List.of(place(1),place(2)),List.of(restaurant(3,"음식점 > 간식 > 아이스크림"),
