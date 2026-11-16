@@ -334,8 +334,10 @@ public class ItineraryJobService {
         if(stay && start!=null && end!=null && end.isAfter(start)) {
             Set<Long> keepForDay=new HashSet<>();
             if(constraints!=null) { keepForDay.addAll(constraints.requiredPlaceIds()); keepForDay.addAll(constraints.centerPlaceIds()); }
+            // 저녁 몫은 기본 체류시간으로 본 하루 수(예: 하루 3곳)로 떼어 둔다. 낮 관광지 수는 종류별 체류시간으로 더 많이 고르지만(select),
+            // 그 수로 AI 순서 뒤쪽을 떼면 저녁 후보가 거의 남지 않아 저녁 관광이 빠졌다(2026-11-16 속초 2박 3일).
             int daily=constraints!=null && constraints.dailyVisits()!=null?constraints.dailyVisits()
-                :TripConstraints.plannedDailyCapacity(ordered,days,start,end,visitMinutes);
+                :TripConstraints.estimatedDailyCapacity(start,end,visitMinutes);
             int share=TripConstraints.eveningShare(ordered.size(),days,daily);
             // AI가 꼽은 밤 명소를 먼저 저녁 몫으로 둔다. 숙박하는 밤(일수 - 1)마다 한 곳까지이고, 저녁 몫 안에서만이다.
             var nightFirst=TripConstraints.nightPlaces(ordered,night,keepForDay,skips,Math.min(days-1,share));

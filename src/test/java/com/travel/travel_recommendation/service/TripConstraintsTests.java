@@ -201,6 +201,16 @@ class TripConstraintsTests {
         assertThat(TripConstraints.select(short_, 2, NINE, SIX, 90, null)).hasSize(8);
         assertThat(TripConstraints.select(museums, 2, NINE, SIX, 90, null)).hasSize(6);
     }
+    // 짧게 머무는 곳이 많아 낮 관광지를 하루 4곳씩 골라도, 저녁 몫은 기본 하루 수(3곳) 뒤에서 떼어 저녁 관광 후보가 남는다.
+    // 낮 관광지 수로 떼면 8이 낮에 쓰여 저녁 후보가 9·10 두 곳뿐이었다(2026-11-16 속초에서 저녁 관광이 빠진 문제).
+    @Test void eveningShareStaysWhenMoreDaytimePlacesFit() {
+        var ordered = new ArrayList<PlaceCandidate>();
+        for (long id = 1; id <= 10; id++)
+            ordered.add(kind(id, "장소" + id, id >= 8 ? "여행 > 관광,명소 > 전망대" : "여행 > 관광,명소 > 문화유적"));
+        var arranged = ItineraryJobService.arrange(ordered, Set.of(), true, true, 2, NINE, SIX, 90, null);
+        assertThat(ids(arranged.evening())).containsExactly(8L, 9L, 10L);
+        assertThat(ids(arranged.selected())).containsExactly(1L, 2L, 3L, 4L, 5L, 6L, 7L);
+    }
     // 아래 세 테스트는 하루 3곳을 전제로 저녁 몫·예비 규칙을 본다. 하루 수용량은 후보의 종류별 체류시간으로 계산하므로(2026-11-16)
     // 낮 관광지는 박물관(기본 체류 그대로)으로 만들고 기본 체류를 120분으로 둔다. 전망대가 섞여도 하루 3곳이다.
     private static final String MUSEUM = "문화,예술 > 문화시설 > 박물관";
