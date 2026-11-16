@@ -140,11 +140,13 @@ public class RegionSuggestionService {
         var existing = places.findBySourceProviderAndSourcePlaceId("TOURAPI", "REGION_" + checked.region());
         if (existing.isPresent()) return existing.get().isActive() ? existing.get().getId() : null;
         // 음식으로 확인한 지역은 분류를 '맛집'으로, 소개를 찾은 음식점 수로 적는다. 근거는 카카오 검색이고 메뉴를 확인한 것은 아니다.
+        // 출처 링크는 다른 제안 여행지처럼 관광공사로 둔다. 여행지 후보는 공식 출처만 쓰므로(DestinationCandidateService),
+        // 카카오 지도로 두면 추가한 여행지가 추천 후보에서 빠졌다(2026-11-16 김천 확인).
         boolean byFood = !checked.food().isEmpty();
         var place = places.save(Place.verifiedDestination(name, checked.region(),
             byFood ? FOOD_THEME : subtype(checked.profile(), categories),
             byFood ? foodDescription(checked.food(), checked.foodRestaurants()) : description(checked.profile(), categories),
-            byFood ? KAKAO_MAP_URL : SOURCE_URL, KoreaTime.now()));
+            SOURCE_URL, KoreaTime.now()));
         String json = DestinationProfile.write(place, checked.profile(), Instant.now(), mapper);
         if (json != null) place.updateDetails(json);
         places.flush();
@@ -205,8 +207,8 @@ public class RegionSuggestionService {
         String labels = String.join(", ", found.stream().map(WishCategories.NAMES::get).limit(3).toList());
         return String.join("·", names) + " 등 " + labels + ReadableText.particle(labels, "을") + " 둘러볼 수 있는 지역입니다.";
     }
-    /** 음식으로 확인한 여행지의 분류(여행 취향 이름)와 근거 출처. */
-    static final String FOOD_THEME = "맛집", KAKAO_MAP_URL = "https://map.kakao.com/";
+    /** 음식으로 확인한 여행지의 분류(여행 취향 이름). */
+    static final String FOOD_THEME = "맛집";
 
     /** 음식으로 확인한 여행지의 소개. 예) "김밥 음식점 12곳이 있는 지역입니다(카카오 지도 검색, 메뉴는 확인하지 않음)." */
     static String foodDescription(String food, int restaurants) {
