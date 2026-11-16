@@ -329,6 +329,9 @@ public class ItineraryGenerator {
             if(constraints!=null && constraints.dailyVisitsRequired() && visits+eveningVisits!=constraints.dailyVisits())
                 throw failure("TIME_OVERLAP",day+"일차에 관광지 "+constraints.dailyVisits()+"곳을 하루 시간 안에 넣지 못했어요. 하루 시간을 늘리거나 체류시간·하루 방문 수를 줄여 주세요.");
             days.add(new Day(day,builder.date,List.copyOf(builder.items)));
+            // 순서를 바꿔 다시 넣은 날은 builder가 식당 기록의 복사본을 쓴다. 그 뒤에 넣은 끼니(숙소 근처 저녁 등)도
+            // 다음 날이 알도록 하루를 마칠 때 모은다. 빠뜨리면 다음 날 같은 저녁 식당을 다시 골랐다(2026-11-13 속초·부산, 2026-11-16 수정).
+            usedRestaurants.addAll(builder.usedRestaurants);
             previous=hotel!=null?hotel:null;
         }
         // 끝까지 넣지 못한 관광지는 일정에서 빼고 결과에 적는다. 필수·유지 장소가 남았으면 일정을 만들지 않는다.

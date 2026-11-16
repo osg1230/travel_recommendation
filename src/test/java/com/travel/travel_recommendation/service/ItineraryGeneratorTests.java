@@ -591,6 +591,23 @@ class ItineraryGeneratorTests {
         assertThat(visits.getLast().note()).contains(MoodPlaces.ENDING_NOTE);
         generator.validate(input,result);
     }
+    // 순서를 바꿔 다시 넣은 날(여기서는 감성적인 여행의 하루 마무리)에 먹은 저녁도 다음 날이 알아, 같은 식당을 다시 고르지 않는다.
+    // 예전에는 다시 넣은 날의 식당 기록이 복사본에만 남아 1일차 저녁 식당이 2일차 점심에 또 나왔다(2026-11-13 속초·부산).
+    @Test void mealsAfterReorderingAreRememberedTheNextDay() {
+        var beach=new PlaceCandidate(1L,"해변1","강원 강릉시 경포로 1","여행 > 관광,명소 > 해수욕장,해변","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
+        var emotional=new ConfirmedTravelConditions("KEYWORD","","강릉",LocalDate.of(2026,10,1),LocalDate.of(2026,10,2),2,null,2,true,false,
+            List.of(new TravelKeyword(1L,"MOOD","감성적인",null)),"");
+        var base=input(2,LocalTime.of(18,0));
+        var pool=new PlaceCandidateView(base.places().jobId(),base.places().destination(),2,true,
+            List.of(beach,place(2),place(5),place(6)),List.of(place(4)),List.of(restaurant(30,"음식점 > 한식"),restaurant(31,"음식점 > 한식"),restaurant(32,"음식점 > 한식")));
+        var input=new Input(base.recommendationId(),pool,emotional,base.start(),base.end(),base.transport(),60,null,null,List.of());
+        var result=generator.generate(input);
+        var day1=result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).map(Item::placeId).toList();
+        assertThat(day1.getLast()).isEqualTo(1L);
+        var meals=result.days().stream().flatMap(d->d.items().stream()).filter(i->i.type().equals("MEAL")).map(Item::placeId).toList();
+        assertThat(meals).hasSize(3).doesNotHaveDuplicates();
+        generator.validate(input,result);
+    }
     // 가장 가까운 곳이 아이스크림 가게·술집이어도 끼니로는 일반 음식점을 고른다.
     @Test void mealsSkipSnackAndBarPlaces() {
         var input=dayTrip(List.of(place(1),place(2)),List.of(restaurant(3,"음식점 > 간식 > 아이스크림"),
