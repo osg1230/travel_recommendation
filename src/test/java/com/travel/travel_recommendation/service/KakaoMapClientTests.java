@@ -244,6 +244,18 @@ class KakaoMapClientTests {
         assertThat(client("key").searchPlaces("강원특별자치도 강릉시","RESTAURANT")).extracting(com.travel.travel_recommendation.dto.KakaoPlace::sourceId)
             .containsExactly("701");
     }
+    // 음식 음식점 검색(2026-11-16): "김천 김밥"으로 찾고, 상호나 분류에 그 음식이 들어간 지역 안의 음식점만 받는다.
+    @Test void foodRestaurantSearchKeepsOnlyPlacesNamingTheFood() {
+        var gimbap=searchItem("721","경북 김천시 평화동 1"); gimbap.put("category_group_code","FD6"); gimbap.put("category_name","음식점 > 분식 > 김밥");
+        var named=searchItem("722","경북 김천시 평화동 2"); named.put("category_group_code","FD6"); named.put("category_name","음식점 > 분식"); named.put("place_name","오다리김밥");
+        var other=searchItem("723","경북 김천시 평화동 3"); other.put("category_group_code","FD6"); other.put("category_name","음식점 > 한식");
+        var elsewhere=searchItem("724","경북 구미시 원평동 4"); elsewhere.put("category_group_code","FD6"); elsewhere.put("category_name","음식점 > 분식 > 김밥");
+        body.set(new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(gimbap,named,other,elsewhere))));
+        assertThat(client("key").searchFoodRestaurants("경상북도 김천시","김밥",15)).extracting(com.travel.travel_recommendation.dto.KakaoPlace::sourceId)
+            .containsExactly("721","722");
+        assertThat(java.net.URLDecoder.decode(path.get(),java.nio.charset.StandardCharsets.UTF_8)).contains("김천 김밥").contains("category_group_code=FD6");
+        assertThatThrownBy(()->client("key").searchFoodRestaurants("경상북도 김천시","<김밥>",15)).isInstanceOf(RecommendationException.class);
+    }
     // 좌표 주변 음식점은 반경·정확도 순으로 찾고, 끼니가 아닌 곳과 여행지 지역 밖의 곳은 받지 않는다.
     @Test void nearbyRestaurantSearchUsesCoordinatesAndSkipsSnackAndOtherRegions() {
         var meal=searchItem("711","강원 강릉시 교동 1"); meal.put("category_group_code","FD6"); meal.put("category_name","음식점 > 한식");

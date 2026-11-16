@@ -66,6 +66,14 @@ public class PurposePlaceService {
         return new Task(jobId, job.getRequestJson(), conditions, destinations.usable());
     }
 
+    /**
+     * 목적의 검색어·음식 이름. 같은 목적이면 하루 동안 다시 묻지 않는다. 지역 제안(RegionSuggestionService)이 음식 이름을 볼 때도
+     * 이 메서드를 써서, 뒤이은 목적 시설 검색과 AI 호출을 나눠 쓴다(호출 수가 늘지 않는다).
+     */
+    public OpenAiPurposeClient.Terms terms(String purpose) {
+        return keywordCache.get(purpose.strip(), () -> ai.terms(purpose));
+    }
+
     /** 외부 호출만 하는 단계라 트랜잭션을 두지 않는다. */
     Found search(Task task) {
         var found = searchFacilities(task);

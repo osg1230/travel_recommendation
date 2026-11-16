@@ -42,4 +42,35 @@ class RegionSuggestionServiceTests {
         assertThat(RegionSuggestionService.description(profile, List.of("NA010100", "NA040100", "NA010400")))
             .isEqualTo("노고단·지리산국립공원·반야봉 등 산·오름·봉우리, 국립공원을 둘러볼 수 있는 지역입니다.");
     }
+
+    private static com.travel.travel_recommendation.dto.KakaoPlace restaurant(String id) {
+        return new com.travel.travel_recommendation.dto.KakaoPlace(id, "RESTAURANT", "김밥" + id, "경상북도 김천시", "경북 김천시 평화동 " + id,
+            "음식점 > 분식 > 김밥", 128.1, 36.1, "https://place.map.kakao.com/" + id, java.time.LocalDateTime.of(2026, 11, 16, 0, 0));
+    }
+
+    // 음식 근거(2026-11-16): 관광공사 분류로 근거가 없어도 그 음식 음식점이 3곳 이상이면 지역을 쓴다. 2곳이면 쓰지 않고,
+    // 음식 이름이 없으면 카카오를 찾지 않는다. "김밥 축제"에서 AI가 제안한 김천이 분류(전통문화체험)로 걸러지던 문제다.
+    @Test void foodRestaurantsCountAsEvidenceWhenCategoriesHaveNone() {
+        var profiles = org.mockito.Mockito.mock(DestinationProfileService.class);
+        var maps = org.mockito.Mockito.mock(KakaoMapClient.class);
+        org.mockito.Mockito.when(profiles.build("경상북도 김천시")).thenReturn(Map.of());
+        var service = new RegionSuggestionService(null, null, null, profiles, null, null, null, null, null, maps);
+        var task = new RegionSuggestionService.Task(java.util.UUID.randomUUID(), "{}", null, List.of());
+        var suggestion = new OpenAiRegionClient.Suggestion(List.of("EX010100"), List.of("경상북도 김천시"));
+        org.mockito.Mockito.when(maps.searchFoodRestaurants("경상북도 김천시", "김밥", 15))
+            .thenReturn(List.of(restaurant("1"), restaurant("2"), restaurant("3")));
+        var checked = service.check(task, suggestion, "김밥");
+        assertThat(checked).singleElement().satisfies(c -> {
+            assertThat(c.region()).isEqualTo("경상북도 김천시");
+            assertThat(c.food()).isEqualTo("김밥");
+            assertThat(c.foodRestaurants()).isEqualTo(3);
+        });
+        org.mockito.Mockito.when(maps.searchFoodRestaurants("경상북도 김천시", "김밥", 15)).thenReturn(List.of(restaurant("1"), restaurant("2")));
+        assertThat(service.check(task, suggestion, "김밥")).isEmpty();
+        assertThat(service.check(task, new OpenAiRegionClient.Suggestion(List.of(), List.of("경상북도 김천시")), "")).isEmpty();
+        org.mockito.Mockito.verify(maps, org.mockito.Mockito.times(2)).searchFoodRestaurants(org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt());
+        assertThat(RegionSuggestionService.foodDescription("김밥", 12)).isEqualTo("김밥 음식점 12곳이 있는 지역입니다(카카오 지도 검색, 메뉴는 확인하지 않음).");
+        assertThat(RegionSuggestionService.foodDescription("김밥", 15)).startsWith("김밥 음식점 15곳 이상이");
+    }
 }

@@ -97,6 +97,22 @@ public class KakaoMapClient {
     }
 
     /**
+     * 지역에서 음식 이름(예: 김밥)이 상호나 분류에 들어간 음식점(FD6)을 정확도 순으로 최대 limit곳 찾는다(2026-11-16, 음식·축제 목적 계획).
+     * 음식 목적의 여행지를 확인하고 일정 음식점 후보를 더하는 데 쓴다. 메뉴를 확인한 것은 아니다. 간식·술집·카페와 지역 밖의 곳은 받지 않는다.
+     */
+    public List<KakaoPlace> searchFoodRestaurants(String region,String food,int limit) {
+        String city=searchWord(region);
+        if(city==null) throw failure("MAP_REGION","여행지 지역 이름을 확인하지 못해 장소를 찾을 수 없어요.");
+        if(food==null || !food.matches("[가-힣]{1,10}") || limit<1 || limit>15) throw invalid();
+        var root=get(localEndpoint.resolve("/v2/local/search/keyword.json?query="+URLEncoder.encode(city+" "+food,StandardCharsets.UTF_8)
+            +"&category_group_code=FD6&rect=124,33,132,39&size=15&page=1&sort=accuracy"));
+        return places(root,item->"FD6".equals(item.path("category_group_code").asText())
+            && !PlaceCandidate.notForMeals(item.path("category_name").asText(""))
+            && (item.path("place_name").asText("").contains(food) || item.path("category_name").asText("").contains(food)),
+            List.of(region),"RESTAURANT",limit);
+    }
+
+    /**
      * 좌표 주변 radiusMeters 안의 음식점(FD6)을 정확도 순으로 최대 limit곳 찾는다. 일정에 넣을 관광지·숙소 근처에서 끼니를 고르기 위해 쓴다.
      * 간식·술집·카페와 여행지 지역(region) 밖의 곳은 받지 않는다.
      */
