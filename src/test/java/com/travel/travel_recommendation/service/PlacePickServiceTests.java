@@ -46,7 +46,8 @@ class PlacePickServiceTests {
     @Test void nightSpotIsKeptForTheEveningAndRemembered() {
         var picks = new OpenAiPlacePickClient.Picks(List.of(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L), List.of(), List.of(1L));
         var picked = PlacePickService.picked(input(List.of()), picks);
-        assertThat(picked.places().attractions()).extracting(PlaceCandidate::placeId).doesNotContain(1L).hasSize(6);
+        // 후보가 모두 체류 60분(해변·문화유적)이라 하루 4곳으로 보고 2일 × 4곳 = 8곳을 낮 관광지로 고른다(2026-11-16).
+        assertThat(picked.places().attractions()).extracting(PlaceCandidate::placeId).doesNotContain(1L).hasSize(8);
         assertThat(picked.evening()).extracting(PlaceCandidate::placeId).startsWith(1L);
         assertThat(picked.nightPlaceIds()).containsExactly(1L);
         assertThat(picked.pickedByAi()).isTrue();

@@ -335,7 +335,7 @@ public class ItineraryJobService {
             Set<Long> keepForDay=new HashSet<>();
             if(constraints!=null) { keepForDay.addAll(constraints.requiredPlaceIds()); keepForDay.addAll(constraints.centerPlaceIds()); }
             int daily=constraints!=null && constraints.dailyVisits()!=null?constraints.dailyVisits()
-                :TripConstraints.estimatedDailyCapacity(start,end,visitMinutes);
+                :TripConstraints.plannedDailyCapacity(ordered,days,start,end,visitMinutes);
             int share=TripConstraints.eveningShare(ordered.size(),days,daily);
             // AI가 꼽은 밤 명소를 먼저 저녁 몫으로 둔다. 숙박하는 밤(일수 - 1)마다 한 곳까지이고, 저녁 몫 안에서만이다.
             var nightFirst=TripConstraints.nightPlaces(ordered,night,keepForDay,skips,Math.min(days-1,share));
