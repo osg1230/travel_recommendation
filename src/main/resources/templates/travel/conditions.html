@@ -101,6 +101,18 @@
                     <label th:each="item : ${choices.themes}"><input type="checkbox" th:field="*{themes}" th:value="${item.selectionValue}"><span th:text="${item.name}"></span></label>
                 </fieldset>
                 <p class="field-error" th:errors="*{themes}"></p>
+                <!--/* 여행 분위기·속도(2026-11-16). 고르지 않으면 지금과 같은 기준으로 일정을 만든다. */-->
+                <fieldset class="choice-chips condition-block">
+                    <legend>어떤 분위기를 원하나요? <span class="optional">선택, 여러 개 가능</span></legend>
+                    <label th:each="item : ${choices.moods}"><input type="checkbox" th:field="*{moods}" th:value="${item.selectionValue}"><span th:text="${item.name}"></span></label>
+                </fieldset>
+                <p class="field-error" th:errors="*{moods}"></p>
+                <fieldset class="choice-chips condition-block">
+                    <legend>하루를 어떻게 보낼까요? <span class="optional">선택</span></legend>
+                    <label><input type="radio" th:field="*{pace}" value=""><span>상관없음</span></label>
+                    <label th:each="item : ${choices.pace}"><input type="radio" th:field="*{pace}" th:value="${item.selectionValue}"><span th:text="${item.name}"></span></label>
+                </fieldset>
+                <p class="field-error" th:errors="*{pace}"></p>
             </section>
             <section id="transport-budget" class="condition-section">
                 <h3 class="card-title">예산·이동수단</h3>

@@ -23,13 +23,15 @@
         </th:block>
         <details th:if="${!#strings.isEmpty(conditions.interpretationSummary)}"><summary>처음 입력한 내용의 해석 보기</summary><p th:text="${conditions.interpretationSummary}"></p></details>
         <!-- 확정한 조건을 한 줄로 보여 준다. 정하지 않은 조건은 빼서 입력한 것만 확인할 수 있게 한다. -->
-        <p th:with="season=${conditions.keywordNames('SEASON')},companion=${conditions.keywordNames('COMPANION')},theme=${conditions.keywordNames('THEME')},transport=${conditions.keywordNames('TRANSPORTATION')}"
+        <p th:with="season=${conditions.keywordNames('SEASON')},companion=${conditions.keywordNames('COMPANION')},theme=${conditions.keywordNames('THEME')},mood=${conditions.keywordNames('MOOD')},pace=${conditions.keywordNames('PACE')},transport=${conditions.keywordNames('TRANSPORTATION')}"
            th:text="${(conditions.region.isEmpty() ? '지역 제한 없음' : conditions.region)
               + ' · ' + (conditions.startDate != null ? conditions.startDate + ' ~ ' + conditions.endDate + ' (' + conditions.durationDays + '일)'
                         : (conditions.durationDays == null ? '기간은 일정 만들 때 선택' : conditions.durationDays + '일'))
               + (season.isEmpty() ? '' : ' · ' + season)
               + (companion.isEmpty() ? '' : ' · 동행 ' + companion)
               + (theme.isEmpty() ? '' : ' · 취향 ' + theme)
+              + (mood.isEmpty() ? '' : ' · 분위기 ' + mood)
+              + (pace.isEmpty() ? '' : ' · ' + pace)
               + (conditions.partySize == null ? '' : ' · ' + conditions.partySize + '명')
               + (transport.isEmpty() ? '' : ' · 이동 ' + transport)
               + (conditions.budget == null ? '' : ' · 예산 ' + #numbers.formatInteger(conditions.budget, 1, 'COMMA') + '원')

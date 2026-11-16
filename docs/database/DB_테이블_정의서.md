@@ -265,11 +265,17 @@ U1(category_id, keyword_code), U2(category_id, keyword_name). 동일 카테고�
 ### 3.2 관리자 키워드 관리 구현 기준 (2026-10-28)
 
 - 2·3절의 테이블·컬럼·제약은 바꾸지 않았다. 관리자 화면(`/admin/keywords`)에서 `keyword_categories`의 `category_name`·`sort_order`·`is_active`와 `keywords`의 `keyword_name`·`sort_order`·`is_active`를 고치고 `updated_at`을 갱신한다.
-- 카테고리는 추가·삭제하지 않는다. 조건 입력 화면의 질문 5개(REGION·SEASON·COMPANION·THEME·TRANSPORTATION)가 코드에 고정돼 있기 때문이다. `category_code`는 바꾸지 않는다(2절 규칙).
+- 관리자는 카테고리를 추가·삭제하지 않는다. 조건 입력 화면의 질문 7개(REGION·SEASON·COMPANION·THEME·TRANSPORTATION·MOOD·PACE)가 코드에 고정돼 있기 때문이다. MOOD·PACE는 2026-11-16 개발에서 3.3대로 추가했다. `category_code`는 바꾸지 않는다(2절 규칙).
 - 키워드는 물리 삭제하지 않고 `is_active = 0`으로 사용 중지한다(3절 "사용된 키워드는 비활성화를 우선"). 저장된 추천 요청의 `conditions_json.selected_keywords`가 keyword_id를 참조한다. `keyword_code`·`value_json`은 바꾸지 않는다.
 - 새 키워드는 COMPANION·THEME에만 추가한다. `keyword_code`는 영문으로 시작하는 영문 대문자·숫자·밑줄 2~50자이고, `value_json`은 초기 데이터와 같은 `{"value":"코드"}`이다. U1·U2(같은 카테고리 안 코드·이름 중복)는 서비스에서 먼저 검사하고, 동시에 저장해 DB 제약에 걸리면 중복 안내를 보여 준다.
-- REGION·SEASON·TRANSPORTATION과 THEME 기본 6개(NATURE·SEA·REST·FOOD·CULTURE·ACTIVITY)는 추천 규칙이 이름·값을 그대로 쓰므로 이름 변경과 추가를 서비스에서 막고 표시 순서·사용 여부만 바꾼다.
+- REGION·SEASON·TRANSPORTATION·MOOD·PACE와 THEME 기본 6개(NATURE·SEA·REST·FOOD·CULTURE·ACTIVITY)는 추천 규칙이 이름·값을 그대로 쓰므로 이름 변경과 추가를 서비스에서 막고 표시 순서·사용 여부만 바꾼다.
 - 키워드 변경은 `operation_logs`에 남기지 않는다. 14절 `target_type` CHECK가 USER·RESERVATION·PAYMENT만 허용해, 기록하려면 제약을 바꿔야 하므로 이번 범위에 넣지 않았다.
+
+### 3.3 여행 분위기·속도 선택지 (2026-11-16)
+
+- 2·3절의 테이블·컬럼·제약은 바꾸지 않고 [019_seed_mood_pace_keywords.sql](sql/019_seed_mood_pace_keywords.sql)로 행만 추가했다. 카테고리 MOOD(여행 분위기, 순서 6)·PACE(여행 속도, 순서 7), 키워드 QUIET 한적한·LIVELY 활기찬·EMOTIONAL 감성적인, RELAXED 느긋하게·NORMAL 보통·PACKED 알차게.
+- 고른 값은 다른 선택지처럼 추천 요청의 `conditions_json.selected_keywords`에 들어간다. 분위기는 여러 개, 속도는 하나이며 둘 다 선택 입력이다. 계획은 [취향·감성 반영 계획](../ai/취향_감성_반영_계획.md).
+- 이 PC(SQLEXPRESS)에 적용해 6개 행이 한글 이름으로 들어간 것을 확인했다(keyword_id 39~44). sqlcmd로 실행할 때는 `-f 65001`을 붙여야 한글이 깨지지 않는다.
 
 4 추천 요청 및 이력
 

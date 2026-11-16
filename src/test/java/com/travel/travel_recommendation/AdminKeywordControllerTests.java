@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AdminKeywordControllerTests {
     @Autowired MockMvc mvc;
     @MockitoBean AdminKeywordService service;
-    private static final String LOCKED="지역·계절·이동수단은 추천 규칙이 이름과 값을 그대로 쓰므로 이름을 바꾸거나 새 키워드를 추가할 수 없어요.";
+    private static final String LOCKED="지역·계절·이동수단·여행 분위기·여행 속도는 추천 규칙이 이름과 값을 그대로 쓰므로 이름을 바꾸거나 새 키워드를 추가할 수 없어요.";
 
     private List<AdminKeyword.Category> catalog() {
         return List.of(

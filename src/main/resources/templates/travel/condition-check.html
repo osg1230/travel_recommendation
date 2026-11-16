@@ -26,6 +26,8 @@
             <dt>계절</dt><dd th:text="*{getKeywordNames('SEASON').isEmpty() ? '상관없음' : getKeywordNames('SEASON')}"></dd>
             <dt>동행자</dt><dd th:text="*{getKeywordNames('COMPANION').isEmpty() ? '상관없음' : getKeywordNames('COMPANION')}"></dd>
             <dt>여행 취향</dt><dd th:text="*{getKeywordNames('THEME').isEmpty() ? '상관없음' : getKeywordNames('THEME')}"></dd>
+            <dt>여행 분위기</dt><dd th:text="*{getKeywordNames('MOOD').isEmpty() ? '상관없음' : getKeywordNames('MOOD')}"></dd>
+            <dt>여행 속도</dt><dd th:text="*{getKeywordNames('PACE').isEmpty() ? '상관없음' : getKeywordNames('PACE')}"></dd>
             <dt>전체 예산</dt><dd th:text="*{budget.isEmpty() ? '상관없음' : budget + '원'}"></dd>
             <dt>이동수단</dt><dd th:text="*{getKeywordNames('TRANSPORTATION').isEmpty() ? '상관없음' : getKeywordNames('TRANSPORTATION')}"></dd>
         </dl>

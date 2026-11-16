@@ -21,11 +21,13 @@ public class TravelConditionService {
             draft = form;
             draft.setOriginalText("");
             draft.setThemes(form.getThemes().stream().distinct().toList());
+            draft.setMoods(form.getMoods().stream().distinct().toList());
             Map<String, List<String>> selected = Map.of("region", List.of(form.getRegion()),
                     "season", List.of(form.getSeason()), "companion", List.of(form.getCompanion()),
-                    "transportation", List.of(form.getTransportation()), "themes", draft.getThemes());
+                    "transportation", List.of(form.getTransportation()), "themes", draft.getThemes(),
+                    "moods", draft.getMoods(), "pace", List.of(form.getPace()));
             List<TravelKeyword> snapshots = new ArrayList<>();
-            selected.forEach((field, values) -> values.forEach(value -> choices.get(field).stream()
+            selected.forEach((field, values) -> values.forEach(value -> choices.getOrDefault(field, List.of()).stream()
                     .filter(keyword -> keyword.getSelectionValue().equals(value)).findFirst().ifPresent(snapshots::add)));
             draft.setSelectedKeywords(List.copyOf(snapshots));
             if (!form.getStartDate().isEmpty()) {

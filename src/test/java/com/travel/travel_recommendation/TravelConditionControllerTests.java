@@ -46,11 +46,14 @@ class TravelConditionControllerTests {
                         .param("inputMode", "KEYWORD").param("region", " 강원 ")
                         .param("startDate", day(10)).param("endDate", day(12))
                         .param("themes", "바다", "바다", "휴식").param("budget", "0")
+                        .param("moods", "한적한", "한적한").param("pace", "느긋하게")
                         .param("originalText", "다른 입력 방법").param("userId", "999").param("role", "ADMIN"))
                 .andExpect(redirectedUrl("/travel/conditions/check"));
         TravelConditionForm draft = (TravelConditionForm) session.getAttribute("travelConditionDraft");
         assertThat(draft.getDurationDays()).isEqualTo("3");
         assertThat(draft.getThemes()).containsExactly("바다", "휴식");
+        assertThat(draft.getMoods()).containsExactly("한적한");
+        assertThat(draft.getKeywordNames("PACE")).isEqualTo("느긋하게");
         assertThat(draft.getOriginalText()).isEmpty();
         mvc.perform(get("/travel/conditions/check").session(session)).andExpect(status().isOk())
                 .andExpect(content().string(containsString("바다, 휴식")))
@@ -89,8 +92,9 @@ class TravelConditionControllerTests {
         mvc.perform(post("/travel/conditions").with(csrf()).param("inputMode", "OTHER"))
                 .andExpect(model().attributeHasFieldErrors("travelForm", "inputMode"));
         mvc.perform(post("/travel/conditions").with(csrf()).param("region", "해외").param("themes", "없는 항목")
-                        .param("season", "unknown").param("companion", "unknown").param("transportation", "unknown"))
-                .andExpect(model().attributeHasFieldErrors("travelForm", "region", "themes", "season", "companion", "transportation"));
+                        .param("season", "unknown").param("companion", "unknown").param("transportation", "unknown")
+                        .param("moods", "없는 분위기").param("pace", "unknown"))
+                .andExpect(model().attributeHasFieldErrors("travelForm", "region", "themes", "season", "companion", "transportation", "moods", "pace"));
     }
 
     @Test

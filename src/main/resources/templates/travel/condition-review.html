@@ -69,6 +69,19 @@
                 <label th:each="item : ${choices.themes}"><input type="checkbox" th:field="*{themes}" th:value="${item.selectionValue}"><span th:text="${item.name}"></span></label>
             </fieldset>
             <p class="field-error" th:errors="*{themes}"></p>
+            <!--/* 문장으로 적었다면 AI가 문장에서 읽은 분위기·속도가 미리 골라져 있다. 다르면 여기서 바꾼다. */-->
+            <fieldset class="choice-chips condition-block" aria-describedby="mood-help">
+                <legend>여행 분위기 <span class="optional">선택, 여러 개 가능</span></legend>
+                <label th:each="item : ${choices.moods}"><input type="checkbox" th:field="*{moods}" th:value="${item.selectionValue}"><span th:text="${item.name}"></span></label>
+            </fieldset>
+            <p class="field-error" th:errors="*{moods}"></p>
+            <fieldset class="choice-chips condition-block" aria-describedby="mood-help">
+                <legend>여행 속도 <span class="optional">선택</span></legend>
+                <label><input type="radio" th:field="*{pace}" value=""><span>상관없음</span></label>
+                <label th:each="item : ${choices.pace}"><input type="radio" th:field="*{pace}" th:value="${item.selectionValue}"><span th:text="${item.name}"></span></label>
+            </fieldset>
+            <p class="help" id="mood-help">문장으로 적었다면 문장에서 읽은 분위기와 속도를 미리 골라 두었어요. 다르면 바꿔 주세요.</p>
+            <p class="field-error" th:errors="*{pace}"></p>
         </section>
         <section class="condition-section">
             <div class="field-grid">

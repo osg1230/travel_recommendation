@@ -23,7 +23,7 @@ public class ConditionReviewService {
     private final TravelConditionValidator validator;
     private static final Set<String> RESPONSE_FIELDS = Set.of("isTravel", "region", "startDate", "endDate",
             "durationDays", "season", "companion", "themes", "budget", "transportation", "partySize",
-            "accommodationNeeded", "includeNearby", "summary", "travelPurpose", "suggestedConcept", "excludedRegions");
+            "accommodationNeeded", "includeNearby", "summary", "travelPurpose", "suggestedConcept", "excludedRegions", "moods", "pace");
 
     /** notices는 해석하지 못해 비운 칸의 안내다(예: "여행 목적은 해석하지 못해 비워 두었어요."). 없으면 비어 있다. */
     public record Analysis(ConditionReviewForm form, String summary, List<String> notices) {
@@ -36,7 +36,8 @@ public class ConditionReviewService {
             Map.entry("durationDays", "여행 일수는"), Map.entry("season", "계절은"), Map.entry("companion", "동행자는"),
             Map.entry("themes", "여행 취향은"), Map.entry("budget", "예산은"), Map.entry("transportation", "이동수단은"),
             Map.entry("partySize", "전체 인원은"), Map.entry("accommodationNeeded", "숙박 여부는"),
-            Map.entry("includeNearby", "주변 지역 포함 여부는"), Map.entry("travelPurpose", "여행 목적은"));
+            Map.entry("includeNearby", "주변 지역 포함 여부는"), Map.entry("travelPurpose", "여행 목적은"),
+            Map.entry("moods", "여행 분위기는"), Map.entry("pace", "여행 속도는"));
 
     public Analysis analyze(TravelConditionForm draft, Map<String, List<TravelKeyword>> choices) {
         if (draft.getOriginalText().isBlank() || draft.getOriginalText().length() > 2000) throw invalid();
@@ -102,6 +103,16 @@ public class ConditionReviewService {
             themeValues.add(theme.asText());
         }
         form.setThemes(themeValues);
+        // 문장에서 읽은 분위기·속도. 다시 묻지 않고 확인 화면에 미리 골라 두어, 다르면 사용자가 바꾼다(2026-11-16).
+        JsonNode moods = result.get("moods");
+        if (!moods.isArray() || moods.size() > 100) throw invalid();
+        List<String> moodValues = new ArrayList<>();
+        for (JsonNode mood : moods) {
+            if (!mood.isTextual()) throw invalid();
+            moodValues.add(mood.asText());
+        }
+        form.setMoods(moodValues);
+        form.setPace(text(result, "pace"));
         if (!result.get("summary").isTextual()) throw invalid();
         String summary = result.get("summary").asText().strip();
         if (summary.length() > 1000) throw invalid();
@@ -172,6 +183,8 @@ public class ConditionReviewService {
             case "accommodationNeeded" -> form.getAccommodationNeeded().isEmpty();
             case "includeNearby" -> form.getIncludeNearby().isEmpty();
             case "travelPurpose" -> form.getTravelPurpose().isEmpty();
+            case "moods" -> form.getMoods().isEmpty();
+            case "pace" -> form.getPace().isEmpty();
             default -> false;
         };
     }
@@ -190,6 +203,8 @@ public class ConditionReviewService {
             case "accommodationNeeded" -> form.setAccommodationNeeded("");
             case "includeNearby" -> form.setIncludeNearby("");
             case "travelPurpose" -> { form.setTravelPurpose(""); form.setPurposeSuggested(false); }
+            case "moods" -> form.setMoods(List.of());
+            case "pace" -> form.setPace("");
             default -> { }
         }
     }
@@ -228,6 +243,8 @@ public class ConditionReviewService {
         form.setCompanion(draft.getCompanion());
         form.setTransportation(draft.getTransportation());
         form.setThemes(List.copyOf(draft.getThemes()));
+        form.setMoods(List.copyOf(draft.getMoods()));
+        form.setPace(draft.getPace());
         return form;
     }
 
@@ -266,10 +283,12 @@ public class ConditionReviewService {
         form.setAccommodationNeeded(c.accommodationNeeded() == null ? "" : c.accommodationNeeded().toString());
         form.setIncludeNearby(c.includeNearby() == null ? "" : c.includeNearby().toString());
         form.setThemes(c.selectedKeywords().stream().filter(k -> "THEME".equals(k.categoryCode())).map(TravelKeyword::getSelectionValue).toList());
+        form.setMoods(c.selectedKeywords().stream().filter(k -> "MOOD".equals(k.categoryCode())).map(TravelKeyword::getSelectionValue).toList());
         for(var keyword : c.selectedKeywords()) switch(keyword.categoryCode()) {
             case "SEASON" -> form.setSeason(keyword.getSelectionValue());
             case "COMPANION" -> form.setCompanion(keyword.getSelectionValue());
             case "TRANSPORTATION" -> form.setTransportation(keyword.getSelectionValue());
+            case "PACE" -> form.setPace(keyword.getSelectionValue());
             default -> { }
         }
         return form;
@@ -301,10 +320,11 @@ public class ConditionReviewService {
         if (start != null) days = Math.toIntExact(ChronoUnit.DAYS.between(start, end) + 1);
         Map<String, List<String>> selected = Map.of("season", List.of(form.getSeason()),
                 "companion", List.of(form.getCompanion()), "transportation", List.of(form.getTransportation()),
-                "themes", form.getThemes().stream().distinct().toList());
+                "themes", form.getThemes().stream().distinct().toList(),
+                "moods", form.getMoods().stream().distinct().toList(), "pace", List.of(form.getPace()));
         List<TravelKeyword> snapshots = new ArrayList<>();
         choices.get("region").stream().filter(k -> k.name().equals(form.getRegion())).findFirst().ifPresent(snapshots::add);
-        selected.forEach((field, values) -> values.forEach(value -> choices.get(field).stream()
+        selected.forEach((field, values) -> values.forEach(value -> choices.getOrDefault(field, List.of()).stream()
                 .filter(k -> k.getSelectionValue().equals(value)).findFirst().ifPresent(snapshots::add)));
         return new ConfirmedTravelConditions(source.getInputMode(), source.getOriginalText(), form.getRegion(),
                 start, end, days, form.getBudget().isEmpty() ? null : new BigDecimal(form.getBudget()),

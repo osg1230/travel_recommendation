@@ -31,7 +31,7 @@ public class TravelConditionController {
     @InitBinder("travelForm")
     void bindForm(WebDataBinder binder) {
         binder.setAllowedFields("inputMode", "originalText", "region", "startDate", "endDate",
-                "durationDays", "season", "companion", "themes", "budget", "transportation");
+                "durationDays", "season", "companion", "themes", "budget", "transportation", "moods", "pace");
         binder.registerCustomEditor(String.class, new StringTrimmerEditor(false));
     }
 

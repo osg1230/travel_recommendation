@@ -25,9 +25,10 @@ public class AdminKeywordService {
     private final KeywordCategoryRepository categories;
     private final UserRepository users;
 
-    // 이름·값을 추천 규칙이 그대로 쓰는 카테고리: 지역(시·도 검색), 계절(축제 계절 판단), 이동수단(경로 계산).
-    static final Set<String> FIXED_CATEGORIES = Set.of("REGION","SEASON","TRANSPORTATION");
-    static final String FIXED_MESSAGE="지역·계절·이동수단은 추천 규칙이 이름과 값을 그대로 쓰므로 이름을 바꾸거나 "
+    // 이름·값을 추천 규칙이 그대로 쓰는 카테고리: 지역(시·도 검색), 계절(축제 계절 판단), 이동수단(경로 계산),
+    // 여행 분위기·속도(장소 종류 점수와 하루 장소 수, 2026-11-16).
+    static final Set<String> FIXED_CATEGORIES = Set.of("REGION","SEASON","TRANSPORTATION","MOOD","PACE");
+    static final String FIXED_MESSAGE="지역·계절·이동수단·여행 분위기·여행 속도는 추천 규칙이 이름과 값을 그대로 쓰므로 이름을 바꾸거나 "
         +"새 키워드를 추가할 수 없어요. 표시 순서와 사용 여부만 바꿀 수 있어요.";
     private static final Pattern CODE=Pattern.compile("[A-Z][A-Z0-9_]{1,49}");
     static final int MAX_SORT_ORDER=999;
