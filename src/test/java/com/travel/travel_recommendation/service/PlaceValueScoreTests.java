@@ -67,7 +67,7 @@ class PlaceValueScoreTests {
         assertThat(liked.get(2L).text()).contains("내 기록 1.00");
     }
 
-    // 분위기(2026-11-16): 감성적인을 고르면 미술관(4)·해변(1·3)이 어울리는 종류라 10점 오르고 박물관(2)은 그대로다.
+    // 분위기(2026-11-16): 감성적인을 고르면 미술관(4)이 어울리는 종류라 10점 오르고 박물관(2)은 그대로다.
     // 한적한을 고르면 대표 관광지 가중치가 절반이라, 검색 순서 맨 앞인 해변(1)의 점수가 내려간다.
     @Test void moodAddsTenPointsAndQuietHalvesTheLandmarkWeight() {
         var ranks = Map.of(1L, 0, 2L, 5, 3L, 9);

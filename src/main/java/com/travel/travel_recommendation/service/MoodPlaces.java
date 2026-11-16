@@ -18,11 +18,49 @@ public final class MoodPlaces {
     /** 분위기 이름 → 분류·장소 이름에 이 낱말이 있으면 어울리는 종류로 본다. */
     private static final Map<String, List<String>> WORDS = Map.of(
         // 조용히 걷거나 쉬는 곳
-        QUIET, List.of("수목원", "휴양림", "숲", "둘레길", "산책로", "나눔길", "호수", "저수지", "계곡", "정원", "사찰", "서원", "향교", "습지", "생태"),
+        QUIET, List.of("수목원", "휴양림", "숲", "둘레길", "해파랑길", "바우길", "산책로", "나눔길", "호수", "저수지", "계곡", "정원", "사찰", "서원", "향교", "습지", "생태"),
         // 사람이 모이고 볼거리·먹을거리가 많은 곳
-        LIVELY, List.of("시장", "먹자골목", "거리", "테마파크", "놀이", "유원지", "워터파크", "아쿠아리움", "광장", "해수욕장", "케이블카", "루지", "레일바이크"),
+        // 해수욕장·해변은 활기찬·감성적인 둘 다에 걸려 바다 여행에서 분위기 차이가 없어져 넣지 않는다(2026-11-16 비교).
+        LIVELY, List.of("시장", "먹자골목", "거리", "테마파크", "놀이", "유원지", "워터파크", "아쿠아리움", "광장", "케이블카", "루지", "레일바이크"),
         // 풍경·전시·공간의 분위기를 즐기는 곳
-        EMOTIONAL, List.of("카페", "미술관", "갤러리", "전시", "정원", "한옥", "전망대", "스카이워크", "등대", "해변", "해안", "출렁다리", "책방", "서점"));
+        EMOTIONAL, List.of("카페", "미술관", "갤러리", "전시", "정원", "한옥", "전망대", "스카이워크", "등대", "해안", "출렁다리", "책방", "서점"));
+
+    /**
+     * 장소 목록을 모을 때 분위기별로 카카오에서 더 찾을 검색어("○○ 수목원"처럼). 취향·대표 관광지로만 찾으면
+     * 분위기에 맞는 종류가 후보에 거의 없었다(강릉 바다 여행의 한적한 후보 0~1곳, 2026-11-16 비교).
+     * 카카오 '여행 > 관광,명소' 분류만 받으므로(KakaoMapClient.searchThemeAttractions) 그 분류로 나오는 낱말만 둔다.
+     */
+    private static final Map<String, List<String>> SEARCH_WORDS = Map.of(
+        QUIET, List.of("수목원", "둘레길"),
+        LIVELY, List.of("테마파크", "유원지"),
+        EMOTIONAL, List.of("카페거리", "전망대"));
+
+    /**
+     * 일정 후보를 고를 때 취향 장소보다 앞에 둘 분위기 관광지 수. 후보는 취향에 맞는 곳부터 정해진 수만 남기므로,
+     * 분위기 검색으로 찾은 곳(검색 순서가 뒤쪽)은 이렇게 앞에 두지 않으면 잘렸다(2026-11-16 확인, 강릉솔향수목원).
+     */
+    public static final int CANDIDATE_KEEP = 3;
+
+    /**
+     * 분위기 검색으로 찾는 종류. 검색어와 같고, 둘레길은 카카오가 해파랑길·바우길로 돌려줘 그 이름도 넣는다.
+     * 후보 앞에 둘 곳은 이 종류에서만 고른다. 어울리는 종류 전체(WORDS)에서 고르면 시장·전시관처럼 이미 후보에 있던 곳이 먼저 뽑혀
+     * 검색으로 새로 찾은 곳(카페거리·테마파크)이 여전히 잘렸다(2026-11-16 확인).
+     */
+    private static final Map<String, List<String>> SEARCHED_KINDS = Map.of(
+        QUIET, List.of("수목원", "둘레길", "해파랑길", "바우길"),
+        LIVELY, List.of("테마파크", "유원지"),
+        EMOTIONAL, List.of("카페거리", "전망대"));
+
+    /** 분위기 검색으로 찾는 종류인지(이름·분류 글자). 일정 후보 앞에 둘 곳을 고를 때 쓴다. */
+    public static boolean searchedKind(String name, String subtype, List<String> moods) {
+        String text = (name == null ? "" : name) + " " + (subtype == null ? "" : subtype);
+        return moods.stream().flatMap(m -> SEARCHED_KINDS.getOrDefault(m, List.of()).stream()).anyMatch(text::contains);
+    }
+
+    /** 고른 분위기의 검색어. 고른 순서대로이고 겹치는 낱말은 한 번만 넣는다. */
+    public static List<String> searchWords(List<String> moods) {
+        return moods.stream().flatMap(m -> SEARCH_WORDS.getOrDefault(m, List.of()).stream()).distinct().toList();
+    }
 
     /** 고른 분위기 이름 목록. 고르지 않았으면 비어 있다. */
     public static List<String> chosen(ConfirmedTravelConditions conditions) {
@@ -32,7 +70,12 @@ public final class MoodPlaces {
 
     /** 고른 분위기 가운데 이곳과 어울리는 첫 분위기. 없으면 null이다. */
     public static String matched(PlaceCandidate place, List<String> moods) {
-        String text = (place.name() == null ? "" : place.name()) + " " + (place.subtype() == null ? "" : place.subtype());
+        return matched(place.name(), place.subtype(), moods);
+    }
+
+    /** 이름·분류 글자로 본 {@link #matched(PlaceCandidate, List)}. DB 장소(Place)에도 쓴다. */
+    public static String matched(String name, String subtype, List<String> moods) {
+        String text = (name == null ? "" : name) + " " + (subtype == null ? "" : subtype);
         for (String mood : moods) {
             if (WORDS.getOrDefault(mood, List.of()).stream().anyMatch(text::contains)) return mood;
         }

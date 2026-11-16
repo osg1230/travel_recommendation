@@ -50,7 +50,10 @@ public class PlaceDiscoveryService {
         var temples=touristTemples(maps.searchTemples(region)); rank(temples,ranks,after); found.addAll(temples);
         var cathedrals=touristCathedrals(maps.searchCathedrals(region)); rank(cathedrals,ranks,after); found.addAll(cathedrals);
         // 바다 취향이면 해변이 아닌 바다 장소(해안산책로)도 찾는다. 실패해도 나머지 목록은 그대로 저장한다.
-        for(String word:ThemePlaces.searchWords(candidates.themeNames(jobId,login,hash))) {
+        // 여행 분위기를 골랐으면 그 분위기에 맞는 종류(한적한 → 수목원·둘레길 등)도 찾는다(MoodPlaces, 2026-11-16).
+        var words=new ArrayList<>(ThemePlaces.searchWords(candidates.themeNames(jobId,login,hash)));
+        MoodPlaces.searchWords(candidates.moodNames(jobId,login,hash)).stream().filter(w->!words.contains(w)).forEach(words::add);
+        for(String word:words) {
             try { var list=maps.searchThemeAttractions(region,word); rank(list,ranks,after); found.addAll(list); }
             catch(RecommendationException error) { log.warn("취향 장소 찾기 실패 word={} ({})",word,error.getCode()); }
         }
