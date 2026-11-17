@@ -24,6 +24,24 @@
         <input type="hidden" th:field="*{revision}">
         <div th:if="${#fields.hasAnyErrors()}" class="notice" role="alert"><strong>입력한 내용을 다시 확인해 주세요.</strong><ul><li th:each="error : ${#fields.errors('*')}" th:text="${error}"></li></ul></div>
         <p class="help">모두 선택 항목이에요. 정하지 않은 조건은 비워 두어도 괜찮아요.</p>
+        <!--/* AI가 문장을 보고 추천 전에 더 알면 좋겠다고 고른 질문. 조건 칸 질문은 그 칸으로 이동하고,
+               조건 칸에 없는 정보(extra)는 여기서 답을 받아 확정할 때 여행 목적 뒤에 붙인다. 모두 답하지 않아도 된다. */-->
+        <section class="condition-section follow-ups" th:if="${followUps != null and !followUps.isEmpty()}" aria-labelledby="follow-ups-title">
+            <h2 id="follow-ups-title">추천 전에 조금만 더 알려 주세요</h2>
+            <p class="help">답하면 더 맞는 여행지를 찾을 수 있어요. 답하지 않아도 추천받을 수 있어요.</p>
+            <ul>
+                <li th:each="q : ${followUps}" th:unless="${q.extra()}">
+                    <a th:href="${'#' + (#lists.contains({'region','durationDays','startDate','partySize','budget'}, q.field) ? q.field : q.field + '1')}"
+                       th:text="${q.question}"></a>
+                </li>
+            </ul>
+            <th:block th:each="q : ${followUps}" th:if="${q.extra()}">
+                <label for="followUpAnswer" th:text="${q.question}"></label>
+                <input th:field="*{followUpAnswer}" maxlength="100" placeholder="짧게 적어 주세요" aria-describedby="follow-up-help follow-up-error">
+                <p id="follow-up-help" class="help" th:text="${'적은 답은 여행 목적에 “' + q.label + ': 답”으로 더해져요.'}"></p>
+                <p id="follow-up-error" class="field-error" th:errors="*{followUpAnswer}"></p>
+            </th:block>
+        </section>
         <section class="condition-section">
             <label for="region">여행 지역</label><input th:field="*{region}" maxlength="100" placeholder="예: 강릉, 제주 서귀포" aria-describedby="region-help region-error">
             <p id="region-help" class="help">문장에 나온 세부 지역명을 확인해 주세요. 지역을 정하지 않았다면 비워 두세요.</p><p id="region-error" class="field-error" th:errors="*{region}"></p>

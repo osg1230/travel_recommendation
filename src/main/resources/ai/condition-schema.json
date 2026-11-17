@@ -20,7 +20,14 @@
     "suggestedConcept": {"type": "string", "maxLength": 100},
     "excludedRegions": {"type": "array", "maxItems": 5, "items": {"type": "string", "maxLength": 20}},
     "moods": {"type": "array", "items": {"type": "string"}},
-    "pace": {"type": ["string", "null"]}
+    "pace": {"type": ["string", "null"]},
+    "followUpQuestions": {"type": "array", "maxItems": 3, "items": {"type": "object", "additionalProperties": false,
+      "properties": {
+        "field": {"type": "string", "enum": ["region", "durationDays", "startDate", "companion", "themes", "moods", "pace", "partySize", "budget", "transportation", "accommodationNeeded", "includeNearby", "extra"]},
+        "question": {"type": "string", "maxLength": 60},
+        "label": {"type": "string", "maxLength": 15}
+      },
+      "required": ["field", "question", "label"]}}
   },
-  "required": ["isTravel", "region", "startDate", "endDate", "durationDays", "season", "companion", "themes", "budget", "transportation", "partySize", "accommodationNeeded", "includeNearby", "summary", "travelPurpose", "suggestedConcept", "excludedRegions", "moods", "pace"]
+  "required": ["isTravel", "region", "startDate", "endDate", "durationDays", "season", "companion", "themes", "budget", "transportation", "partySize", "accommodationNeeded", "includeNearby", "summary", "travelPurpose", "suggestedConcept", "excludedRegions", "moods", "pace", "followUpQuestions"]
 }

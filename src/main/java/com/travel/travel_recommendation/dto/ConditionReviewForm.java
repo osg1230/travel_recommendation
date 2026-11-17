@@ -20,4 +20,6 @@ public class ConditionReviewForm extends TravelConditionForm {
      * 화면에서 보낸 값 중 서버가 가진 목록에 있는 이름만 남기므로 새 지역을 넣을 수는 없다.
      */
     private java.util.List<String> excludedRegions = java.util.List.of();
+    /** AI 보완 질문 중 조건 칸에 없는 정보(extra)를 물은 질문의 답. 확정할 때 여행 목적 뒤에 붙이고 비운다. */
+    private String followUpAnswer = "";
 }
