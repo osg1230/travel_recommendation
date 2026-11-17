@@ -307,6 +307,8 @@ public final class ItineraryPlan {
             return checkedAt == null ? null : java.time.format.DateTimeFormatter.ofPattern("M월 d일 HH:mm")
                 .withZone(java.time.ZoneId.of("Asia/Seoul")).format(checkedAt);
         }
+        /** 화면에 보여 줄 메모. '고른 이유' 꼬리표를 읽기 쉬운 '추천 이유'로 바꿔 보여 준다(PlaceReasons.forDisplay). */
+        public String displayNote() { return com.travel.travel_recommendation.service.PlaceReasons.forDisplay(note); }
     }
     public record Day(int number, LocalDate date, List<Item> items) {}
     /** AI가 작성한 보조 안내. 서버가 만든 시각·장소·순서를 바꾸지 않으며 검증 완료를 뜻하지 않는다. */

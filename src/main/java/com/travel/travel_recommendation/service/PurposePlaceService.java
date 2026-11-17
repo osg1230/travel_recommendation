@@ -69,13 +69,15 @@ public class PurposePlaceService {
         if (search == null || !search.festival() || !search.hasFood()) return null;
         var c = task.conditions();
         String food = search.food(), tour = food + " 맛집 탐방";
+        // 못 찾은 경우 사용자가 결과부터 알 수 있게 "축제를 찾지 못했어요"를 앞에 두고, 대신 무엇을 하는지 붙인다(2026-11-17).
+        String instead = " 대신 " + food + " 맛집을 찾아 먹거리 위주로 일정을 추천해요.";
         String region = c.region() == null ? "" : c.region().replaceAll("\\s+", "");
         var targets = task.destinations().stream().filter(d -> c.suggestedDestinationIds().contains(d.placeId())
             || (!region.isEmpty() && d.region().replaceAll("\\s+", "").contains(region))).toList();
         if (targets.isEmpty())
-            return new FestivalCheck(tour, food + " 축제가 열리는 지역을 확인하지 못해 '" + tour + "'으로 바꿔 추천해요.");
+            return new FestivalCheck(tour, food + " 축제를 찾지 못했어요(축제가 열릴 지역을 정하지 못했어요)." + instead);
         if (!festivals.configured())
-            return new FestivalCheck(tour, "관광공사 행사 정보를 조회할 수 없어 " + food + " 축제를 확인하지 못했어요. '" + tour + "'으로 바꿔 추천해요.");
+            return new FestivalCheck(tour, food + " 축제를 찾지 못했어요(관광공사 행사 정보를 조회할 수 없어요)." + instead);
         for (var destination : targets) {
             try {
                 var festival = festivals.during(c, destination).stream().filter(f -> f.title().contains(food)).findFirst();
@@ -87,7 +89,7 @@ public class PurposePlaceService {
             }
         }
         String when = c.startDate() == null ? "앞으로 두 달 안에 열리는" : "여행 기간에 열리는";
-        return new FestivalCheck(tour, when + " " + food + " 축제를 관광공사 행사 정보에서 찾지 못해 '" + tour + "'으로 바꿔 추천해요.");
+        return new FestivalCheck(tour, food + " 축제를 찾지 못했어요(관광공사 행사 정보에서 " + when + " 축제 기준)." + instead);
     }
 
     @Transactional(readOnly = true, timeout = 10)

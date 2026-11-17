@@ -44,15 +44,15 @@ class PurposePlaceServiceTests {
             LocalDate.of(2026, 11, 22), "경상북도 김천시", "", "", "")));
         var check = service.foodFestival(task(null, null, List.of(11029L)), search(true));
         assertThat(check.purpose()).isEqualTo("김밥 맛집 탐방");
-        assertThat(check.message()).isEqualTo("앞으로 두 달 안에 열리는 김밥 축제를 관광공사 행사 정보에서 찾지 못해 '김밥 맛집 탐방'으로 바꿔 추천해요.");
+        assertThat(check.message()).isEqualTo("김밥 축제를 찾지 못했어요(관광공사 행사 정보에서 앞으로 두 달 안에 열리는 축제 기준). 대신 김밥 맛집을 찾아 먹거리 위주로 일정을 추천해요.");
         var dated = service.foodFestival(task(LocalDate.of(2026, 12, 12), LocalDate.of(2026, 12, 13), List.of(11029L)), search(true));
-        assertThat(dated.message()).startsWith("여행 기간에 열리는 김밥 축제를");
+        assertThat(dated.message()).contains("여행 기간에 열리는 축제 기준");
     }
 
     // 지역을 확인하지 못했거나 행사 정보를 조회할 수 없어도 맛집 탐방으로 바꾼다. 음식만 말했으면(축제 아님) 확인하지 않는다.
     @Test void unknownRegionOrNoTourApiAlsoSwitchesAndFoodOnlyIsLeftAlone() {
         when(festivals.configured()).thenReturn(true);
-        assertThat(service.foodFestival(task(null, null, List.of()), search(true)).message()).startsWith("김밥 축제가 열리는 지역을 확인하지 못해");
+        assertThat(service.foodFestival(task(null, null, List.of()), search(true)).message()).startsWith("김밥 축제를 찾지 못했어요(축제가 열릴 지역을 정하지 못했어요)");
         when(festivals.configured()).thenReturn(false);
         assertThat(service.foodFestival(task(null, null, List.of(11029L)), search(true)).purpose()).isEqualTo("김밥 맛집 탐방");
         assertThat(service.foodFestival(task(null, null, List.of(11029L)), search(false))).isNull();

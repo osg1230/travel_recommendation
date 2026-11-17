@@ -57,6 +57,21 @@ class DestinationFestivalServiceTests {
         assertThat(service.find(autumn, List.of(gangneung))).containsKey(1L);
     }
 
+    // 축제를 찾는 요청이면 홈 화면 탭 목록(60일·15개) 대신 여행 기간으로 따로 조회한다. 날짜가 미정이면 오늘부터 60일이다(2026-11-17).
+    @Test void festivalRequestLooksUpTheTripDatesSeparately() {
+        when(festivals.configured()).thenReturn(true);
+        when(festivals.today()).thenReturn(LocalDate.parse("2026-11-17"));
+        when(festivals.findFestivalsBetween(any(), any(), any())).thenReturn(List.of(
+            festival("1", "강릉김밥축제", "2027-02-20", "2027-02-21", "강원특별자치도 강릉시 창해로 14")));
+        var festivalSearch = new com.travel.travel_recommendation.dto.PurposeSearch("SKIPPED", List.of(), List.of(), null, null, List.of(), "김밥", true);
+        var winterTrip = conditions(LocalDate.parse("2027-02-20"), LocalDate.parse("2027-02-22")).withPurposeSearch(festivalSearch);
+        assertThat(service.find(winterTrip, List.of(gangneung)).get(1L)).extracting(RegionalFestival::title).containsExactly("강릉김밥축제");
+        verify(festivals).findFestivalsBetween(FestivalService.province("51").orElseThrow(), LocalDate.parse("2027-02-20"), LocalDate.parse("2027-02-22"));
+        verify(festivals, never()).findFestivals(any());
+        service.during(conditions(null, null), gangneung);
+        verify(festivals).findFestivalsBetween(FestivalService.province("51").orElseThrow(), LocalDate.parse("2026-11-17"), LocalDate.parse("2027-01-16"));
+    }
+
     @Test void recommendationContinuesWithoutFestivalsWhenLookupFails() {
         when(festivals.configured()).thenReturn(true);
         when(festivals.findFestivals(any())).thenThrow(new RecommendationException("TOUR_UNAVAILABLE", "조회 실패"));

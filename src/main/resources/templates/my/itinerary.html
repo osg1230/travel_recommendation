@@ -58,7 +58,7 @@
             <figcaption>사진: 한국관광공사</figcaption></figure>
             </th:block>
             <h3 th:text="${item.name}"></h3>
-            <p style="white-space: pre-line" th:text="${item.note}"></p>
+            <p style="white-space: pre-line" th:text="${item.displayNote()}"></p>
             <p class="help" th:if="${item.travelMinutes != null}" th:text="${'저장 당시 예상 이동시간 약 ' + item.travelMinutes + '분'}"></p>
             <th:block th:if="${item.type == 'MEAL' or item.type == 'STAY'}" th:with="quote=${itinerary.price(item.placeId)}">
                 <p class="help" th:if="${quote != null and quote.found()}"

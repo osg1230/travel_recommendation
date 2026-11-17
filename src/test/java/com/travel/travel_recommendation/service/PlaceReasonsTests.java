@@ -40,4 +40,16 @@ class PlaceReasonsTests {
         var old = new Item("VISIT", 1L, "경포해변", LocalTime.of(9, 0), LocalTime.of(10, 30), "관광·관람 · 해변\nAI 설명: 바다를 보며 걷기 좋아요.", null, null, null, null);
         assertThat(PlaceReasons.used(plan.withDays(List.of(new Day(1, null, List.of(old)))))).isTrue();
     }
+
+    // 화면에서는 '고른 이유' 꼬리표를 여행자가 읽는 말로 바꿔 '추천 이유'로 보여 준다. 다른 줄과 모르는 꼬리표는 그대로다(2026-11-17).
+    @Test void showsPickReasonsInPlainWords() {
+        assertThat(PlaceReasons.forDisplay("식사 · 분식\n고른 이유: 고른 음식(김밥) 음식점 · 관광공사 인기 음식점\n위치: 직지사에서 직선 약 1.2km예요."))
+            .isEqualTo("식사 · 분식\n추천 이유: 김밥을 먹을 수 있는 곳 · 한국관광공사 기준 인기 맛집\n위치: 직지사에서 직선 약 1.2km예요.");
+        assertThat(PlaceReasons.forDisplay("관광·관람 · 사찰\n고른 이유: 필수 방문 · 여행 목적(케이블카 타기) 관련\nAI 추천 활동: 걸어 보세요."))
+            .isEqualTo("관광·관람 · 사찰\n추천 이유: 꼭 가 보고 싶다고 고른 곳 · '케이블카 타기'에 맞는 곳\nAI 추천 활동: 걸어 보세요.");
+        assertThat(PlaceReasons.forDisplay("식사 · 한식\n고른 이유: 지역 대표 음식(초당두부) · 경포해변 가는 길 · 새 꼬리표"))
+            .isEqualTo("식사 · 한식\n추천 이유: 지역 대표 음식 초당두부를 맛볼 수 있는 곳 · 경포해변 가는 길에 있는 곳 · 새 꼬리표");
+        assertThat(PlaceReasons.forDisplay("관광·관람 · 해변")).isEqualTo("관광·관람 · 해변");
+        assertThat(PlaceReasons.forDisplay(null)).isNull();
+    }
 }
