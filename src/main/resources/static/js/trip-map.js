@@ -225,6 +225,12 @@
             if (day.marks.length > 1) map.setBounds(bounds); else map.setCenter(day.marks[0].at);
         };
         document.addEventListener('tripday', (event) => show(event.detail));
+        // 다른 탭(page-tabs.js)을 보다가 일정 탭으로 돌아오면, 숨어 있던 지도의 크기를 다시 재고 보던 날로 맞춘다.
+        document.addEventListener('pagetab', (event) => {
+            if (event.detail !== 'plan') return;
+            map.relayout();
+            show(Number(document.querySelector('[data-day-tabs]')?.dataset.selected || 0));
+        });
         // 지도가 버튼보다 늦게 준비되므로 이미 고른 날이 있으면 그날로 맞춘다.
         const selected = document.querySelector('[data-day-tabs]')?.dataset.selected;
         if (selected) show(Number(selected));

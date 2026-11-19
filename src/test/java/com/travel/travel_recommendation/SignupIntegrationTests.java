@@ -47,6 +47,7 @@ class SignupIntegrationTests {
         form.setNickname("여행_" + suffix);
         form.setPassword("Sample123!");
         form.setPasswordConfirm("Sample123!");
+        form.setHomeArea("서울 송파구");
         return form;
     }
 
@@ -59,7 +60,7 @@ class SignupIntegrationTests {
                         .param("homeArea", " 서울 송파구 "))
                 .andExpect(redirectedUrl("/signup/complete"));
         var saved = users.findByLoginId(form.getLoginId()).orElseThrow();
-        // 주로 출발하는 곳은 선택 입력이며 앞뒤 공백을 지워 저장한다.
+        // 주로 출발하는 곳은 앞뒤 공백을 지워 저장한다.
         assertThat(saved.getHomeArea()).isEqualTo("서울 송파구");
         assertThat(saved.getPasswordHash()).isNotEqualTo(form.getPassword()).startsWith("$2");
         assertThat(encoder.matches(form.getPassword(), saved.getPasswordHash())).isTrue();
