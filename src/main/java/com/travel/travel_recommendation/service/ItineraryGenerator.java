@@ -25,10 +25,18 @@ public class ItineraryGenerator {
     static final int MAX_SAME_ACTIVITY_DAILY=2;
     /** 사용자가 고른 취향에 맞는 활동(예: 바다 → 걷기·풍경)은 하루에 이만큼 넣는다. 2곳에서 막혀 바다 취향 일정의 걷기·풍경이 40%에 머물렀다(2026-11-05). */
     static final int MAX_THEME_ACTIVITY_DAILY=3;
+    /**
+     * 같은 분류(해변·시장·사찰 등)의 관광지를 하루에 넣는 수. 다른 곳이 없을 때만 넘긴다.
+     * 바다 취향이면 걷기·풍경 활동을 하루 3곳까지 넣는데, 그 3곳이 모두 해변이고 저녁 관광도 해변이던 날이 있었다(2026-11-19 강릉).
+     * 해변은 2곳까지만 넣고 나머지는 해안산책로·등대·항구처럼 같은 취향의 다른 분류로 채운다.
+     */
+    static final int MAX_SAME_SCENE_DAILY=2;
     /** 저녁 식사는 이 시각 이후에만 넣는다. */
     private static final LocalTime DINNER_FROM=LocalTime.of(17,0);
     /** 이 시각이 지났는데 다음 관광지를 마치면 LUNCH_UNTIL을 넘기면 관광지보다 점심을 먼저 넣는다. */
     private static final LocalTime LUNCH_FROM=LocalTime.of(11,0), LUNCH_UNTIL=LocalTime.of(13,30);
+    /** 이 시각이 지났을 때만, 넣어 본 점심이 LUNCH_UNTIL보다 늦게 시작하면 점심을 관광지 앞으로 옮긴다. 더 이르면 식사 전 기다림이 길어진다. */
+    private static final LocalTime LUNCH_SWAP_FROM=LocalTime.of(11,30);
     /**
      * 그날 관광을 이 시각 이후에 시작하면 점심때가 지났으므로 점심을 넣지 않는다(2026-11-10).
      * 예전에는 15:00에 시작해도 점심부터 먹고 3시간 뒤 저녁을 또 넣었다(부산 오후 반나절 페르소나).
@@ -61,7 +69,13 @@ public class ItineraryGenerator {
      */
     private static final double REORDER_MIN_KM=1.0, REORDER_MIN_RATE=0.1;
     /** 관광지를 더 넣어 볼 때 이 오류가 나면 실패가 아니라 '오늘은 더 들어가지 않음'으로 본다. */
-    private static final Set<String> DAY_FULL_CODES=Set.of("TIME_OVERLAP","OPERATING_CONFLICT");
+    private static final Set<String> DAY_FULL_CODES=Set.of("TIME_OVERLAP","OPERATING_CONFLICT","DAY_MOVE_FULL");
+    /**
+     * 하루에 이동만 하는 시간(구간마다 더하는 여유 10분은 빼고, 숙소로 돌아가는 구간은 포함)의 상한(분)이다.
+     * 2026-11-19 실사용 일정 6개(16일)를 재 보니 보통 날은 154분 이하였고, 제주시 숙소에서 성산·서귀포를 하루에 돈 날만 253분이었다.
+     * 한 구간 상한만으로는 이런 날을 막지 못해, 둘째 관광지부터는 이 시간을 넘기는 곳을 그날에 넣지 않고 다른 곳을 본다.
+     */
+    static final int DAILY_MOVE_LIMIT=180;
     /** 저녁 관광 한 곳의 체류시간(분). 야경·산책·야시장을 둘러보는 시간이다. */
     static final int EVENING_MINUTES=60;
     /** 저녁 관광지까지 이 시간(분, 여유 10분 포함)보다 오래 걸리면 고르지 않는다. 밤에 멀리 오가지 않게 한다(자동차 약 30분 거리). */
@@ -73,8 +87,10 @@ public class ItineraryGenerator {
     static String legLimitText(KakaoMapClient.Transport transport) {
         return transport==KakaoMapClient.Transport.PUBLIC_TRANSIT?"1시간 30분":"2시간";
     }
-    /** 이 오류가 나면 그 관광지만 뺀다. 한 구간 이동 상한 초과(섬 등)와 경로 없음이다. */
-    private static final Set<String> UNREACHABLE_CODES=Set.of("TRAVEL_TIME_EXCEEDED","MAP_NO_ROUTE");
+    /** 이 오류가 나면 그 관광지만 뺀다. 한 구간 이동 상한 초과(섬 등), 경로 없음, 배를 타야 하는 구간이다. */
+    private static final Set<String> UNREACHABLE_CODES=Set.of("TRAVEL_TIME_EXCEEDED","MAP_NO_ROUTE","FERRY_ROUTE");
+    /** 꼭 가겠다고 고른 곳이라 배를 타는 구간을 넣었을 때 이동 항목에 붙이는 안내. */
+    static final String FERRY_NOTE="\n배를 타는 구간이에요. 이 시간에는 배 시간표·승선 대기가 들어 있지 않아 실제로는 더 걸려요. 배 시간과 마지막 배를 꼭 확인해 주세요.";
     /**
      * 카카오 길찾기가 잠시 안 될 때(응답 시간 초과·사용량 제한·연결 실패)의 오류. 이때는 초안 전체를 실패시키지 않고
      * 그 구간을 직선거리로 추정한다(SFR-04-04). 키가 없거나(MAP_NOT_CONFIGURED) 인증 오류는 설정 문제라 그대로 알린다.
@@ -219,9 +235,12 @@ public class ItineraryGenerator {
                 // 그날 같은 활동을 MAX_SAME_ACTIVITY_DAILY곳 넣었으면 그 활동은 다른 곳이 없을 때만 고른다.
                 Map<String,Long> activityCount=new HashMap<>();
                 placed.forEach(p->activityCount.merge(input.activityOf(p),1L,Long::sum));
+                // 활동이 같아도(해변·해안길·숲길은 모두 걷기·풍경) 분류까지 같은 곳이 하루에 몰리지 않게 분류별로도 센다.
+                Map<String,Long> sceneCount=new HashMap<>();
+                placed.forEach(p->sceneCount.merge(scene(p),1L,Long::sum));
                 // 빠지면 안 되는 곳(필수·수정 요청으로 더한 곳)을 그날 먼저 넣고, 그 안에서는 '이동 부담 − 가치'가 가장 작은 곳을 고른다(nextCost).
                 var next=forceCenter?dayCenter:pool.stream().min(Comparator.<PlaceCandidate>comparingInt(p->mustVisit.contains(p.placeId())?0:1)
-                    .thenComparingInt(p->tooMany(input,activityCount,p)?1:0)
+                    .thenComparingInt(p->tooMany(input,activityCount,sceneCount,p)?1:0)
                     .thenComparing(order(builder.date,p->anchor==null?remaining.indexOf(p)
                         :nextCost(input,locations,anchor,p,previousKind,true)))).orElseThrow();
                 // 종류를 보지 않았다면 직전과 같은 종류를 골랐을 때만 "다른 종류로 골랐다"고 이유에 적는다.
@@ -322,6 +341,8 @@ public class ItineraryGenerator {
                 // 여유 일정은 저녁을 먹은 뒤 다시 나가지 않고 숙소에서 쉰다(2026-11-11).
                 if((fillSpareTime || visits<constraints.dailyVisits()) && !RelaxedPace.wanted(input.conditions()))
                     eveningVisits=addEvening(builder,stay,days,addresses)?1:0;
+                // 저녁 관광이 없는 날도 식당에서 끝내지 않고 숙소로 돌아온다(2026-11-19).
+                returnAfterDinner(builder,stay);
             }
             // 마지막 날 귀가 시각을 정했으면 마지막 장소 → 집 이동을 맨 뒤에 넣는다.
             if(day==dayCount && input.home()!=null) builder.homeReturn();
@@ -361,7 +382,10 @@ public class ItineraryGenerator {
      * 그날 이 장소의 활동을 이미 MAX_SAME_ACTIVITY_DAILY곳(고른 취향에 맞는 활동은 MAX_THEME_ACTIVITY_DAILY곳) 넣었는지. AI가 활동을 고른 일정에서만 본다.
      * 분류 이름만 있는 일정은 종류가 잘게 나뉘어(해변·숲·공원) 이 기준을 쓰지 않고, 전처럼 직전 종류만 본다.
      */
-    static boolean tooMany(Input input,Map<String,Long> activityCount,PlaceCandidate place) {
+    static boolean tooMany(Input input,Map<String,Long> activityCount,Map<String,Long> sceneCount,PlaceCandidate place) {
+        // 같은 분류(해변·시장·사찰 등)는 고른 취향에 맞아도 하루 MAX_SAME_SCENE_DAILY곳까지다(2026-11-19).
+        String scene=scene(place);
+        if(!scene.isEmpty() && sceneCount.getOrDefault(scene,0L)>=MAX_SAME_SCENE_DAILY) return true;
         if(input.picking()==null || !input.picking().activities().containsKey(place.placeId())) return false;
         String activity=input.activityOf(place);
         int limit=themeActivity(input,activity)?MAX_THEME_ACTIVITY_DAILY:MAX_SAME_ACTIVITY_DAILY;
@@ -379,6 +403,16 @@ public class ItineraryGenerator {
         double km=kilometers(locations.get(from.placeId()),locations.get(to.placeId()));
         if(kindPenalty && !previousKind.isEmpty() && previousKind.equals(input.activityOf(to))) km*=SAME_KIND_FACTOR;
         return km-input.valueOf(to)*KM_PER_VALUE_POINT;
+    }
+
+    /**
+     * 비슷한 경험으로 보는 묶음. 카카오 분류의 마지막 단계(해변·시장·절,사찰 등)이고, 이름에 해변·해수욕장이 있으면 분류와 관계없이 해변이다
+     * (예: 분류가 광장인 '경포해변 중앙광장'). 분류가 '관광,명소'뿐이거나 없으면 묶지 않는다(빈 글자).
+     */
+    static String scene(PlaceCandidate place) {
+        if(place.name().contains("해변") || place.name().contains("해수욕장")) return "해변";
+        String kind=TripConstraints.kind(place);
+        return kind.equals("관광,명소")?"":kind;
     }
 
     /** 이 활동이 사용자가 고른 여행 취향에 맞는지. */
@@ -428,16 +462,46 @@ public class ItineraryGenerator {
     /**
      * 관광지 하나를 넣는다. 점심때가 됐는데 이 관광지를 마치면 너무 늦어지면(예: 12:06~13:36) 점심을 먼저 먹고,
      * 하루의 첫 관광지 전(예: 집에서 출발해 12:40 도착)이면 그 관광지 근처에서 먹는다. 관광을 마쳤을 때 12시가 지났으면 점심을 넣는다.
+     * 그렇게 넣은 점심이 식당까지의 이동 때문에 13시 30분 넘어 시작하면 점심을 관광지 앞으로 옮겨 다시 넣는다(2026-11-19).
      * following은 이 관광지 다음에 갈 곳(모르면 null)으로, 점심을 그쪽으로 덜 돌아가는 식당에서 먹기 위해 쓴다.
      * 넣은 뒤에도 남은 점심·숙소 도착까지 하루 종료 시간 안에 끝나는지 미리 확인하고, 들어가지 않으면 예외가 난다.
      */
     private void placeVisit(DayBuilder builder,PlaceCandidate next,PlaceCandidate following,PlaceCandidate stay,String note) {
-        if(!builder.lunch && lunchFirst(builder,next)) eat(builder,builder.previous==null?next:builder.previous,next,false);
+        var before=builder.mark(); var from=builder.previous;
+        // 관광지를 먼저 넣으면 점심이 늦어질 수 있는 때: 점심 전이고 11시 30분이 지났으며 앞 장소가 있다. 빼기 수정안이 그대로 두는 날은 순서를 바꾸지 않는다.
+        boolean maySwap=!builder.lunch && from!=null && !builder.time.isBefore(LUNCH_SWAP_FROM) && keptDay(builder.input,builder.day)==null;
+        boolean lunchBefore=!builder.lunch && lunchFirst(builder,next);
+        visitAndLunch(builder,next,following,note,lunchBefore);
+        // 관광 뒤 식당까지 가는 길이 길면 관광을 13시 30분 전에 마쳐도 점심이 늦게 시작한다(2026-11-19 부산 13:51, 제주 13:45).
+        // 실제로 넣어 본 점심이 13시 30분 넘어 시작하면 점심을 먼저 먹는 순서로 다시 넣는다. 그 순서가 안 들어가면 처음 순서를 쓴다.
+        if(maySwap && !lunchBefore && lunchStart(builder,before.size()).filter(t->t.isAfter(LUNCH_UNTIL)).isPresent()) {
+            builder.reset(before);
+            try { visitAndLunch(builder,next,following,note,true); }
+            catch(RecommendationException error) {
+                if(!DAY_FULL_CODES.contains(error.getCode()) && !UNREACHABLE_CODES.contains(error.getCode())) throw error;
+                builder.reset(before);
+                visitAndLunch(builder,next,following,note,false);
+            }
+        }
+        int moved=checkClosing(builder,next,stay);
+        // 그날 첫 관광지와 꼭 가겠다고 고른 곳은 멀어도 넣는다. 그 밖의 곳은 하루 이동이 상한을 넘으면 오늘은 넣지 않는다.
+        boolean firstVisit=builder.items.stream().filter(i->"VISIT".equals(i.type())).count()<=1;
+        if(moved>DAILY_MOVE_LIMIT && !firstVisit && !builder.chosenPlaces.contains(next.placeId()))
+            throw failure("DAY_MOVE_FULL","'"+next.name()+"'을(를) 넣으면 하루 이동시간이 "+DAILY_MOVE_LIMIT/60+"시간을 넘어요.");
+    }
+
+    /** 관광지 하나와 그 앞뒤 점심을 넣는다. lunchBefore면 점심을 먼저 먹고, 아니면 관광을 마쳤을 때 12시가 지났으면 점심을 넣는다. */
+    private void visitAndLunch(DayBuilder builder,PlaceCandidate next,PlaceCandidate following,String note,boolean lunchBefore) {
+        if(lunchBefore) eat(builder,builder.previous==null?next:builder.previous,next,false);
         // 체류시간은 사용자가 정한 기본 체류시간을 장소 종류에 맞춰 늘리거나 줄인 값이다(VisitMinutes).
         // 여유 일정에서 바다 취향을 골랐으면 해변은 더 길게 머문다(RelaxedPace).
         builder.visit(next,"VISIT",RelaxedPace.visitMinutes(builder.input.conditions(),next,builder.input.visitMinutes()),note);
         if(!builder.lunch && !builder.time.isBefore(LocalTime.NOON)) eat(builder,next,following,false);
-        checkClosing(builder,next,stay);
+    }
+
+    /** from번째 항목부터 넣은 식사의 시작 시각. 식사를 넣지 않았으면 비어 있다. */
+    private static Optional<LocalTime> lunchStart(DayBuilder builder,int from) {
+        return builder.items.subList(from,builder.items.size()).stream().filter(i->"MEAL".equals(i.type())).map(Item::start).findFirst();
     }
 
     /** 점심 뒤에 관광을 이어 가 17시가 지났으면 저녁 식사도 넣어 본다. 시간이 안 되면 저녁 없이 마친다. */
@@ -687,13 +751,25 @@ public class ItineraryGenerator {
      * 종료 시간을 넘거나 운영시간과 맞지 않으면 예외가 나므로, 관광지를 더 넣어도 되는지 판단하는 데 쓴다.
      * 이때 조회한 이동시간은 routes에 남아 실제로 마무리할 때 다시 조회하지 않는다.
      */
-    private void checkClosing(DayBuilder builder,PlaceCandidate last,PlaceCandidate stay) {
+    private int checkClosing(DayBuilder builder,PlaceCandidate last,PlaceCandidate stay) {
         var mark=builder.mark();
         try {
             if(!builder.lunch) eat(builder,last,stay,false);
             // 숙소 도착은 하루 종료 시간이 아니라 저녁 한도까지면 된다(arriveAndDine과 같은 규칙).
             if(stay!=null) { builder.limit=TripConstraints.eveningLimit(builder.end); builder.visit(stay,"STAY",30,""); }
+            return movedMinutes(builder.items);
         } finally { builder.reset(mark); builder.limit=builder.end; }
+    }
+
+    /** 하루 항목에서 장소 사이를 이동만 한 시간(분). 구간마다 더한 여유 10분은 빼고, 집 출발·귀가 이동은 세지 않는다. */
+    static int movedMinutes(List<Item> items) {
+        int total=0;
+        for(var item:items) {
+            if(!"TRANSIT".equals(item.type()) || item.placeId()==null) continue;
+            // 바로 옆이라 길찾기 없이 넣은 구간(이동시간 없음)은 5분이다.
+            total+=item.travelSeconds()==null?5:(item.travelSeconds()+59)/60;
+        }
+        return total;
     }
 
     /**
@@ -721,12 +797,24 @@ public class ItineraryGenerator {
         if(kept!=null) choices.removeIf(p->!p.placeId().equals(kept.evening()));
         // AI가 밤에 둘러보기 좋다고 꼽아 낮 일정에서 뺀 곳(2026-10-31)을 먼저 보고, 그다음 가까운 곳을 본다. 오가는 시간이 길면 다음 후보로 넘어간다.
         var night=Set.copyOf(builder.input.nightPlaceIds());
+        // 낮에 이미 간 분류(예: 해변)와 같은 곳은 다른 저녁 후보가 있으면 뒤로 미룬다(2026-11-19, 낮 해변 3곳 뒤 저녁도 해변).
+        Set<String> seenToday=new HashSet<>();
+        builder.items.stream().filter(i->"VISIT".equals(i.type())).forEach(i->builder.input.attractionsWithReserve().stream()
+            .filter(p->p.placeId().equals(i.placeId())).findFirst().ifPresent(p->seenToday.add(scene(p))));
         choices.sort(Comparator.<PlaceCandidate>comparingInt(p->night.contains(p.placeId())?0:1)
+            .thenComparingInt(p->!scene(p).isEmpty() && seenToday.contains(scene(p))?1:0)
             .thenComparing(order(builder.date,p->distance(fromAt,builder.locations.get(p.placeId())))));
         for(var place:choices.stream().limit(3).toList()) {
             var mark=builder.mark();
             try {
-                if(builder.travelMinutes(from,place)>EVENING_MAX_MOVE || builder.travelMinutes(place,stay)>EVENING_MAX_MOVE) continue;
+                int toPlace=builder.travelMinutes(from,place);
+                if(toPlace>EVENING_MAX_MOVE || builder.travelMinutes(place,stay)>EVENING_MAX_MOVE) continue;
+                // 전망대·케이블카처럼 입장 마감이 있을 수 있는 곳은 그 시간 운영을 확인했거나 AI가 밤 명소로 꼽은 곳만 넣는다(2026-11-19).
+                // 확인하지 못한 곳을 시간표에 넣으면 닫힌 곳으로 안내할 수 있다. 빼기 수정안에서 그대로 두는 저녁 관광은 다시 따지지 않는다.
+                if(TripConstraints.nightHoursNeeded(place) && !night.contains(place.placeId()) && kept==null) {
+                    var arrive=builder.time.plusMinutes(toPlace);
+                    if(!OperatingHoursValidator.confirmedOpen(place.operatingInfo(),builder.date,arrive,arrive.plusMinutes(EVENING_MINUTES))) continue;
+                }
                 builder.visit(place,"VISIT",EVENING_MINUTES,eveningNote(place,from,night.contains(place.placeId())));
                 builder.visit(stay,"STAY",RETURN_REST_MINUTES,"저녁 관광 뒤 숙소 복귀·휴식");
                 return true;
@@ -737,6 +825,22 @@ public class ItineraryGenerator {
             }
         }
         return false;
+    }
+
+    /**
+     * 숙박하는 날이 숙소 근처 저녁 식사로 끝났으면 식당 → 숙소 이동과 숙소 복귀를 넣는다.
+     * 예전에는 저녁 관광을 넣은 날만 숙소로 돌아와, 저녁 관광이 없는 날은 일정이 식당에서 끝났다(2026-11-19 실사용 점검, 숙박일 10일 중 6일).
+     * 저녁 한도를 넘거나 길을 찾지 못하면 넣지 않고 예전처럼 저녁 식사로 마친다.
+     */
+    private void returnAfterDinner(DayBuilder builder,PlaceCandidate stay) {
+        if(builder.items.isEmpty() || !"MEAL".equals(builder.items.getLast().type())) return;
+        var mark=builder.mark();
+        try { builder.visit(stay,"STAY",RETURN_REST_MINUTES,"저녁 식사 뒤 숙소 복귀·휴식"); }
+        catch(RecommendationException error) {
+            if(!DAY_FULL_CODES.contains(error.getCode()) && !UNREACHABLE_CODES.contains(error.getCode())
+                && !"MAP_SAME_LOCATION".equals(error.getCode())) throw error;
+            builder.reset(mark);
+        }
     }
 
     /** night면 AI가 밤에 둘러보기 좋다고 꼽아 낮 일정 대신 저녁에 넣은 곳이다. AI의 판단이라 그렇다고 밝힌다. */
@@ -1158,7 +1262,7 @@ public class ItineraryGenerator {
             // 하루 방문 수는 저녁 관광까지 센다. 정한 수를 넘으면 안 되고, 필수 조건이면 매일 그 수를 지켜야 한다.
             if(constraints!=null && constraints.dailyVisits()!=null && visits+eveningVisits>constraints.dailyVisits()) throw invalid();
             if(constraints!=null && constraints.dailyVisitsRequired() && visits+eveningVisits!=constraints.dailyVisits()) throw invalid();
-            // 숙박하는 날은 숙소 도착이 있어야 하고, 그 뒤에는 숙소 근처 저녁과 저녁 관광 한 곳(다녀와 숙소 복귀)만 올 수 있다.
+            // 숙박하는 날은 숙소 도착이 있어야 하고, 그 뒤에는 숙소 근처 저녁과 숙소 복귀, 저녁 관광 한 곳(다녀와 숙소 복귀)만 올 수 있다.
             if(stayDay && (stayAt<0 || !Objects.equals(hotelId,items.get(stayAt).placeId())
                     || !afterStayIsEveningOnly(items,stayAt))) throw invalid();
         }
@@ -1215,14 +1319,15 @@ public class ItineraryGenerator {
     }
 
     /**
-     * 숙소 도착 뒤에는 이동을 빼고 [저녁 식사] 다음 [저녁 관광 → 숙소 복귀]만 올 수 있다(둘 다 없어도 된다).
-     * 저녁 관광은 숙소 근처에서 저녁을 먹은 날에만 넣는다.
+     * 숙소 도착 뒤에는 이동을 빼고 [저녁 식사] 다음 [숙소 복귀] 또는 [저녁 관광 → 숙소 복귀]만 올 수 있다(없어도 된다).
+     * 저녁 관광은 숙소 근처에서 저녁을 먹은 날에만 넣는다. 저녁 식사로 끝나는 날은 예전 초안과 복귀를 넣지 못한 날이다.
      */
     static boolean afterStayIsEveningOnly(List<Item> items,int stayAt) {
         var after=items.subList(stayAt+1,items.size());
         if(!after.isEmpty() && "TRANSIT".equals(after.getLast().type())) return false;
         var kinds=after.stream().map(Item::type).filter(t->!"TRANSIT".equals(t)).toList();
-        return kinds.isEmpty() || kinds.equals(List.of("MEAL")) || kinds.equals(List.of("MEAL","VISIT","STAY"));
+        return kinds.isEmpty() || kinds.equals(List.of("MEAL")) || kinds.equals(List.of("MEAL","STAY"))
+            || kinds.equals(List.of("MEAL","VISIT","STAY"));
     }
 
     /**
@@ -1254,6 +1359,8 @@ public class ItineraryGenerator {
         /** 그날 관광을 마치는 시각. 마지막 날 귀가 시각을 정했으면 집에 제때 도착하도록 앞당겨진다. */
         final LocalTime end;
         final int day; final LocalDate date; final Set<Long> usedRestaurants; final Optional<RegionalFoods.Guide> foods;
+        /** 사용자가 꼭 가겠다고 고른 곳(필수·수정안에서 유지한 곳). 배를 타는 구간이어도, 하루 이동 상한을 넘어도 넣는다. */
+        final Set<Long> chosenPlaces;
         DayBuilder(Input input,Map<Long,KakaoMapClient.Location> locations,RouteBook routes,Instant deadline,
                    PlaceCandidate previous,int day,Set<Long> usedRestaurants,Optional<RegionalFoods.Guide> foods) {
             this.input=input; this.locations=locations; this.routes=routes; this.deadline=deadline; this.previous=previous; this.day=day;
@@ -1261,7 +1368,7 @@ public class ItineraryGenerator {
             // 관광을 오후 2시 이후에 시작하는 날은 점심을 이미 먹은 것으로 보고 넣지 않는다. 저녁은 평소 규칙대로 넣는다.
             lunch=!time.isBefore(NO_LUNCH_FROM);
             date=input.conditions().startDate()==null?null:input.conditions().startDate().plusDays(day-1);
-            this.usedRestaurants=usedRestaurants; this.foods=foods;
+            this.usedRestaurants=usedRestaurants; this.foods=foods; chosenPlaces=mustVisit(input);
         }
         /** 관광지나 식사를 시험 삼아 넣어 보기 전의 상태. 들어가지 않으면 reset으로 되돌린다. */
         record Mark(int size,LocalTime time,PlaceCandidate previous,boolean lunch,boolean dinner,Set<Long> usedRestaurants) {}
@@ -1325,7 +1432,8 @@ public class ItineraryGenerator {
                         add("TRANSIT",next,previous.name()+" → "+next.name(),route.minutes()+10,
                             (route.walkingEstimate()?WALK_NOTE_PREFIX:"카카오 예상 ")+route.minutes()+"분 + 이동 여유 10분"
                                 +(route.summary()==null?"":"\n"+route.summary()
-                                    +(route.walkingEstimate()?"":" (조회 시점 기준, 배차·요금은 이용 전 확인)")),
+                                    +(route.walkingEstimate()?"":" (조회 시점 기준, 배차·요금은 이용 전 확인)"))
+                                +(route.ferry()?FERRY_NOTE:""),
                             route.seconds(),route.checkedAt());
                     }
                 }
@@ -1344,6 +1452,14 @@ public class ItineraryGenerator {
          * 한 번 안 된 뒤에는 남은 구간도 다시 부르지 않고 추정한다.
          */
         KakaoMapClient.TravelTime route(PlaceCandidate from,PlaceCandidate to) {
+            var time=lookedUp(from,to);
+            // 배를 타는 구간은 카카오 시간에 배 시간표·승선 대기가 빠져 있어 자동으로 넣지 않는다(2026-11-19, 우도 26분).
+            // 사용자가 꼭 가겠다고 고른 곳(필수·수정안에서 유지한 곳)을 오가는 구간만 안내를 붙여 넣는다.
+            if(time.ferry() && !chosenPlaces.contains(from.placeId()) && !chosenPlaces.contains(to.placeId()))
+                throw failure("FERRY_ROUTE","'"+from.name()+"' → '"+to.name()+"' 구간은 배를 타야 해서 일정에 자동으로 넣지 않았어요.");
+            return time;
+        }
+        private KakaoMapClient.TravelTime lookedUp(PlaceCandidate from,PlaceCandidate to) {
             String key=from.placeId()+":"+to.placeId();
             var found=routes.times.get(key);
             if(found!=null) return found;

@@ -182,7 +182,7 @@
 </div>
 </div>
 </article></section>
-<p class="notice" th:if="${!job.result.skipped.isEmpty()}" th:text="${'하루 시간이 부족하거나 가는 길이 너무 멀어(자동차 2시간·대중교통 1시간 30분 초과, 섬 등)' + #strings.listJoin(job.result.skipped.![name], ', ') + '은(는) 일정에 넣지 않았어요. 넣고 싶다면 하루 시간을 늘리거나 체류시간을 줄여 새로 만들어 주세요.'}"></p>
+<p class="notice" th:if="${!job.result.skipped.isEmpty()}" th:text="${'하루 시간이 부족하거나 가는 길이 너무 멀어(자동차 2시간·대중교통 1시간 30분 초과, 배를 타야 하는 섬 등)' + #strings.listJoin(job.result.skipped.![name], ', ') + '은(는) 일정에 넣지 않았어요. 넣고 싶다면 하루 시간을 늘리거나 체류시간을 줄여 새로 만들어 주세요. 배를 타야 하는 곳은 꼭 가고 싶은 곳으로 고르면 넣어요.'}"></p>
 <!--/* 여행 기간 축제가 열리는 곳이 이 초안에 없으면 넣는 방법을 알려 준다(SFR-04-03). 바로 만든 초안은 축제 장소를 자동으로 넣지 않는다. */-->
 <p class="notice" th:if="${festivalSuggestion != null}">
 <span th:text="${'여행 기간에 ' + festivalSuggestion.title + '(' + festivalSuggestion.period + ') 행사가 ' + festivalSuggestion.placeName + '(또는 바로 근처)에서 열려요. 이 초안에는 넣지 않았어요. 넣으려면 '}"></span>

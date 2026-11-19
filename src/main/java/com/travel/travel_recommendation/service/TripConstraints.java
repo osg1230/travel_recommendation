@@ -242,6 +242,14 @@ public final class TripConstraints {
     /** 이름에 들어 있으면 저녁 관광으로 보는 말. 분류가 '관광,명소'로만 된 곳(예: 여수낭만포차거리)을 찾기 위해 쓴다. */
     private static final List<String> EVENING_WORDS = List.of("야경", "야시장", "포차", "거리", "공원", "해변", "해수욕장", "전망대",
         "스카이워크", "케이블카", "다리", "대교", "광장", "호수", "타워");
+    /**
+     * 입장 시간이 있어 저녁에는 대개 닫는 분류. 이름에 '공원'·'거리' 같은 말이 있어도 저녁 관광 후보로 보지 않는다.
+     * 2026-11-19 실사용 점검에서 분류가 테마파크인 제주돌문화공원(09:00~18:00)이 이름의 '공원' 때문에 19:35 저녁 관광으로 들어갔다.
+     */
+    private static final List<String> CLOSED_AT_NIGHT_KINDS = List.of("테마파크", "박물관", "미술관", "전시관", "과학관", "기념관", "수목원",
+        "식물원", "동물원", "아쿠아리움", "휴양림", "민속촌", "체험");
+    /** 야경으로 많이 찾지만 입장 마감이 있는 시설. 그 시간 운영을 확인했거나 AI가 밤 명소로 꼽은 곳만 저녁 관광에 넣는다. */
+    private static final List<String> NIGHT_HOURS_WORDS = List.of("전망대", "케이블카", "유원지", "스카이워크", "타워");
     /** 저녁 관광 후보 수. 숙박하는 날마다 한 곳씩 쓰고, 운영시간·거리로 빠질 곳을 대신할 만큼 둔다. */
     static final int MAX_EVENING = 8;
 
@@ -254,7 +262,15 @@ public final class TripConstraints {
         if (EVENING_KINDS.stream().anyMatch(kind::contains)) return true;
         String subtype = place.subtype() == null ? "" : place.subtype();
         if (!subtype.isBlank() && !subtype.contains("관광,명소") && !subtype.contains("거리") && !subtype.contains("공원")) return false;
+        // 분류로 저녁에 닫는 시설임을 알 수 있으면 이름만 보고 넣지 않는다.
+        if (CLOSED_AT_NIGHT_KINDS.stream().anyMatch(kind::contains)) return false;
         return EVENING_WORDS.stream().anyMatch(place.name()::contains);
+    }
+
+    /** 전망대·케이블카처럼 입장 마감이 있을 수 있는 저녁 관광 후보인지 본다(분류와 이름 기준). 탁 트인 해변·거리·광장은 해당하지 않는다. */
+    public static boolean nightHoursNeeded(PlaceCandidate place) {
+        String kind = kind(place);
+        return NIGHT_HOURS_WORDS.stream().anyMatch(word -> kind.contains(word) || place.name().contains(word));
     }
 
     /**

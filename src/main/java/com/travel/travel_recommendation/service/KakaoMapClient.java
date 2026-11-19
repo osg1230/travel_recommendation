@@ -29,8 +29,13 @@ public class KakaoMapClient {
     /**
      * summary는 대중교통일 때만 있는 노선 요약(SFR-06-04). 자동차 경로와 요약을 읽지 못한 경우는 null이다.
      * walkingEstimate는 걸어갈 만큼 가까워 카카오가 대중교통 경로를 주지 않은 구간을 직선거리로 추정했다는 뜻이다.
+     * ferry는 자동차 경로에 배(페리항로)를 타는 구간이 있다는 뜻이다. 카카오는 배 구간도 도로처럼 계산해
+     * 배 시간표·승선 대기가 빠진 짧은 시간을 준다(2026-11-19 성산항 → 우도 실제 응답: 2.7km 배 구간 152초).
      */
-    public record TravelTime(Transport transport, int seconds, int meters, Instant checkedAt, String summary, boolean walkingEstimate) {
+    public record TravelTime(Transport transport, int seconds, int meters, Instant checkedAt, String summary, boolean walkingEstimate, boolean ferry) {
+        public TravelTime(Transport transport, int seconds, int meters, Instant checkedAt, String summary, boolean walkingEstimate) {
+            this(transport, seconds, meters, checkedAt, summary, walkingEstimate, false);
+        }
         public TravelTime(Transport transport, int seconds, int meters, Instant checkedAt, String summary) {
             this(transport, seconds, meters, checkedAt, summary, false);
         }
@@ -445,7 +450,7 @@ public class KakaoMapClient {
                     || seconds.intValue()>86400 || !meters.isIntegralNumber() || !meters.canConvertToInt()
                     || meters.intValue()<=0 || meters.intValue()>2000000) throw invalid();
             var candidate=new TravelTime(transport,seconds.intValue(),meters.intValue(),Instant.now(),
-                transport==Transport.PUBLIC_TRANSIT ? transitSummary(route) : null);
+                transport==Transport.PUBLIC_TRANSIT ? transitSummary(route) : null,false,transport==Transport.CAR && ferry(route));
             if (fastest==null || candidate.seconds()<fastest.seconds()) { fastest=candidate; fastestRoute=route; }
         }
         if (fastest==null) throw noRoute();
@@ -455,6 +460,13 @@ public class KakaoMapClient {
             if (!path.isEmpty()) roadPaths.get(pathKey(from.latitude(),from.longitude(),to.latitude(),to.longitude()),()->path);
         }
         return fastest;
+    }
+
+    /** 자동차 경로 안내(sections[].guides[].guidance)에 '페리항로 진입·진출'이 있으면 배를 타는 경로다. */
+    static boolean ferry(JsonNode route) {
+        for (var section:route.path("sections")) for (var guide:section.path("guides"))
+            if (guide.path("guidance").asText("").contains("페리")) return true;
+        return false;
     }
 
     /** 지도 데이터가 커지지 않게 한 구간의 도로 경로는 이 개수 이하의 점으로 줄인다. */

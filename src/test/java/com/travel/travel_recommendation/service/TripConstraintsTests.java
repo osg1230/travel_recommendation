@@ -84,6 +84,14 @@ class TripConstraintsTests {
         assertThat(TripConstraints.eveningSpot(kind(3, "여수낭만포차거리", "여행 > 관광,명소"))).isTrue();
         assertThat(TripConstraints.eveningSpot(kind(4, "봉황산자연휴양림", "여행 > 관광,명소 > 자연휴양림"))).isFalse();
         assertThat(TripConstraints.eveningSpot(kind(5, "향일암", "문화,예술 > 종교 > 불교 > 절,사찰"))).isFalse();
+        // 분류가 테마파크·박물관이면 이름에 '공원'·'거리'가 있어도 저녁 관광 후보가 아니다(제주돌문화공원 09:00~18:00, 2026-11-19).
+        assertThat(TripConstraints.eveningSpot(kind(9, "제주돌문화공원", "여행 > 관광,명소 > 테마파크"))).isFalse();
+        assertThat(TripConstraints.eveningSpot(kind(10, "근대역사거리박물관", "문화,예술 > 문화시설 > 박물관"))).isFalse();
+        // 전망대·타워는 저녁 후보이지만 입장 마감이 있을 수 있어 운영 확인이 필요한 곳으로 본다. 해변·거리는 아니다.
+        assertThat(TripConstraints.nightHoursNeeded(kind(1, "오동도", "여행 > 관광,명소 > 전망대"))).isTrue();
+        assertThat(TripConstraints.nightHoursNeeded(kind(11, "부산타워", "여행 > 관광,명소"))).isTrue();
+        assertThat(TripConstraints.nightHoursNeeded(kind(2, "만성리검은모래해변", "여행 > 관광,명소 > 해수욕장,해변"))).isFalse();
+        assertThat(TripConstraints.nightHoursNeeded(kind(3, "여수낭만포차거리", "여행 > 관광,명소"))).isFalse();
         var tower = kind(6, "스카이타워", "여행 > 관광,명소 > 전망대");
         var forest = kind(7, "휴양림", "여행 > 관광,명소 > 자연휴양림");
         var chosen = kind(8, "해변", "여행 > 관광,명소 > 해수욕장,해변");

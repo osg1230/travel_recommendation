@@ -148,4 +148,5 @@
     <p th:replace="~{fragments/guest-session :: notice}"></p>
     <!--/* 카드마다 반복하던 출처·AI 안내를 화면 끝에 한 줄로만 적는다. */-->
     <p class="guide-note" th:if="${job.status == 'COMPLETED' and job.errorCode != 'AI_REASON_SKIPPED'}">추천 이유와 대표 코스는 AI가 쓴 글이에요. 운영 정보와 비용은 방문 전에 확인해 주세요.</p>
+    <p class="guide-note" th:if="${job.status == 'COMPLETED' and job.errorCode == 'AI_REASON_SKIPPED'}">AI가 추천 이유를 만들지 못해 여행지 소개를 대신 보여 드려요.</p>
 </main><script defer th:src="@{/js/recommendation-job.js}"></script></body></html>
