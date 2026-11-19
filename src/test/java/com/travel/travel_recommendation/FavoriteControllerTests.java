@@ -111,8 +111,7 @@ class FavoriteControllerTests {
             .andExpect(status().isOk())
             .andExpect(content().string(containsString("‘경포해변’ 즐겨찾기를 삭제했어요.")))
             .andExpect(content().string(containsString("되돌리기")))
-            .andExpect(content().string(containsString("name=\"placeId\" value=\"10\"")))
-            .andExpect(content().string(containsString("등록일시는 지금으로 바뀌어요")));
+            .andExpect(content().string(containsString("name=\"placeId\" value=\"10\"")));
         mvc.perform(get("/my/favorites").with(user("member"))).andExpect(status().isOk())
             .andExpect(content().string(not(containsString("되돌리기"))));
     }

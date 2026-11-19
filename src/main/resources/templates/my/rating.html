@@ -14,7 +14,6 @@
     <a class="back-link" th:href="${returnTo != null ? returnTo : '/my/ratings'}">← 돌아가기</a>
     <p class="eyebrow">내 여행 · 장소 평가</p>
     <h1>장소 평가</h1>
-    <p class="intro">다녀온 장소에 별점과 태그를 남겨 다른 사람이 여행을 고를 때 참고할 수 있게 해 주세요.</p>
     <p role="status" class="status-ok" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
     <!--/* 저장에 실패해 돌아왔을 때의 안내. 방금 적은 별점·태그·한줄평은 아래 입력칸에 다시 채워 둔다. */-->
     <p role="alert" class="notice" th:if="${ratingError != null}" th:text="${ratingError}"></p>
@@ -69,7 +68,7 @@
             <label for="comment" th:text="${'3. 한줄평 (선택, 최대 ' + maxCommentLength + '자)'}"></label>
             <input type="text" id="comment" name="comment" th:maxlength="${maxCommentLength}" aria-describedby="comment-help"
                    th:value="${draft != null ? draft.comment : ''}" placeholder="예: 해 질 무렵에 가면 더 좋아요">
-            <p class="help" id="comment-help">별점·태그와 함께 다른 사람에게 보여요. 연락처나 개인정보는 적지 말아 주세요.</p>
+            <p class="help" id="comment-help">다른 사람에게 보여요. 개인정보는 적지 마세요.</p>
         </div>
         <div class="form-actions form-actions-end">
             <a class="button button-quiet" th:href="${returnTo != null ? returnTo : '/my/ratings'}">취소</a>
@@ -77,12 +76,6 @@
         </div>
         </th:block>
     </form>
-    <div class="guide-note">
-        <p><strong>안내</strong></p>
-        <p>별점은 1~5점으로 고르고, 태그는 <span th:text="${maxTags}"></span>개까지 고를 수 있어요. 한줄평은 <span th:text="${maxCommentLength}"></span>자까지 적을 수 있고 비워 두어도 돼요.</p>
-        <p>긴 글이나 제목은 남기지 않아요. 등록한 평가는 다시 들어와 바꾸거나 삭제할 수 있어요.</p>
-        <p>다른 사람에게는 평균 별점·많이 고른 태그와 최근 평가(별점·태그·한줄평)가 보여요. 닉네임은 앞 글자만 보이고(예: 김**) 나머지는 가려져요.</p>
-    </div>
     <!--/* 삭제한 뒤에도 보던 화면(returnTo)으로 돌아간다. */-->
     <form th:if="${form.mine != null}" method="post" th:action="@{/my/ratings/{id}/delete(id=${form.place.placeId})}"
           onsubmit="return confirm('이 장소 평가를 삭제할까요?');">

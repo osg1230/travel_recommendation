@@ -188,8 +188,8 @@ class ItineraryIntegrationTests {
         String info="/travel/recommendations/"+owned+"/destinations/"+candidate.placeId()+"/trip-info";
         String form="/travel/recommendations/"+owned+"/destinations/"+candidate.placeId()+"/schedule";
         var auth=org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(member.getLoginId());
-        // 아직 적지 않은 회원에게는 내 정보에 적어 두라고 안내한다.
-        mvc.perform(get(info).with(auth)).andExpect(content().string(containsString("내 정보에 '주로 출발하는 곳'을 적어 두면")));
+        // 아직 적지 않은 회원에게는 미리 넣었다는 안내가 없다.
+        mvc.perform(get(info).with(auth)).andExpect(content().string(org.hamcrest.Matchers.not(containsString("내 정보의 '주로 출발하는 곳'을 넣어 두었어요"))));
         member.changeHomeArea("서울 송파구"); users.saveAndFlush(member);
         // '일정 만들기'를 처음 누르면(아무 값 없이) 여행 정보 화면으로 넘어오는데, 이때도 출발지를 미리 넣는다.
         var memberSession=new MockHttpSession();
@@ -298,7 +298,6 @@ class ItineraryIntegrationTests {
         mvc.perform(get(resultUrl(id)).session(session)).andExpect(status().isOk())
             // 2026-10-10부터 참고 합계 대신 항목별 예상 경비 절에 찾은 가격을 반영한다.
             .andExpect(content().string(containsString("예상 경비 (추정)")))
-            .andExpect(content().string(containsString("찾은 가격은 위 예상 경비의 숙박·식비에 반영돼요")))
             .andExpect(content().string(containsString("출처 페이지에서 상호·가격 확인")))
             .andExpect(content().string(containsString("AI 검색 결과, 출처에서 직접 확인 필요")))
             .andDo(response->{

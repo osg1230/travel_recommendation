@@ -91,7 +91,6 @@ class PlaceCandidateIntegrationTests {
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(content().string(containsString(result.attractions().getFirst().name())))
                 .andExpect(content().string(containsString(result.restaurants().getFirst().name())))
-                .andExpect(content().string(containsString("실시간 조회가 아니에요")))
                 .andDo(response -> {
                     if (Boolean.getBoolean("travel.ui.capture")) {
                         var folder = java.nio.file.Path.of("target", "ui-check");

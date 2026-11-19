@@ -36,7 +36,7 @@
                 <p role="alert" th:if="${dateError != null}" th:text="${dateError}"></p>
                 <input id="date" name="date" type="date" th:min="${minDate}" th:max="${maxDate}"
                        th:value="${#temporals.format(stock.usageStart, 'yyyy-MM-dd')}" aria-describedby="date-help">
-                <p id="date-help" class="help">내일부터 1년 안의 날짜로 예약할 수 있어요. 일정에 없는 날짜는 이미 예약 수량이 있는 경우에만 볼 수 있어요.</p>
+                <p id="date-help" class="help">내일부터 1년 안의 날짜</p>
             </div>
             <div class="form-actions"><button type="submit" class="button-quiet">이 날짜로 보기</button></div>
         </form>
@@ -71,7 +71,7 @@
                     <label for="quantity">객실 수 (필수)</label>
                     <input id="quantity" name="quantity" type="number" min="1" th:max="${maxRooms}"
                            th:value="${quantityInput != null ? quantityInput : 1}" required>
-                    <p class="help" th:text="${'한 번에 최대 ' + maxRooms + '실. 객실당 최대 인원은 객실 종류마다 달라요.'}"></p>
+                    <p class="help" th:text="${'한 번에 최대 ' + maxRooms + '실'}"></p>
                 </div>
                 <div class="field">
                     <label for="partySize">이용 인원 (필수)</label>
@@ -84,7 +84,6 @@
             </div>
             <!--/* 고른 객실 가격 × 객실 수(관광시설은 1명 가격 × 인원) 미리보기. 스크립트가 켜져 있을 때만 보인다. */-->
             <p class="help" data-price-preview aria-live="polite" hidden></p>
-            <p class="help">금액은 서버가 남은 수량을 확인한 뒤 계산해요. 신청하면 수량이 먼저 잡히고, 결제하면 예약이 확정돼요.</p>
             <!--/* 같은 장소·날짜에 이미 진행 중인 예약이 있으면 알려 준다. 객실을 더 잡을 수도 있어 신청은 막지 않는다. */-->
             <p class="notice" th:if="${existingReservationId != null}">
                 <span th:text="${'이 날짜에 이미 예약이 있어요(예약번호 ' + existingReservationId + ')'}"></span> –

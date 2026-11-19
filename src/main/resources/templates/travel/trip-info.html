@@ -7,7 +7,7 @@
 <p class="eyebrow">여행 준비 · 여행 정보</p>
 <h1 th:text="${options.places.destination.name + ' 일정을 만들기 전에 알려 주세요'}"></h1>
 <!--/* 추천 조건에 없는 값과 집 출발·귀가만 묻는다. 하루 시간·체류시간·장소는 기본값으로 만들고 초안에서 바꾼다. */-->
-<p class="intro">일정을 짜려면 아래 정보가 필요해요. 여행지에서는 09:00~18:00, 관광지마다 90분으로 먼저 만들고, 초안을 본 뒤 바꿀 수 있어요.</p>
+<p class="intro">일정을 짜려면 아래 정보가 필요해요.</p>
 <p role="alert" th:if="${values.error != null}" th:text="${values.error}"></p>
 <form method="post" th:action="@{/travel/recommendations/{id}/destinations/{dest}/quick-schedule(id=${options.recommendationId},dest=${options.places.destination.placeId})}" data-submit-loading="일정 초안 만드는 중…">
 <!--/* 추천 조건에 일수·숙박·출발일·이동수단이 모두 있으면 빈 칸이 되므로 이 묶음은 숨기고 집 출발·귀가만 묻는다. */-->

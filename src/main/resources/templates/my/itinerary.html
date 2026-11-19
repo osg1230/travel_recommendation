@@ -19,7 +19,6 @@
     <p role="status" class="status-ok" th:if="${savedMessage != null and ratingAnchor == null}" th:text="${savedMessage}"></p>
     <p th:text="${itinerary.summary.destination + ' · ' + @timeText.period(itinerary.summary.startDate, itinerary.summary.endDate)
         + ' · 이동수단 ' + itinerary.transportName}"></p>
-    <p class="guide-note">저장할 때의 일정 초안이에요. 체류시간은 계획값이고 이동시간은 저장 당시의 예상값이에요. 영업시간·휴무일·예산·예약 가능 여부는 방문 전에 각 장소의 출처에서 확인해 주세요.</p>
 
     <!--/* 가장 최근의 수정안 적용(또는 되돌리기)으로 바뀐 부분과 되돌리기 버튼(SFR-08-04). 직전 한 단계만 남겨 둔다. */-->
     <section class="condition-section" th:if="${itinerary.lastChange != null}" th:with="change=${itinerary.lastChange}" aria-labelledby="change-title">
@@ -28,11 +27,10 @@
             + (change.undone ? '수정 전 일정으로 되돌렸어요. 되돌리기 전 일정과 비교한 내용이에요.' : '수정안을 적용했어요. 적용 전 일정과 비교한 내용이에요.')}"></p>
         <th:block th:replace="~{fragments/itinerary-changes :: list(${change.comparison})}"></th:block>
         <p th:if="${change.comparison.empty()}">관광지·식당·숙소와 방문 시각은 그대로예요. 이동시간이나 안내 문구만 바뀌었을 수 있어요.</p>
-        <p class="help">일정표에도 새로 넣은 곳과 시간·날짜가 바뀐 곳을 표시했어요. 이동·자유 시간은 비교하지 않아요.</p>
         <form method="post" th:action="@{/my/itineraries/{id}/undo(id=${itinerary.summary.id})}" data-submit-loading="되돌리는 중…">
             <input type="hidden" name="version" th:value="${itinerary.version}">
             <div class="form-actions"><button type="submit" class="button-quiet" th:text="${change.undone ? '되돌리기 취소하기' : '수정 전으로 되돌리기'}"></button></div>
-            <p class="help">직전 한 단계만 되돌릴 수 있어요. 되돌린 뒤 한 번 더 누르면 되돌리기를 취소해요.</p>
+            <p class="help">직전 한 단계만 되돌릴 수 있어요.</p>
         </form>
     </section>
 
@@ -114,7 +112,6 @@
 
     <section class="condition-section" th:if="${!itinerary.checks.isEmpty() or !itinerary.prices.isEmpty()}" aria-labelledby="saved-checks-title">
         <h2 id="saved-checks-title">저장 당시 확인한 정보</h2>
-        <p class="help">일정을 저장하거나 수정안을 적용할 때 확인한 결과예요. 지금 다시 확인한 값이 아니니, 여행 전에 출처에서 최신 정보를 확인해 주세요.</p>
         <table class="report-table" th:if="${!itinerary.checks.isEmpty()}">
             <caption>여행 조건 확인 결과</caption>
             <thead><tr><th scope="col">항목</th><th scope="col">결과</th><th scope="col">내용</th></tr></thead>
@@ -143,7 +140,6 @@
          (숙소는 모든 숙박 항목, 관광은 박물관·아쿠아리움·테마파크처럼 입장권을 끊는 분류의 시설. SQL 013·016) */-->
     <section class="condition-section" th:unless="${bookables.isEmpty() and (leftoverReservations == null or leftoverReservations.isEmpty())}" aria-labelledby="reserve-title">
         <h2 id="reserve-title">예약 (체험)</h2>
-        <p class="help">예약·결제 과정을 체험하는 기능이에요. 실제 시설에 예약이 전달되지 않고 실제 돈이 오가지 않아요.</p>
         <article class="place-row" th:each="b : ${bookables}">
             <p class="help" th:text="${b.dayNo + '일차 · ' + b.itemTypeName + ' · ' + #temporals.format(b.stock.usageStart, 'yyyy-MM-dd')}"></p>
             <h3 th:text="${b.stock.placeName}"></h3>
@@ -159,7 +155,7 @@
         <!--/* 수정안 적용·장소 변경으로 일정에서 빠졌지만 아직 취소하지 않은 예약. 일정이 바뀌어도 예약은 자동으로 취소되지 않는다. */-->
         <th:block th:if="${leftoverReservations != null and !leftoverReservations.isEmpty()}">
             <h3>일정에서 빠진 장소의 예약</h3>
-            <p class="help">일정을 고치면서 빠진 장소지만 예약은 그대로 남아 있어요. 필요 없으면 예약을 열어 취소해 주세요.</p>
+            <p class="help">일정에서 빠진 장소의 예약이에요. 필요 없으면 취소해 주세요.</p>
             <article class="place-row" th:each="r : ${leftoverReservations}">
                 <p class="help" th:text="${'예약번호 ' + r.id + ' · ' + r.statusName() + ' · ' + r.paymentStatusName() + ' · ' + #temporals.format(r.usageStart, 'yyyy-MM-dd')}"></p>
                 <h3 th:text="${r.placeName}"></h3>
@@ -172,13 +168,13 @@
         <h2 id="edit-title">일정 수정하기</h2>
         <div th:replace="~{fragments/revision-scope :: scope}"></div>
         <th:block th:if="${itinerary.editableJobId != null}">
-            <p class="help">장소를 빼거나 바꾸고 더하거나, AI에게 문장으로 요청해 수정안을 만들어요. 수정안을 확인하고 '이 일정에 적용하기'를 눌러야 바뀌며, 그 전까지 이 일정은 그대로예요. 적용한 뒤에도 바로 전 일정으로 되돌릴 수 있어요.</p>
+            <p class="help">수정안을 확인하고 적용해야 일정이 바뀌어요.</p>
             <div class="form-actions"><a class="button" th:href="@{/travel/recommendations/itineraries/{id}/edit(id=${itinerary.editableJobId})}">수정안 만들러 가기</a></div>
         </th:block>
         <!--/* 카카오에서 관광지 후보를 다시 확인하느라 수십 초가 걸릴 수 있어 누르면 버튼을 잠그고 진행 중임을 보여 준다. */-->
         <form th:if="${itinerary.editableJobId == null}" method="post" th:action="@{/my/itineraries/{id}/edit(id=${itinerary.summary.id})}"
               data-submit-loading="수정을 준비하는 중… (최대 1분)">
-            <p class="help">원래 초안의 보관 기간이 지났거나 추천 이력을 삭제해서, 저장한 일정으로 수정할 초안을 다시 만들어요. 교체할 관광지 후보는 지금 기준으로 다시 확인하느라 최대 1분쯤 걸릴 수 있어요. 처음 정한 필수 방문 장소 같은 조건은 이어지지만, 예전에 저장한 일정은 일부 조건이 이어지지 않을 수 있어요.</p>
+            <p class="help">수정할 초안을 다시 만들어요. 1분쯤 걸릴 수 있어요.</p>
             <div class="form-actions"><button type="submit">수정 준비하기</button></div>
         </form>
     </section>
@@ -189,8 +185,7 @@
             <div class="field">
                 <label for="title">일정 이름 (필수)</label>
                 <input id="title" name="title" type="text" required maxlength="150"
-                       th:value="${itinerary.summary.title}" aria-describedby="title-help">
-                <p id="title-help" class="help">시각·장소·순서는 아래 '일정 수정하기'에서 수정안을 만들어 적용해요.</p>
+                       th:value="${itinerary.summary.title}">
             </div>
             <div class="form-actions"><button type="submit">이름 저장</button></div>
         </form>

@@ -71,7 +71,7 @@ class SavedItineraryControllerTests {
         when(service.detail(7L,"member")).thenReturn(new SavedItinerary.Detail(summary,"자동차",List.of()));
         mvc.perform(get("/my/itineraries/7").with(user("member"))).andExpect(status().isOk())
             .andExpect(content().string(containsString("data-submit-loading=\"수정을 준비하는 중… (최대 1분)\"")))
-            .andExpect(content().string(containsString("예전에 저장한 일정은 일부 조건이 이어지지 않을 수 있어요")))
+            .andExpect(content().string(containsString("수정할 초안을 다시 만들어요")))
             .andExpect(content().string(not(containsString("필수 방문 장소 설정은 이어지지 않아요"))));
     }
 

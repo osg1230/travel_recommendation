@@ -12,7 +12,6 @@
     <nav th:replace="~{fragments/layout :: myNav('account')}"></nav>
     <a class="back-link" th:href="@{/}">← 처음으로</a>
     <h1>내 정보</h1>
-    <p class="intro">닉네임, 주로 출발하는 곳, 비밀번호를 변경할 수 있어요.</p>
     <p role="status" class="status-ok" th:if="${profileUpdated != null}" th:text="${profileUpdated}">회원 정보를 저장했어요.</p>
     <p>아이디 <strong th:text="${loginId}"></strong></p>
     <form th:action="@{/account}" th:object="${profileForm}" method="post">
@@ -25,7 +24,7 @@
             <input id="nickname" th:field="*{nickname}" required minlength="2" maxlength="50"
                    autocomplete="nickname" aria-describedby="nickname-help nickname-error"
                    th:attr="aria-invalid=${#fields.hasErrors('nickname')}">
-            <p class="help" id="nickname-help">서비스에서 사용할 이름, 2~50자</p>
+            <p class="help" id="nickname-help">2~50자</p>
             <p class="field-error" id="nickname-error" th:errors="*{nickname}"></p>
         </div>
         <div class="field">
@@ -33,15 +32,14 @@
             <input id="homeArea" th:field="*{homeArea}" type="text" maxlength="60" autocomplete="off"
                    placeholder="예) 서울 송파구, 대전역" aria-describedby="homeArea-help homeArea-error"
                    th:attr="aria-invalid=${#fields.hasErrors('homeArea')}">
-            <p class="help" id="homeArea-help">일정을 만들 때 출발지 칸에 미리 넣어 드려요. 지도에서 찾을 수 있는 시·구·동이나 역 이름으로 적어 주세요. 여행지까지 이동시간을 찾는 데만 쓰고, 일정마다 바꿀 수 있어요. 비우고 저장하면 지워져요.</p>
+            <p class="help" id="homeArea-help">일정을 만들 때 출발지로 미리 넣어 드려요.</p>
             <p class="field-error" id="homeArea-error" th:errors="*{homeArea}"></p>
         </div>
         <div class="field">
             <label for="currentPassword">현재 비밀번호 (필수)</label>
             <input id="currentPassword" name="currentPassword" type="password" required maxlength="64"
-                   autocomplete="current-password" aria-describedby="current-help current-error"
+                   autocomplete="current-password" aria-describedby="current-error"
                    th:attr="aria-invalid=${#fields.hasErrors('currentPassword')}">
-            <p class="help" id="current-help">정보를 변경하려면 현재 비밀번호를 입력해 주세요.</p>
             <p class="field-error" id="current-error" th:errors="*{currentPassword}"></p>
         </div>
         <div class="field">
@@ -49,15 +47,14 @@
             <input id="newPassword" name="newPassword" type="password" maxlength="64"
                    autocomplete="new-password" aria-describedby="new-help new-error"
                    th:attr="aria-invalid=${#fields.hasErrors('newPassword')}">
-            <p class="help" id="new-help">비워 두면 기존 비밀번호를 유지해요. 변경하려면 영문과 숫자를 포함해 8~64자로 입력해 주세요. 특수문자는 사용할 수 있으며 공백은 제외해 주세요.</p>
+            <p class="help" id="new-help">바꿀 때만 입력해요. 영문과 숫자를 포함해 8~64자</p>
             <p class="field-error" id="new-error" th:errors="*{newPassword}"></p>
         </div>
         <div class="field">
             <label for="newPasswordConfirm">새 비밀번호 확인</label>
             <input id="newPasswordConfirm" name="newPasswordConfirm" type="password" maxlength="64"
-                   autocomplete="new-password" aria-describedby="confirm-help confirm-error matching-error"
+                   autocomplete="new-password" aria-describedby="confirm-error matching-error"
                    th:attr="aria-invalid=${#fields.hasErrors('newPasswordConfirm') or #fields.hasErrors('passwordMatching')}">
-            <p class="help" id="confirm-help">새 비밀번호를 입력한 경우에만 한 번 더 입력해 주세요.</p>
             <p class="field-error" id="confirm-error" th:errors="*{newPasswordConfirm}"></p>
             <p class="field-error" id="matching-error" th:errors="*{passwordMatching}"></p>
         </div>
@@ -73,11 +70,7 @@
         <p role="alert" th:if="${withdrawError != null}" th:text="${withdrawError}"></p>
         <p class="notice" th:if="${activeReservations != null and activeReservations > 0}"
            th:text="|진행 중인 예약 ${activeReservations}건은 탈퇴하면 취소되고, 예약·결제 내역도 삭제돼요.|"></p>
-        <ul class="help">
-            <li>저장한 일정, 즐겨찾기, 추천 이력, 장소 평가, 예약·결제 내역이 모두 삭제되며 되돌릴 수 없어요.</li>
-            <li>탈퇴한 아이디로는 다시 로그인할 수 없어요. 아이디는 30일 동안 보관해 같은 아이디로 새로 가입할 수 없게 막고, 그 뒤에는 지워요.</li>
-            <li>관리자가 남긴 이용 제한 처리 기록은 운영 기록으로 보관돼요.</li>
-        </ul>
+        <p class="help">저장한 일정, 즐겨찾기, 추천 이력, 장소 평가, 예약·결제 내역이 모두 삭제되며 되돌릴 수 없어요. 탈퇴한 아이디는 30일 동안 다시 가입할 수 없어요.</p>
         <form th:action="@{/account/withdraw}" method="post">
             <div class="field">
                 <label for="withdrawPassword">현재 비밀번호 (필수)</label>

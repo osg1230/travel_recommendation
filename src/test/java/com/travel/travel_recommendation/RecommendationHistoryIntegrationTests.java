@@ -209,7 +209,6 @@ class RecommendationHistoryIntegrationTests {
         mvc.perform(get("/my/recommendations")).andExpect(status().is3xxRedirection());
         mvc.perform(get("/my/recommendations").with(user(owner.getLoginId()))).andExpect(status().isOk())
             .andExpect(content().string(containsString("추천 완료")))
-            .andExpect(content().string(containsString("로그인하기 전에 받은 비회원 추천은 이력에 남지 않아요")))
             .andExpect(content().string(containsString("/my/recommendations/"+request)))
             .andDo(response->capture("recommendations.html",response.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8)));
         mvc.perform(get("/my/recommendations/"+request).with(user(owner.getLoginId()))).andExpect(status().isOk())

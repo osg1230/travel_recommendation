@@ -12,7 +12,6 @@
     <a class="back-link" th:href="@{/}">← 처음으로</a>
     <p class="eyebrow">내 여행 · 추천 이력</p>
     <h1>추천 이력</h1>
-    <p class="intro">회원으로 요청한 여행지 추천의 조건과 결과를 최신순으로 보여 줘요. 최근 100건까지 표시해요.</p>
     <p role="status" class="status-ok" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
     <p role="status" th:if="${histories.isEmpty()}">아직 추천 이력이 없어요. 로그인한 상태로 여행지 추천을 받으면 자동으로 저장돼요.</p>
     <p th:if="${histories.isEmpty()}"><a th:href="@{/travel/conditions}">여행 조건 입력하고 추천받기 →</a></p>
@@ -27,7 +26,6 @@
         <p th:if="${!h.destinations.isEmpty()}" th:text="${'추천 여행지: ' + #strings.listJoin(h.destinations, ', ')}"></p>
         <p class="help" th:text="${'요청: ' + @timeText.dateTime(h.requestedAt)}"></p>
     </article>
-    <p class="guide-note" th:text="${'추천 이력은 추천 당시의 조건과 결과예요. 장소 정보와 운영 여부는 그 뒤 바뀌었을 수 있어요. 로그인하기 전에 받은 비회원 추천은 이력에 남지 않아요.'}"></p>
 </main>
 </body>
 </html>

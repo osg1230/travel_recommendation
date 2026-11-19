@@ -16,7 +16,6 @@
     <p>코드 <strong th:text="${detail.keyword.code}"></strong></p>
     <p>현재 상태 <strong th:text="${detail.keyword.active ? '사용 중' : '사용 중지'}"></strong></p>
     <p th:text="${'최근 변경 ' + @timeText.dateTime(detail.updatedAt)}"></p>
-    <p class="help">코드는 조건 해석에 쓰여 바꿀 수 없어요.</p>
     <p class="notice" th:unless="${detail.categoryActive}">이 키워드의 카테고리가 사용 중지 상태라, 키워드를 사용 중으로 두어도 조건 입력 화면에 보이지 않아요.</p>
 
     <h2>이름과 표시 순서</h2>
@@ -27,7 +26,7 @@
             <label for="name">이름 (필수)</label>
             <input id="name" name="name" required maxlength="80" th:value="${inputName != null ? inputName : detail.keyword.name}"
                    aria-describedby="name-help">
-            <p id="name-help" class="help">조건 입력 화면에 바로 반영돼요. 이미 저장된 추천 요청·일정에는 그때의 이름이 그대로 남아요.</p>
+            <p id="name-help" class="help">조건 입력 화면에 바로 반영돼요.</p>
         </div>
         <div class="field" th:unless="${detail.keyword.nameLockReason == null}">
             <p>이름 <strong th:text="${detail.keyword.name}"></strong> (고정)</p>
@@ -37,7 +36,7 @@
             <label for="sortOrder">표시 순서 (필수)</label>
             <input id="sortOrder" name="sortOrder" type="number" required min="0" max="999" inputmode="numeric"
                    th:value="${inputSortOrder != null ? inputSortOrder : detail.keyword.sortOrder}" aria-describedby="order-help">
-            <p id="order-help" class="help">0~999 사이 숫자이며 같은 카테고리 안에서 작은 숫자가 앞에 보여요.</p>
+            <p id="order-help" class="help">0~999, 작은 숫자가 앞에 보여요.</p>
         </div>
         <button type="submit">저장</button>
     </form>
@@ -58,7 +57,6 @@
             <button type="submit">다시 사용</button>
         </form>
     </th:block>
-    <p class="help">키워드는 삭제하지 않아요. 저장된 추천 요청이 이 키워드 번호를 기록하고 있기 때문이에요.</p>
 </main>
 </body>
 </html>

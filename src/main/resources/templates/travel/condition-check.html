@@ -9,10 +9,9 @@
     <h1>입력한 내용을 확인해 주세요</h1>
     <p class="intro">바꾸고 싶은 내용이 있다면 돌아가서 수정할 수 있어요.</p>
     <p th:if="${analysisError}" class="notice" role="alert" th:text="${analysisError}"></p>
-    <section th:if="*{inputMode == 'TEXT'}"><h2>적어 주신 여행 이야기</h2><p class="travel-story" th:text="*{originalText}"></p><p class="help">아직 문장을 분석하지 않았어요. 아래 버튼을 누르면 여행 조건을 추출하고 직접 수정할 수 있어요.</p>
+    <section th:if="*{inputMode == 'TEXT'}"><h2>적어 주신 여행 이야기</h2><p class="travel-story" th:text="*{originalText}"></p>
         <form th:action="@{/travel/conditions/analyze}" method="post" data-analysis-form>
             <input type="hidden" name="draftId" th:value="*{draftId}">
-            <p class="help">입력한 문장을 OpenAI에 보내 분석해요. 이름·연락처 등 개인정보는 빼고 적어 주세요.</p>
             <button type="submit">문장 분석하기</button>
             <p data-analysis-status role="status" aria-live="polite" hidden>문장에서 여행 조건을 찾고 있어요. 최대 30초 정도 걸릴 수 있어요.</p>
         </form>
@@ -32,11 +31,9 @@
             <dt>이동수단</dt><dd th:text="*{getKeywordNames('TRANSPORTATION').isEmpty() ? '상관없음' : getKeywordNames('TRANSPORTATION')}"></dd>
         </dl>
         <p class="help" th:if="${discoveredThemes != null and !discoveredThemes.isEmpty()}"
-           th:text="${'취향 탐색에서 고른 취향: ' + #strings.listJoin(discoveredThemes, ', ') + ' · 여행 취향에 반영한 뒤 직접 바꿀 수 있어요.'}"></p>
-        <p class="help">다음 화면에서 인원·숙박 여부 등을 보완하고 조건을 확정할 수 있어요.</p>
+           th:text="${'취향 탐색에서 고른 취향: ' + #strings.listJoin(discoveredThemes, ', ') + ''}"></p>
         <a class="button" th:href="@{/travel/conditions/review}">조건 보완·확정하기</a>
     </section>
     <div class="form-actions"><a class="button" th:href="@{/travel/conditions}">입력 내용 수정하기</a><a class="home-link" th:href="@{/}">홈으로</a></div>
-    <p class="help">입력 내용은 잠시 보관돼요. 로그아웃하거나 세션이 만료되면 다시 입력해 주세요.</p>
 </main>
 </body></html>
