@@ -30,6 +30,7 @@ public class FlightClient {
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyyMMddHHmm");
     static final int PAGE_SIZE = 100, MAX_PAGES = 3;
+    private static final Duration TAGO_CACHE_TTL = IntercityBusClient.TAGO_CACHE_TTL;
     private final TagoProperties properties;
     private final ObjectMapper mapper;
     private final URI endpoint;
@@ -48,8 +49,15 @@ public class FlightClient {
 
     public boolean configured() { return properties.isConfigured(); }
 
+    /** 같은 구간·날짜를 TAGO_CACHE_TTL 동안 다시 부르지 않는다. TAGO는 당일 배차·운항 자료라 그 사이 결과가 같고, 버스 안내 한 번에 수십 번 부르던 호출을 줄인다. 실패는 보관하지 않는다. */
+    private final ExpiringCache<String, List<Flight>> flightsCache = new ExpiringCache<>(TAGO_CACHE_TTL, 500);
+
     /** date에 출발 공항에서 도착 공항으로 가는 운항편. 출발 시각 순서이며 없으면 빈 목록이다. 공항 코드는 TAGO 형식(예: NAARKSS)이다. */
     public List<Flight> flights(String departureAirportId, String arrivalAirportId, LocalDate date) {
+        return flightsCache.get(departureAirportId+":"+arrivalAirportId+":"+date, () -> loadFlights(departureAirportId, arrivalAirportId, date));
+    }
+
+    private List<Flight> loadFlights(String departureAirportId, String arrivalAirportId, LocalDate date) {
         if (departureAirportId == null || arrivalAirportId == null || date == null || departureAirportId.equals(arrivalAirportId)
                 || !departureAirportId.matches("NAA[A-Z]{4}") || !arrivalAirportId.matches("NAA[A-Z]{4}")) throw invalid();
         List<Flight> result = new ArrayList<>();

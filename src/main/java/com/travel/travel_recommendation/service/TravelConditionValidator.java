@@ -47,6 +47,11 @@ public class TravelConditionValidator {
                 || form.getThemes().stream().anyMatch(value -> !contains(choices, "themes", value))) {
             errors.rejectValue("themes", "invalid", "여행 취향은 화면에 있는 항목에서 선택해 주세요.");
         }
+        if (form.getMoods().size() > 100
+                || form.getMoods().stream().anyMatch(value -> !contains(choices, "moods", value))) {
+            errors.rejectValue("moods", "invalid", "여행 분위기는 화면에 있는 항목에서 선택해 주세요.");
+        }
+        checkChoice("pace", form.getPace(), errors, choices);
         LocalDate start = parseDate("startDate", form.getStartDate(), errors);
         LocalDate end = parseDate("endDate", form.getEndDate(), errors);
         // 지난 날짜로는 일정을 만들 수 없다. 일정 입력 화면(ItineraryController)과 같이 한국 날짜로 오늘부터 받는다.
@@ -116,7 +121,7 @@ public class TravelConditionValidator {
     }
 
     private boolean contains(Map<String, List<TravelKeyword>> choices, String field, String value) {
-        return choices.get(field).stream().anyMatch(choice -> choice.getSelectionValue().equals(value));
+        return choices.getOrDefault(field, List.of()).stream().anyMatch(choice -> choice.getSelectionValue().equals(value));
     }
 
     private void checkChoice(String field, String value, Errors errors, Map<String, List<TravelKeyword>> choices) {

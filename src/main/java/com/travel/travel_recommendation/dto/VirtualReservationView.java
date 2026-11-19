@@ -65,6 +65,13 @@ public final class VirtualReservationView {
         public String statusText() {
             return (beforeStatus == null ? "" : statusName(beforeStatus) + " → ") + statusName(afterStatus);
         }
+        /**
+         * 이력의 내용 칸. 2026-10-21 용어를 바꾸기 전에 남긴 이력은 '가상 예약 신청'처럼 '가상'이 붙어 있어,
+         * DB 값은 그대로 두고 화면에서만 '예약 신청'으로 보여 준다(AGENTS.md 8절 용어).
+         */
+        public String reasonText() {
+            return reason == null ? "" : reason.replace("가상 ", "").replace("가상", "");
+        }
     }
 
     public record Detail(Summary summary, Long itineraryId, boolean paymentRequired, Stock stock,

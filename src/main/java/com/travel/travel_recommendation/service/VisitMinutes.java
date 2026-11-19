@@ -48,6 +48,9 @@ public final class VisitMinutes {
      * 기본과 같은 종류(박물관·분류가 넓은 곳 등)는 사용자가 정한 시간을 그대로 쓴다.
      */
     public static int of(PlaceCandidate place, int base) {
+        // 탐방로 입구로 가는 산(한라산)은 코스를 걷는 시간이 정해져 있어 기본 체류시간과 상관없이 그 시간을 쓴다.
+        var entrance = TrailEntrances.of(place);
+        if (entrance.isPresent()) return entrance.get().visitMinutes();
         int table = tableMinutes(place);
         if (table == TABLE_BASE) return base;
         int minutes = (int) Math.round(table * base / (double) TABLE_BASE / 10.0) * 10;

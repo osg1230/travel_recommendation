@@ -50,7 +50,7 @@ class AdminMemberControllerTests {
     @Test void showsEmptyResultAndStatusChangeForm() throws Exception {
         when(service.search(null,null,0,"boss")).thenReturn(new AdminMember.Page(List.of(),0,0,0,"",""));
         mvc.perform(get("/admin/members").with(user("boss").roles("ADMIN")))
-            .andExpect(status().isOk()).andExpect(content().string(containsString("조건에 맞는 회원이 없습니다")));
+            .andExpect(status().isOk()).andExpect(content().string(containsString("조건에 맞는 회원이 없어요")));
         when(service.detail(5L,"boss")).thenReturn(new AdminMember.Detail(summary("traveler01","ACTIVE","정상"),
             LocalDateTime.of(2026,9,10,0,0),true,null,
             List.of(new AdminMember.StatusChange(LocalDateTime.of(2026,9,5,1,0),"정상","이용 제한","약관 위반","boss"))));

@@ -156,7 +156,7 @@ class WithdrawalIntegrationTests {
             .andExpect(status().isForbidden());
         mvc.perform(post("/account/withdraw").session(session).with(csrf()).param("currentPassword",PASSWORD).param("confirm","true"))
             .andExpect(redirectedUrl("/?withdrawn"));
-        mvc.perform(get("/?withdrawn")).andExpect(content().string(containsString("탈퇴가 완료되었습니다")));
+        mvc.perform(get("/?withdrawn")).andExpect(content().string(containsString("탈퇴가 끝났어요")));
         clear();
         mvc.perform(post("/login").servletPath("/login").with(csrf()).param("loginId",member.getLoginId()).param("password",PASSWORD))
             .andExpect(redirectedUrl("/login?error"));

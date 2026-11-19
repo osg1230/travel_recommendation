@@ -28,6 +28,15 @@ class VisitMinutesTests {
         assertThat(VisitMinutes.tableMinutes(place("장소1", null))).isEqualTo(90);
     }
 
+    // 한라산은 어리목 입구에서 오르내리는 시간(240분)을 기본 체류시간과 상관없이 쓴다. 제주가 아닌 같은 이름은 표대로 본다.
+    @Test void hallasanUsesTheTrailTimeFromItsEntrance() {
+        var hallasan = new PlaceCandidate(1L, "한라산국립공원", "제주특별자치도 제주시 오등동 산 182", "여행 > 관광,명소 > 국립공원",
+            "", "https://place.map.kakao.com/1", "", LocalDateTime.of(2026, 9, 1, 0, 0));
+        assertThat(VisitMinutes.of(hallasan, 90)).isEqualTo(240);
+        assertThat(VisitMinutes.of(hallasan, 60)).isEqualTo(240);
+        assertThat(VisitMinutes.of(place("한라산", "여행 > 관광,명소 > 산"), 90)).isEqualTo(120);
+    }
+
     // 기본 체류시간을 바꾸면 같은 비율로 늘거나 줄고, 10분 단위로 반올림해 30~240분 안에 둔다. 기본과 같은 종류는 입력한 시간 그대로다.
     @Test void scalesWithBaseMinutes() {
         var view = place("전망대", "여행 > 관광,명소 > 전망대");

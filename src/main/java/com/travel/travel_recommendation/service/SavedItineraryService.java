@@ -226,23 +226,28 @@ public class SavedItineraryService {
         items.flush();
     }
 
-    @Transactional(readOnly=true,timeout=10)
-    public List<SavedItinerary.Summary> list(String loginId) {
-        return itineraries.findByUserIdOrderByStartDateDescIdDesc(member(loginId)).stream().map(this::summary).toList();
-    }
-
     /** 목록 카드에 더 보여 줄 정보: 이동수단 이름과, 대표 사진 후보가 되는 관광지 ID(방문 순서). */
     public record ListExtra(String transportName, List<Long> visitPlaceIds) {}
+    /** 목록 화면에 필요한 일정 요약과 카드별 추가 정보. 내 일정은 한 번만 읽는다(점검 보고 15번). */
+    public record ListPage(List<SavedItinerary.Summary> itineraries, Map<Long,ListExtra> extras) {}
 
     @Transactional(readOnly=true,timeout=10)
-    public Map<Long,ListExtra> listExtras(String loginId) {
+    public ListPage listPage(String loginId) {
         var extras=new HashMap<Long,ListExtra>();
-        for(var itinerary:itineraries.findByUserIdOrderByStartDateDescIdDesc(member(loginId))) {
-            var visitIds=items.findByItineraryIdOrderByDayNoAscSequenceNoAsc(itinerary.getId()).stream()
-                .filter(item->"VISIT".equals(item.getItemType()) && item.getPlaceId()!=null).map(ItineraryItem::getPlaceId).toList();
+        var owned=itineraries.findByUserIdOrderByStartDateDescIdDesc(member(loginId));
+        var summaries=owned.stream().map(this::summary).toList();
+        if(owned.isEmpty()) return new ListPage(summaries,extras);
+        // 일정마다 항목을 따로 읽지 않고 방문 항목을 한 번에 읽은 뒤, 일정별로 나눠 방문 순서(일차·순서)대로 정렬한다.
+        var visits=new HashMap<Long,List<ItineraryItem>>();
+        for(var item:items.findByItineraryIdInAndItemType(owned.stream().map(Itinerary::getId).toList(),"VISIT"))
+            if(item.getPlaceId()!=null) visits.computeIfAbsent(item.getItineraryId(),id->new ArrayList<>()).add(item);
+        for(var itinerary:owned) {
+            var visitIds=visits.getOrDefault(itinerary.getId(),List.of()).stream()
+                .sorted(Comparator.comparingInt(ItineraryItem::getDayNo).thenComparingInt(ItineraryItem::getSequenceNo))
+                .map(ItineraryItem::getPlaceId).toList();
             extras.put(itinerary.getId(),new ListExtra(transportName(itinerary.getTransportation()),visitIds));
         }
-        return extras;
+        return new ListPage(summaries,extras);
     }
 
     @Transactional(readOnly=true,timeout=10)
@@ -305,7 +310,10 @@ public class SavedItineraryService {
         String trimmed=title==null?"":title.strip();
         if(trimmed.isEmpty() || trimmed.length()>150) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
             "일정 이름은 1자 이상 150자 이하로 입력해 주세요.");
-        owned(id,loginId).rename(trimmed);
+        // 행 잠금으로 읽은 뒤 바꾼다. 잠금 없이 읽으면 그사이 적용된 수정안(행 잠금 사용)의 내용을 예전 값으로 덮어쓸 수 있다.
+        var itinerary=itineraries.lockByIdAndUserId(id,member(loginId))
+            .orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"저장한 일정을 찾을 수 없어요."));
+        itinerary.rename(trimmed);
         itineraries.flush();
     }
 

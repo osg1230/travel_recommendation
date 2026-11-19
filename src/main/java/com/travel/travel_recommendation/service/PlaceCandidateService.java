@@ -49,6 +49,34 @@ public class PlaceCandidateService {
             c.purposeSearch().placesIn(destinationId).stream().map(p -> p.placeId()).toList(), c.purposeLabel());
     }
 
+    /** 이 추천 요청에서 고른 여행 취향 이름. 장소 목록을 모을 때 취향별 검색어를 정하는 데 쓴다(PlaceDiscoveryService). */
+    @Transactional(readOnly = true, timeout = 10)
+    public List<String> themeNames(UUID jobId, String loginId, byte[] guestHash) {
+        jobs.view(jobId, loginId, guestHash);
+        var stored = jobRepository.findById(jobId).orElse(null);
+        if (stored == null) return List.of();
+        var themes = mapper.readValue(stored.getRequestJson(), ConfirmedTravelConditions.class).themeNames();
+        return themes == null ? List.of() : themes;
+    }
+
+    /** 이 추천 요청에서 고른 여행 분위기 이름. 장소 목록을 모을 때 분위기별 검색어를 정하는 데 쓴다(PlaceDiscoveryService). */
+    @Transactional(readOnly = true, timeout = 10)
+    public List<String> moodNames(UUID jobId, String loginId, byte[] guestHash) {
+        jobs.view(jobId, loginId, guestHash);
+        var stored = jobRepository.findById(jobId).orElse(null);
+        if (stored == null) return List.of();
+        return MoodPlaces.chosen(mapper.readValue(stored.getRequestJson(), ConfirmedTravelConditions.class));
+    }
+
+    /** 이 추천 요청의 목적 음식 이름(예: 김밥). 장소 목록을 모을 때 그 음식 음식점을 더 찾는 데 쓴다(PlaceDiscoveryService). */
+    @Transactional(readOnly = true, timeout = 10)
+    public String foodName(UUID jobId, String loginId, byte[] guestHash) {
+        jobs.view(jobId, loginId, guestHash);
+        var stored = jobRepository.findById(jobId).orElse(null);
+        if (stored == null) return "";
+        return mapper.readValue(stored.getRequestJson(), ConfirmedTravelConditions.class).purposeFood();
+    }
+
     @Transactional(readOnly = true, timeout = 10)
     public PlaceCandidateView find(UUID jobId, long destinationId, String loginId, byte[] guestHash) {
         return findForSchedule(jobId, destinationId, loginId, guestHash, null);
@@ -87,13 +115,36 @@ public class PlaceCandidateService {
         // 고른 여행 취향(예: 문화·역사)에 맞는 관광지는 목적 시설 다음으로 둔다. 관광지 후보 수는 여행 일수로 정해져(TripConstraints.candidateLimit) 뒤쪽은 잘리기 때문이다.
         // 경주처럼 대표 분류가 문화·역사인 여행지는 취향을 고르지 않아도 문화유산이 잘리지 않게 한다.
         var themes = ThemePlaces.withHeritageDestination(conditions.themeNames(), current.getName(), current.getSubtype());
-        var candidates = places.findLocalPlaces(current.getRegion()).stream()
-            .filter(place -> usable(place, current.getRegion()))
+        var usablePlaces = places.findLocalPlaces(current.getRegion()).stream()
+            .filter(place -> usable(place, current.getRegion())).toList();
+        // 정렬은 장소를 여러 번 비교하므로, details_json의 검색 순서와 취향 일치 여부는 장소마다 한 번만 계산해 둔다(점검 보고 14번).
+        var ranks = new HashMap<Long,Integer>(); var themeMissed = new HashMap<Long,Boolean>();
+        for (var place : usablePlaces) {
+            ranks.put(place.getId(), PlaceRankDetails.read(place, mapper));
+            themeMissed.put(place.getId(), ThemePlaces.matched(place.getName(), place.getSubtype(), themes).isEmpty());
+        }
+        // 분위기 검색으로 찾는 종류(한적한 → 수목원·둘레길 등)의 관광지 중 검색 순서 앞 MoodPlaces.CANDIDATE_KEEP곳은 취향 장소보다 앞에 둔다(2026-11-16).
+        // 취향 장소가 후보 수를 먼저 채워 분위기 검색으로 찾은 곳이 잘리던 것을 막는다. 일정에 넣을지는 가치 점수와 AI 순서가 정한다.
+        var moods = MoodPlaces.chosen(conditions);
+        var moodIds = moods.isEmpty() ? Set.<Long>of() : usablePlaces.stream()
+            .filter(p -> "ATTRACTION".equals(p.getPlaceType()) && MoodPlaces.searchedKind(p.getName(), p.getSubtype(), moods))
+            .sorted(Comparator.comparingInt((Place p) -> ranks.get(p.getId())).thenComparing(Place::getId))
+            .limit(MoodPlaces.CANDIDATE_KEEP).map(Place::getId).collect(java.util.stream.Collectors.toSet());
+        // 목적 음식(예: 김밥)이 상호·분류에 들어간 음식점은 FOOD_RESTAURANT_KEEP곳까지 음식점 후보 앞에 둔다(2026-11-16).
+        // 음식점 후보는 8곳만 남기므로, 앞에 두지 않으면 일정 식사에서 고를 수 없었다.
+        String food = conditions.purposeFood();
+        var foodIds = food.isEmpty() ? Set.<Long>of() : usablePlaces.stream()
+            .filter(p -> "RESTAURANT".equals(p.getPlaceType()) && servesFood(p.getName(), p.getSubtype(), food))
+            .sorted(Comparator.comparingInt((Place p) -> ranks.get(p.getId())).thenComparing(Place::getId))
+            .limit(FOOD_RESTAURANT_KEEP).map(Place::getId).collect(java.util.stream.Collectors.toSet());
+        var candidates = usablePlaces.stream()
             .sorted(Comparator.comparing((Place p)->!purposeIds.contains(p.getId()) && !festivalIds.contains(p.getId()))
-                .thenComparing((Place p)->ThemePlaces.matched(p.getName(),p.getSubtype(),themes).isEmpty())
+                .thenComparing((Place p)->!moodIds.contains(p.getId()))
+                .thenComparing((Place p)->!foodIds.contains(p.getId()))
+                .thenComparing((Place p)->themeMissed.get(p.getId()))
                 .thenComparing((Place p)->!"KAKAO".equals(p.getSourceProvider()))
                 // 카카오 검색 결과에 먼저 나온 곳부터 둔다. 이름순으로 자르면 뒤쪽 글자로 시작하는 곳(정동진 등)이 빠진다.
-                .thenComparingInt((Place p)->PlaceRankDetails.read(p,mapper))
+                .thenComparingInt((Place p)->ranks.get(p.getId()))
                 .thenComparing(Place::getName).thenComparing(Place::getId)).toList();
         var distinct=new ArrayList<Place>(); Set<String> seen=new HashSet<>();
         for(var place:candidates) {
@@ -102,11 +153,20 @@ public class PlaceCandidateService {
             String key=place.getPlaceType()+":"+address;
             if(seen.add(key)) distinct.add(place);
         }
-        Set<Long> keep=new HashSet<>(purposeIds); keep.addAll(festivalIds);
+        Set<Long> keep=new HashSet<>(purposeIds); keep.addAll(festivalIds); keep.addAll(moodIds);
         var spread=spreadKinds(distinct,keep,themes);
         return new PlaceCandidateView(jobId, destination, conditions.durationDays(), needsAccommodation,
             ofType(spread, "ATTRACTION", TripConstraints.candidateLimit(conditions.durationDays())),
             needsAccommodation ? ofType(spread, "ACCOMMODATION", 5) : List.of(), ofType(spread, "RESTAURANT", 8));
+    }
+
+    /** 음식점 후보(8곳) 앞에 둘 목적 음식 음식점 수. 나머지 자리는 지금처럼 인기·검색 순서 음식점이다. */
+    static final int FOOD_RESTAURANT_KEEP = 4;
+
+    /** 상호나 분류에 음식 이름이 들어 있는지(예: "오다리김밥", "음식점 > 분식 > 김밥"). 메뉴를 확인한 것은 아니다. */
+    public static boolean servesFood(String name, String subtype, String food) {
+        if (food == null || food.isEmpty()) return false;
+        return (name != null && name.contains(food)) || (subtype != null && subtype.contains(food));
     }
 
     /** 관광지 후보 앞쪽에 둘 같은 종류의 수. 고른 여행 취향에 맞는 종류(예: 바다 취향의 해변)는 더 둔다. */

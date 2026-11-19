@@ -297,8 +297,9 @@ class PlaceRatingIntegrationTests {
         ratings.save(attraction,member().getLoginId(),5,List.of(),null);
         clear();
         // 가장 최근에 평가가 남은 장소가 먼저 오고, 장소마다 요약과 최근 평가가 함께 온다.
-        var all=ratings.browse("");
-        assertThat(all).extracting(p->p.place().placeId()).startsWith(attraction,restaurant);
+        // 서버를 켜 둔 채 돌리면 다른 평가가 끼어들 수 있어, 이 테스트의 두 장소만 골라 상대 순서를 본다(점검 보고 24번).
+        var all=ratings.browse("").stream().filter(p->List.of(attraction,restaurant).contains(p.place().placeId())).toList();
+        assertThat(all).extracting(p->p.place().placeId()).containsExactly(attraction,restaurant);
         assertThat(all.get(1).summary().recent()).singleElement().extracting(Recent::comment).isEqualTo("양이 많아요");
         assertThat(all.get(1).summary().recent().get(0).raterName()).isEqualTo("여**");
         // 장소 이름 일부로 좁힌다. 없는 이름이면 비어 있다.

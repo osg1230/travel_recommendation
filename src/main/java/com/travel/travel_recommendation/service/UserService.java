@@ -25,10 +25,10 @@ public class UserService {
     @Transactional(readOnly = true)
     public void checkAvailable(SignupForm form) {
         if (users.existsByLoginId(form.getLoginId())) {
-            throw new DuplicateUserException("loginId", "이미 사용 중인 아이디입니다.");
+            throw new DuplicateUserException("loginId", "이미 사용 중인 아이디예요.");
         }
         if (users.existsByNicknameAndStatusNot(form.getNickname(), UserStatus.WITHDRAWN)) {
-            throw new DuplicateUserException("nickname", "이미 사용 중인 닉네임입니다.");
+            throw new DuplicateUserException("nickname", "이미 사용 중인 닉네임이에요.");
         }
     }
 

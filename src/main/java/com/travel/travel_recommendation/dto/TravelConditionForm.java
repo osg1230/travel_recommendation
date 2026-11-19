@@ -21,6 +21,9 @@ public class TravelConditionForm {
     private List<String> themes = new ArrayList<>();
     private String budget = "";
     private String transportation = "";
+    /** 여행 분위기(여러 개)와 여행 속도(하나). 둘 다 고르지 않아도 된다. */
+    private List<String> moods = new ArrayList<>();
+    private String pace = "";
     private List<TravelKeyword> selectedKeywords = List.of();
 
     public String getKeywordNames(String categoryCode) {

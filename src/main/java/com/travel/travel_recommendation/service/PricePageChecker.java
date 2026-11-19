@@ -14,7 +14,11 @@ import java.util.regex.Pattern;
  * AI가 준 주소로 서버가 요청을 보내므로 https 공개 주소만 열고, 내부망·로컬 주소와 다른 곳으로의 이동(리다이렉트)은 따라가지 않는다.
  */
 public class PricePageChecker {
-    private static final int MAX_BYTES = 2_000_000;
+    /** 읽을 본문 크기 상한. 가격·이름은 앞쪽에 있어 300KB면 충분하고, 큰 페이지에서 태그 지우기(정규식)가 느려지는 것을 막는다. */
+    private static final int MAX_BYTES = 300_000;
+    /** 페이지 하나를 확인하는 전체 시간(주소 조회·연결·본문 읽기 포함). HttpRequest 시간 제한은 응답 머리까지만 걸린다. */
+    static final Duration FETCH_LIMIT = Duration.ofSeconds(8);
+    private static final java.util.concurrent.ExecutorService FETCHES = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(4))
         .followRedirects(HttpClient.Redirect.NEVER).build();
     private final boolean allowLocalHosts;
@@ -40,8 +44,22 @@ public class PricePageChecker {
         return text != null && !compact(placeName).isEmpty() && text.contains(compact(placeName));
     }
 
-    /** 허용된 공개 https 페이지를 읽어 태그·공백을 뺀 글자로 돌려준다. 열리지 않거나 읽을 수 없으면 null이다('확인하지 못함'). */
+    /**
+     * 허용된 공개 https 페이지를 읽어 태그·공백을 뺀 글자로 돌려준다. 열리지 않거나 읽을 수 없으면 null이다('확인하지 못함').
+     * 전체를 FETCH_LIMIT 안에 끝내지 못하면 기다리지 않고 null을 돌려준다(본문을 천천히 보내는 페이지 대비).
+     */
     private String fetchText(String url) {
+        var task = FETCHES.submit(() -> fetchTextNow(url));
+        try {
+            return task.get(FETCH_LIMIT.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            task.cancel(true); Thread.currentThread().interrupt(); return null;
+        } catch (java.util.concurrent.TimeoutException | java.util.concurrent.ExecutionException e) {
+            task.cancel(true); return null;
+        }
+    }
+
+    private String fetchTextNow(String url) {
         try {
             URI uri = URI.create(url);
             if (!allowed(uri)) return null;

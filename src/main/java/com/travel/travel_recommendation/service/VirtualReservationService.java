@@ -396,9 +396,19 @@ public class VirtualReservationService {
         }
     }
 
+    /** 회원 한 명이 동시에 둘 수 있는 결제 대기 예약 수. 요청 키만 바꿔 신청해 그날 수량을 혼자 다 잡지 못하게 한다. */
+    public static final int MAX_PENDING_PER_MEMBER = 5;
+    /** 결제 대기 예약은 마지막으로 바꾼 지 이만큼 지나면 취소하고 수량을 되돌린다(expirePending). */
+    public static final int PENDING_EXPIRE_MINUTES = 30;
+
     private long createInTx(Long userId, Long stockId, Long itineraryId, int quantity, int partySize, UUID requestKey) {
         var existing=existingByRequestKey(userId,requestKey);
         if(existing.isPresent()) return existing.get();
+        // 같은 회원의 동시 신청이 개수 확인을 함께 통과하지 않게 회원 행을 먼저 잠근다(수량 잠금보다 앞이라 순서가 늘 같다).
+        jdbc.query("SELECT user_id FROM dbo.users WITH (UPDLOCK, ROWLOCK) WHERE user_id=?",(rs,n)->rs.getLong(1),userId);
+        Integer pending=jdbc.queryForObject("SELECT COUNT(*) FROM dbo.virtual_reservations WHERE user_id=? AND status='PENDING'",Integer.class,userId);
+        if(pending!=null && pending>=MAX_PENDING_PER_MEMBER)
+            throw conflict("결제 대기 중인 예약이 "+MAX_PENDING_PER_MEMBER+"건이에요. 결제하거나 취소한 뒤 새로 예약해 주세요.");
         var stock=bookableStock(stockId);
         requireItinerary(userId,itineraryId,stock.placeId());
         validate(stock,quantity,partySize);
@@ -506,6 +516,31 @@ public class VirtualReservationService {
         if(outcome==CancelOutcome.ALREADY_CANCELED)
             recordFailure(userId,"RESERVATION",reservationId,"RESERVATION_CANCEL","CANCELED","ALREADY_CANCELED");
         return outcome;
+    }
+
+    /**
+     * 결제하지 않고 PENDING_EXPIRE_MINUTES분 넘게 둔 결제 대기 예약을 취소해 잡아 둔 수량을 되돌린다. 실행기가 1분마다 부른다.
+     * 한 건씩 따로 잠가 처리하고, 잠근 뒤 아직 결제 대기인지 다시 본다(그 사이 결제·취소됐으면 건너뛴다). 처리한 수를 돌려준다.
+     */
+    public int expirePending() {
+        var ids=jdbc.queryForList("""
+            SELECT TOP 50 reservation_id FROM dbo.virtual_reservations
+            WHERE status='PENDING' AND updated_at < DATEADD(MINUTE,-?,SYSDATETIME()) ORDER BY reservation_id""",Long.class,PENDING_EXPIRE_MINUTES);
+        int expired=0;
+        for(Long id:ids) {
+            Boolean done=tx.execute(s->{
+                var r=jdbc.query("""
+                    SELECT reservation_id, user_id, stock_id, itinerary_id, quantity, party_size, expected_amount, status, payment_required
+                    FROM dbo.virtual_reservations WITH (UPDLOCK, ROWLOCK)
+                    WHERE reservation_id=? AND status='PENDING' AND updated_at < DATEADD(MINUTE,-?,SYSDATETIME())""",
+                    this::row,id,PENDING_EXPIRE_MINUTES).stream().findFirst().orElse(null);
+                if(r==null) return false;
+                cancelLocked(r,"결제 대기 "+PENDING_EXPIRE_MINUTES+"분이 지나 자동 취소");
+                return true;
+            });
+            if(Boolean.TRUE.equals(done)) expired++;
+        }
+        return expired;
     }
 
     private CancelOutcome cancelLocked(Row r, String reason) {

@@ -286,6 +286,19 @@ public final class TripConstraints {
      * 하루 시간에서 식사(식당까지 이동 포함)를 빼고 남은 시간에 관광지가 몇 곳 들어가는지 추정한다(최소 1곳, 최대 MAX_AUTO_DAILY곳).
      * 관광지 한 곳에는 체류시간과 이동 약 30분이 든다고 본다. 예) 09:00~18:00, 체류 90분이면 3곳.
      */
+    /**
+     * 낮 관광지를 몇 곳 고를지 정하는 하루 수용량(2026-11-16). 기본 체류시간 대신 후보 앞쪽(일수 × MAX_AUTO_DAILY곳)의
+     * 종류별 체류시간(VisitMinutes) 평균으로 계산한다. 해변·등대·시장처럼 짧은 곳이 많은데 90분 기준으로 하루 3곳만 골라
+     * 오후가 남았고, 그 시간을 예비 관광지로 채우다 보니 1일차가 예비를 다 써서 뒤쪽 날이 일찍 끝났다(속초 2박 3일).
+     * 평균이 기본 체류시간보다 길면 지금처럼 기본 체류시간을 쓴다(고르는 수가 줄지는 않는다).
+     */
+    public static int plannedDailyCapacity(List<PlaceCandidate> pool, int days, LocalTime start, LocalTime end, int visitMinutes) {
+        var front = pool.stream().limit((long) Math.max(1, days) * MAX_AUTO_DAILY).toList();
+        if (front.isEmpty()) return estimatedDailyCapacity(start, end, visitMinutes);
+        int average = (int) Math.round(front.stream().mapToInt(p -> VisitMinutes.of(p, visitMinutes)).average().orElse(visitMinutes));
+        return estimatedDailyCapacity(start, end, Math.min(visitMinutes, average));
+    }
+
     public static int estimatedDailyCapacity(LocalTime start, LocalTime end, int visitMinutes) {
         int meals = includesDinner(end) ? 2 : 1;
         long minutes = Duration.between(start, end).toMinutes() - meals * (MEAL_MINUTES + MOVE_MINUTES);
@@ -309,7 +322,9 @@ public final class TripConstraints {
      */
     public static List<PlaceCandidate> select(List<PlaceCandidate> pool, int days, LocalTime start, LocalTime end,
                                               int visitMinutes, Constraints c) {
-        if (c == null) return pool.stream().limit(Math.min(MAX_TOTAL, days * estimatedDailyCapacity(start, end, visitMinutes))).toList();
+        // 몇 곳을 고를지는 후보의 종류별 체류시간으로 본 하루 수용량(planned)으로 정한다. 필수 장소 검사는 아래에서 기본 체류시간(capacity)으로 한다.
+        int planned = plannedDailyCapacity(pool, days, start, end, visitMinutes);
+        if (c == null) return pool.stream().limit(Math.min(MAX_TOTAL, days * planned)).toList();
         var poolIds = pool.stream().map(PlaceCandidate::placeId).toList();
         if (!poolIds.containsAll(c.requiredPlaceIds()) || new HashSet<>(c.requiredPlaceIds()).size() != c.requiredPlaceIds().size())
             throw new IllegalArgumentException("Unknown required place");
@@ -353,10 +368,10 @@ public final class TripConstraints {
         if (!conflicts.isEmpty()) throw new ConflictException(conflicts);
 
         int target;
-        if (c.dailyVisits() == null) target = Math.min(MAX_TOTAL, days * capacity);
+        if (c.dailyVisits() == null) target = Math.min(MAX_TOTAL, days * planned);
         else if (c.dailyVisitsRequired()) target = days * c.dailyVisits();
         // 선호 조건은 시간·후보가 허락하는 만큼만 반영한다.
-        else target = Math.min(MAX_TOTAL, days * Math.min(c.dailyVisits(), capacity));
+        else target = Math.min(MAX_TOTAL, days * Math.min(c.dailyVisits(), planned));
         target = Math.min(Math.max(target, required), pool.size());
         var selected = new ArrayList<PlaceCandidate>();
         pool.stream().filter(p -> c.requiredPlaceIds().contains(p.placeId())).forEach(selected::add);

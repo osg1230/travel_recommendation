@@ -56,6 +56,11 @@ class ItineraryRevisionIntegrationTests {
     private UUID parent;
     private long destination;
 
+    /** 이 테스트의 비회원이 만든 작업 수. 웹 서버를 켜 둔 채 돌려도 다른 사람의 작업 때문에 개수가 어긋나지 않게 전체 수를 세지 않는다. */
+    private long ownJobs() {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM dbo.ai_jobs WHERE guest_token_hash=?",Long.class,hash);
+    }
+
     @BeforeEach void setup() throws Exception {
         ExternalPlaceCache.expireExisting(jdbc);
         // 강릉 기본 관광지는 2곳뿐이라 교체 후보를 확인할 수 있게 테스트 관광지를 추가한다(롤백됨).
@@ -216,7 +221,7 @@ class ItineraryRevisionIntegrationTests {
         var original=completedDraft();
         var target=attractionIds(original).getFirst();
         long herb=spareId("허브 테스트 실내 체험관");
-        long before=jobs.count();
+        long before=ownJobs();
         when(ai.configured()).thenReturn(true);
         var exact=new OpenAiRevisionClient.Proposal(false,null,List.of(target),List.of(herb),null,null,null,"비슷한 실내 체험관으로 바꿨어요.",false,
             List.of("전동성당"),true);
@@ -225,7 +230,7 @@ class ItineraryRevisionIntegrationTests {
         assertThat(asked.job()).isNull();
         assertThat(asked.question()).contains("'전동성당'은(는) 이 지역에서 확인된 관광지로 찾지 못했어요").contains("한 번 더 보내면");
         assertThat(asked.askedPlaces()).containsExactly("전동성당");
-        assertThat(jobs.count()).isEqualTo(before);
+        assertThat(ownJobs()).isEqualTo(before);
 
         var again=schedules.aiRevise(original,null,hash,"첫 번째 곳을 전동성당으로 바꿔 줘",Set.of("전동성당"));
         var revision=schedules.view(again.job(),null,hash).input().revision();
@@ -245,14 +250,14 @@ class ItineraryRevisionIntegrationTests {
 
     @Test void ambiguousRequestReturnsQuestionAndFormatFailuresAreRetriedAtMostTwice() {
         var original=completedDraft();
-        long before=jobs.count();
+        long before=ownJobs();
         when(ai.configured()).thenReturn(true);
         when(ai.propose(any(),any(),any(),any(),any(),any(),eq("좀 바꿔 줘"),any()))
             .thenReturn(new OpenAiRevisionClient.Proposal(true,"어느 관광지를 바꿀까요?",List.of(),List.of(),null,null,null,null));
         var clarify=schedules.aiRevise(original,null,hash,"좀 바꿔 줘");
         assertThat(clarify.job()).isNull();
         assertThat(clarify.question()).isEqualTo("어느 관광지를 바꿀까요?");
-        assertThat(jobs.count()).isEqualTo(before);
+        assertThat(ownJobs()).isEqualTo(before);
 
         // 형식 오류는 사유를 붙여 다시 요청하고, 세 번째도 실패하면 그대로 알린다.
         when(ai.propose(any(),any(),any(),any(),any(),any(),eq("형식 오류"),any()))
@@ -267,7 +272,15 @@ class ItineraryRevisionIntegrationTests {
         // 바꿀 내용이 없는 수정안은 새 작업을 만들지 않는다.
         when(ai.propose(any(),any(),any(),any(),any(),any(),eq("그대로"),any())).thenReturn(revise(List.of(),List.of(),null));
         assertThat(schedules.aiRevise(original,null,hash,"그대로").question()).contains("바꿀 내용을 찾지 못했어요");
-        assertThat(jobs.count()).isEqualTo(before);
+        assertThat(ownJobs()).isEqualTo(before);
+        // 경계값: 수정 요청은 1~300자라 301자는 AI를 부르기 전에 거절하고, 300자는 AI에 넘긴다(점검 보고 29번).
+        String tooLong="가".repeat(301), longest="가".repeat(300);
+        assertThatThrownBy(()->schedules.aiRevise(original,null,hash,tooLong))
+            .isInstanceOfSatisfying(org.springframework.web.server.ResponseStatusException.class,
+                e->assertThat(e.getStatusCode().value()).isEqualTo(400));
+        verify(ai,never()).propose(any(),any(),any(),any(),any(),any(),eq(tooLong),any());
+        when(ai.propose(any(),any(),any(),any(),any(),any(),eq(longest),any())).thenReturn(revise(List.of(),List.of(),null));
+        assertThat(schedules.aiRevise(original,null,hash,longest).question()).contains("바꿀 내용을 찾지 못했어요");
         assertThatThrownBy(()->schedules.aiRevise(original,null,hash," ")).isInstanceOf(ResponseStatusException.class);
     }
 
@@ -290,11 +303,11 @@ class ItineraryRevisionIntegrationTests {
         session.removeAttribute("itineraryAiRevisionNext");
         when(ai.propose(any(),any(),any(),any(),any(),any(),eq("점심 식당 바꿔 줘"),any()))
             .thenReturn(new OpenAiRevisionClient.Proposal(false,OpenAiRevisionClient.UNSUPPORTED_MESSAGE,List.of(),List.of(),null,null,null,null,true));
-        long before=jobs.count();
+        long before=ownJobs();
         var flashed=mvc.perform(post(url).session(session).with(csrf()).param("request","점심 식당 바꿔 줘"))
             .andExpect(flash().attribute("aiNotice",OpenAiRevisionClient.UNSUPPORTED_MESSAGE))
             .andExpect(flash().attributeCount(2)).andReturn().getFlashMap();
-        assertThat(jobs.count()).isEqualTo(before);
+        assertThat(ownJobs()).isEqualTo(before);
         // 앞선 요청들이 세션에 남긴 flash 값이 먼저 읽히지 않게 비우고, 이번 요청의 값만 넘긴다.
         session.removeAttribute(org.springframework.web.servlet.support.SessionFlashMapManager.class.getName()+".FLASH_MAPS");
         mvc.perform(get("/travel/recommendations/itineraries/"+original).session(session).flashAttrs(flashed))
@@ -372,7 +385,7 @@ class ItineraryRevisionIntegrationTests {
     @Test void invalidRequestsDoNotCreateJobs() {
         var original=completedDraft();
         var ids=attractionIds(original);
-        long count=jobs.count();
+        long count=ownJobs();
         assertThatThrownBy(()->schedules.revise(original,null,hash,ids,ReplaceReason.TASTE,LocalTime.of(9,0),LocalTime.of(18,0),90))
             .isInstanceOf(ResponseStatusException.class).hasMessageContaining("유지할 관광지");
         assertThatThrownBy(()->schedules.revise(original,null,hash,List.of(ids.getFirst()),null,LocalTime.of(9,0),LocalTime.of(18,0),90))
@@ -389,7 +402,7 @@ class ItineraryRevisionIntegrationTests {
         var pending=schedules.create(parent,destination,null,hash,LocalTime.of(9,0),LocalTime.of(18,0),KakaoMapClient.Transport.CAR,90);
         assertThatThrownBy(()->schedules.revise(pending,null,hash,List.of(),null,LocalTime.of(9,0),LocalTime.of(18,0),90))
             .isInstanceOf(ResponseStatusException.class).hasMessageContaining("완성된 일정 초안");
-        assertThat(jobs.count()).isEqualTo(count+1);
+        assertThat(ownJobs()).isEqualTo(count+1);
     }
 
     @Test void formPostRedirectsAndFailureOffersOriginal() throws Exception {
@@ -414,12 +427,12 @@ class ItineraryRevisionIntegrationTests {
             .andExpect(header().string("Location","/travel/recommendations/itineraries/"+original+"/edit"))
             .andExpect(flash().attribute("editError",containsString("교체 이유를 골라 주세요.")));
         // 시간만 바꾸기에서 지금과 같은 값을 보내면 수정안을 만들지 않고, 입력한 값을 다시 채울 수 있게 돌려준다.
-        long count=jobs.count();
+        long count=ownJobs();
         mvc.perform(post(url).session(session).with(csrf()).param("start","09:00").param("end","16:00").param("visitMinutes","90"))
             .andExpect(status().isSeeOther())
             .andExpect(flash().attribute("reviseError",containsString("바꾼 내용이 없어요")))
             .andExpect(flash().attributeExists("timeValues"));
-        assertThat(jobs.count()).isEqualTo(count);
+        assertThat(ownJobs()).isEqualTo(count);
         mvc.perform(get("/travel/recommendations/itineraries/"+original).session(session)).andExpect(status().isOk())
             .andExpect(content().string(containsString("AI 없이 시간만 바꾸기")));
     }
@@ -427,12 +440,12 @@ class ItineraryRevisionIntegrationTests {
     private String draftUrl(UUID id) { return "/travel/recommendations/itineraries/"+id; }
     // 직접 수정을 보내고, 실패했을 때 수정 화면에 보여 줄 문장을 확인한다. 초안은 새로 생기지 않는다.
     private void directChangeIsRefused(UUID id,String param,String value,String reason) throws Exception {
-        long count=jobs.count();
+        long count=ownJobs();
         var request=post(draftUrl(id)+"/direct-revisions").session(session).with(csrf());
         if(param!=null) request.param(param,value);
         mvc.perform(request).andExpect(redirectedUrl(draftUrl(id)+"/edit"))
             .andExpect(flash().attribute("editError",containsString(reason)));
-        assertThat(jobs.count()).isEqualTo(count);
+        assertThat(ownJobs()).isEqualTo(count);
     }
 
     @Test void editScreenOpensOnlyForTheSameSession() throws Exception {

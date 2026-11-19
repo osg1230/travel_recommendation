@@ -31,6 +31,7 @@ public class RecommendationJobWorker {
     private final DestinationLandmarkService landmarks;
     private final DestinationProfileService profiles;
     private final WithdrawalService withdrawals;
+    private final VirtualReservationService reservations;
     private volatile boolean ready;
 
     @EventListener(ApplicationReadyEvent.class)
@@ -130,6 +131,14 @@ public class RecommendationJobWorker {
     }
     @Scheduled(fixedDelay=60000)
     public void cleanup() { if(ready) service.cleanup(); }
+
+    // 결제하지 않고 오래 둔 결제 대기 예약을 취소해 수량을 되돌린다. 실패해도 1분 뒤 다시 시도한다.
+    @Scheduled(initialDelay=30000,fixedDelay=60000)
+    public void expirePendingReservations() {
+        if(!ready) return;
+        try { int count=reservations.expirePending(); if(count>0) log.info("결제 대기 예약 자동 취소 {}건",count); }
+        catch(DataAccessException|TransactionException e) { log.warn("결제 대기 예약 정리 실패 ({})",e.toString()); }
+    }
 
     // 하루 한 번이면 충분하다. 서버를 자주 껐다 켜도 빠지지 않게 시작 1분 뒤에도 한 번 돌린다.
     @Scheduled(initialDelay=60000,fixedDelay=24*60*60*1000)

@@ -5,6 +5,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title th:text="${pageTitle}">다녀올게</title>
+    <!-- 아이콘을 알려 주지 않으면 브라우저가 /favicon.ico를 찾다가 로그인 회원에게 403 기록이 남는다. 상단 바 로고와 같은 그림이다. -->
+    <link rel="icon" type="image/svg+xml" th:href="@{/images/favicon.svg}">
+    <!-- 글꼴 Pretendard(CDN). CSS 안 @import로 부르면 app.css를 다 받은 뒤에야 받기 시작해 늦으므로 여기서 함께 받는다. 받지 못하면 맑은 고딕으로 보인다. -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
     <link rel="stylesheet" th:href="@{/css/app.css}">
 </head>
 <body>

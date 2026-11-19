@@ -36,10 +36,19 @@ public class RegionSuggestionService {
     private final TourApiClient tour;
     private final ObjectMapper mapper;
     private final ObjectProvider<RegionSuggestionService> self;
+    private final ObjectProvider<PurposePlaceService> purposes;
+    private final KakaoMapClient maps;
+    /** 음식으로 여행지를 확인할 때 필요한 음식점 수(2026-11-16 결정). 상호·분류에 그 음식이 들어간 카카오 음식점이다. */
+    static final int FOOD_EVIDENCE = 3;
 
     public record Task(UUID jobId, String requestJson, ConfirmedTravelConditions conditions, List<DestinationCandidate> destinations) {}
-    /** 근거를 확인한 지역. existingId가 있으면 이미 서비스 여행지이고, 없으면 profile과 함께 새로 추가한다. */
-    record Checked(String region, Long existingId, Map<String, DestinationProfile.Category> profile) {}
+    /**
+     * 근거를 확인한 지역. existingId가 있으면 이미 서비스 여행지이고, 없으면 profile과 함께 새로 추가한다.
+     * food·foodRestaurants는 음식으로 확인한 경우의 음식 이름과 찾은 음식점 수다(관광공사 분류로 확인했으면 빈 값·0).
+     */
+    record Checked(String region, Long existingId, Map<String, DestinationProfile.Category> profile, String food, int foodRestaurants) {
+        Checked(String region, Long existingId, Map<String, DestinationProfile.Category> profile) { this(region, existingId, profile, "", 0); }
+    }
 
     /** 이 작업에 지역 제안이 필요하면 확인한 여행지를 요청에 붙인다. 필요 없거나 이미 했으면 아무것도 하지 않는다. */
     public void enrich(UUID jobId) {
@@ -58,7 +67,8 @@ public class RegionSuggestionService {
         List<Long> ids = new ArrayList<>();
         // 새 여행지 이름이 기존 여행지나 이번에 추가한 여행지와 겹치지 않게 이름 목록을 함께 갱신한다.
         Set<String> names = new HashSet<>(task.destinations().stream().map(DestinationCandidate::name).toList());
-        for (var checked : check(task, suggestion)) {
+        String food = food(task);
+        for (var checked : check(task, suggestion, food)) {
             Long id = checked.existingId();
             if (id == null) {
                 String name = name(checked.region(), names);
@@ -87,15 +97,24 @@ public class RegionSuggestionService {
      * 법정동 코드에 없는 지역이면 목록이 비어 빠진다. 원하는 여행의 분류에 등록 장소가 한 곳도 없으면 쓰지 않는다.
      * 사용자가 빼 달라고 한 지역은 AI에 알려 주고, 후보를 고를 때(DestinationCandidateService)도 다시 뺀다.
      */
-    List<Checked> check(Task task, OpenAiRegionClient.Suggestion suggestion) {
+    List<Checked> check(Task task, OpenAiRegionClient.Suggestion suggestion) { return check(task, suggestion, ""); }
+
+    /**
+     * food(목적의 음식 이름)가 있으면, 관광공사 분류로 근거가 없어도 그 음식 음식점이 FOOD_EVIDENCE곳 이상인 지역을 쓴다(2026-11-16).
+     * 관광공사 분류에는 축제·음식이 없어, "김밥 축제"처럼 음식이 목적인 요청에서 AI가 제안한 김천이 빠졌기 때문이다.
+     */
+    List<Checked> check(Task task, OpenAiRegionClient.Suggestion suggestion, String food) {
         List<Checked> result = new ArrayList<>();
-        if (suggestion.categories().isEmpty()) return result;
+        if (suggestion.categories().isEmpty() && food.isEmpty()) return result;
         for (String region : suggestion.regions()) {
             var existing = task.destinations().stream().filter(d -> sameRegion(d.region(), region)).findFirst();
             try {
                 var profile = existing.isPresent() ? profiles.profile(existing.get().placeId()) : profiles.build(region);
-                if (DestinationProfile.count(profile, suggestion.categories()) == 0) continue;
-                result.add(new Checked(region, existing.map(DestinationCandidate::placeId).orElse(null), profile));
+                Long existingId = existing.map(DestinationCandidate::placeId).orElse(null);
+                if (DestinationProfile.count(profile, suggestion.categories()) > 0) { result.add(new Checked(region, existingId, profile)); continue; }
+                if (food.isEmpty()) continue;
+                int restaurants = maps.searchFoodRestaurants(region, food, 15).size();
+                if (restaurants >= FOOD_EVIDENCE) result.add(new Checked(region, existingId, profile, food, restaurants));
             } catch (RecommendationException e) {
                 log.warn("제안 지역을 확인하지 못함 region={} ({})", region, e.getCode());
             }
@@ -120,8 +139,14 @@ public class RegionSuggestionService {
     public Long insert(Checked checked, String name, List<String> categories) {
         var existing = places.findBySourceProviderAndSourcePlaceId("TOURAPI", "REGION_" + checked.region());
         if (existing.isPresent()) return existing.get().isActive() ? existing.get().getId() : null;
-        var place = places.save(Place.verifiedDestination(name, checked.region(), subtype(checked.profile(), categories),
-            description(checked.profile(), categories), SOURCE_URL, KoreaTime.now()));
+        // 음식으로 확인한 지역은 분류를 '맛집'으로, 소개를 찾은 음식점 수로 적는다. 근거는 카카오 검색이고 메뉴를 확인한 것은 아니다.
+        // 출처 링크는 다른 제안 여행지처럼 관광공사로 둔다. 여행지 후보는 공식 출처만 쓰므로(DestinationCandidateService),
+        // 카카오 지도로 두면 추가한 여행지가 추천 후보에서 빠졌다(2026-11-16 김천 확인).
+        boolean byFood = !checked.food().isEmpty();
+        var place = places.save(Place.verifiedDestination(name, checked.region(),
+            byFood ? FOOD_THEME : subtype(checked.profile(), categories),
+            byFood ? foodDescription(checked.food(), checked.foodRestaurants()) : description(checked.profile(), categories),
+            SOURCE_URL, KoreaTime.now()));
         String json = DestinationProfile.write(place, checked.profile(), Instant.now(), mapper);
         if (json != null) place.updateDetails(json);
         places.flush();
@@ -182,6 +207,23 @@ public class RegionSuggestionService {
         String labels = String.join(", ", found.stream().map(WishCategories.NAMES::get).limit(3).toList());
         return String.join("·", names) + " 등 " + labels + ReadableText.particle(labels, "을") + " 둘러볼 수 있는 지역입니다.";
     }
+    /** 음식으로 확인한 여행지의 분류(여행 취향 이름). */
+    static final String FOOD_THEME = "맛집";
+
+    /** 음식으로 확인한 여행지의 소개. 예) "김밥 음식점 12곳이 있는 지역입니다(카카오 지도 검색, 메뉴는 확인하지 않음)." */
+    static String foodDescription(String food, int restaurants) {
+        return food + " 음식점 " + restaurants + "곳" + (restaurants >= 15 ? " 이상" : "") + "이 있는 지역입니다(카카오 지도 검색, 메뉴는 확인하지 않음).";
+    }
+
+    /** 목적의 음식 이름. 목적 검색어 AI의 결과를 쓰고(PurposePlaceService와 함께 씀), 실패하면 빈 문자열이다. */
+    private String food(Task task) {
+        try { return purposes.getObject().terms(task.conditions().travelPurpose()).food(); }
+        catch (RecommendationException e) {
+            log.warn("목적 음식 이름을 확인하지 못함 ({})", e.getCode());
+            return "";
+        }
+    }
+
     /** 원하는 여행의 분류 중 등록 장소가 있는 것. */
     private static List<String> found(Map<String, DestinationProfile.Category> profile, List<String> categories) {
         return categories.stream().filter(code -> DestinationProfile.count(profile, List.of(code)) > 0).toList();

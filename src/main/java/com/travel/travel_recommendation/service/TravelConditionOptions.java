@@ -14,7 +14,9 @@ import org.springframework.stereotype.Component;
 public class TravelConditionOptions {
     public static final Map<String, String> CATEGORY_CODES = Map.of(
             "region", "REGION", "season", "SEASON", "companion", "COMPANION",
-            "themes", "THEME", "transportation", "TRANSPORTATION");
+            "themes", "THEME", "transportation", "TRANSPORTATION",
+            // 여행 분위기·속도(2026-11-16). 고르지 않아도 되는 선택 조건이다.
+            "moods", "MOOD", "pace", "PACE");
     private final KeywordRepository repository;
 
     public TravelConditionOptions(ObjectProvider<KeywordRepository> repositories) {
@@ -25,7 +27,9 @@ public class TravelConditionOptions {
             "season", List.of("봄", "여름", "가을", "겨울"),
             "companion", List.of("혼자", "친구", "연인", "가족"),
             "themes", List.of("자연", "바다", "휴식", "맛집", "문화·역사", "체험·액티비티"),
-            "transportation", List.of("자차", "대중교통"));
+            "transportation", List.of("자차", "대중교통"),
+            "moods", List.of("한적한", "활기찬", "감성적인"),
+            "pace", List.of("느긋하게", "보통", "알차게"));
 
     public boolean isPreview() { return repository == null; }
 

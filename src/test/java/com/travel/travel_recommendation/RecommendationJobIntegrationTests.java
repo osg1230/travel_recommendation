@@ -169,6 +169,23 @@ class RecommendationJobIntegrationTests {
         service.cleanup();
         assertThat(jobs.findById(id)).isEmpty();
     }
+    // 회원 일정 초안은 만료 7일이 지나면 지우고, 만료된 지 하루 된 초안과 회원 추천 작업(추천 이력)은 남긴다.
+    @Test void memberDraftsAreDeletedSevenDaysAfterExpiry() {
+        String suffix=UUID.randomUUID().toString().replace("-","").substring(0,12);
+        User member=users.saveAndFlush(new User("draft_"+suffix,"unused-test-hash","초안"+suffix));
+        String insert="""
+            INSERT INTO dbo.ai_jobs(job_id,user_id,job_type,status,request_json,result_json,completed_at,expires_at)
+            VALUES (?,?,?,'COMPLETED','{}','{}',SYSDATETIME(),DATEADD(day,?,SYSDATETIME()))""";
+        UUID old=UUID.randomUUID(), recent=UUID.randomUUID(), recommendation=UUID.randomUUID();
+        jdbc.update(insert,old.toString(),member.getId(),"ITINERARY",-8);
+        jdbc.update(insert,recent.toString(),member.getId(),"ITINERARY",-1);
+        jdbc.update(insert,recommendation.toString(),member.getId(),"RECOMMENDATION",-30);
+        entityManager.clear();
+        service.cleanup();
+        assertThat(jobs.findById(old)).isEmpty();
+        assertThat(jobs.findById(recent)).isPresent();
+        assertThat(jobs.findById(recommendation)).isPresent();
+    }
     @Autowired jakarta.persistence.EntityManager entityManager;
     @Test void restartRecoveryAndQueueTimeoutNeverReportSuccess() {
         UUID id=service.create(conditions("강릉"),null,new byte[32]);

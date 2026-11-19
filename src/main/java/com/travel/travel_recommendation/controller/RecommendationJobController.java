@@ -158,9 +158,9 @@ public class RecommendationJobController {
         var recommendationService=recommendations.getIfAvailable();
         if(recommendationService==null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"DB 연결 모드에서 여행지 추천을 이용해 주세요.");
         String loginId=principal==null?null:principal.getName();
-        // 순위와 이유를 받는 일은 유료 AI 호출이라 요청 횟수를 센다.
-        checkLimit(loginId,request);
-        recommendationService.enqueue(id,loginId,guestHash(session,false),attempt);
+        // 순위와 이유를 받는 일은 유료 AI 호출이라 요청 횟수를 센다. 실제로 대기열에 넣을 때만 세서,
+        // 이미 넣은 요청을 다시 보내거나 이전 버튼을 다시 눌러도 횟수가 줄지 않는다.
+        recommendationService.enqueue(id,loginId,guestHash(session,false),attempt,()->checkLimit(loginId,request));
         return accepted(id,accept);
     }
     @GetMapping("/{id}/status")

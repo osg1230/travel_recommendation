@@ -29,9 +29,22 @@ public final class ThemePlaces {
             List.of("테마파크", "유원지", "레일바이크", "케이블카", "루지", "체험", "놀이", "레저", "아쿠아리움", "짚라인", "동물원")));
     }
 
+    /** 관광지 선택에 쓰는 취향 전체. 내 기록 취향 점수(MyTasteService)는 고른 취향과 상관없이 모든 종류를 센다. */
+    public static List<String> allPlaceThemes() { return List.copyOf(RULES.keySet()); }
+
     /** 고른 취향 중 관광지 선택에 쓰는 것만 돌려준다(맛집 등은 뺀다). */
     public static List<String> placeThemes(List<String> themes) {
         return themes == null ? List.of() : themes.stream().filter(RULES::containsKey).distinct().toList();
+    }
+
+    /**
+     * 장소 목록을 모을 때 취향별로 더 찾을 검색어. 바다 취향은 "○○ 명소" 검색의 바다 장소가 거의 해변이라(강릉 16곳 중 바다 5~6곳, 2026-11-05 측정)
+     * 해변이 아닌 바다 장소(예: 소돌해안일주 산책로, 이기대해안산책로)를 더 찾는다. 다른 취향은 "○○ 명소" 검색으로 충분해 두지 않았다.
+     */
+    private static final Map<String, String> SEARCH_WORDS = Map.of("바다", "해안산책로");
+
+    public static List<String> searchWords(List<String> themes) {
+        return placeThemes(themes).stream().map(SEARCH_WORDS::get).filter(Objects::nonNull).toList();
     }
 
     /** 이 장소가 맞는 취향. themes 중에서만 찾는다. */

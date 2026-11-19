@@ -52,7 +52,7 @@ public class OpenAiConditionClient {
         if (!properties.isConfigured()) throw new ConditionAnalysisException("문장 분석 연결이 아직 준비되지 않았어요. 잠시 후 다시 이용해 주세요.");
         try {
             Map<String, List<Map<String, String>>> promptChoices = new LinkedHashMap<>();
-            for (String field : List.of("season", "companion", "themes", "transportation")) {
+            for (String field : List.of("season", "companion", "themes", "transportation", "moods", "pace")) {
                 promptChoices.put(field, choices.getOrDefault(field, List.of()).stream()
                         .map(k -> Map.of("selectionValue", k.getSelectionValue(), "name", k.name())).toList());
             }
@@ -114,7 +114,7 @@ public class OpenAiConditionClient {
     private JsonNode responseSchema(Map<String, List<TravelKeyword>> choices) {
         ObjectNode current = (ObjectNode) schema.deepCopy();
         // 표시명·운영 코드와 DB ID를 혼동하지 않도록 출력 자체를 활성 ID 목록으로 제한한다.
-        for (String field : List.of("season", "companion", "transportation")) {
+        for (String field : List.of("season", "companion", "transportation", "pace")) {
             var values = ((ObjectNode) current.path("properties").path(field)).putArray("enum");
             values.addNull();
             choices.getOrDefault(field, List.of()).forEach(k -> values.add(k.getSelectionValue()));
@@ -125,6 +125,14 @@ public class OpenAiConditionClient {
         if (!themeChoices.isEmpty()) {
             var values = ((ObjectNode) themes.path("items")).putArray("enum");
             themeChoices.forEach(k -> values.add(k.getSelectionValue()));
+        }
+        // 여행 분위기도 여행 취향처럼 활성 선택지 값 안에서만 여러 개 고르게 한다.
+        ObjectNode moods = (ObjectNode) current.path("properties").path("moods");
+        var moodChoices = choices.getOrDefault("moods", List.of());
+        moods.put("maxItems", moodChoices.size());
+        if (!moodChoices.isEmpty()) {
+            var values = ((ObjectNode) moods.path("items")).putArray("enum");
+            moodChoices.forEach(k -> values.add(k.getSelectionValue()));
         }
         return current;
     }

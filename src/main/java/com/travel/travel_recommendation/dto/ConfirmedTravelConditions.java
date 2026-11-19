@@ -90,6 +90,10 @@ public record ConfirmedTravelConditions(String inputMode, String originalText, S
         return new ConfirmedTravelConditions(inputMode, originalText, region, startDate, endDate, durationDays,
             budget, partySize, accommodationNeeded, includeNearby, selectedKeywords, interpretationSummary, directRecommendation, travelPurpose, search, purposeSuggested, excludedRegions, regionSuggestion, destinationPick);
     }
+    /** 여행 목적에 나온 음식 이름(예: 김밥). 없으면 빈 문자열이다(2026-11-16, 음식·축제 목적 계획). */
+    public String purposeFood() {
+        return purposeSearch == null ? "" : purposeSearch.food();
+    }
     /** 목적 시설이 있는 여행지 ID. 목적 검색을 하지 않았거나 찾지 못했으면 비어 있다. */
     public List<String> purposeThemes() {
         return purposeSearch == null ? List.of() : purposeSearch.themes();

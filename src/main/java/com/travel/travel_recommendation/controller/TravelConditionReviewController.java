@@ -55,7 +55,7 @@ public class TravelConditionReviewController {
     @InitBinder("travelForm")
     void bindInput(WebDataBinder binder) {
         binder.setAllowedFields("inputMode", "originalText", "region", "startDate", "endDate",
-            "durationDays", "season", "companion", "themes", "budget", "transportation");
+            "durationDays", "season", "companion", "themes", "budget", "transportation", "moods", "pace");
         binder.registerCustomEditor(String.class, new StringTrimmerEditor(false));
     }
 
@@ -240,7 +240,7 @@ public class TravelConditionReviewController {
     void bind(WebDataBinder binder) {
         // 여행 목적과 제외 지역도 고칠 수 있다. 목적은 서버가 다시 검증하고, 제외 지역은 서버가 가진 목록 안에서만 뺄 수 있다(confirm).
         binder.setAllowedFields("revision", "region", "startDate", "endDate", "durationDays", "budget",
-                "season", "companion", "themes", "transportation", "partySize", "accommodationNeeded", "includeNearby",
+                "season", "companion", "themes", "moods", "pace", "transportation", "partySize", "accommodationNeeded", "includeNearby",
                 "travelPurpose", "excludedRegions");
         binder.registerCustomEditor(String.class, new StringTrimmerEditor(false));
     }

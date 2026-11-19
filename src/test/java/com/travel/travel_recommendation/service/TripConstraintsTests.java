@@ -183,37 +183,79 @@ class TripConstraintsTests {
         assertThat(ids(TripConstraints.byPicks(pool, List.of(), List.of(1L, 2L, 3L, 4L), List.of(), activities))).containsExactly(1L, 2L, 4L, 3L);
     }
 
-    // AI 순서로 고를 때는 앞쪽(낮에 갈 만한 곳)을 저녁 관광 몫으로 떼지 않고, AI가 뺄 곳은 예비·저녁 관광으로 쓰지 않는다.
+    // 낮 관광지 수는 후보의 종류별 체류시간으로 정한다(2026-11-16). 해변·문화유적(60분)만이면 하루 4곳,
+    // 박물관(90분)이면 기본과 같은 3곳이고, 산(120분)처럼 기본보다 길어도 기본 체류시간(90분) 기준보다 줄이지 않는다.
+    @Test void dailyCountFollowsPerKindStayTimes() {
+        var short_ = new ArrayList<PlaceCandidate>(); var museums = new ArrayList<PlaceCandidate>(); var mountains = new ArrayList<PlaceCandidate>();
+        for (long id = 1; id <= 8; id++) {
+            short_.add(kind(id, "장소" + id, id % 2 == 0 ? "여행 > 관광,명소 > 해수욕장,해변" : "여행 > 관광,명소 > 문화유적"));
+            museums.add(kind(id, "장소" + id, "문화,예술 > 문화시설 > 박물관"));
+            mountains.add(kind(id, "장소" + id, "여행 > 관광,명소 > 산"));
+        }
+        int base = TripConstraints.estimatedDailyCapacity(NINE, SIX, 90);
+        assertThat(base).isEqualTo(3);
+        assertThat(TripConstraints.plannedDailyCapacity(short_, 2, NINE, SIX, 90)).isEqualTo(TripConstraints.MAX_AUTO_DAILY);
+        assertThat(TripConstraints.plannedDailyCapacity(museums, 2, NINE, SIX, 90)).isEqualTo(base);
+        assertThat(TripConstraints.plannedDailyCapacity(mountains, 2, NINE, SIX, 90)).isEqualTo(base);
+        assertThat(TripConstraints.plannedDailyCapacity(List.of(), 2, NINE, SIX, 90)).isEqualTo(base);
+        assertThat(TripConstraints.select(short_, 2, NINE, SIX, 90, null)).hasSize(8);
+        assertThat(TripConstraints.select(museums, 2, NINE, SIX, 90, null)).hasSize(6);
+    }
+    // 짧게 머무는 곳이 많아 낮 관광지를 하루 4곳씩 골라도, 저녁 몫은 기본 하루 수(3곳) 뒤에서 떼어 저녁 관광 후보가 남는다.
+    // 낮 관광지 수로 떼면 8이 낮에 쓰여 저녁 후보가 9·10 두 곳뿐이었다(2026-11-16 속초에서 저녁 관광이 빠진 문제).
+    @Test void eveningShareStaysWhenMoreDaytimePlacesFit() {
+        var ordered = new ArrayList<PlaceCandidate>();
+        for (long id = 1; id <= 10; id++)
+            ordered.add(kind(id, "장소" + id, id >= 8 ? "여행 > 관광,명소 > 전망대" : "여행 > 관광,명소 > 문화유적"));
+        var arranged = ItineraryJobService.arrange(ordered, Set.of(), true, true, 2, NINE, SIX, 90, null);
+        assertThat(ids(arranged.evening())).containsExactly(8L, 9L, 10L);
+        assertThat(ids(arranged.selected())).containsExactly(1L, 2L, 3L, 4L, 5L, 6L, 7L);
+    }
+    // 아래 세 테스트는 하루 3곳을 전제로 저녁 몫·예비 규칙을 본다. 하루 수용량은 후보의 종류별 체류시간으로 계산하므로(2026-11-16)
+    // 낮 관광지는 박물관(기본 체류 그대로)으로 만들고 기본 체류를 120분으로 둔다. 전망대가 섞여도 하루 3곳이다.
+    private static final String MUSEUM = "문화,예술 > 문화시설 > 박물관";
+    // AI 순서로 고를 때는 앞쪽(낮에 갈 만한 곳)을 저녁 관광 몫으로 떼지 않고, AI가 뺄 곳은 저녁 관광으로 쓰지 않는다.
+    // 예비는 빼지 않은 곳(7)이 먼저이고, 모자라면(4곳 미만) AI가 뺀 곳(10)으로 채운다.
     @Test void aiOrderKeepsTopPicksForDaytime() {
         var ordered = new ArrayList<PlaceCandidate>();
         for (long id = 1; id <= 10; id++)
-            ordered.add(kind(id, "장소" + id, id == 1 || id >= 8 ? "여행 > 관광,명소 > 전망대" : "여행 > 관광,명소 > 문화유적"));
+            ordered.add(kind(id, "장소" + id, id == 1 || id >= 8 ? "여행 > 관광,명소 > 전망대" : MUSEUM));
         // 2일·09:00~18:00·체류 90분이면 낮 관광지는 6곳이다.
-        var ai = ItineraryJobService.arrange(ordered, Set.of(10L), true, true, 2, NINE, SIX, 90, null);
+        var ai = ItineraryJobService.arrange(ordered, Set.of(10L), true, true, 2, NINE, SIX, 120, null);
         assertThat(ids(ai.selected())).containsExactly(1L, 2L, 3L, 4L, 5L, 6L);
         assertThat(ids(ai.evening())).containsExactly(8L, 9L);
-        assertThat(ids(ai.reserve())).containsExactly(7L);
+        assertThat(ids(ai.reserve())).containsExactly(7L, 10L);
         // 서버 규칙 순서일 때는 지금처럼 앞에서부터 저녁 관광 몫을 뗀다.
-        var rule = ItineraryJobService.arrange(ordered, Set.of(), false, true, 2, NINE, SIX, 90, null);
+        var rule = ItineraryJobService.arrange(ordered, Set.of(), false, true, 2, NINE, SIX, 120, null);
         assertThat(ids(rule.evening())).containsExactly(1L, 8L, 9L);
         assertThat(ids(rule.selected())).containsExactly(2L, 3L, 4L, 5L, 6L, 7L);
+    }
+    // AI가 많이 빼서 예비가 모자라면 뺀 곳을 AI 순서대로 4곳까지 채운다. 예비가 충분하면 뺀 곳을 넣지 않는다.
+    @Test void shortReserveIsFilledWithSkippedPlacesInAiOrder() {
+        var ordered = new ArrayList<PlaceCandidate>();
+        for (long id = 1; id <= 14; id++) ordered.add(kind(id, "장소" + id, MUSEUM));
+        var manySkips = ItineraryJobService.arrange(ordered, Set.of(8L, 9L, 10L, 11L, 12L, 13L, 14L), true, false, 2, NINE, SIX, 120, null);
+        assertThat(ids(manySkips.selected())).containsExactly(1L, 2L, 3L, 4L, 5L, 6L);
+        assertThat(ids(manySkips.reserve())).containsExactly(7L, 8L, 9L, 10L);
+        var fewSkips = ItineraryJobService.arrange(ordered, Set.of(14L), true, false, 2, NINE, SIX, 120, null);
+        assertThat(ids(fewSkips.reserve())).containsExactly(7L, 8L, 9L, 10L, 11L, 12L).doesNotContain(14L);
     }
     // AI가 밤 명소로 꼽은 곳은 숙박하는 밤 수만큼 저녁 관광 후보 맨 앞에 두고 낮 관광지에서 뺀다.
     // 저녁 관광 분류가 아닌 곳(문화유적)과 중심 장소는 밤 명소로 쓰지 않고, 당일 여행은 저녁 관광이 없어 그대로다.
     @Test void aiNightSpotsGoToTheFrontOfEveningCandidates() {
         var ordered = new ArrayList<PlaceCandidate>();
         for (long id = 1; id <= 10; id++)
-            ordered.add(kind(id, "장소" + id, id == 1 || id >= 8 ? "여행 > 관광,명소 > 전망대" : "여행 > 관광,명소 > 문화유적"));
-        var night = ItineraryJobService.arrange(ordered, Set.of(10L), List.of(2L, 1L), true, true, 2, NINE, SIX, 90, null);
+            ordered.add(kind(id, "장소" + id, id == 1 || id >= 8 ? "여행 > 관광,명소 > 전망대" : MUSEUM));
+        var night = ItineraryJobService.arrange(ordered, Set.of(10L), List.of(2L, 1L), true, true, 2, NINE, SIX, 120, null);
         assertThat(ids(night.evening())).containsExactly(1L, 8L, 9L);
         assertThat(ids(night.selected())).containsExactly(2L, 3L, 4L, 5L, 6L, 7L);
         // 2박 3일이면 두 곳까지 둔다(후보 16곳). 중심 장소(8)는 밤 명소로 꼽혀도 낮 일정에 남긴다.
         var many = new ArrayList<>(ordered);
-        for (long id = 11; id <= 16; id++) many.add(kind(id, "장소" + id, "여행 > 관광,명소 > 문화유적"));
+        for (long id = 11; id <= 16; id++) many.add(kind(id, "장소" + id, MUSEUM));
         var center = new Constraints(List.of(), null, false, null, List.of(), null, List.of(8L));
-        assertThat(ids(ItineraryJobService.arrange(many, Set.of(), List.of(1L, 8L, 9L), true, true, 3, NINE, SIX, 90, center).evening()))
+        assertThat(ids(ItineraryJobService.arrange(many, Set.of(), List.of(1L, 8L, 9L), true, true, 3, NINE, SIX, 120, center).evening()))
             .startsWith(1L, 9L).doesNotContain(8L);
-        assertThat(ItineraryJobService.arrange(ordered, Set.of(), List.of(1L), true, false, 1, NINE, SIX, 90, null).evening()).isEmpty();
+        assertThat(ItineraryJobService.arrange(ordered, Set.of(), List.of(1L), true, false, 1, NINE, SIX, 120, null).evening()).isEmpty();
     }
     // 다시 만들기: 직전 초안의 관광지는 뒤로 가되 빠지지 않는다. 지킬 장소는 제자리, AI가 뺄 곳은 그보다 더 뒤에 둔다.
     @Test void previousPlacesMoveBehindOthersButBeforeSkipped() {

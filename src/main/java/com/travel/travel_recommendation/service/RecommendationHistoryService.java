@@ -39,7 +39,9 @@ public class RecommendationHistoryService {
         if(found.isEmpty()) return List.of();
         var byRequest=candidates.findByRequestIdInOrderByRequestIdAscRankAsc(found.stream().map(RecommendationRequest::getId).toList())
             .stream().collect(Collectors.groupingBy(RecommendationCandidate::getRequestId));
-        return found.stream().map(r->summary(r,byRequest.getOrDefault(r.getId(),List.of()),userId)).toList();
+        // 처리 중인 요청은 한 번에 모아 두고 요청마다 작업을 다시 조회하지 않는다.
+        var pending=jobs.findRequestIdsByUserIdAndStatusIn(userId,PENDING);
+        return found.stream().map(r->summary(r,byRequest.getOrDefault(r.getId(),List.of()),pending.contains(r.getId()))).toList();
     }
 
     @Transactional(readOnly=true,timeout=10)
@@ -58,7 +60,8 @@ public class RecommendationHistoryService {
             .map(AiJob::getId).findFirst().orElse(null);
         // 같은 조건으로 다시 추천하려면 그때 확정한 조건(추천 작업의 요청 내용)이 남아 있어야 한다.
         boolean repeatable=requestJobs.stream().anyMatch(j->"RECOMMENDATION".equals(j.getJobType()));
-        return new Detail(summary(request,ranked,userId),request.getOriginalText(),request.getInterpretationSummary(),
+        boolean pending=requestJobs.stream().anyMatch(j->PENDING.contains(j.getStatus()));
+        return new Detail(summary(request,ranked,pending),request.getOriginalText(),request.getInterpretationSummary(),
             conditions(request),destinations,result,repeatable);
     }
 
@@ -91,10 +94,8 @@ public class RecommendationHistoryService {
         requests.flush();
     }
 
-    private Summary summary(RecommendationRequest r, List<RecommendationCandidate> ranked, Long userId) {
-        String status;
-        if(!ranked.isEmpty()) status="DONE";
-        else status=jobs.findByRequestIdAndUserId(r.getId(),userId).stream().anyMatch(j->PENDING.contains(j.getStatus()))?"PENDING":"NONE";
+    private Summary summary(RecommendationRequest r, List<RecommendationCandidate> ranked, boolean pending) {
+        String status=!ranked.isEmpty()?"DONE":pending?"PENDING":"NONE";
         var names=ranked.stream().limit(3).map(c->mapper.readValue(c.getSnapshot(),DestinationCandidate.class).name()).toList();
         return new Summary(r.getId(),r.getCreatedAt(),"TEXT".equals(r.getInputMode())?"문장 입력":"조건 선택",
             r.getRegion()==null?"지역 상관없음":r.getRegion(),period(r),names,status);

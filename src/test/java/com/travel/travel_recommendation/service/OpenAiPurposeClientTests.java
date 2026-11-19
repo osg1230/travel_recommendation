@@ -47,6 +47,26 @@ class OpenAiPurposeClientTests {
         assertThat(client("key").terms("휴식").keywords()).isEmpty();
     }
 
+    // 음식 이름과 축제 여부(2026-11-16): 한글 1~10자 음식 이름만 받고, 형식이 다르면 버린다. 예전 응답처럼 없으면 빈 값·false다.
+    @Test void foodNameAndFestivalAreReadAndChecked() {
+        response.set(mapper.writeValueAsString(Map.of("status", "completed", "output", List.of(Map.of("type", "message", "content",
+            List.of(Map.of("type", "output_text", "text", mapper.writeValueAsString(Map.of("keywords", List.of(), "themes", List.of("맛집"),
+                "food", " 김밥 ", "festival", true)))))))));
+        var terms = client("key").terms("김밥 축제 관람");
+        assertThat(terms.food()).isEqualTo("김밥");
+        assertThat(terms.festival()).isTrue();
+        assertThat(terms.keywords()).isEmpty();
+        assertThat(request.get()).contains("\"food\"", "\"festival\"");
+        response.set(mapper.writeValueAsString(Map.of("status", "completed", "output", List.of(Map.of("type", "message", "content",
+            List.of(Map.of("type", "output_text", "text", mapper.writeValueAsString(Map.of("keywords", List.of(), "themes", List.of(),
+                "food", "<script>김밥", "festival", false)))))))));
+        assertThat(client("key").terms("김밥").food()).isEmpty();
+        answer(List.of("아쿠아리움"));
+        var old = client("key").terms("상어 관람");
+        assertThat(old.food()).isEmpty();
+        assertThat(old.festival()).isFalse();
+    }
+
     // 목적과 가까운 여행지 분류는 정해진 목록 안에서 최대 2개만 받는다.
     @Test void themesAreLimitedToKnownDestinationCategories() {
         answer(List.of("갯벌체험"), List.of("바다", "갯벌", "바다", "자연", "휴식", "맛집"));

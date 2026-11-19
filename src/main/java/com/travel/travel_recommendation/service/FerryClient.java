@@ -32,6 +32,7 @@ public class FerryClient {
     static final int PAGE_SIZE = 100, MAX_PAGES = 3;
     /** 이보다 짧은 편은 도착 시각이 잘못 들어온 값으로 본다(예: 포항영일만 → 울릉 사동 23:00 → 23:03). */
     static final int MIN_MINUTES = 10;
+    private static final Duration TAGO_CACHE_TTL = IntercityBusClient.TAGO_CACHE_TTL;
     private final TagoProperties properties;
     private final ObjectMapper mapper;
     private final URI endpoint;
@@ -50,8 +51,15 @@ public class FerryClient {
 
     public boolean configured() { return properties.isConfigured(); }
 
+    /** 같은 구간·날짜를 TAGO_CACHE_TTL 동안 다시 부르지 않는다. TAGO는 당일 배차·운항 자료라 그 사이 결과가 같고, 버스 안내 한 번에 수십 번 부르던 호출을 줄인다. 실패는 보관하지 않는다. */
+    private final ExpiringCache<String, List<Sailing>> sailingsCache = new ExpiringCache<>(TAGO_CACHE_TTL, 500);
+
     /** date에 출발 항구에서 떠나는 운항편. 출발 시각 순서이며 없으면 빈 목록이다. 항구 ID는 TAGO 형식(예: SEA43010)이다. */
     public List<Sailing> sailings(String departurePortId, LocalDate date) {
+        return sailingsCache.get(departurePortId+":"+date, () -> loadSailings(departurePortId, date));
+    }
+
+    private List<Sailing> loadSailings(String departurePortId, LocalDate date) {
         if (departurePortId == null || date == null || !departurePortId.matches("SEA[0-9]{5}")) throw invalid();
         List<Sailing> result = new ArrayList<>();
         int read = 0;

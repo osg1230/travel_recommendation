@@ -17,8 +17,8 @@
     <h1 th:text="${itinerary.summary.title}"></h1>
     <!--/* 일정 항목에서 평가하고 돌아온 안내는 그 항목 옆(ratingAnchor)에 보여 주고, 여기에는 저장·수정·이름 바꾸기 안내를 보여 준다. */-->
     <p role="status" class="status-ok" th:if="${savedMessage != null and ratingAnchor == null}" th:text="${savedMessage}"></p>
-    <p th:text="${itinerary.summary.destination + ' · ' + itinerary.summary.startDate + ' ~ ' + itinerary.summary.endDate
-        + ' (' + itinerary.summary.dayCount + '일) · 이동수단 ' + itinerary.transportName}"></p>
+    <p th:text="${itinerary.summary.destination + ' · ' + @timeText.period(itinerary.summary.startDate, itinerary.summary.endDate)
+        + ' · 이동수단 ' + itinerary.transportName}"></p>
     <p class="guide-note">저장할 때의 일정 초안이에요. 체류시간은 계획값이고 이동시간은 저장 당시의 예상값이에요. 영업시간·휴무일·예산·예약 가능 여부는 방문 전에 각 장소의 출처에서 확인해 주세요.</p>
 
     <!--/* 가장 최근의 수정안 적용(또는 되돌리기)으로 바뀐 부분과 되돌리기 버튼(SFR-08-04). 직전 한 단계만 남겨 둔다. */-->
@@ -121,7 +121,7 @@
             <tbody><tr th:each="check : ${itinerary.checks}">
                 <th scope="row" th:text="${check.name}"></th>
                 <td><span class="status-badge" th:classappend="${'status-' + #strings.toLowerCase(check.status)}" th:text="${check.label}"></span></td>
-                <td th:text="${check.detail}"></td>
+                <td data-label="내용" th:text="${check.detail}"></td>
             </tr></tbody>
         </table>
         <th:block th:if="${!itinerary.prices.isEmpty()}">

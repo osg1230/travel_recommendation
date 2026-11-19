@@ -38,7 +38,14 @@ public class DestinationRecommendationService {
     }
 
     @Transactional(timeout=10)
-    public void enqueue(UUID id,String loginId,byte[] guestHash,int expectedAttempt) {
+    public void enqueue(UUID id,String loginId,byte[] guestHash,int expectedAttempt) { enqueue(id,loginId,guestHash,expectedAttempt,()->{}); }
+
+    /**
+     * beforeQueue는 실제로 대기열에 넣기 직전에만 부른다(화면의 AI 요청 횟수 세기).
+     * 이미 넣었거나 이전 버튼의 재전송이라 아무것도 하지 않는 요청은 횟수를 쓰지 않는다. beforeQueue가 예외를 던지면 넣지 않는다.
+     */
+    @Transactional(timeout=10)
+    public void enqueue(UUID id,String loginId,byte[] guestHash,int expectedAttempt,Runnable beforeQueue) {
         var job=jobs.lockById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
         jobService.view(id,loginId,guestHash); // 모든 제출도 조회와 같은 소유권·만료 검사를 거친다.
         if(Set.of("RECOMMENDATION_QUEUED","RANKING_CANDIDATES","COMPLETED").contains(job.getStatus())) return;
@@ -47,6 +54,7 @@ public class DestinationRecommendationService {
         if(!("CANDIDATES_READY".equals(job.getStatus()) || ("FAILED".equals(job.getStatus()) && job.getResultJson()!=null)))
             throw new ResponseStatusException(HttpStatus.CONFLICT,"먼저 여행지 후보를 조회해 주세요.");
         if(!client.configured()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"추천 연결 설정을 확인해 주세요.");
+        beforeQueue.run();
         job.queueRecommendation();
     }
 

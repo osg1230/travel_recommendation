@@ -27,6 +27,14 @@ class ThemePlacesTests {
         assertThat(ThemePlaces.placeThemes(List.of("맛집"))).isEmpty();
     }
 
+    // 바다 취향만 해변이 아닌 바다 장소를 더 찾고, 찾은 해안산책로는 바다 취향에 맞는다.
+    @Test void seaThemeAddsCoastalTrailSearch() {
+        assertThat(ThemePlaces.searchWords(List.of("바다", "맛집"))).containsExactly("해안산책로");
+        assertThat(ThemePlaces.searchWords(List.of("자연", "문화·역사"))).isEmpty();
+        assertThat(ThemePlaces.searchWords(null)).isEmpty();
+        assertThat(ThemePlaces.matched("소돌해안일주 산책로", "여행 > 관광,명소 > 도보여행", List.of("바다"))).containsExactly("바다");
+    }
+
     // 취향마다 돌아가며 한 곳씩 앞에 두고, 맞지 않는 곳은 원래 순서대로 뒤에 둔다.
     @Test void themeFirstInterleavesThemesAndKeepsTheRest() {
         var park1 = place("덕진공원", "여행 > 관광,명소 > 공원");

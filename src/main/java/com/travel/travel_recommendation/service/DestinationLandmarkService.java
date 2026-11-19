@@ -50,10 +50,20 @@ public class DestinationLandmarkService {
         if(destination==null) return DestinationLandmarks.Lists.EMPTY;
         var saved=DestinationLandmarks.read(destination,Instant.now(),mapper);
         if(saved!=null) return saved;
-        var made=make(destination);
-        save(destinationId,made);
-        return made.lists();
+        // 같은 여행지를 여러 스레드가 동시에 만들면(미리 만들기 + 장소 목록 화면) 관광공사·GPT를 그만큼 더 부른다.
+        // 여행지마다 한 스레드만 만들고, 기다린 쪽은 먼저 만든 목록을 다시 읽어 쓴다.
+        var lock=building.computeIfAbsent(destinationId,id->new java.util.concurrent.locks.ReentrantLock());
+        lock.lock();
+        try {
+            var fresh=places.findById(destinationId).map(p->DestinationLandmarks.read(p,Instant.now(),mapper)).orElse(null);
+            if(fresh!=null) return fresh;
+            var made=make(destination);
+            save(destinationId,made);
+            return made.lists();
+        } finally { lock.unlock(); }
     }
+    /** 여행지 ID별 '만드는 중' 잠금. 가상 스레드에서 오래 기다려도 운반 스레드를 붙잡지 않게 synchronized 대신 ReentrantLock을 쓴다. */
+    private final Map<Long,java.util.concurrent.locks.ReentrantLock> building=new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * 추천된 여행지들의 목록을 미리 만들어 둔다. 추천 결과가 나오면 RecommendationJobWorker가 별도 스레드에서 부른다.

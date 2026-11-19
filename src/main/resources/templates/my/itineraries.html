@@ -29,8 +29,7 @@
         <div class="saved-body">
             <h2><a th:href="@{/my/itineraries/{id}(id=${itinerary.id})}" th:text="${itinerary.title}"></a>
                 <span class="type-chip" th:if="${extra != null}" th:text="${extra.transportName}"></span></h2>
-            <p th:text="${#temporals.format(itinerary.startDate, 'yyyy.MM.dd') + ' ~ ' + #temporals.format(itinerary.endDate, 'yyyy.MM.dd')
-                + ' (' + (itinerary.dayCount == 1 ? '당일' : (itinerary.dayCount - 1) + '박 ' + itinerary.dayCount + '일') + ')'}"></p>
+            <p th:text="${@timeText.period(itinerary.startDate, itinerary.endDate)}"></p>
             <p class="help" th:text="${itinerary.destination + ' 여행'}"></p>
         </div>
         <div class="saved-side">

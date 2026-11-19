@@ -13,8 +13,8 @@
         <path d="M0 300 C 240 282, 460 318, 700 298 S 1040 286, 1200 302 L1200 320 L0 320 Z" fill="#4fae9f"/>
     </svg>
     <div class="hero-inner">
-        <p role="status" class="hero-status" th:if="${param.logout}">로그아웃되었습니다.</p>
-        <p role="status" class="hero-status" th:if="${param.withdrawn}">탈퇴가 완료되었습니다. 그동안 이용해 주셔서 감사합니다.</p>
+        <p role="status" class="hero-status" th:if="${param.logout}">로그아웃했어요.</p>
+        <p role="status" class="hero-status" th:if="${param.withdrawn}">탈퇴가 끝났어요. 그동안 이용해 주셔서 감사합니다.</p>
         <p class="eyebrow">전국 여행지 추천 · 국내 여행 일정 만들기</p>
         <h1 id="hero-title">떠나고 싶은 마음만 알려 주세요.<br>여행지와 하루 일정은 같이 짜 드릴게요.</h1>
         <form class="hero-search" th:action="@{/travel/conditions/recommend}" method="post" data-analysis-form>

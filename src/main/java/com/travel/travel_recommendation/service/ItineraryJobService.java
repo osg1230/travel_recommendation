@@ -229,6 +229,9 @@ public class ItineraryJobService {
             if(startDate.isBefore(LocalDate.now(ZoneId.of("Asia/Seoul")))) throw scheduleConflict("출발일은 오늘이나 그 이후 날짜로 골라 주세요.");
             c=c.withStartDate(startDate);
         }
+        // "여유롭게", "빡빡하지 않게"라고 적은 여행은 하루 방문 수를 정하지 않았어도 하루 3곳(선호)으로 본다.
+        // 하루 4곳을 채우고 남는 시간에 관광지를 더 넣던 것을 막는다(2026-11-11).
+        constraints=RelaxedPace.apply(constraints,c);
         // 필수 방문 장소에 여행 기간의 축제 장소가 들어 있으면 일정의 방문 이유에 축제 이름·기간을 안내하도록 표시한다.
         var festival=festivalVisit(parentId,destinationId,login,hash,c.startDate(),c.durationDays());
         if(constraints!=null && festival!=null && constraints.requiredPlaceIds().contains(festival.placeId()))
@@ -270,6 +273,8 @@ public class ItineraryJobService {
         // '다른 관광지로 다시 만들기'면 직전 초안의 관광지를 뒤로 보내 이번에는 다른 곳부터 고른다. 필수·중심·목적 시설·축제 장소는 그대로 둔다.
         var later=previous.stream().filter(id->!keepInOrder.contains(id)).toList();
         ordered=TripConstraints.previousLast(ordered,later,keepInOrder,Set.of());
+        // 여행 분위기를 골랐으면 분위기 장소를 일수만큼 앞으로 당긴다(AI 순서로 다시 고를 때도 같다, PlacePickService).
+        ordered=MoodPlaces.moodFirst(ordered,MoodPlaces.chosen(current.conditions()),days,Set.copyOf(later),keepInOrder);
         Arranged arranged;
         try {
             arranged=withoutPreviousEvening(arrange(ordered,Set.of(),false,places.accommodationNeeded(),days,start,end,visitMinutes,constraints),later);
@@ -329,6 +334,8 @@ public class ItineraryJobService {
         if(stay && start!=null && end!=null && end.isAfter(start)) {
             Set<Long> keepForDay=new HashSet<>();
             if(constraints!=null) { keepForDay.addAll(constraints.requiredPlaceIds()); keepForDay.addAll(constraints.centerPlaceIds()); }
+            // 저녁 몫은 기본 체류시간으로 본 하루 수(예: 하루 3곳)로 떼어 둔다. 낮 관광지 수는 종류별 체류시간으로 더 많이 고르지만(select),
+            // 그 수로 AI 순서 뒤쪽을 떼면 저녁 후보가 거의 남지 않아 저녁 관광이 빠졌다(2026-11-16 속초 2박 3일).
             int daily=constraints!=null && constraints.dailyVisits()!=null?constraints.dailyVisits()
                 :TripConstraints.estimatedDailyCapacity(start,end,visitMinutes);
             int share=TripConstraints.eveningShare(ordered.size(),days,daily);
@@ -343,8 +350,23 @@ public class ItineraryJobService {
         var daytimeOrder=ordered.stream().filter(p->!eveningPool.contains(p)).toList();
         var selected=TripConstraints.select(daytimeOrder,days,start,end,visitMinutes,constraints);
         // 예비 관광지는 저녁 몫을 뺀 후보에서 고른다. 저녁에 들른 곳이 낮 관광지로 다시 쓰이지 않게 한다.
-        return new Arranged(selected,reserve(daytimeOrder.stream().filter(p->!skips.contains(p.placeId())).toList(),selected),evening);
+        var reserve=new ArrayList<>(reserve(daytimeOrder.stream().filter(p->!skips.contains(p.placeId())).toList(),selected));
+        // AI가 많이 빼서 예비가 MIN_RESERVE곳보다 적으면, 뺀 곳을 AI 순서대로 예비에 채운다(2026-11-16).
+        // 분위기를 넘긴 뒤 AI가 대표 관광지까지 빼 예비가 0~1곳만 남고, 남는 시간을 채우지 못해 1일차 오후가 비었다.
+        // 예비는 남는 시간이 있을 때만 쓰이고 AI 순서 맨 뒤라, 빼지 않은 곳이 있으면 그곳이 먼저 쓰인다.
+        if(reserve.size()<MIN_RESERVE) {
+            var ids=selected.stream().map(PlaceCandidate::placeId).collect(java.util.stream.Collectors.toSet());
+            daytimeOrder.stream().filter(p->skips.contains(p.placeId()) && !ids.contains(p.placeId()))
+                .limit(MIN_RESERVE-reserve.size()).forEach(reserve::add);
+        }
+        return new Arranged(selected,List.copyOf(reserve),evening);
     }
+
+    /**
+     * 예비 관광지를 적어도 이만큼 둔다. 일정 생성은 예비가 SPARE_KEPT(2곳)보다 많을 때만 남는 시간을 채우므로(ItineraryGenerator),
+     * 4곳이면 남는 시간에 두 곳까지 더 넣을 수 있다.
+     */
+    static final int MIN_RESERVE=4;
 
     /**
      * '다른 관광지로 다시 만들기'면 직전 초안의 관광지(previous)를 저녁 관광 후보에서 뺀다. 예비 관광지에는 남겨 두되(후보 순서 맨 뒤라 뒤쪽에 온다)
@@ -909,8 +931,10 @@ public class ItineraryJobService {
     /** 검색하는 동안 초안이 바뀌지 않았을 때만 가격을 붙인다. */
     @Transactional(timeout=10)
     public void savePrices(UUID id,String login,byte[] hash,String expectedResult,Prices prices) {
-        access.owned(id,login,hash,"ITINERARY");
+        // 잠금을 먼저 걸어 최신 행을 읽는다. 소유 확인을 먼저 하면 잠금 전에 읽은 결과와 비교하게 되어,
+        // 두 탭에서 동시에 끝날 때 먼저 붙은 결과가 지워질 수 있다.
         var job=jobs.lockById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
+        access.owned(id,login,hash,"ITINERARY");
         if(!"COMPLETED".equals(job.getStatus()) || !Objects.equals(job.getResultJson(),expectedResult))
             throw new ResponseStatusException(HttpStatus.CONFLICT,"가격을 찾는 동안 일정이 바뀌었어요. 다시 시도해 주세요.");
         job.attachToResult(mapper.writeValueAsString(mapper.readValue(expectedResult,Result.class).withPrices(prices)));
@@ -998,8 +1022,9 @@ public class ItineraryJobService {
     /** 검색하는 동안 초안이 바뀌지 않았을 때만 결과를 붙인다. */
     @Transactional(timeout=10)
     public void saveVerifications(UUID id,String login,byte[] hash,String expectedResult,Verifications verifications) {
-        access.owned(id,login,hash,"ITINERARY");
+        // 가격 저장과 같이 잠금을 먼저 걸고 소유를 확인한다.
         var job=jobs.lockById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
+        access.owned(id,login,hash,"ITINERARY");
         if(!"COMPLETED".equals(job.getStatus()) || !Objects.equals(job.getResultJson(),expectedResult))
             throw new ResponseStatusException(HttpStatus.CONFLICT,"AI 확인 검색 중에 일정이 바뀌었어요. 다시 시도해 주세요.");
         job.attachToResult(mapper.writeValueAsString(mapper.readValue(expectedResult,Result.class).withVerifications(verifications)));
@@ -1105,20 +1130,19 @@ public class ItineraryJobService {
         // 반려동물 동반 여행이면 일정에 들어간 장소의 관광공사 동반 정보를 먼저 찾아 AI 안내와 조건 확인에 쓴다. 실패해도 초안은 그대로다.
         if(PetTravel.wanted(work.input().conditions())) {
             var petService=pets.getIfAvailable();
-            if(petService!=null) try { draft=draft.withPets(petService.lookup(work.input(),draft,Instant.now().plusSeconds(25))); }
+            if(petService!=null) try { draft=draft.withPets(petService.lookup(work.input(),draft,stepUntil(deadline,25))); }
             catch(RuntimeException error) { log.warn("반려동물 동반 정보 조회를 건너뜀 job={} ({})",work.id(),error.toString()); }
         }
         // 자동 실행 설정이면 확인 필요 항목(반려동물 동반·여행 목적 활동)을 AI 웹 검색으로 찾아 AI 준비 안내에도 넘긴다. 유료라 기본은 버튼이다.
         if(verification.auto() && verificationClient.configured()) {
-            try { draft=draft.withVerifications(verifyNow(work.input(),draft,Instant.now().plusSeconds(40))); }
+            try { draft=draft.withVerifications(verifyNow(work.input(),draft,stepUntil(deadline,40))); }
             catch(RuntimeException error) { log.warn("AI 확인 검색을 건너뜀 job={} ({})",work.id(),error.toString()); }
         }
         // 일정에 들어간 관광지의 관광공사 소개문을 찾아 AI 추천 활동의 근거로 넘긴다(2026-10-31). 최대 12초만 쓰고
         // AI 안내에 쓸 시간(60초)을 남긴다. 처음 조회한 소개문은 보관해 다음 초안부터는 다시 부르지 않는다. 실패해도 초안은 그대로다.
         Map<Long,String> overviews=Map.of();
         var overviewService=placeOverviews.getIfAvailable();
-        var overviewUntil=Instant.now().plusSeconds(12);
-        if(overviewUntil.isAfter(deadline.minusSeconds(60))) overviewUntil=deadline.minusSeconds(60);
+        var overviewUntil=stepUntil(deadline,12);
         if(overviewService!=null && Instant.now().isBefore(overviewUntil)) {
             try { overviews=overviewService.lookup(work.input(),draft,overviewUntil); }
             catch(RuntimeException error) { log.warn("장소 소개문 조회를 건너뜀 job={} ({})",work.id(),error.toString()); }
@@ -1128,6 +1152,17 @@ public class ItineraryJobService {
         if(Instant.now().isAfter(deadline.minusSeconds(40))) return plan;
         try { return plan.withNearby(nearby.recommend(work.input(),plan)); }
         catch(RuntimeException error) { return plan; }
+    }
+
+    /** AI 안내에 남겨 둘 시간. 보조 단계(반려동물 정보·AI 확인 검색·소개문)는 마감에서 이만큼 앞에서 끝낸다. */
+    static final int ASSIST_RESERVE_SECONDS=60;
+    /**
+     * 보조 단계 하나의 마감: 지금부터 seconds초와 '작업 마감 − AI 안내 시간' 중 이른 쪽이다.
+     * 단계마다 따로 시간을 재면 합이 처리 제한(2분)을 넘어 다 만든 초안이 SCHEDULE_TIMEOUT으로 버려지기 때문이다.
+     */
+    static Instant stepUntil(Instant deadline,int seconds) {
+        var own=Instant.now().plusSeconds(seconds); var last=deadline.minusSeconds(ASSIST_RESERVE_SECONDS);
+        return own.isBefore(last)?own:last;
     }
 
     @Transactional(timeout=10)

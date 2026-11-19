@@ -48,6 +48,11 @@ public class WithdrawalService {
         if(currentPassword==null || !encoder.matches(currentPassword,user.getPasswordHash()))
             throw new ProfileUpdateException(null,"현재 비밀번호가 올바르지 않아요.");
         Long id=user.getId();
+        // 상태를 먼저 WITHDRAWN으로 바꿔 회원 행을 쓰기 잠금으로 잡는다. 지우는 동안 들어온 다른 요청은 이 행을 읽으려다 기다리고,
+        // 커밋 뒤에는 탈퇴 회원으로 보고 거절한다(끝에서 바꾸면 그동안 ACTIVE로 보고 새 데이터를 남길 수 있다).
+        // 원래 비밀번호로 다시 로그인할 수 없도록 알 수 없는 값으로 바꾼다. 상태로도 로그인은 막힌다.
+        user.withdraw(ANONYMOUS_NICKNAME,encoder.encode(UUID.randomUUID().toString()));
+        users.flush();
         // 자식 행부터 지운다. 운영 처리 이력(operation_logs)은 관리 기록이라 남긴다.
         // 가상 예약은 점유 수량을 취소 절차로 한 번 복구한 뒤 로그·결제·예약을 지운다. 일정 FK가 있어 일정보다 먼저 처리한다.
         reservations.purgeForWithdrawal(id);
@@ -59,9 +64,6 @@ public class WithdrawalService {
         jdbc.update("DELETE FROM dbo.ai_jobs WHERE user_id=?",id);
         jdbc.update("DELETE c FROM dbo.recommendation_candidates c JOIN dbo.recommendation_requests r ON r.request_id=c.request_id WHERE r.user_id=?",id);
         jdbc.update("DELETE FROM dbo.recommendation_requests WHERE user_id=?",id);
-        // 원래 비밀번호로 다시 로그인할 수 없도록 알 수 없는 값으로 바꾼다. 상태로도 로그인은 막힌다.
-        user.withdraw(ANONYMOUS_NICKNAME,encoder.encode(UUID.randomUUID().toString()));
-        users.flush();
     }
 
     /** 탈퇴한 지 30일 지난 회원의 아이디를 withdrawn-회원번호로 바꿔 개인 식별정보를 남기지 않는다. 로그에는 건수만 남긴다. */

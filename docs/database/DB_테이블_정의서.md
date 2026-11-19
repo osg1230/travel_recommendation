@@ -83,6 +83,8 @@
 - `ai_jobs.request_json`(ITINERARY)에 두 키를 더했다. 예전 JSON에 없으면 각각 null과 빈 목록으로 읽는다.
   - `picking.previousJobId`: '다른 관광지로 다시 만들기'로 만든 초안이 가리키는 이전 초안 ID다. 결과 화면이 이전 초안 링크와 비교를 보여 줄 때 쓴다.
   - `revision.choiceNotices`: 수정안에서 고른 식당·숙소를 지금 다시 확인하지 못해 다른 곳으로 바꿨다는 안내다.
+  - `picking.values`(2026-11-05): AI 순서로 고른 관광지·예비 관광지의 가치 점수(장소 ID → 0~100, `PlaceValueScore`)다. 일정 생성이 다음 장소를 '이동 부담 − 가치'로 고를 때 쓴다. AI 순서를 정하지 못한 작업·수정안·예전 JSON에는 없고 그때는 거리만 본다. 2026-11-09부터 회원의 즐겨찾기·4점 이상 평가 관광지와 같은 종류면 내 기록 점수(최대 10점)를 더하며, 합계는 100점에서 자른다.
+  - `picking.myTaste`(2026-11-09): 내 기록 점수를 받은 관광지 ID 목록(`MyTasteService`)이다. 일정 생성이 그곳의 고른 이유에 '즐겨찾기·높게 평가한 곳과 비슷한 종류'를 붙일 때 쓴다. 비회원·기록 없음·수정안·예전 JSON에는 없다. 테이블·컬럼 변경은 없다.
   - `revision.keptDays`(2026-11-02): 관광지를 빼기만 한 수정안에서 날짜별로 그대로 둘 낮 관광지·식당(순서대로)·저녁 관광이다. 다른 수정안과 예전 JSON에는 없으며(null) 그때는 일정을 처음부터 다시 배치한다.
 - `ai_jobs.error_code`
   - `AI_REASON_SKIPPED`: 추천 작업이 COMPLETED이면서 이 값을 가질 수 있다. AI 순위가 실패해 사용자가 'AI 추천 이유 없이 계속하기'를 고른 경우다.
@@ -116,7 +118,7 @@
 - 2026-09-23: 수정안의 `revision`에 `unavailablePlaces`(문장 수정 요청에 이름이 나왔지만 교체 후보에 없어 비슷한 곳으로 바꾼 장소 이름, 최대 3개)를 추가했다. 이전 작업 JSON에 없으면 빈 목록으로 읽는다. 테이블·컬럼 변경은 없다.
 - 2026-09-24: 추천 작업 결과(`ai_jobs.result_json`)의 추천 항목에 `centerPlaces`(GPT가 추천 이유와 함께 적은 장소 이름, 최대 3개)를, 일정 작업 request_json의 `constraints`에 `centerPlaceIds`(날마다 일정의 중심으로 삼을 관광지 ID)를 추가했다. 이전 JSON에 없으면 빈 목록으로 읽는다. 테이블·컬럼 변경은 없다.
 - 2026-09-22: 실행용 조건 스냅샷에 `directRecommendation`(후보 조회 후 추천 자동 연결)과 `travelPurpose`(개인정보를 제외하도록 추출한 활동 목적)를 추가했다. 이전 JSON의 누락 필드는 false/null로 읽는다. 일정 단계에서 보완한 기간·숙박은 해당 일정 작업 조건에만 저장하며 부모 추천은 변경하지 않는다. 기존 JSON 컬럼을 사용하므로 테이블·컬럼 변경 SQL은 없다.
-- 2026-09-22: 추천 작업의 조건 스냅샷(`ai_jobs.request_json`)에 `purposeSearch`를 추가했다. 목적 시설 검색 상태(FOUND·NONE·SKIPPED·FAILED), AI가 만든 시설 검색어, 찾은 시설(저장한 관광지 `place_id`, 여행지 `place_id`, 이름·주소·분류·카카오 링크), 안내 문구, 조회 시각을 담는다. 찾은 시설은 기존 `places` 행(KAKAO, ATTRACTION)으로 저장하며 테이블·컬럼 변경은 없다. 같은 날 `purposeSearch.themes`(목적과 가까운 여행지 분류 이름 목록)를 추가했다. 이전 스냅샷에서 없으면 빈 목록으로 읽는다.
+- 2026-09-22: 추천 작업의 조건 스냅샷(`ai_jobs.request_json`)에 `purposeSearch`를 추가했다. 목적 시설 검색 상태(FOUND·NONE·SKIPPED·FAILED), AI가 만든 시설 검색어, 찾은 시설(저장한 관광지 `place_id`, 여행지 `place_id`, 이름·주소·분류·카카오 링크), 안내 문구, 조회 시각을 담는다. 찾은 시설은 기존 `places` 행(KAKAO, ATTRACTION)으로 저장하며 테이블·컬럼 변경은 없다. 같은 날 `purposeSearch.themes`(목적과 가까운 여행지 분류 이름 목록)를 추가했다. 이전 스냅샷에서 없으면 빈 목록으로 읽는다. 2026-11-16: `purposeSearch.food`(목적에 나온 음식 이름, 예: 김밥, 없으면 빈 문자열)와 `purposeSearch.festival`(축제·행사를 말했는지)을 추가했다. 테이블·컬럼 변경은 없고, 이전 스냅샷에서 없으면 빈 문자열·false로 읽는다([음식·축제 목적 계획](../ai/음식_축제_목적_계획.md)).
 - 2026-10-30: 추천 작업의 조건 스냅샷(`ai_jobs.request_json`)에 `regionSuggestion`을 추가했다. 지역을 고르지 않고 여행 목적을 말한 요청에서 AI가 제안한 시·군을 확인한 결과로, 상태(FOUND·NONE·SKIPPED·FAILED), 원하는 여행의 관광공사 소분류 코드 목록(`categories`), 근거를 확인한 여행지 `place_id` 목록(`destinationIds`, 제안 순서), 안내 문구, 확인 시각을 담는다. 이전 스냅샷에는 없으며(null) 테이블·컬럼 변경은 없다.
 - 2026-10-30: 같은 스냅샷에 `destinationPick`을 추가했다. 문장으로 입력한 요청에서 맞는 여행지가 5곳보다 많을 때 AI가 여행지별 "할 수 있는 것" 근거(`details_json.profile`)를 보고 고른 결과로, 상태(PICKED·NONE·SKIPPED·FAILED), 고른 여행지 `place_id` 목록(`destinationIds`, 잘 맞는 순서, 최대 5개), 안내 문구, 확인 시각을 담는다. 이전 스냅샷에는 없으며(null) 테이블·컬럼 변경은 없다.
 - 2026-10-31: 추천 작업 결과(`ai_jobs.result_json`)의 추천 항목에 `members`를 추가했다. 비슷한 조건으로 여행한 다른 회원 중 그 여행지를 고른 회원 수로 `saved`(비슷한 추천 요청에서 이어진 저장 일정의 여행지), `favorited`(즐겨찾기), `ratedHigh`(4점 이상 평가, 여행지는 평가 대상이 아니라 0)를 담는다. 서버가 `recommendation_requests`·`itineraries`·`itinerary_items`·`favorites`·`place_ratings`를 읽어 세며 회원 ID·닉네임·입력 원문·한줄평은 담지 않는다. 기록이 없거나 이전 JSON이면 없다(null). 테이블·컬럼 변경은 없다.
@@ -263,11 +265,17 @@ U1(category_id, keyword_code), U2(category_id, keyword_name). 동일 카테고�
 ### 3.2 관리자 키워드 관리 구현 기준 (2026-10-28)
 
 - 2·3절의 테이블·컬럼·제약은 바꾸지 않았다. 관리자 화면(`/admin/keywords`)에서 `keyword_categories`의 `category_name`·`sort_order`·`is_active`와 `keywords`의 `keyword_name`·`sort_order`·`is_active`를 고치고 `updated_at`을 갱신한다.
-- 카테고리는 추가·삭제하지 않는다. 조건 입력 화면의 질문 5개(REGION·SEASON·COMPANION·THEME·TRANSPORTATION)가 코드에 고정돼 있기 때문이다. `category_code`는 바꾸지 않는다(2절 규칙).
+- 관리자는 카테고리를 추가·삭제하지 않는다. 조건 입력 화면의 질문 7개(REGION·SEASON·COMPANION·THEME·TRANSPORTATION·MOOD·PACE)가 코드에 고정돼 있기 때문이다. MOOD·PACE는 2026-11-16 개발에서 3.3대로 추가했다. `category_code`는 바꾸지 않는다(2절 규칙).
 - 키워드는 물리 삭제하지 않고 `is_active = 0`으로 사용 중지한다(3절 "사용된 키워드는 비활성화를 우선"). 저장된 추천 요청의 `conditions_json.selected_keywords`가 keyword_id를 참조한다. `keyword_code`·`value_json`은 바꾸지 않는다.
 - 새 키워드는 COMPANION·THEME에만 추가한다. `keyword_code`는 영문으로 시작하는 영문 대문자·숫자·밑줄 2~50자이고, `value_json`은 초기 데이터와 같은 `{"value":"코드"}`이다. U1·U2(같은 카테고리 안 코드·이름 중복)는 서비스에서 먼저 검사하고, 동시에 저장해 DB 제약에 걸리면 중복 안내를 보여 준다.
-- REGION·SEASON·TRANSPORTATION과 THEME 기본 6개(NATURE·SEA·REST·FOOD·CULTURE·ACTIVITY)는 추천 규칙이 이름·값을 그대로 쓰므로 이름 변경과 추가를 서비스에서 막고 표시 순서·사용 여부만 바꾼다.
+- REGION·SEASON·TRANSPORTATION·MOOD·PACE와 THEME 기본 6개(NATURE·SEA·REST·FOOD·CULTURE·ACTIVITY)는 추천 규칙이 이름·값을 그대로 쓰므로 이름 변경과 추가를 서비스에서 막고 표시 순서·사용 여부만 바꾼다.
 - 키워드 변경은 `operation_logs`에 남기지 않는다. 14절 `target_type` CHECK가 USER·RESERVATION·PAYMENT만 허용해, 기록하려면 제약을 바꿔야 하므로 이번 범위에 넣지 않았다.
+
+### 3.3 여행 분위기·속도 선택지 (2026-11-16)
+
+- 2·3절의 테이블·컬럼·제약은 바꾸지 않고 [019_seed_mood_pace_keywords.sql](sql/019_seed_mood_pace_keywords.sql)로 행만 추가했다. 카테고리 MOOD(여행 분위기, 순서 6)·PACE(여행 속도, 순서 7), 키워드 QUIET 한적한·LIVELY 활기찬·EMOTIONAL 감성적인, RELAXED 느긋하게·NORMAL 보통·PACKED 알차게.
+- 고른 값은 다른 선택지처럼 추천 요청의 `conditions_json.selected_keywords`에 들어간다. 분위기는 여러 개, 속도는 하나이며 둘 다 선택 입력이다. 계획은 [취향·감성 반영 계획](../ai/취향_감성_반영_계획.md).
+- 이 PC(SQLEXPRESS)에 적용해 6개 행이 한글 이름으로 들어간 것을 확인했다(keyword_id 39~44). sqlcmd로 실행할 때는 `-f 65001`을 붙여야 한글이 깨지지 않는다.
 
 4 추천 요청 및 이력
 
@@ -377,7 +385,7 @@ attempt_count는 최초 AI 생성 포함 최대 3회이며 재생성은 최대 2
 - 확정 토큰과 로그인 주체별 중복 제출은 현재 세션에서 동일 jobId를 반환한다. 실패 후 명시적 재조회는 새 작업이다. 서로 다른 세션 간 중복은 별도 요청으로 처리한다.
 - JSON POST 응답은 DB 커밋 후 202+Location+jobId, JavaScript 없는 HTML 폼은 303으로 GET 화면에 이동한다. 상태 조회는 2초 간격이며 준비·실패 시 멈춘다. API에는 원문·소유자·토큰 해시를 반환하지 않는다.
 - 현재 실행기는 단일 서버에서 순차 실행한다(동시 1개, 전체 상한 5개 이하). DB 조회 트랜잭션 제한 15초, 큐 대기 60초 초과는 실패 처리한다. 앱 시작 시 실행 중 단계는 실패로 복구하고 QUEUED는 다시 확인한다. 준비된 스냅샷은 유지한다. 향후 외부 API·GPT 연결 시 전체 실행 제한과 최대 5개 동시 처리 정책을 확장 검증한다.
-- 임시 조회 만료 기본 24시간, 설정 `travel.jobs.retention-hours`(1~168시간)이다. 만료 작업은 소유자도 조회 불가하고 비회원 작업은 1분 주기 및 시작 시 삭제한다. 회원 추천 이력은 유지한다. 세션이 먼저 끝나면 비회원 작업에 접근할 수 없다.
+- 임시 조회 만료 기본 24시간, 설정 `travel.jobs.retention-hours`(1~168시간)이다. 만료 작업은 소유자도 조회 불가하고 비회원 작업은 1분 주기 및 시작 시 삭제한다. 회원 추천 이력은 유지한다. 회원의 일정 초안(ITINERARY) 작업은 만료 7일 뒤 삭제한다(2026-11-08). 저장한 일정은 초안을 다시 열 때 새 작업으로 이어 붙이므로 영향이 없다. 세션이 먼저 끝나면 비회원 작업에 접근할 수 없다.
 - `row_version`은 SQL Server 생성값으로 읽고 상태 변경은 행 잠금으로 보호한다. 단위 테스트에서는 자동 실행기를 끄고 작업 처리를 명시적으로 실행한다. 운영은 하나의 앱 인스턴스를 기준으로 한다.
 - 배포 SQL: [004_create_recommendation_jobs.sql](sql/004_create_recommendation_jobs.sql), [005_seed_destinations.sql](sql/005_seed_destinations.sql). 004는 대상 테이블 중 하나라도 있으면 중단한다. 005는 코드가 없는 도시만 추가하고 재실행 시 기존 데이터와 검증 시각을 덮어쓰지 않는다.
 
@@ -443,7 +451,7 @@ details_json의 foods[]는 음식명·분류·설명·출처를 보관한다. �
 
 2026-10-30 여행지 "할 수 있는 것" 목록: 여행지 행(`place_type='DESTINATION'`)의 기존 `details_json`에 선택 객체 `profile`을 사용한다(테이블·컬럼 변경 없음). 구조는 `{name, categories:{소분류코드:{count, names[]}}, checkedAt}`이다. 한국관광공사 TourAPI 지역기반 관광정보(`areaBasedList2`)를 새 분류체계 대분류(자연관광 NA·역사관광 HS·문화관광 VE·체험관광 EX·레저스포츠 LS·쇼핑 SH)마다 받아 소분류(예: NA040100 국립공원)별 등록 장소 수와 대표 이름 최대 5개를 센 것이다. 지역은 법정동 코드로 찾고, 일반구가 있는 시(수원·전주·포항)는 구마다, 광역시·제주·세종은 시·도 전체로 센다. 원하는 여행을 그 여행지에서 할 수 있는지의 근거로 쓰며 30일 재사용하고, 관광공사 오류로 일부만 받으면 보관하지 않는다. name(만들 당시 여행지 이름)이 바뀌면 다시 만든다.
 
-2026-10-30 추천 중 추가하는 여행지 행: 지역을 고르지 않고 여행 목적을 말한 추천 요청에서 AI가 제안한 시·군이 법정동 코드로 확인되고 원하는 여행의 관광공사 등록 장소가 한 곳 이상 있으면, 기존 `places`에 여행지 행을 추가한다(테이블·컬럼 변경 없음, SQL 시드가 아니라 실행 중 추가). 값은 `place_type=DESTINATION`, `source_provider=TOURAPI`, `source_place_id=REGION_<지역명>`(예: `REGION_전남광주통합특별시 구례군`, U1로 같은 시·군 중복 방지), `place_name`은 시·군 글자를 뗀 이름(다른 여행지와 겹치면 시·군 이름 그대로), `region`은 정식 시·도명 + 시·군명, `subtype`은 근거가 된 소분류를 여행 취향 이름으로 바꾼 것, `description`은 근거 분류의 대표 장소 이름으로 만든 소개, `source_url`은 `https://korean.visitkorea.or.kr/`, `verified_at`은 추가 시각, `details_json.profile`은 확인에 쓴 "할 수 있는 것" 목록이다. 주소·좌표는 SQL 014 여행지처럼 두지 않는다. 배로만 가는 울릉군은 추가하지 않는다. 추천 작업과 따로 커밋하므로 작업이 실패해도 남아 다음 추천에 쓰인다.
+2026-10-30 추천 중 추가하는 여행지 행: 지역을 고르지 않고 여행 목적을 말한 추천 요청에서 AI가 제안한 시·군이 법정동 코드로 확인되고 원하는 여행의 관광공사 등록 장소가 한 곳 이상 있으면, 기존 `places`에 여행지 행을 추가한다(테이블·컬럼 변경 없음, SQL 시드가 아니라 실행 중 추가). 값은 `place_type=DESTINATION`, `source_provider=TOURAPI`, `source_place_id=REGION_<지역명>`(예: `REGION_전남광주통합특별시 구례군`, U1로 같은 시·군 중복 방지), `place_name`은 시·군 글자를 뗀 이름(다른 여행지와 겹치면 시·군 이름 그대로), `region`은 정식 시·도명 + 시·군명, `subtype`은 근거가 된 소분류를 여행 취향 이름으로 바꾼 것, `description`은 근거 분류의 대표 장소 이름으로 만든 소개, `source_url`은 `https://korean.visitkorea.or.kr/`, `verified_at`은 추가 시각, `details_json.profile`은 확인에 쓴 "할 수 있는 것" 목록이다. 주소·좌표는 SQL 014 여행지처럼 두지 않는다. 배로만 가는 울릉군은 추가하지 않는다. 추천 작업과 따로 커밋하므로 작업이 실패해도 남아 다음 추천에 쓰인다. 2026-11-16: 여행 목적에 음식 이름(`purposeSearch.food`, 예: 김밥)이 있으면 관광공사 등록 장소가 없어도 카카오에서 그 음식이 상호·분류에 들어간 음식점이 3곳 이상인 시·군을 같은 방식으로 추가한다. 이때 `subtype`은 `맛집`, `description`은 "김밥 음식점 ○곳이 있는 지역입니다(카카오 지도 검색, 메뉴는 확인하지 않음)"이고, `source_url`은 다른 추가 여행지와 같은 관광공사 주소다(여행지 후보는 공식 출처만 쓴다). `source_provider`·`source_place_id` 규칙은 같다.
 
 조회 후 24시간, 동일한 이름·주소에만 운영정보를 재사용한다. 기존 필드 없음·읽기 실패는 미확인이다. ai_jobs의 일정 request_json 내 PlaceCandidate에 nullable operatingInfo를 추가하며 이전 작업 JSON의 누락 필드는 null로 읽는다. 완료 직전에 DB 운영정보와 입력 스냅샷이 다른 경우 PLACES_CHANGED로 실패시킨다. 원문·확인 범위는 결과 항목 note에 포함하며 해석 불가 예외를 검증 완료로 표시하지 않는다. 상세 기준은 [TourAPI 설정·연결](../ai/TourAPI_설정.md)을 따른다.
 
@@ -702,7 +710,7 @@ U1(request_key). 예약번호는 reservation_id를 사용한다. 사용자가 �
 
 CHECK: CANCELED일 때만 canceled_at 존재. 날짜·시간은 stock_id와 스냅샷으로 보관한다. 변경 시 재고 참조·스냅샷·금액을 함께 갱신한다.
 
-PENDING은 이미 수량을 점유한다. 결제가 없으면 생성 트랜잭션 안에서 CONFIRMED로 확정한다. 회원·일정 소유권과 재고 단위에 맞는 인원·수량을 검증한다.
+PENDING은 이미 수량을 점유한다. 회원당 PENDING은 최대 5건이다. 30분 동안 결제·변경이 없으면 서버가 1분마다 찾아 자동 취소하고 수량을 복구한다(2026-11-08, 이력 사유 '결제 대기 30분이 지나 자동 취소'). 결제가 없으면 생성 트랜잭션 안에서 CONFIRMED로 확정한다. 회원·일정 소유권과 재고 단위에 맞는 인원·수량을 검증한다.
 
 17 가상 결제
 

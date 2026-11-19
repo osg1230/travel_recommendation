@@ -100,7 +100,7 @@ class ProfileIntegrationTests {
         mvc.perform(get("/account").with(user(owner.getLoginId())))
                 .andExpect(content().string(containsString("value=\"서울 송파구\"")));
         mvc.perform(update(owner, owner.getNickname()).param("homeArea", "서울 송파구"))
-                .andExpect(content().string(containsString("변경할 내용이 없습니다.")));
+                .andExpect(content().string(containsString("변경할 내용이 없어요.")));
         mvc.perform(update(owner, "새이름"+owner.getId()).param("homeArea", ""))
                 .andExpect(redirectedUrl("/account"))
                 .andExpect(flash().attribute("profileUpdated", "닉네임, 주로 출발하는 곳(지움)을 바꿨어요."));
@@ -112,7 +112,7 @@ class ProfileIntegrationTests {
     @Test
     void ownNicknameCaseChangeUsesDatabaseDuplicateRulesAndNoChangeIsReported() throws Exception {
         var owner=member();
-        mvc.perform(update(owner, owner.getNickname())).andExpect(content().string(containsString("변경할 내용이 없습니다.")));
+        mvc.perform(update(owner, owner.getNickname())).andExpect(content().string(containsString("변경할 내용이 없어요.")));
         mvc.perform(update(owner, owner.getNickname().toUpperCase(java.util.Locale.ROOT)))
                 .andExpect(redirectedUrl("/account"));
     }

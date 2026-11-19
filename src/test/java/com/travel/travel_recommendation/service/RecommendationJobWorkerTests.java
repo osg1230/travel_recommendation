@@ -18,7 +18,8 @@ class RecommendationJobWorkerTests {
     private final RecommendationJobWorker worker = new RecommendationJobWorker(service, recommendations, itineraries,
         mock(PurposePlaceService.class), mock(RegionSuggestionService.class), mock(DestinationPickService.class),
         mock(FestivalPlaceService.class), mock(PlacePhotoService.class), mock(NearbyRestaurantService.class),
-        mock(PlacePickService.class), mock(DestinationLandmarkService.class), mock(DestinationProfileService.class), mock(WithdrawalService.class));
+        mock(PlacePickService.class), mock(DestinationLandmarkService.class), mock(DestinationProfileService.class), mock(WithdrawalService.class),
+        mock(VirtualReservationService.class));
     private final UUID broken = UUID.randomUUID();
     private final UUID next = UUID.randomUUID();
 

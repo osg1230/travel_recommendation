@@ -16,7 +16,7 @@ public class SignupForm {
 
     // ASCII 64자 이하로 제한해 BCrypt의 72바이트 한도를 넘지 않게 한다.
     @NotBlank(message = "비밀번호를 입력해 주세요.")
-    @Pattern(regexp = "(?=.*[a-zA-Z])(?=.*[0-9])[!-~]{8,64}", message = "비밀번호는 영문과 숫자를 포함해 8~64자로 입력해 주세요. 공백은 사용할 수 없습니다.")
+    @Pattern(regexp = "(?=.*[a-zA-Z])(?=.*[0-9])[!-~]{8,64}", message = "비밀번호는 영문과 숫자를 포함해 8~64자로 입력해 주세요. 공백은 사용할 수 없어요.")
     private String password;
 
     @NotBlank(message = "비밀번호를 한 번 더 입력해 주세요.")
@@ -43,7 +43,7 @@ public class SignupForm {
         this.homeArea = homeArea == null ? null : homeArea.strip();
     }
 
-    @AssertTrue(message = "비밀번호 확인이 일치하지 않습니다.")
+    @AssertTrue(message = "비밀번호 확인이 일치하지 않아요.")
     public boolean isPasswordMatching() {
         // 누락 안내는 각 필드에서 처리하고 여기서는 일치 여부만 확인한다.
         return password == null || passwordConfirm == null || password.equals(passwordConfirm);

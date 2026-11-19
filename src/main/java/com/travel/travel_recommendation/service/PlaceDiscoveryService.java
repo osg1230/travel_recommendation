@@ -24,6 +24,9 @@ public class PlaceDiscoveryService {
     private final tools.jackson.databind.ObjectMapper mapper;
     private final PlatformTransactionManager transactions;
 
+    /** 목적 음식 음식점을 더 찾는 수. 일정 후보에는 PlaceCandidateService.FOOD_RESTAURANT_KEEP곳까지 앞에 둔다. */
+    static final int FOOD_RESTAURANTS=6;
+
     public int refresh(UUID jobId,long destinationId,String login,byte[] hash) {
         var before=candidates.find(jobId,destinationId,login,hash);
         String region=before.destination().region();
@@ -49,6 +52,20 @@ public class PlaceDiscoveryService {
         }
         var temples=touristTemples(maps.searchTemples(region)); rank(temples,ranks,after); found.addAll(temples);
         var cathedrals=touristCathedrals(maps.searchCathedrals(region)); rank(cathedrals,ranks,after); found.addAll(cathedrals);
+        // 바다 취향이면 해변이 아닌 바다 장소(해안산책로)도 찾는다. 실패해도 나머지 목록은 그대로 저장한다.
+        // 여행 분위기를 골랐으면 그 분위기에 맞는 종류(한적한 → 수목원·둘레길 등)도 찾는다(MoodPlaces, 2026-11-16).
+        // 여행 목적에 음식이 있으면(예: 김밥 맛집 탐방) 그 음식 음식점을 더 찾는다(2026-11-16). 실패해도 나머지 목록은 그대로 저장한다.
+        String food=candidates.foodName(jobId,login,hash);
+        if(!food.isEmpty()) {
+            try { found.addAll(maps.searchFoodRestaurants(region,food,FOOD_RESTAURANTS)); }
+            catch(RecommendationException error) { log.warn("목적 음식 음식점 찾기 실패 food={} ({})",food,error.getCode()); }
+        }
+        var words=new ArrayList<>(ThemePlaces.searchWords(candidates.themeNames(jobId,login,hash)));
+        MoodPlaces.searchWords(candidates.moodNames(jobId,login,hash)).stream().filter(w->!words.contains(w)).forEach(words::add);
+        for(String word:words) {
+            try { var list=maps.searchThemeAttractions(region,word); rank(list,ranks,after); found.addAll(list); }
+            catch(RecommendationException error) { log.warn("취향 장소 찾기 실패 word={} ({})",word,error.getCode()); }
+        }
         var transaction=new TransactionTemplate(transactions); transaction.setTimeout(10);
         return transaction.execute(status->{
             // 같은 지역의 동시 수집을 직렬화하고, 조회 중 만료·권한 변경도 다시 검사한다.

@@ -74,6 +74,28 @@ class ConditionReviewTests {
                 .andExpect(redirectedUrl("/travel/conditions"));
         verify(client, times(1)).analyze(anyString(), anyMap());
     }
+    // 문장에서 읽은 분위기·속도는 다시 묻지 않고 확인 화면에 미리 골라 두며, 확정하면 MOOD·PACE 키워드로 남는다.
+    @Test void moodAndPaceReadFromTheSentenceArePreselectedAndConfirmed() throws Exception {
+        result.putArray("moods").add("한적한").add("없는 분위기");
+        result.put("pace", "느긋하게");
+        MockHttpSession session = new MockHttpSession();
+        ConditionReviewForm form = analyze(session);
+        // 목록에 없는 값이 섞이면 분위기 칸만 비우고 안내한다(다른 칸처럼).
+        assertThat(form.getMoods()).isEmpty();
+        assertThat(form.getPace()).isEqualTo("느긋하게");
+        result.putArray("moods").add("한적한").add("감성적인");
+        session = new MockHttpSession();
+        form = analyze(session);
+        assertThat(form.getMoods()).containsExactly("한적한", "감성적인");
+        mvc.perform(get("/travel/conditions/review").session(session))
+                .andExpect(content().string(containsString("문장에서 읽은 분위기와 속도를 미리 골라 두었어요")));
+        mvc.perform(post("/travel/conditions/confirm").with(csrf()).session(session).param("revision", form.getRevision())
+                        .param("region", "강릉").param("moods", "감성적인").param("pace", "알차게"))
+                .andExpect(redirectedUrl("/travel/conditions/confirmed"));
+        var confirmed = (ConfirmedTravelConditions) session.getAttribute("confirmedTravelConditions");
+        assertThat(confirmed.keywordNames("MOOD")).isEqualTo("감성적인");
+        assertThat(confirmed.keywordNames("PACE")).isEqualTo("알차게");
+    }
     @Test void keywordFlowAndMissingConditionsDoNotCallAi() throws Exception {
         MockHttpSession session = new MockHttpSession();
         mvc.perform(post("/travel/conditions").with(csrf()).session(session));

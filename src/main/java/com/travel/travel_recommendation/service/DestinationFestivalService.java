@@ -39,6 +39,16 @@ public class DestinationFestivalService {
         return result;
     }
 
+    public boolean configured() { return festivals.configured(); }
+
+    /**
+     * 여행지 한 곳에서 여행 기간에 열리는 축제(시작일 순). 날짜가 미정이면 진행 중이거나 곧 열리는 축제다.
+     * 음식 축제를 확인할 때(PurposePlaceService) 추천 카드의 축제와 같은 기준을 쓰려고 둔다.
+     */
+    public List<RegionalFestival> during(ConfirmedTravelConditions conditions, DestinationCandidate candidate) {
+        return inDestination(candidate).stream().filter(f -> duringTrip(f, conditions.startDate(), conditions.endDate())).toList();
+    }
+
     /**
      * 날짜는 없지만 "12월에"처럼 지금과 다른 계절의 여행이면 축제를 붙이지 않는다.
      * 조회되는 축제는 오늘부터 60일 안의 것이라 그 여행 시기의 축제가 아니기 때문이다.

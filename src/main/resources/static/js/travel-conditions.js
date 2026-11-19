@@ -113,7 +113,8 @@ function updateSummary() {
     if (!keywordMode) return;
     const parts = [
         ...checkedLabels('region'), durationText(), startText(), ...checkedLabels('season'), ...checkedLabels('companion'),
-        checkedLabels('themes').join(', '), ...checkedLabels('transportation'), budgetText()
+        checkedLabels('themes').join(', '), checkedLabels('moods').join(', '), ...checkedLabels('pace'),
+        ...checkedLabels('transportation'), budgetText()
     ].filter(Boolean);
     summary.replaceChildren();
     if (parts.length === 0) {

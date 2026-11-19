@@ -44,4 +44,13 @@ class AiRequestLimiterTests {
         now.set(now.get().plus(AiRequestLimiter.WINDOW));
         assertThat(limiter.tryAcquireItinerary(null, "10.0.0.1")).isNull();
     }
+
+    // IPv6 비회원은 앞 64비트로 세어, 같은 가입자 대역 안에서 주소를 바꿔도 한도를 피하지 못한다.
+    @Test void ipv6GuestsAreCountedByTheirSlash64Prefix() {
+        assertThat(AiRequestLimiter.guestKey("2001:db8:1:2:aaaa::1")).isEqualTo(AiRequestLimiter.guestKey("2001:db8:1:2:bbbb::9"))
+            .isNotEqualTo(AiRequestLimiter.guestKey("2001:db8:1:3::1"));
+        assertThat(AiRequestLimiter.guestKey("10.0.0.1")).isEqualTo("10.0.0.1");
+        for (int i = 0; i < AiRequestLimiter.GUEST_LIMIT_PER_HOUR; i++) assertThat(limiter.tryAcquire(null, "2001:db8:1:2::" + (i + 1))).isNull();
+        assertThat(limiter.tryAcquire(null, "2001:db8:1:2::ff")).startsWith("요청이 많아 잠시 뒤 다시 시도해 주세요");
+    }
 }

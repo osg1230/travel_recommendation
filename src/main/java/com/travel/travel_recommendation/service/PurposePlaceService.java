@@ -40,11 +40,14 @@ public class PurposePlaceService {
     private final TourApiClient tour;
     private final ObjectMapper mapper;
     private final ObjectProvider<PurposePlaceService> self;
+    private final DestinationFestivalService festivals;
     private final ExpiringCache<String, OpenAiPurposeClient.Terms> keywordCache = new ExpiringCache<>(KEYWORD_TTL, 500);
     private final ExpiringCache<String, List<KakaoPlace>> placeCache = new ExpiringCache<>(PLACE_TTL, 500);
 
     public record Task(UUID jobId, String requestJson, ConfirmedTravelConditions conditions, List<DestinationCandidate> destinations) {}
     public record Found(PurposeSearch search, List<KakaoPlace> places) {}
+    /** 음식 축제를 확인한 결과. purpose가 있으면 여행 목적을 그것(예: 김밥 맛집 탐방)으로 바꾸고, message는 화면 안내다. */
+    public record FestivalCheck(String purpose, String message) {}
 
     /** 보관한 검색어·검색 결과를 비운다. 외부 응답을 바꿔 가며 확인하는 테스트에서 쓴다. */
     public void clearCaches() { keywordCache.clear(); placeCache.clear(); }
@@ -54,7 +57,37 @@ public class PurposePlaceService {
         var task = self.getObject().task(jobId);
         if (task == null) return;
         var found = search(task);
-        self.getObject().save(task, found);
+        self.getObject().save(task, found, foodFestival(task, found.search()));
+    }
+
+    /**
+     * 음식 축제가 목적이면(예: 김밥 축제) 제안받은 여행지나 고른 지역에서 여행 기간에 열리는 그 음식 축제를 관광공사 행사 정보로 찾는다(2026-11-16).
+     * 찾으면 목적을 그대로 두고 축제를 알린다. 못 찾으면 목적을 "김밥 맛집 탐방"으로 바꾸고 이유를 알린다.
+     * AI가 축제를 아는 것처럼 써도, 열리는지는 외부 데이터로 확인한 것만 믿는다(AGENTS.md 9절). 음식 축제가 아니면 null이다.
+     */
+    FestivalCheck foodFestival(Task task, PurposeSearch search) {
+        if (search == null || !search.festival() || !search.hasFood()) return null;
+        var c = task.conditions();
+        String food = search.food(), tour = food + " 맛집 탐방";
+        String region = c.region() == null ? "" : c.region().replaceAll("\\s+", "");
+        var targets = task.destinations().stream().filter(d -> c.suggestedDestinationIds().contains(d.placeId())
+            || (!region.isEmpty() && d.region().replaceAll("\\s+", "").contains(region))).toList();
+        if (targets.isEmpty())
+            return new FestivalCheck(tour, food + " 축제가 열리는 지역을 확인하지 못해 '" + tour + "'으로 바꿔 추천해요.");
+        if (!festivals.configured())
+            return new FestivalCheck(tour, "관광공사 행사 정보를 조회할 수 없어 " + food + " 축제를 확인하지 못했어요. '" + tour + "'으로 바꿔 추천해요.");
+        for (var destination : targets) {
+            try {
+                var festival = festivals.during(c, destination).stream().filter(f -> f.title().contains(food)).findFirst();
+                if (festival.isPresent())
+                    return new FestivalCheck(null, destination.name() + "에서 여행 기간에 열리는 '" + festival.get().title() + "'("
+                        + festival.get().period() + ")" + ReadableText.particle(festival.get().title(), "을") + " 관광공사 행사 정보에서 찾았어요. 축제 일정은 주최 측 사정으로 바뀔 수 있어요.");
+            } catch (RecommendationException e) {
+                log.warn("음식 축제 조회를 건너뜀 destination={} ({})", destination.name(), e.getCode());
+            }
+        }
+        String when = c.startDate() == null ? "앞으로 두 달 안에 열리는" : "여행 기간에 열리는";
+        return new FestivalCheck(tour, when + " " + food + " 축제를 관광공사 행사 정보에서 찾지 못해 '" + tour + "'으로 바꿔 추천해요.");
     }
 
     @Transactional(readOnly = true, timeout = 10)
@@ -66,8 +99,24 @@ public class PurposePlaceService {
         return new Task(jobId, job.getRequestJson(), conditions, destinations.usable());
     }
 
+    /**
+     * 목적의 검색어·음식 이름. 같은 목적이면 하루 동안 다시 묻지 않는다. 지역 제안(RegionSuggestionService)이 음식 이름을 볼 때도
+     * 이 메서드를 써서, 뒤이은 목적 시설 검색과 AI 호출을 나눠 쓴다(호출 수가 늘지 않는다).
+     */
+    public OpenAiPurposeClient.Terms terms(String purpose) {
+        return keywordCache.get(purpose.strip(), () -> ai.terms(purpose));
+    }
+
     /** 외부 호출만 하는 단계라 트랜잭션을 두지 않는다. */
     Found search(Task task) {
+        var found = searchFacilities(task);
+        // 음식 이름·축제 여부는 시설 검색 결과와 관계없이 남긴다. 지역 확인·음식점 찾기·일정 식사에서 쓴다(음식·축제 목적 계획).
+        var terms = task.conditions().travelPurpose() == null ? null : keywordCache.peek(task.conditions().travelPurpose().strip());
+        if (terms == null) return found;
+        return new Found(found.search().withFood(terms.food(), terms.festival()), found.places());
+    }
+
+    private Found searchFacilities(Task task) {
         String purpose = task.conditions().travelPurpose();
         if (!ai.configured()) return new Found(result("SKIPPED", List.of(), List.of(), "AI 연결 설정이 없어 목적 시설을 찾지 않았어요.", List.of()), List.of());
         OpenAiPurposeClient.Terms terms;
@@ -125,7 +174,11 @@ public class PurposePlaceService {
 
     /** 검색하는 동안 요청이 처리되기 시작했거나 바뀌었으면 저장하지 않는다. 찾은 시설은 그 여행지의 관광지 후보로 저장한다. */
     @Transactional(timeout = 10)
-    public void save(Task task, Found found) {
+    public void save(Task task, Found found) { save(task, found, null); }
+
+    /** check는 음식 축제를 확인한 결과다(없으면 null). 목적을 바꿨으면 바뀐 목적으로 추천하고 이유를 안내 문구로 남긴다. */
+    @Transactional(timeout = 10)
+    public void save(Task task, Found found, FestivalCheck check) {
         var job = jobs.lockById(task.jobId()).orElse(null);
         if (job == null || !"QUEUED".equals(job.getStatus()) || !task.requestJson().equals(job.getRequestJson())) return;
         Map<String, DestinationCandidate> byRegion = new HashMap<>();
@@ -147,10 +200,17 @@ public class PurposePlaceService {
         }
         places.flush();
         var search = found.search();
+        String food = search.food(); boolean festival = search.festival();
         if ("FOUND".equals(search.status()) && saved.isEmpty())
             search = result("NONE", search.keywords(), List.of(), "찾은 시설을 여행지 관광지로 저장하지 못했어요.", search.themes());
         else if ("FOUND".equals(search.status())) search = result("FOUND", search.keywords(), saved, null, search.themes());
-        job.attachRequest(mapper.writeValueAsString(task.conditions().withPurposeSearch(search)));
+        search = search.withFood(food, festival);
+        var conditions = task.conditions();
+        if (check != null) {
+            search = search.withMessage(check.message());
+            if (check.purpose() != null) conditions = conditions.withPurpose(check.purpose(), false);
+        }
+        job.attachRequest(mapper.writeValueAsString(conditions.withPurposeSearch(search)));
         jobs.flush();
     }
 

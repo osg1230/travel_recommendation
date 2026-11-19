@@ -10,7 +10,7 @@
 <main class="page">
     <a class="back-link" th:href="@{/admin}">← 관리자 시작 화면</a>
     <h1>회원 관리</h1>
-    <p class="intro">회원을 검색하고 상태를 정상 또는 이용 제한으로 바꿀 수 있습니다. 회원 탈퇴·삭제와 장소 데이터 관리는 이 화면의 기능이 아닙니다.</p>
+    <p class="intro">회원을 검색하고 상태를 정상 또는 이용 제한으로 바꿀 수 있어요. 회원 탈퇴·삭제와 장소 데이터 관리는 이 화면에서 하지 않아요.</p>
     <p role="status" class="status-ok" th:if="${adminMessage != null}" th:text="${adminMessage}"></p>
 
     <form th:action="@{/admin/members}" method="get">
@@ -18,7 +18,7 @@
             <label for="keyword">아이디 또는 닉네임 검색 (선택)</label>
             <input id="keyword" name="keyword" type="search" maxlength="50" th:value="${members.keyword}"
                    aria-describedby="keyword-help">
-            <p id="keyword-help" class="help">일부만 입력해도 찾을 수 있습니다. 비워 두면 전체 회원을 봅니다.</p>
+            <p id="keyword-help" class="help">일부만 입력해도 찾을 수 있어요. 비워 두면 전체 회원을 봐요.</p>
         </div>
         <div class="field">
             <label for="status">상태 (선택)</label>
@@ -33,7 +33,7 @@
     </form>
 
     <p th:text="${'검색 결과 ' + members.totalCount + '명'}"></p>
-    <p role="status" th:if="${members.members.isEmpty()}">조건에 맞는 회원이 없습니다. 검색어나 상태를 바꿔 보세요.</p>
+    <p role="status" th:if="${members.members.isEmpty()}">조건에 맞는 회원이 없어요. 검색어나 상태를 바꿔 보세요.</p>
 
     <table th:unless="${members.members.isEmpty()}">
         <caption>회원 목록 (최근 가입순)</caption>
@@ -41,11 +41,11 @@
             <th scope="col">상태</th><th scope="col">가입일</th><th scope="col">상세</th></tr></thead>
         <tbody>
         <tr th:each="member : ${members.members}">
-            <td th:text="${member.loginId}"></td>
-            <td th:text="${member.nickname}"></td>
-            <td th:text="${member.role}"></td>
-            <td th:text="${member.statusName}"></td>
-            <td th:text="${@timeText.date(member.joinedAt)}"></td>
+            <td data-label="아이디" th:text="${member.loginId}"></td>
+            <td data-label="닉네임" th:text="${member.nickname}"></td>
+            <td data-label="구분" th:text="${member.role}"></td>
+            <td data-label="상태" th:text="${member.statusName}"></td>
+            <td data-label="가입일" th:text="${@timeText.date(member.joinedAt)}"></td>
             <td><a th:href="@{/admin/members/{id}(id=${member.id})}">상세 보기</a></td>
         </tr>
         </tbody>
@@ -59,7 +59,7 @@
            th:href="@{/admin/members(keyword=${members.keyword},status=${members.status},page=${members.page + 1})}">다음 →</a>
     </nav>
 
-    <p class="help">운영에 필요한 최소 정보만 표시합니다. 비밀번호는 저장된 해시조차 조회할 수 없습니다.</p>
+    <p class="help">운영에 필요한 최소 정보만 표시해요. 비밀번호는 저장된 해시조차 조회할 수 없어요.</p>
 </main>
 </body>
 </html>

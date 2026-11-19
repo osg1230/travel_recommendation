@@ -68,7 +68,7 @@ public final class ItineraryConditionReport {
             .filter(p -> !visited.contains(p.placeId()) && !skipped.contains(p.placeId())).map(p -> p.name()).toList();
         if (!missing.isEmpty()) return new Check("선택한 관광지 포함", Status.UNMET, "빠진 관광지: " + String.join(", ", missing));
         if (!skipped.isEmpty()) return new Check("선택한 관광지 포함", Status.MET, "하루 시간에 맞춰 관광지 " + (input.places().attractions().size() - skipped.size())
-            + "곳을 배치했어요. 하루 시간이 부족하거나 가는 길이 2시간을 넘어(섬 등) " + String.join(", ", result.skipped().stream().map(PlaceRef::name).toList()) + "은(는) 넣지 않았어요.");
+            + "곳을 배치했어요. 하루 시간이 부족하거나 가는 길이 너무 멀어(자동차 2시간·대중교통 1시간 30분 초과, 섬 등)" + String.join(", ", result.skipped().stream().map(PlaceRef::name).toList()) + "은(는) 넣지 않았어요.");
         return new Check("선택한 관광지 포함", Status.MET, "일정에 쓰기로 고른 관광지 " + input.places().attractions().size() + "곳을 모두 배치했어요.");
     }
 
@@ -106,8 +106,14 @@ public final class ItineraryConditionReport {
         }
         var c = input.constraints();
         if (c == null || c.dailyVisits() == null)
-            return new Check("하루 방문 수", Status.MET, String.join(" · ", counts) + " (따로 정하지 않아 이동시간에 맞춰 나눴어요)");
+            return new Check("하루 방문 수", Status.MET, String.join(" · ", counts) + (RelaxedPace.packed(input.conditions())
+                ? " (알차게를 골라 남는 시간에 하루 " + RelaxedPace.PACKED_DAILY_CAP + "곳까지 더 넣었어요)"
+                : " (따로 정하지 않아 이동시간에 맞춰 나눴어요)"));
         int want = c.dailyVisits();
+        // 여유 일정이라 서버가 하루 3곳(선호)으로 잡은 경우는 그 이유를 알리고, 3곳보다 적은 날도 요청에 맞는 것으로 본다.
+        if (!c.dailyVisitsRequired() && want == RelaxedPace.DAILY_VISITS && RelaxedPace.wanted(input.conditions())
+                && totals.stream().allMatch(n -> n <= want))
+            return new Check("하루 방문 수", Status.MET, "여유 있는 일정을 원해 하루 " + want + "곳까지만 넣고 남는 시간은 비워 두었어요 · " + String.join(" · ", counts));
         boolean every = totals.stream().allMatch(n -> n == want);
         if (every) return new Check("하루 방문 수", Status.MET, "하루 " + want + "곳 (" + (c.dailyVisitsRequired() ? "필수" : "선호") + ") · " + String.join(" · ", counts));
         if (c.dailyVisitsRequired()) return new Check("하루 방문 수", Status.UNMET, "필수 조건 하루 " + want + "곳과 달라요 · " + String.join(" · ", counts));
@@ -190,7 +196,7 @@ public final class ItineraryConditionReport {
         if (estimated > 0) notes.add(estimated + "구간은 카카오 길찾기에 연결하지 못해 직선거리로 이동시간을 추정했어요(" + estimatedNames(result)
             + "). 출발 전에 길찾기로 이동시간을 확인해 주세요.");
         long sameAddress = moves.stream().filter(i -> i.travelSeconds() == null).count();
-        if (sameAddress > 0) notes.add(sameAddress + "구간은 같은 주소 안 이동이라 실제 내부 동선을 확인해야 해요.");
+        if (sameAddress > 0) notes.add(sameAddress + "구간은 같은 주소 안이거나 바로 옆이라 실제 내부 동선을 확인해야 해요.");
         long walking = moves.stream().filter(i -> i.note() != null && i.note().startsWith(ItineraryGenerator.WALK_NOTE_PREFIX)).count();
         if (walking > 0) notes.add(walking + "구간은 가까워서 대중교통 경로가 없어 도보 시간을 직선거리로 추정했어요. 실제 보행 경로를 확인해 주세요.");
         if (!notes.isEmpty()) return new Check("이동시간", Status.NEEDS_CHECK, "이동 " + moves.size() + "구간 중 " + String.join(" ", notes) + home);

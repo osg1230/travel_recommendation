@@ -182,7 +182,7 @@ public class ItineraryController {
             try {
                 checkItineraryLimit(principal,request);
                 // 집 출발 이동은 카카오·항공 조회로 오래 걸릴 수 있다. 세션 잠금을 잡고 기다리면 같은 사용자의 다른 탭도 멈추므로 잠금 밖에서 찾는다.
-                var home=home(homeRequest,id,destinationId,principal,session,transport);
+                var home=home(homeRequest,id,destinationId,principal,session,transport,startDate);
                 synchronized(session) {
                     // 찾는 동안 먼저 끝난 요청이 있으면 그 초안으로 보낸다.
                     var submission=currentSubmission(id,destinationId,submissionToken,principal,session);
@@ -308,7 +308,7 @@ public class ItineraryController {
         }
         ItineraryPlan.HomeTrip home;
         try {
-            home=home(homeRequest,id,destinationId,principal,session,mode);
+            home=home(homeRequest,id,destinationId,principal,session,mode,date);
         } catch(TripConstraints.ConflictException error) {
             // 이동시간을 찾지 못하면 여행 정보 화면으로 돌아가 직접 적게 한다.
             session.setAttribute(TRIP_INFO_KEY,new TripInfoInput(id,durationDays,accommodationNeeded,startDate,transport,
@@ -850,14 +850,17 @@ public class ItineraryController {
      * ConflictException으로 바꾼다. 이 기능을 쓸 수 없는 환경(DB 없는 실행)에서는 집 이동 없이 만든다.
      */
     private ItineraryPlan.HomeTrip home(HomeTripService.Request request,UUID id,long destinationId,Principal principal,HttpSession session,
-                                        KakaoMapClient.Transport transport) {
+                                        KakaoMapClient.Transport transport,LocalDate formDate) {
         var service=homeTrips.getIfAvailable();
         // 출발지를 비우면(현재 위치도 찾지 않음) 집 이동 없이 여행지 도착부터 일정을 만든다.
         boolean empty=!request.located() && !request.typed();
         if(service==null || empty) return null;
         try {
             var input=service().options(id,destinationId,login(principal),hash(session));
-            return service.resolve(request,input.places(),transport,input.conditions().startDate());
+            // 기차 시간표는 여행 첫날 기준으로 찾는다. 추천 조건에 날짜가 없으면 이 화면에서 고른 출발일을 쓴다(2026-11-10).
+            // 예전에는 추천 조건의 날짜만 넘겨, 문장에 날짜가 없던 일정은 출발일을 골라도 늘 '오늘 운행 기준'이었다.
+            var tripDate=input.conditions().startDate()!=null?input.conditions().startDate():formDate;
+            return service.resolve(request,input.places(),transport,tripDate);
         } catch(RecommendationException error) {
             if(!error.getCode().startsWith("HOME_") && !error.getCode().startsWith("MAP_ORIGIN") && !"MAP_LOCATION".equals(error.getCode())) throw error;
             throw new TripConstraints.ConflictException(List.of(new TripConstraints.Conflict(error.getMessage(),

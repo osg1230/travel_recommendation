@@ -74,7 +74,7 @@ class SignupIntegrationTests {
         SignupForm duplicate = form();
         duplicate.setLoginId(first.getLoginId().toUpperCase(java.util.Locale.ROOT));
         assertThatThrownBy(() -> userService.signup(duplicate)).isInstanceOf(DuplicateUserException.class)
-                .hasMessage("이미 사용 중인 아이디입니다.");
+                .hasMessage("이미 사용 중인 아이디예요.");
     }
 
     @Test
@@ -84,7 +84,7 @@ class SignupIntegrationTests {
         SignupForm duplicate = form();
         duplicate.setNickname(first.getNickname());
         assertThatThrownBy(() -> userService.signup(duplicate)).isInstanceOf(DuplicateUserException.class)
-                .hasMessage("이미 사용 중인 닉네임입니다.");
+                .hasMessage("이미 사용 중인 닉네임이에요.");
     }
 
     @Test

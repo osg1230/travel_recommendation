@@ -118,13 +118,13 @@ class PlaceDiscoveryIntegrationTests {
             .andExpect(content().string(containsString("장소를 더 찾아보지 못했어요")));
     }
     @Test void failureDoesNotPartiallyPersistAndEmptyResultKeepsExistingPlaces() {
-        int count=jdbc.queryForObject("SELECT COUNT(*) FROM dbo.places",Integer.class);
+        int count=jdbc.queryForObject("SELECT COUNT(*) FROM dbo.places WHERE region=?",Integer.class,region);
         doThrow(new RecommendationException("MAP_AUTH","인증 확인")).when(maps).searchPlaces(region,"RESTAURANT");
         assertThatThrownBy(()->discovery.refresh(parent,destination,null,hash)).isInstanceOf(RecommendationException.class);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM dbo.places",Integer.class)).isEqualTo(count);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM dbo.places WHERE region=?",Integer.class,region)).isEqualTo(count);
         doReturn(List.of()).when(maps).searchPlaces(eq(region),anyString());
         assertThat(discovery.refresh(parent,destination,null,hash)).isZero();
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM dbo.places",Integer.class)).isEqualTo(count);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM dbo.places WHERE region=?",Integer.class,region)).isEqualTo(count);
     }
     @Test void rejectsWrongGuestAndCsrfBeforeExternalLookupAndThrottlesDuplicates() throws Exception {
         mvc.perform(post(url()+"/refresh").session(new MockHttpSession()).with(csrf())).andExpect(status().isNotFound());

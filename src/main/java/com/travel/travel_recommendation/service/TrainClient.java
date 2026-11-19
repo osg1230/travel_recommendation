@@ -30,6 +30,7 @@ public class TrainClient {
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyyMMddHHmm");
     static final int PAGE_SIZE = 100, MAX_PAGES = 3;
+    private static final Duration TAGO_CACHE_TTL = IntercityBusClient.TAGO_CACHE_TTL;
     private final TagoProperties properties;
     private final ObjectMapper mapper;
     private final URI endpoint;
@@ -48,8 +49,15 @@ public class TrainClient {
 
     public boolean configured() { return properties.isConfigured(); }
 
+    /** 같은 구간·날짜를 TAGO_CACHE_TTL 동안 다시 부르지 않는다. TAGO는 당일 배차·운항 자료라 그 사이 결과가 같고, 버스 안내 한 번에 수십 번 부르던 호출을 줄인다. 실패는 보관하지 않는다. */
+    private final ExpiringCache<String, List<Train>> trainsCache = new ExpiringCache<>(TAGO_CACHE_TTL, 500);
+
     /** date에 출발역에서 도착역으로 가는 열차. 출발 시각 순서이며 없으면 빈 목록이다. 역 코드는 TAGO 형식(예: NAT010000)이다. */
     public List<Train> trains(String departureStationId, String arrivalStationId, LocalDate date) {
+        return trainsCache.get(departureStationId+":"+arrivalStationId+":"+date, () -> loadTrains(departureStationId, arrivalStationId, date));
+    }
+
+    private List<Train> loadTrains(String departureStationId, String arrivalStationId, LocalDate date) {
         if (departureStationId == null || arrivalStationId == null || date == null || departureStationId.equals(arrivalStationId)
                 || !departureStationId.matches("NAT[0-9A-Z]{6}") || !arrivalStationId.matches("NAT[0-9A-Z]{6}")) throw invalid();
         List<Train> result = new ArrayList<>();
