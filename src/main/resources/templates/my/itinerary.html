@@ -4,13 +4,14 @@
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <title th:text="${itinerary.summary.title + ' | 다녀올게'}">저장한 일정 | 다녀올게</title>
     <link rel="stylesheet" th:href="@{/css/app.css}">
+    <script defer th:src="@{/js/clamp-notes.js}"></script>
     <script defer th:src="@{/js/day-tabs.js}"></script>
     <script defer th:src="@{/js/trip-map.js}"></script>
     <script defer th:src="@{/js/submit-loading.js}"></script>
 </head>
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
-<main class="travel itinerary-page">
+<main class="travel itinerary-page compact-timeline">
     <nav th:replace="~{fragments/layout :: myNav('itineraries')}"></nav>
     <a class="back-link" th:href="@{/my/itineraries}">← 내 일정 목록</a>
     <p class="eyebrow">내 여행 · 저장한 일정</p>
@@ -56,7 +57,8 @@
             <figcaption>사진: 한국관광공사</figcaption></figure>
             </th:block>
             <h3 th:text="${item.name}"></h3>
-            <p style="white-space: pre-line" th:text="${item.displayNote()}"></p>
+            <!--/* 일정 초안 화면처럼 장소 설명은 두 줄만 보여 주고 '더 보기'로 펼친다(clamp-notes.js). 한 줄짜리 이동 항목은 그대로 둔다. */-->
+            <p style="white-space: pre-line" th:attr="data-clamp=${item.type == 'TRANSIT' ? null : 'on'}" th:text="${item.displayNote()}"></p>
             <p class="help" th:if="${item.travelMinutes != null}" th:text="${'저장 당시 예상 이동시간 약 ' + item.travelMinutes + '분'}"></p>
             <th:block th:if="${item.type == 'MEAL' or item.type == 'STAY'}" th:with="quote=${itinerary.price(item.placeId)}">
                 <p class="help" th:if="${quote != null and quote.found()}"

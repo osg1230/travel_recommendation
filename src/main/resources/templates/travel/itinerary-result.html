@@ -12,7 +12,7 @@
 <script defer th:src="@{/js/submit-loading.js}"></script>
 <script defer th:src="@{/js/request-examples.js}"></script>
 <header th:replace="~{fragments/layout :: header}"></header>
-<main class="travel itinerary-page draft-page">
+<main class="travel itinerary-page compact-timeline">
 <nav th:replace="~{fragments/layout :: flowSteps(5)}"></nav>
 <a class="back-link" th:href="@{/travel/recommendations/{id}/destinations/{dest}/places(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId})}">← 장소 목록</a>
 <!--/* 이동수단은 한 줄을 따로 쓰지 않고 제목 위 작은 글에 붙인다(일정표가 화면 위쪽에 보이게). */-->
