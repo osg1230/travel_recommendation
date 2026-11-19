@@ -123,6 +123,11 @@ h3 { font-size: 17px; margin: 0 0 6px; }
 .condition-section { scroll-margin-top: 76px; }
 /* 조회 뒤 절 제목(예: #bus-title)으로 이동할 때 제목이 위쪽 고정 메뉴에 가리지 않게 한다. */
 h2[id] { scroll-margin-top: 84px; }
+/* 조건 보완 화면의 AI 질문 상자. 질문을 누르면 그 칸으로 이동하므로 이동한 칸도 고정 메뉴에 가리지 않게 한다. */
+.condition-section.follow-ups { border-color: var(--brand); background: var(--brand-soft); }
+.follow-ups ul { padding-left: 20px; }
+.follow-ups li + li { margin-top: 6px; }
+.condition-section input { scroll-margin-top: 120px; }
 .card > :first-child, .condition-section > :first-child { margin-top: 0; }
 
 /* 목록 항목: 장소·일정·즐겨찾기에 공통으로 쓴다 */

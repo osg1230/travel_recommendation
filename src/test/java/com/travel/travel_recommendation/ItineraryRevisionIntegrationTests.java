@@ -86,9 +86,10 @@ class ItineraryRevisionIntegrationTests {
         });
         when(maps.travelTime(any(),any(),any())).thenAnswer(call->new KakaoMapClient.TravelTime(call.getArgument(2),300,3000,Instant.now()));
     }
-    // 09:00~16:00, 체류 90분이면 하루 약 2곳이라 2일 초안에 관광지 4곳을 쓰고, 나머지는 교체 후보로 남는다.
+    // 09:00~15:00이면 하루 약 2곳이라 2일 초안에 관광지 4곳을 쓰고, 나머지 1곳은 교체 후보로 남는다.
+    // 하루 개수는 종류별 체류시간 평균으로 정한다(2026-11-16). 경포대(누각 40분) 때문에 평균이 80분이라, 16:00까지면 하루 3곳이 되어 교체 후보가 없어진다.
     private UUID completedDraft() {
-        var id=schedules.create(parent,destination,null,hash,LocalTime.of(9,0),LocalTime.of(16,0),KakaoMapClient.Transport.CAR,90);
+        var id=schedules.create(parent,destination,null,hash,LocalTime.of(9,0),LocalTime.of(15,0),KakaoMapClient.Transport.CAR,90);
         finish(id); return id;
     }
     private void finish(UUID id) {
@@ -428,7 +429,7 @@ class ItineraryRevisionIntegrationTests {
             .andExpect(flash().attribute("editError",containsString("교체 이유를 골라 주세요.")));
         // 시간만 바꾸기에서 지금과 같은 값을 보내면 수정안을 만들지 않고, 입력한 값을 다시 채울 수 있게 돌려준다.
         long count=ownJobs();
-        mvc.perform(post(url).session(session).with(csrf()).param("start","09:00").param("end","16:00").param("visitMinutes","90"))
+        mvc.perform(post(url).session(session).with(csrf()).param("start","09:00").param("end","15:00").param("visitMinutes","90"))
             .andExpect(status().isSeeOther())
             .andExpect(flash().attribute("reviseError",containsString("바꾼 내용이 없어요")))
             .andExpect(flash().attributeExists("timeValues"));

@@ -16,10 +16,8 @@
     <p>소속 키워드 <strong th:text="${category.keywordCount + '개'}"></strong></p>
     <p>현재 상태 <strong th:text="${category.active ? '사용 중' : '사용 중지'}"></strong></p>
     <p th:text="${'최근 변경 ' + @timeText.dateTime(category.updatedAt)}"></p>
-    <p class="help">코드는 조건 입력 화면의 질문과 연결돼 바꿀 수 없어요.</p>
 
     <h2>이름과 표시 순서</h2>
-    <p class="help">조건 입력 화면의 질문 문구와 순서는 화면에 고정돼 있어, 카테고리 이름과 표시 순서는 키워드 관리 목록에만 반영돼요.</p>
     <!--/* 저장이 거절되면 이유를 보이고, 적었던 값을 다시 채운다. */-->
     <p class="notice" role="alert" th:if="${keywordError != null}" th:text="${keywordError}"></p>
     <form th:action="@{/admin/keywords/categories/{id}(id=${category.id})}" method="post">
@@ -31,7 +29,7 @@
             <label for="sortOrder">표시 순서 (필수)</label>
             <input id="sortOrder" name="sortOrder" type="number" required min="0" max="999" inputmode="numeric"
                    th:value="${inputSortOrder != null ? inputSortOrder : category.sortOrder}" aria-describedby="order-help">
-            <p id="order-help" class="help">0~999 사이 숫자이며 작은 숫자가 목록 앞에 보여요.</p>
+            <p id="order-help" class="help">0~999, 작은 숫자가 앞에 보여요.</p>
         </div>
         <button type="submit">저장</button>
     </form>
@@ -52,7 +50,6 @@
             <button type="submit">카테고리 다시 사용</button>
         </form>
     </th:block>
-    <p class="help">카테고리는 추가하거나 삭제하지 않아요. 조건 입력 화면의 질문 5개가 화면에 고정돼 있기 때문이에요.</p>
 </main>
 </body>
 </html>

@@ -66,8 +66,7 @@ class RecommendationJobIntegrationTests {
         assertThat(requests.count()).isEqualTo(before);
         mvc.perform(get(location).session(session)).andExpect(status().isOk())
             .andExpect(content().string(containsString("강릉")))
-            .andExpect(content().string(containsString("https://visitgangneung.net/")))
-            .andExpect(content().string(containsString("실시간 조회가 아니에요")));
+            .andExpect(content().string(containsString("https://visitgangneung.net/")));
         mvc.perform(get(location+"/status").session(session)).andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("CANDIDATES_READY"))
             .andExpect(jsonPath("$.pending").value(false))

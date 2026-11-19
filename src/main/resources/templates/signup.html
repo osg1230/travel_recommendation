@@ -12,7 +12,6 @@
 <main class="account">
     <a class="back-link" th:href="@{/}">← 처음으로</a>
     <h1>회원가입</h1>
-    <p class="intro">여행을 준비할 때 사용할 계정을 만들어 주세요.</p>
     <p class="required-note">주로 출발하는 곳 외에는 모두 필수예요.</p>
     <form id="signup-form" th:action="@{/signup}" th:object="${signupForm}" method="post">
         <div class="notice error" role="alert" th:if="${#fields.hasAnyErrors()}">
@@ -32,7 +31,7 @@
             <input id="nickname" th:field="*{nickname}" type="text" autocomplete="nickname"
                    required minlength="2" maxlength="50" aria-describedby="nickname-help nickname-error"
                    th:attr="aria-invalid=${#fields.hasErrors('nickname')}">
-            <p class="help" id="nickname-help">서비스에서 사용할 이름, 2~50자</p>
+            <p class="help" id="nickname-help">2~50자</p>
             <p class="field-error" id="nickname-error" th:errors="*{nickname}"></p>
         </div>
         <div class="field">
@@ -41,7 +40,7 @@
             <input id="password" name="password" type="password" autocomplete="new-password"
                    required minlength="8" maxlength="64" aria-describedby="password-help password-error"
                    th:attr="aria-invalid=${#fields.hasErrors('password')}">
-            <p class="help" id="password-help">영문과 숫자를 포함해 8~64자. 영문·숫자·특수문자만 사용하며 공백은 제외해 주세요.</p>
+            <p class="help" id="password-help">영문과 숫자를 포함해 8~64자</p>
             <p class="field-error" id="password-error" th:errors="*{password}"></p>
         </div>
         <div class="field">
@@ -57,7 +56,7 @@
             <input id="homeArea" th:field="*{homeArea}" type="text" maxlength="60" autocomplete="off"
                    placeholder="예) 서울 송파구, 대전역" aria-describedby="homeArea-help homeArea-error"
                    th:attr="aria-invalid=${#fields.hasErrors('homeArea')}">
-            <p class="help" id="homeArea-help">일정을 만들 때 출발지 칸에 미리 넣어 드려요. 지도에서 찾을 수 있는 시·구·동이나 역 이름으로 적어 주세요. 여행지까지 이동시간을 찾는 데만 쓰고, 일정마다 바꿀 수 있어요. 나중에 내 정보에서 적어도 돼요.</p>
+            <p class="help" id="homeArea-help">일정을 만들 때 출발지로 미리 넣어 드려요.</p>
             <p class="field-error" id="homeArea-error" th:errors="*{homeArea}"></p>
         </div>
         <button type="submit">가입하기</button>

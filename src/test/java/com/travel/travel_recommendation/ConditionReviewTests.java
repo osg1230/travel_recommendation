@@ -88,7 +88,7 @@ class ConditionReviewTests {
         form = analyze(session);
         assertThat(form.getMoods()).containsExactly("한적한", "감성적인");
         mvc.perform(get("/travel/conditions/review").session(session))
-                .andExpect(content().string(containsString("문장에서 읽은 분위기와 속도를 미리 골라 두었어요")));
+                .andExpect(status().isOk());
         mvc.perform(post("/travel/conditions/confirm").with(csrf()).session(session).param("revision", form.getRevision())
                         .param("region", "강릉").param("moods", "감성적인").param("pace", "알차게"))
                 .andExpect(redirectedUrl("/travel/conditions/confirmed"));

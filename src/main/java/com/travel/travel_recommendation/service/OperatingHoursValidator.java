@@ -42,6 +42,12 @@ public final class OperatingHoursValidator {
         return "안내된 운영시간·정기휴무와 일치 · 임시 휴무와 방문 당일 운영 여부는 별도 확인해 주세요.";
     }
 
+    /** 안내된 운영시간·정기휴무로 그 시간에 여는 것을 확인했는지. 정보가 없거나 자동 판단하지 못하면(확인 필요) false다. */
+    public static boolean confirmedOpen(PlaceOperatingInfo info, LocalDate date, LocalTime start, LocalTime end) {
+        try { return check("", info, date, start, end).startsWith("안내된 운영시간"); }
+        catch (RecommendationException closed) { return false; }
+    }
+
     public static String note(String name, PlaceOperatingInfo info, LocalDate date, LocalTime start, LocalTime end) {
         String status = check(name, info, date, start, end);
         if (info == null) return status;

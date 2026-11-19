@@ -47,9 +47,14 @@ public class TravelConditionReviewController {
     record AnalysisNotice(UUID jobId, List<String> messages) {}
     private record DirectJob(String token, String login, UUID id) {}
 
-    /** notices는 문장 분석에서 비운 칸의 안내로, 조건 수정 화면에 보여 준다. */
-    private record Review(String sourceId, ConditionReviewForm form, String summary, List<String> notices) {
-        Review(String sourceId, ConditionReviewForm form, String summary) { this(sourceId, form, summary, List.of()); }
+    /** notices는 문장 분석에서 비운 칸의 안내, followUps는 AI 보완 질문으로, 둘 다 조건 보완 화면에 보여 준다. */
+    private record Review(String sourceId, ConditionReviewForm form, String summary, List<String> notices,
+                          List<ConditionReviewService.FollowUp> followUps) {
+        Review(String sourceId, ConditionReviewForm form, String summary) { this(sourceId, form, summary, List.of(), List.of()); }
+        /** 조건 칸에 없는 정보를 물은 질문. 없으면 null이다. */
+        ConditionReviewService.FollowUp extraQuestion() {
+            return followUps.stream().filter(ConditionReviewService.FollowUp::extra).findFirst().orElse(null);
+        }
     }
 
     @InitBinder("travelForm")
@@ -116,13 +121,17 @@ public class TravelConditionReviewController {
                     notices.add(moved);
                     conditions = service.confirm(analysis.form(), source, analysis.summary(), choices).forDirectRecommendation();
                 }
-                session.setAttribute(REVIEW_KEY, new Review(source.getDraftId(), analysis.form(), analysis.summary(), List.copyOf(notices)));
+                session.setAttribute(REVIEW_KEY, new Review(source.getDraftId(), analysis.form(), analysis.summary(),
+                        List.copyOf(notices), analysis.followUps()));
                 // 지역에 맞는 여행지가 없으면 끝까지 처리한 뒤 실패하지 않도록 작업을 만들지 않고, 조건 수정 화면에서 지역을 고치게 한다.
                 String regionProblem = regionProblem(conditions);
                 if(regionProblem != null) {
                     flash.addFlashAttribute("reviewFieldErrors", Map.of("region", regionProblem));
                     return "redirect:/travel/conditions/review";
                 }
+                // AI가 추천 전에 물어볼 것이 있다고 판단했으면 추천을 만들지 않고 조건 보완 화면에서 질문을 보여 준다.
+                // 바로 추천 흐름이라 그 화면에서 확정하면 곧바로 추천을 요청한다(confirm). 질문이 없으면 지금처럼 바로 추천한다.
+                if(!analysis.followUps().isEmpty()) return "redirect:/travel/conditions/review";
                 session.setAttribute(CONFIRMED_KEY, conditions);
                 session.setAttribute(CONFIRMATION_TOKEN, UUID.randomUUID().toString());
                 UUID id = jobService().create(conditions, login, RecommendationJobController.guestHash(session, true));
@@ -241,7 +250,7 @@ public class TravelConditionReviewController {
         // 여행 목적과 제외 지역도 고칠 수 있다. 목적은 서버가 다시 검증하고, 제외 지역은 서버가 가진 목록 안에서만 뺄 수 있다(confirm).
         binder.setAllowedFields("revision", "region", "startDate", "endDate", "durationDays", "budget",
                 "season", "companion", "themes", "moods", "pace", "transportation", "partySize", "accommodationNeeded", "includeNearby",
-                "travelPurpose", "excludedRegions");
+                "travelPurpose", "excludedRegions", "followUpAnswer");
         binder.registerCustomEditor(String.class, new StringTrimmerEditor(false));
     }
 
@@ -273,7 +282,7 @@ public class TravelConditionReviewController {
             synchronized (session) {
                 if (draft(session) != draft) return stale(flash);
                 analysis.form().setRevision(UUID.randomUUID().toString());
-                session.setAttribute(REVIEW_KEY, new Review(draftId, analysis.form(), analysis.summary(), analysis.notices()));
+                session.setAttribute(REVIEW_KEY, new Review(draftId, analysis.form(), analysis.summary(), analysis.notices(), analysis.followUps()));
                 session.removeAttribute(CONFIRMED_KEY);
             }
             return "redirect:/travel/conditions/review";
@@ -342,6 +351,8 @@ public class TravelConditionReviewController {
             }
             // 목적은 화면에서 고칠 수 있다. 그대로 두었으면 AI 제안 표시를 유지하고, 고쳤으면 사용자가 정한 목적으로 본다.
             form.setPurposeSuggested(form.getTravelPurpose().equals(review.form().getTravelPurpose()) && review.form().isPurposeSuggested());
+            // AI 보완 질문(조건 칸에 없는 정보)의 답은 여행 목적 뒤에 붙인다. 질문이 없던 화면에서 보낸 답은 버린다.
+            service.applyFollowUpAnswer(form, review.extraQuestion());
             // 제외 지역은 서버가 가진 목록 중 체크를 유지한 이름만 남기고, 가려고 고른 지역과 같은 이름은 뺀다.
             String region = form.getRegion().replaceAll("\\s+", "");
             List<String> kept = form.getExcludedRegions() == null ? List.of() : form.getExcludedRegions();
@@ -413,6 +424,8 @@ public class TravelConditionReviewController {
         // 제외 지역 체크박스와 목적 안내는 서버가 가진 값으로 그린다. 오류로 다시 그릴 때도 체크를 푼 지역이 목록에서 사라지지 않는다.
         model.addAttribute("excludedChoices", review.form().getExcludedRegions());
         model.addAttribute("purposeSuggested", review.form().isPurposeSuggested());
+        // AI 보완 질문. 확정하면 새 Review에는 넣지 않아, 다시 수정할 때는 같은 질문을 또 묻지 않는다.
+        model.addAttribute("followUps", review.followUps());
     }
 
     /**

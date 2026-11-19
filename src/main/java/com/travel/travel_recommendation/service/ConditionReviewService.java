@@ -23,12 +23,24 @@ public class ConditionReviewService {
     private final TravelConditionValidator validator;
     private static final Set<String> RESPONSE_FIELDS = Set.of("isTravel", "region", "startDate", "endDate",
             "durationDays", "season", "companion", "themes", "budget", "transportation", "partySize",
-            "accommodationNeeded", "includeNearby", "summary", "travelPurpose", "suggestedConcept", "excludedRegions", "moods", "pace");
+            "accommodationNeeded", "includeNearby", "summary", "travelPurpose", "suggestedConcept", "excludedRegions", "moods", "pace", "followUpQuestions");
 
     /** notices는 해석하지 못해 비운 칸의 안내다(예: "여행 목적은 해석하지 못해 비워 두었어요."). 없으면 비어 있다. */
-    public record Analysis(ConditionReviewForm form, String summary, List<String> notices) {
-        public Analysis(ConditionReviewForm form, String summary) { this(form, summary, List.of()); }
+    public record Analysis(ConditionReviewForm form, String summary, List<String> notices, List<FollowUp> followUps) {
+        public Analysis(ConditionReviewForm form, String summary) { this(form, summary, List.of(), List.of()); }
     }
+
+    /**
+     * AI가 추천 전에 더 물어보면 좋겠다고 판단한 질문. field가 조건 칸 이름이면 그 칸에서 답하고,
+     * EXTRA_FIELD면 조건 칸에 없는 정보라 답을 받아 여행 목적 뒤에 "label: 답"으로 붙인다.
+     */
+    public record FollowUp(String field, String question, String label) implements java.io.Serializable {
+        public boolean extra() { return EXTRA_FIELD.equals(field); }
+    }
+    public static final String EXTRA_FIELD = "extra";
+    /** 되물을 수 있는 칸. 계절은 날짜로 서버가 정하고 목적은 extra 질문으로 받으므로 넣지 않는다. */
+    private static final Set<String> FOLLOW_UP_FIELDS = Set.of("region", "durationDays", "startDate", "companion", "themes",
+            "moods", "pace", "partySize", "budget", "transportation", "accommodationNeeded", "includeNearby", EXTRA_FIELD);
 
     /** 칸 이름과 안내에 붙일 말. 해석하지 못한 칸을 비울 때 "○○은 해석하지 못해 비워 두었어요"로 알린다. */
     private static final Map<String, String> FIELD_LABELS = Map.ofEntries(
@@ -133,7 +145,43 @@ public class ConditionReviewService {
             form.setDurationDays(String.valueOf(ChronoUnit.DAYS.between(
                     LocalDate.parse(form.getStartDate()), LocalDate.parse(form.getEndDate())) + 1));
         }
-        return new Analysis(form, summary, List.copyOf(notices));
+        return new Analysis(form, summary, List.copyOf(notices), followUps(result.get("followUpQuestions")));
+    }
+
+    /**
+     * AI의 보완 질문을 검사한다. 사용자가 한 말이 아니라 제안이므로, 맞지 않는 질문은 알리지 않고 그 질문만 버린다.
+     * 칸 이름은 허용 목록 안에서만 받고, 같은 칸을 두 번 묻거나 extra 질문이 둘 이상이면 앞의 것만 쓴다.
+     */
+    private List<FollowUp> followUps(JsonNode questions) {
+        if (questions == null || !questions.isArray()) throw invalid();
+        List<FollowUp> kept = new ArrayList<>();
+        for (JsonNode item : questions) {
+            if (!item.isObject() || !item.path("field").isTextual() || !item.path("question").isTextual()
+                    || !item.path("label").isTextual()) throw invalid();
+            String field = item.get("field").asText();
+            String question = item.get("question").asText().strip();
+            String label = item.get("label").asText().strip();
+            if (kept.size() == 3 || !FOLLOW_UP_FIELDS.contains(field) || !validPurpose(question, 60) || question.length() < 5) continue;
+            if (kept.stream().anyMatch(f -> f.field().equals(field))) continue;
+            // extra 답은 "label: 답"으로 목적에 붙으므로 이름표가 있어야 한다.
+            if (EXTRA_FIELD.equals(field) && (!validPurpose(label, 15) || label.contains(":"))) continue;
+            kept.add(new FollowUp(field, question, EXTRA_FIELD.equals(field) ? label : ""));
+        }
+        return List.copyOf(kept);
+    }
+
+    /**
+     * 보완 질문(extra)의 답을 여행 목적 뒤에 "label: 답"으로 붙이고 답 칸을 비운다. 목적이 AI 제안이었으면
+     * 사용자가 직접 답한 내용이 더 정확하므로 제안 대신 답만 남긴다. 답의 길이·형식은 validate에서 먼저 검사한다.
+     */
+    public void applyFollowUpAnswer(ConditionReviewForm form, FollowUp extra) {
+        String answer = form.getFollowUpAnswer() == null ? "" : form.getFollowUpAnswer().strip();
+        form.setFollowUpAnswer("");
+        if (extra == null || answer.isEmpty()) return;
+        String added = extra.label() + ": " + answer;
+        String purpose = form.getTravelPurpose() == null ? "" : form.getTravelPurpose().strip();
+        form.setTravelPurpose(form.isPurposeSuggested() || purpose.isEmpty() ? added : purpose + ", " + added);
+        form.setPurposeSuggested(false);
     }
 
     /**
@@ -310,6 +358,12 @@ public class ConditionReviewService {
             errors.rejectValue("includeNearby", "invalid", "주변 지역 포함 여부를 화면의 항목에서 선택해 주세요.");
         if (!validPurpose(form.getTravelPurpose(), 200))
             errors.rejectValue("travelPurpose", "invalid", "여행 목적은 200자 이내로 적고, 주소·이메일·긴 숫자는 빼 주세요.");
+        // AI 보완 질문의 답은 여행 목적 뒤에 붙으므로 목적과 같은 기준으로 검사하고, 합친 길이도 200자를 넘지 않게 한다.
+        String answer = form.getFollowUpAnswer() == null ? "" : form.getFollowUpAnswer().strip();
+        if (!answer.isEmpty() && !validPurpose(answer, 100))
+            errors.rejectValue("followUpAnswer", "invalid", "질문의 답은 100자 이내로 적고, 주소·이메일·긴 숫자는 빼 주세요.");
+        else if (!answer.isEmpty() && form.getTravelPurpose().strip().length() + answer.length() + 20 > 200)
+            errors.rejectValue("followUpAnswer", "tooLong", "여행 목적과 질문의 답을 합쳐 180자 안으로 줄여 주세요.");
     }
 
     public ConfirmedTravelConditions confirm(ConditionReviewForm form, TravelConditionForm source,

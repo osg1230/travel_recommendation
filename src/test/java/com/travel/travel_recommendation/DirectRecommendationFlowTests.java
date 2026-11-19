@@ -131,6 +131,34 @@ class DirectRecommendationFlowTests {
             .andExpect(redirectedUrl("/travel/recommendations/"+id));
         verify(jobs).create(argThat(value -> "제주".equals(value.region())),nullable(String.class),any());
     }
+    // AI가 보완 질문을 냈으면 추천을 만들지 않고 조건 보완 화면에서 묻는다. 허용하지 않은 칸·같은 칸·이름표 없는 extra 질문은 버린다.
+    @Test void followUpQuestionsOpenTheReviewAndTheExtraAnswerJoinsThePurpose() throws Exception {
+        var questions=analysis.putArray("followUpQuestions");
+        questions.addObject().put("field","pace").put("question","아이와 함께라 느긋한 일정이 좋을까요?").put("label","");
+        questions.addObject().put("field","pace").put("question","같은 칸을 다시 묻는 질문인가요?").put("label","");
+        questions.addObject().put("field","extra").put("question","상어 말고도 아이가 좋아하는 동물이 있나요?").put("label","좋아하는 동물");
+        var session=new MockHttpSession(); var token=token(session);
+        mvc.perform(post("/travel/conditions/recommend").session(session).with(csrf()).param("inputToken",token)
+            .param("inputMode","TEXT").param("originalText","아이랑 상어 보고 싶어"))
+            .andExpect(redirectedUrl("/travel/conditions/review"));
+        verify(jobs,never()).create(any(),nullable(String.class),any());
+        var view=mvc.perform(get("/travel/conditions/review").session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("추천 전에 조금만 더 알려 주세요")))
+            .andExpect(content().string(containsString("href=\"#pace1\"")))
+            .andExpect(content().string(containsString("상어 말고도 아이가 좋아하는 동물이 있나요?")))
+            .andExpect(content().string(not(containsString("같은 칸을 다시 묻는 질문인가요?")))).andReturn();
+        var form=(ConditionReviewForm)view.getModelAndView().getModel().get("reviewForm");
+        // 답이 너무 길면 확정하지 않고 그 칸에서 고치게 한다.
+        mvc.perform(post("/travel/conditions/confirm").session(session).with(csrf()).param("revision",form.getRevision())
+                .param("travelPurpose","상어 관람").param("followUpAnswer","가".repeat(101)))
+            .andExpect(status().isOk()).andExpect(model().attributeHasFieldErrors("reviewForm","followUpAnswer"));
+        mvc.perform(post("/travel/conditions/confirm").session(session).with(csrf()).param("revision",form.getRevision())
+                .param("travelPurpose","상어 관람").param("followUpAnswer","펭귄"))
+            .andExpect(redirectedUrl("/travel/recommendations/"+id));
+        verify(jobs).create(argThat(value -> "상어 관람, 좋아하는 동물: 펭귄".equals(value.travelPurpose()) && value.directRecommendation()),
+            nullable(String.class),any());
+        verify(client,times(1)).analyze(anyString(),anyMap());
+    }
     // '속리산'처럼 여행지 목록에 없는 이름은 원하는 여행 앞에 붙이고 지역을 비워 바로 추천한다. 추천 화면에서 옮긴 사실을 알린다.
     @Test void unknownPlaceNameBecomesThePurposeAndTheRecommendationStarts() throws Exception {
         analysis.put("region","속리산"); analysis.put("travelPurpose","단풍 구경");

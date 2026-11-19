@@ -13,14 +13,12 @@
     <a class="back-link" th:href="@{/}">← 처음으로</a>
     <p class="eyebrow">내 여행 · 즐겨찾기</p>
     <h1>즐겨찾기</h1>
-    <p class="intro">여행지·관광지·숙소를 저장해 두고 다음 여행 계획에 참고할 수 있어요. 음식점은 등록할 수 없어요.</p>
     <p role="status" class="status-ok" th:if="${favoriteMessage != null}" th:text="${favoriteMessage}"></p>
     <!--/* 방금 삭제한 즐겨찾기를 같은 장소로 다시 등록한다. 새로 등록하는 것이라 등록일시는 지금 시각으로 바뀐다. */-->
     <form th:if="${removedPlaceId != null}" method="post" th:action="@{/my/favorites}" data-submit-loading="되돌리는 중…">
         <input type="hidden" name="placeId" th:value="${removedPlaceId}">
         <input type="hidden" name="returnTo" value="/my/favorites">
         <div class="form-actions"><button type="submit" class="button-quiet button-small">되돌리기</button></div>
-        <p class="help">실수로 지웠다면 되돌릴 수 있어요. 다시 등록하는 것이라 등록일시는 지금으로 바뀌어요.</p>
     </form>
     <!--/* 즐겨찾기에서 '평가 보기'로 평가하고 돌아오면 저장 안내를 보여 준다. */-->
     <p role="status" class="status-ok" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
@@ -49,7 +47,6 @@
             <button type="submit">즐겨찾기 삭제</button>
         </form>
     </article>
-    <p class="guide-note">영업시간·휴무일·가격은 즐겨찾기에 저장하지 않아요. 방문 전에 각 장소의 출처에서 확인해 주세요.</p>
 </main>
 </body>
 </html>

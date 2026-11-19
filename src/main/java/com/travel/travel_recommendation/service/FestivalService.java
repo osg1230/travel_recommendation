@@ -39,6 +39,8 @@ public class FestivalService {
     private final TourApiClient tourApi;
     private final Supplier<LocalDate> today;
     private final ExpiringCache<String, List<RegionalFestival>> cache = new ExpiringCache<>(Duration.ofHours(6), 40);
+    /** 축제 요청용 조회(findFestivalsBetween) 보관. 여행 날짜마다 키가 달라 홈 화면 탭 보관과 나눈다. */
+    private final ExpiringCache<String, List<RegionalFestival>> requestCache = new ExpiringCache<>(Duration.ofHours(6), 200);
 
     @Autowired
     public FestivalService(TourApiClient tourApi) {
@@ -68,6 +70,19 @@ public class FestivalService {
             .filter(f -> ChronoUnit.DAYS.between(f.startDate(), f.endDate()) < MAX_EVENT_DAYS)
             .sorted(Comparator.comparing(RegionalFestival::startDate).thenComparing(RegionalFestival::title))
             .limit(MAX_FESTIVALS).toList());
+    }
+
+    /**
+     * 사용자가 축제를 찾는 요청(예: "김밥 축제 가고 싶어")일 때 쓰는 조회(2026-11-17).
+     * 홈 화면 탭용 findFestivals는 오늘부터 60일·15개로 자르지만, 여기서는 여행 기간(from~until)에 열리는 축제를 개수 제한 없이 돌려준다.
+     * 관광공사 응답은 한 번에 100개까지라(TourApiClient.FESTIVAL_ROWS) 그보다 많은 행사가 있는 시·도는 일부가 빠질 수 있다.
+     */
+    public List<RegionalFestival> findFestivalsBetween(Province province, LocalDate from, LocalDate until) {
+        return requestCache.get(province.code() + ":" + from + ":" + until, () -> tourApi.searchFestivals(province.code(), from).stream()
+            .filter(f -> !f.endDate().isBefore(from) && !f.startDate().isAfter(until))
+            .filter(f -> ChronoUnit.DAYS.between(f.startDate(), f.endDate()) < MAX_EVENT_DAYS)
+            .sorted(Comparator.comparing(RegionalFestival::startDate).thenComparing(RegionalFestival::title))
+            .toList());
     }
 
     /** 한 쪽의 축제와 쪽 번호. page는 1부터 센다. */

@@ -53,6 +53,23 @@ class FestivalServiceTests {
         verify(client, times(1)).searchFestivals("12", TODAY);
     }
 
+    // 축제 요청용 조회는 여행 기간과 겹치는 축제를 15개 제한 없이 돌려주고, 60일 뒤 여행도 찾는다. 상설 행사는 여기서도 뺀다.
+    @Test void festivalRequestSearchUsesTripDatesWithoutTheFifteenLimit() {
+        var client = mock(TourApiClient.class);
+        LocalDate from = TODAY.plusDays(90), until = TODAY.plusDays(110);
+        var many = new java.util.ArrayList<RegionalFestival>();
+        for (int i = 0; i < 20; i++) many.add(festival(String.valueOf(i), from.plusDays(i), from.plusDays(i)));
+        many.add(festival("after", until.plusDays(1), until.plusDays(2)));        // 여행이 끝난 뒤라 뺀다
+        many.add(festival("yearly", from.minusDays(100), until.plusDays(10)));     // 상설 행사라 뺀다
+        when(client.searchFestivals("12", from)).thenReturn(many);
+        var service = new FestivalService(client, () -> TODAY);
+        var jeonnam = FestivalService.province("12").orElseThrow();
+
+        assertThat(service.findFestivalsBetween(jeonnam, from, until)).hasSize(20).extracting(RegionalFestival::id).doesNotContain("after", "yearly");
+        service.findFestivalsBetween(jeonnam, from, until);
+        verify(client, times(1)).searchFestivals("12", from);
+    }
+
     @Test void onlyKnownProvinceCodesAreAccepted() {
         assertThat(FestivalService.province("12").orElseThrow().regionName()).isEqualTo("전남");
         assertThat(FestivalService.province("99")).isEmpty();

@@ -59,7 +59,9 @@ class RegionSuggestionIntegrationTests {
             new TourApiClient.ClassifiedPlace("테스트봉","NA010100"),new TourApiClient.ClassifiedPlace("테스트숲","NA010200")));
         when(tour.placesInClass(eq("51"),eq("150"),eq("NA"),anyInt())).thenReturn(List.of(new TourApiClient.ClassifiedPlace("괘방산","NA010100")));
         // 강릉은 보관된 목록 대신 위 모의 응답으로 다시 세게 한다.
-        jdbc.update("UPDATE dbo.places SET details_json=NULL WHERE place_type='DESTINATION' AND region=?",GANGNEUNG); em.clear();
+        jdbc.update("UPDATE dbo.places SET details_json=NULL WHERE place_type='DESTINATION' AND region=?",GANGNEUNG);
+        // 실제 사용 중 울릉군이 여행지로 추가된 DB(2026-11-03)에서도 울릉군을 새 지역처럼 확인하게 이 테스트 안에서만 사용 중지한다(롤백됨).
+        jdbc.update("UPDATE dbo.places SET is_active=0 WHERE place_type='DESTINATION' AND region=?","경상북도 울릉군"); em.clear();
     }
     private UUID request(String region,String purpose) {
         var conditions=new ConfirmedTravelConditions("TEXT","지리산 가서 등산하고 싶어요",region,null,null,2,null,2,true,null,List.of(),"",

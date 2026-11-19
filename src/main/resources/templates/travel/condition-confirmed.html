@@ -5,7 +5,7 @@
 <main class="travel confirmation" th:object="${conditions}">
 <nav th:replace="~{fragments/layout :: flowSteps(2)}"></nav>
     <p class="eyebrow">여행 준비 · 조건 확정</p><h1>여행 조건을 확정했어요</h1>
-    <p class="intro">확정한 조건으로 여행지 후보를 찾아보세요. 전국 시·도의 주요 관광 도시 중에서 찾아요.</p>
+    <p class="intro">확정한 조건으로 여행지를 찾아보세요.</p>
     <p class="notice" role="status" th:if="${regionNotice != null}" th:text="${regionNotice}"></p>
     <dl class="condition-summary">
         <dt>지역</dt><dd th:text="*{region.isEmpty() ? '상관없음' : region}"></dd>
@@ -29,5 +29,4 @@
         <p role="status" data-submit-status></p>
     </form>
     <div class="form-actions"><a class="home-link" th:href="@{/travel/conditions/review}">확정 조건 수정하기</a><a class="home-link" th:href="@{/}">홈으로</a></div>
-    <p class="help">로그아웃하거나 세션이 만료되면 조건이 사라져요.</p>
 </main><script defer th:src="@{/js/recommendation-job.js}"></script></body></html>

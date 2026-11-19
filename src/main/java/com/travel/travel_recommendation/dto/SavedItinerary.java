@@ -14,6 +14,8 @@ public final class SavedItinerary {
                     String note, String mapUrl, String sourceUrl, Integer travelMinutes) {
             this(type, typeName, start, end, name, note, mapUrl, sourceUrl, travelMinutes, null);
         }
+        /** 화면에 보여 줄 메모. 일정 초안과 같이 '고른 이유' 꼬리표를 읽기 쉬운 '추천 이유'로 바꿔 보여 준다. */
+        public String displayNote() { return com.travel.travel_recommendation.service.PlaceReasons.forDisplay(note); }
     }
     public record Day(int number, LocalDate date, List<Item> items) {}
     /** editableJobId는 수정안을 만들 수 있는 초안(원래 초안 또는 저장한 일정으로 다시 만든 초안, 만료 전)이다. version은 수정안 적용 시 덮어쓰기 충돌을 막는 값이다. */

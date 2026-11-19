@@ -58,6 +58,13 @@ class KakaoMapClientTests {
         var result=client("key").travelTime(from,to,KakaoMapClient.Transport.CAR);
         assertThat(result.minutes()).isEqualTo(6); assertThat(result.meters()).isEqualTo(3800);
         assertThat(path.get()).startsWith("/v1/directions?origin=128.87,37.77");
+        assertThat(result.ferry()).isFalse();
+    }
+    // 자동차 경로 안내에 '페리항로'가 있으면 배를 타는 구간으로 표시한다(2026-11-19 성산항 → 우도 실제 응답의 안내 형식).
+    @Test void carRouteWithFerryGuidanceIsMarked() {
+        body.set("{\"routes\":[{\"result_code\":0,\"summary\":{\"duration\":435,\"distance\":4325},\"sections\":[{\"guides\":["
+            +"{\"type\":100,\"guidance\":\"출발지\"},{\"type\":62,\"guidance\":\"페리항로 진출\"},{\"type\":2,\"guidance\":\"우회전\"}]}]}]}");
+        assertThat(client("key").travelTime(from,to,KakaoMapClient.Transport.CAR).ferry()).isTrue();
     }
     // 자동차 응답의 도로 좌표(경도, 위도 순)는 지도에 그릴 수 있게 [위도, 경도]로 보관한다. 받은 적 없는 구간은 빈 목록이다.
     @Test void carKeepsRoadPathForTheMap() {

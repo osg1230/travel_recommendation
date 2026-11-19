@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.*;
 /**
  * 일정 품질 측정 보고서. 개선 전후를 같은 기준으로 비교하려고 고정 시나리오마다 실제 카카오·관광공사·GPT로 일정을 두 번 만들고
  * 지표를 target/quality/에 Markdown으로 남긴다. 유료 API를 쓰므로 RUN_QUALITY_REPORT=true일 때만 실행한다.
+ * QUALITY_START(예: 2026-11-28)로 출발일을 바꿀 수 있고, 초안 결과 JSON은 target/quality/drafts/에 만든 순서대로 남는다(시간표를 직접 볼 때 쓴다).
  * 테스트 트랜잭션 안에서 실행하고 끝나면 롤백하므로 DB에는 아무것도 남지 않는다.
  *
  * 지표
@@ -75,7 +76,10 @@ class ItineraryQualityReportTests {
         // 취향 2개 시나리오(2026-11-05 추가). 취향 비율 맞추기(개선 계획 3단계)가 필요한지 본다.
         new Scenario("부산 2박 3일·바다·문화·역사", "부산", 3, List.of("바다", "문화·역사")));
     /** 출발일은 같은 계절(가을 주말)로 고정해 실행하는 날에 따라 계절 판단이 바뀌지 않게 한다. */
-    static final LocalDate START = LocalDate.of(2026, 11, 14);
+    static final LocalDate START = System.getenv("QUALITY_START") == null || System.getenv("QUALITY_START").isBlank()
+        ? LocalDate.of(2026, 11, 14) : LocalDate.parse(System.getenv("QUALITY_START"));
+    /** 만든 초안 순번. 초안 결과를 target/quality/drafts/에 순서대로 남길 때 파일 이름 앞에 붙인다. */
+    private int draftNumber;
 
     /** official은 관광공사 등록 여부이고, 관광공사 조회에 실패하면 null이다. */
     record Visit(long placeId, String name, String kind, Boolean official, Double longitude, Double latitude) {}
@@ -98,9 +102,12 @@ class ItineraryQualityReportTests {
         ExternalPlaceCache.expireExisting(jdbc);
         List<Measured> measured = new ArrayList<>();
         // QUALITY_SCENARIO에 이름 일부(예: 제주)를 넣으면 그 시나리오만 잰다. 실패 원인을 다시 볼 때 비용을 줄이려고 쓴다.
+        // 여러 개는 ';'로 나눠 전체 이름을 적는다(예: 강릉 1박 2일·바다;부산 2박 3일).
         String only = System.getenv("QUALITY_SCENARIO");
+        var wanted = only == null || only.isBlank() ? List.<String>of() : List.of(only.split(";"));
         for (var scenario : SCENARIOS) {
-            if (only != null && !only.isBlank() && !scenario.name().contains(only)) continue;
+            if (wanted.size() == 1 && !scenario.name().contains(wanted.getFirst())) continue;
+            if (wanted.size() > 1 && !wanted.contains(scenario.name())) continue;
             // 한 시나리오가 실패해도 나머지는 계속 재고, 실패 이유와 서비스 코드의 위치를 보고서에 남긴다.
             try { measured.add(measure(scenario)); }
             catch (Exception error) { measured.add(new Measured(scenario, 0, Map.of(), null, null, error + " @ " + where(error))); }
@@ -160,6 +167,12 @@ class ItineraryQualityReportTests {
         var result = schedules.generate(work);
         schedules.complete(work, result);
         em.flush();
+        // 시간표를 직접 볼 수 있게 초안 결과를 만든 순서대로 남긴다(시나리오마다 첫 초안, 두 번째 초안 순서).
+        try {
+            var folder = Path.of("target", "quality", "drafts");
+            Files.createDirectories(folder);
+            Files.writeString(folder.resolve(String.format("%02d-%s.json", ++draftNumber, id)), mapper.writeValueAsString(result), StandardCharsets.UTF_8);
+        } catch (java.io.IOException failed) { throw new java.io.UncheckedIOException(failed); }
         List<Visit> visits = new ArrayList<>();
         int moveSeconds = 0, longestSeconds = 0, meals = 0, popularMeals = 0;
         Set<Long> stays = new HashSet<>(), popularStays = new HashSet<>();

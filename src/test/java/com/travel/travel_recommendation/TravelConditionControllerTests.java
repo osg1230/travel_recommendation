@@ -72,8 +72,7 @@ class TravelConditionControllerTests {
                 .andExpect(redirectedUrl("/travel/conditions/check"));
         mvc.perform(get("/travel/conditions/check").session(session)).andExpect(status().isOk())
                 .andExpect(content().string(not(containsString("<script>"))))
-                .andExpect(content().string(containsString("&lt;script&gt;")))
-                .andExpect(content().string(containsString("아직 문장을 분석하지 않았어요")));
+                .andExpect(content().string(containsString("&lt;script&gt;")));
         assertThat(((TravelConditionForm) session.getAttribute("travelConditionDraft")).getBudget()).isEmpty();
     }
 

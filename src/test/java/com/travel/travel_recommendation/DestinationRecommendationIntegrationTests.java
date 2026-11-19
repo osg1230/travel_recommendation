@@ -194,7 +194,7 @@ class DestinationRecommendationIntegrationTests {
         mvc.perform(get(path).session(session)).andExpect(status().isOk())
             .andExpect(content().string(org.hamcrest.Matchers.containsString("1순위 · 강릉")))
             .andExpect(content().string(org.hamcrest.Matchers.containsString(DestinationRecommendationService.NO_AI_REASON)))
-            .andExpect(content().string(org.hamcrest.Matchers.containsString("AI가 순위와 이유를 만들지 못해")));
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("AI가 추천 이유를 만들지 못해")));
         // 다른 세션은 이 추천을 계속할 수 없다.
         mvc.perform(post(path+"/continue").session(new MockHttpSession()).with(csrf()).accept("application/json"))
             .andExpect(status().isNotFound());
