@@ -16,6 +16,9 @@ class SignupFormTests {
             form.setNickname("가".repeat(50));
             form.setPassword("Ab1!".repeat(16));
             form.setPasswordConfirm(form.getPassword());
+            // 주로 출발하는 곳은 필수다. 비우면 통과하지 못한다.
+            assertThat(validator.validate(form)).anyMatch(v -> v.getPropertyPath().toString().equals("homeArea"));
+            form.setHomeArea("서울 송파구");
             assertThat(validator.validate(form)).isEmpty();
             for (String password : new String[]{"Ab12345", "a".repeat(64), "12345678", "한글비밀번호123!", "Sample 123!", "Ab1!".repeat(17)}) {
                 form.setPassword(password);

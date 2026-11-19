@@ -32,7 +32,7 @@
             <input id="homeArea" th:field="*{homeArea}" type="text" maxlength="60" autocomplete="off"
                    placeholder="예) 서울 송파구, 대전역" aria-describedby="homeArea-help homeArea-error"
                    th:attr="aria-invalid=${#fields.hasErrors('homeArea')}">
-            <p class="help" id="homeArea-help">일정을 만들 때 출발지로 미리 넣어 드려요.</p>
+            <p class="help" id="homeArea-help">적어 두면 일정을 만들 때 출발지를 따로 묻지 않고, 여기서 출발해 여기로 돌아와요.</p>
             <p class="field-error" id="homeArea-error" th:errors="*{homeArea}"></p>
         </div>
         <div class="field">

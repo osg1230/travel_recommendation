@@ -180,6 +180,22 @@ h2[id] { scroll-margin-top: 84px; }
 .draft-summary .report-count, .draft-summary .details-title { margin: 0; font-size: 15px; font-weight: 600; }
 .draft-summary details[open] > summary:has(.details-title) { margin-bottom: 8px; }
 .draft-summary .form-actions { margin-top: 16px; }
+/* 일정 초안: 덜 쓰는 동작은 접어 두고, 아래 참고 정보는 탭으로 나눈다. */
+.more-actions { margin-top: 12px; }
+.more-actions > summary { font-size: 14px; color: var(--text-muted); cursor: pointer; }
+.more-actions .form-actions { margin-top: 10px; }
+.page-tabs { margin: 4px 0 16px; }
+.page-tabs .region-tab { padding: 8px 16px; font-size: 15px; }
+/* 일정 초안·저장한 일정의 일정표를 짧게: 설명은 두 줄만 보여 주고(clamp-notes.js), 종류 표시는 장소 이름과 같은 줄에, 사진과 여백은 작게 둔다. */
+.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+button.note-more { display: block; min-height: 0; margin: 2px 0 0; padding: 0; background: none; border: 0; box-shadow: none; font-size: 13px; font-weight: 500; color: var(--text-muted); text-decoration: underline; }
+button.note-more:hover { background: none; color: var(--brand-strong); }
+.compact-timeline .timeline .schedule-item:not(.item-transit) { padding-top: 10px; padding-bottom: 10px; }
+.compact-timeline .timeline .schedule-item:not(.item-transit)::after { top: 14px; }
+.compact-timeline .timeline .schedule-item:not(.item-transit) .schedule-type { float: left; margin: 3px 8px 0 0; }
+.compact-timeline .timeline .schedule-body > p { margin-top: 4px; margin-bottom: 4px; }
+.compact-timeline .timeline .place-photo { width: 104px; }
+.compact-timeline .timeline .item-actions { margin-top: 6px; }
 .condition-section.side-card { padding: 20px 22px; }
 .side-card h2 { margin: 0 0 10px; font-size: 15px; color: var(--text-muted); }
 .side-card h3 { margin: 0 0 4px; font-size: 18px; }

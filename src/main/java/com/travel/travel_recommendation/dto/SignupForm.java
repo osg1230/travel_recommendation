@@ -27,7 +27,8 @@ public class SignupForm {
     @Size(min = 2, max = 50, message = "닉네임은 2~50자로 입력해 주세요.")
     private String nickname;
 
-    // 주로 출발하는 곳(선택). 일정 입력의 출발지 기본값이 된다.
+    // 주로 출발하는 곳(필수). 일정을 만들 때 출발지와 돌아갈 곳으로 쓰므로 일정 화면에서 다시 묻지 않는다.
+    @NotBlank(message = "주로 출발하는 곳을 입력해 주세요.")
     @Size(max = 60, message = "주로 출발하는 곳은 60자 이내로 입력해 주세요.")
     private String homeArea;
 

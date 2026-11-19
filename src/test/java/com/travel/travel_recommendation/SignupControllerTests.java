@@ -41,7 +41,7 @@ class SignupControllerTests {
     @Test
     void overTheLimitNeitherLooksUpMapNorSignsUp() throws Exception {
         when(limiter.tryAcquireSignup(any())).thenReturn("가입 요청이 많아요. 1시간쯤 뒤에 다시 시도해 주세요.");
-        mvc.perform(validRequest().with(csrf()).param("homeArea", "수원역")).andExpect(status().isOk())
+        mvc.perform(validRequest().with(csrf())).andExpect(status().isOk())
                 .andExpect(content().string(containsString("가입 요청이 많아요")));
         verify(maps, never()).findOrigin(any());
         verify(users, never()).signup(any());
@@ -50,13 +50,17 @@ class SignupControllerTests {
     @Test
     void duplicateLoginIdIsCheckedBeforeLimitAndMap() throws Exception {
         doThrow(new DuplicateUserException("loginId", "이미 사용 중인 아이디예요.")).when(users).checkAvailable(any());
-        mvc.perform(validRequest().with(csrf()).param("homeArea", "수원역")).andExpect(status().isOk())
+        mvc.perform(validRequest().with(csrf())).andExpect(status().isOk())
                 .andExpect(content().string(containsString("이미 사용 중인 아이디예요.")));
         verifyNoInteractions(limiter);
         verify(maps, never()).findOrigin(any());
     }
 
+    // 필수 항목을 모두 채운 가입 요청. 주로 출발하는 곳도 필수다.
     private MockHttpServletRequestBuilder validRequest() {
+        return requestWithoutHomeArea().param("homeArea", "수원역");
+    }
+    private MockHttpServletRequestBuilder requestWithoutHomeArea() {
         return post("/signup").param("loginId", " traveler_01 ").param("nickname", " 여행자 ")
                 .param("password", "Sample123!").param("passwordConfirm", "Sample123!");
     }
@@ -86,7 +90,7 @@ class SignupControllerTests {
     @Test
     void blankInputAndPasswordMismatchAreRejected() throws Exception {
         mvc.perform(post("/signup").with(csrf())).andExpect(status().isOk())
-                .andExpect(model().attributeHasFieldErrors("signupForm", "loginId", "nickname", "password", "passwordConfirm"));
+                .andExpect(model().attributeHasFieldErrors("signupForm", "loginId", "nickname", "password", "passwordConfirm", "homeArea"));
         mvc.perform(post("/signup").with(csrf()).param("loginId", "valid_id").param("nickname", "여행자")
                         .param("password", "Sample123!").param("passwordConfirm", "Other123!"))
                 .andExpect(model().attributeHasFieldErrors("signupForm", "passwordMatching"))
@@ -108,29 +112,32 @@ class SignupControllerTests {
     }
 
     @Test
-    void homeAreaIsCheckedOnMapOnlyWhenTyped() throws Exception {
-        // 비우면 지도를 찾지 않고 가입한다.
-        mvc.perform(validRequest().with(csrf()).param("homeArea", " ")).andExpect(redirectedUrl("/signup/complete"));
+    void homeAreaIsRequiredAndCheckedOnMap() throws Exception {
+        // 비우면 지도를 찾지 않고, 가입도 하지 않는다.
+        mvc.perform(requestWithoutHomeArea().with(csrf()).param("homeArea", " ")).andExpect(status().isOk())
+                .andExpect(model().attributeHasFieldErrors("signupForm", "homeArea"))
+                .andExpect(content().string(containsString("주로 출발하는 곳을 입력해 주세요.")));
         verifyNoInteractions(maps);
+        verifyNoInteractions(users);
         // 찾을 수 있는 곳이면 가입한다.
-        mvc.perform(validRequest().with(csrf()).param("homeArea", "서울 송파구")).andExpect(redirectedUrl("/signup/complete"));
+        mvc.perform(requestWithoutHomeArea().with(csrf()).param("homeArea", "서울 송파구")).andExpect(redirectedUrl("/signup/complete"));
         verify(maps).findOrigin("서울 송파구");
-        verify(users, times(2)).signup(any());
+        verify(users).signup(any());
     }
 
     @Test
     void unknownHomeAreaAsksToRetypeWithoutSigningUp() throws Exception {
         doThrow(new RecommendationException("MAP_ORIGIN", "'없는동네' 위치를 찾지 못했어요. 시·구·동 이름이나 역 이름으로 다시 적어 주세요."))
                 .when(maps).findOrigin("없는동네");
-        mvc.perform(validRequest().with(csrf()).param("homeArea", "없는동네")).andExpect(status().isOk())
+        mvc.perform(requestWithoutHomeArea().with(csrf()).param("homeArea", "없는동네")).andExpect(status().isOk())
                 .andExpect(model().attributeHasFieldErrors("signupForm", "homeArea"))
                 .andExpect(content().string(containsString("위치를 찾지 못했어요")))
                 .andExpect(content().string(containsString("value=\"없는동네\"")));
-        // 지도 서비스 문제면 비우고 가입하라고 안내하고 내부 메시지는 보이지 않는다.
+        // 지도 서비스 문제면 잠시 뒤 다시 하라고 안내하고 내부 메시지는 보이지 않는다.
         doThrow(new RecommendationException("MAP_TIMEOUT", "private map details")).when(maps).findOrigin("대전역");
-        mvc.perform(validRequest().with(csrf()).param("homeArea", "대전역")).andExpect(status().isOk())
+        mvc.perform(requestWithoutHomeArea().with(csrf()).param("homeArea", "대전역")).andExpect(status().isOk())
                 .andExpect(model().attributeHasFieldErrors("signupForm", "homeArea"))
-                .andExpect(content().string(containsString("비우고 가입한 뒤")))
+                .andExpect(content().string(containsString("잠시 후 다시 시도")))
                 .andExpect(content().string(not(containsString("private map details"))));
         verify(users, never()).signup(any());
     }
@@ -161,9 +168,9 @@ class SignupControllerTests {
     }
 
     @Test
-    void formExplainsWhichFieldsAreOptional() throws Exception {
-        mvc.perform(get("/signup")).andExpect(content().string(containsString("주로 출발하는 곳 외에는 모두 필수예요")))
-                .andExpect(content().string(not(containsString("모든 항목은 필수입니다"))));
+    void formSaysEveryFieldIsRequired() throws Exception {
+        mvc.perform(get("/signup")).andExpect(content().string(containsString("모든 항목이 필수예요")))
+                .andExpect(content().string(not(containsString("주로 출발하는 곳 (선택)"))));
     }
 
     @Test

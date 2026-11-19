@@ -116,7 +116,7 @@ public class ItineraryController {
         session.removeAttribute(conflictKey(id,destinationId));
         // 여행 조건에서 이동수단을 정하지 않았다면 자동차로 미리 고르지 않고 사용자가 직접 고르게 한다.
         var transport=options.conditions().keywordNames("TRANSPORTATION").isEmpty()?null:options.transport();
-        var homeArea=homeArea(principal,model);
+        var homeArea=homeArea(principal,model,session);
         var values=conflict!=null?conflict:valuesFrom(from,id,destinationId,principal,session);
         model.addAttribute("values",values!=null?values:new ConstraintInput(id,options.start(),options.end(),transport,
             options.visitMinutes(),purposeIds,null,false,null,List.of(),null,null,null,centerIds,HomeValues.startingFrom(homeArea)));
@@ -162,7 +162,7 @@ public class ItineraryController {
             @RequestParam(required=false) Double originLatitude,@RequestParam(required=false) String returnPlace,
             Principal principal,HttpSession session,HttpServletRequest request,
             @RequestHeader(value="Accept",defaultValue="") String accept) {
-        var homeRequest=homeRequest(origin,originLongitude,originLatitude,returnPlace);
+        var homeRequest=homeRequest(originFor(origin,originLongitude,principal),originLongitude,originLatitude,returnPlace);
         var homeValues=new HomeValues(origin,returnPlace);
         if(!Set.of("REQUIRED","PREFERRED").contains(dailyMode)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"하루 방문 수의 구분을 다시 골라 주세요.");
         String tier=stayTier==null || stayTier.isBlank()?null:stayTier;
@@ -231,7 +231,7 @@ public class ItineraryController {
         model.addAttribute("options",options);
         var previous=session.getAttribute(TRIP_INFO_KEY) instanceof TripInfoInput input && input.parent().equals(id) ? input : null;
         session.removeAttribute(TRIP_INFO_KEY);
-        var homeArea=homeArea(principal,model);
+        var homeArea=homeArea(principal,model,session);
         // 바로 일정 만들기를 처음 눌러 넘어온 경우(집 출발·귀가를 아직 적지 않음)도 내 정보의 출발지를 미리 넣는다.
         if(previous!=null && HomeValues.DEFAULT.equals(previous.home()))
             previous=new TripInfoInput(previous.parent(),previous.durationDays(),previous.accommodationNeeded(),previous.startDate(),
@@ -831,11 +831,24 @@ public class ItineraryController {
      * 회원이 내 정보에 적은 '주로 출발하는 곳'. 비회원이거나 적지 않았으면 null이다.
      * 화면 안내(미리 넣었다는 문구·내 정보에 적어 두라는 문구)를 위해 모델에도 넣는다. 읽지 못해도 일정 입력은 빈 칸으로 이어 간다.
      */
-    private String homeArea(Principal principal,Model model) {
+    private String homeArea(Principal principal,Model model,HttpSession session) {
         String area=savedHomeArea(principal);
         model.addAttribute("member",principal!=null);
         model.addAttribute("savedHomeArea",area);
+        // 적어 둔 회원에게는 출발지·돌아갈 곳을 묻지 않는다. 그 값으로 이동시간을 찾지 못해 돌아온 화면에서만 고쳐 적게 한다.
+        boolean failed=session.getAttribute(HOME_FAILED_KEY)!=null;
+        session.removeAttribute(HOME_FAILED_KEY);
+        model.addAttribute("askHome",area==null || failed);
         return area;
+    }
+    /** 집 출발·귀가 이동시간을 찾지 못해 입력 화면으로 돌아간다는 표시(세션에 한 번 둔다). */
+    private static final String HOME_FAILED_KEY="itineraryHomeFailed";
+    /**
+     * 집 이동을 계산할 출발지. 출발지 칸을 보낸 요청(비회원, 적어 두지 않은 회원, 고쳐 적는 화면)은 적은 값을 쓰고,
+     * 칸이 없는 화면에서 온 요청(origin 없음)은 회원이 내 정보에 적은 곳을 쓴다. 빈 문자열이면 집 이동 없이 만든다.
+     */
+    private String originFor(String origin,Double originLongitude,Principal principal) {
+        return origin!=null || originLongitude!=null?origin:savedHomeArea(principal);
     }
     private static ResponseEntity<?> seeOther(String location) {
         return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create(location)).cacheControl(CacheControl.noStore()).build();
@@ -863,6 +876,7 @@ public class ItineraryController {
             return service.resolve(request,input.places(),transport,tripDate);
         } catch(RecommendationException error) {
             if(!error.getCode().startsWith("HOME_") && !error.getCode().startsWith("MAP_ORIGIN") && !"MAP_LOCATION".equals(error.getCode())) throw error;
+            session.setAttribute(HOME_FAILED_KEY,true);
             throw new TripConstraints.ConflictException(List.of(new TripConstraints.Conflict(error.getMessage(),
                 List.of("출발지·돌아갈 곳을 시·구·동이나 역 이름으로 다시 적기","출발지를 비워 집 이동 없이 여행지 도착부터 일정 짜기"))));
         }
