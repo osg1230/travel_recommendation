@@ -27,11 +27,11 @@ class RelaxedPaceTests {
         assertThat(RelaxedPace.wanted(null)).isFalse();
     }
 
-    // 여유 일정이면 하루 2곳을 선호 조건으로 넣는다. 사용자가 정한 하루 방문 수와 다른 조건은 그대로 둔다.
+    // 여유 일정이면 하루 3곳을 선호 조건으로 넣는다. 사용자가 정한 하루 방문 수와 다른 조건은 그대로 둔다.
     @Test void relaxedPaceSetsPreferredDailyVisitsOnlyWhenNotChosen() {
         var relaxed = conditions("느긋하게 다니고 싶어요", null);
         var made = RelaxedPace.apply(null, relaxed);
-        assertThat(made.dailyVisits()).isEqualTo(2);
+        assertThat(made.dailyVisits()).isEqualTo(3);
         assertThat(made.dailyVisitsRequired()).isFalse();
 
         var chosen = new Constraints(List.of(7L), 5, true, null, List.of(), "STANDARD", List.of(7L));
@@ -39,7 +39,7 @@ class RelaxedPaceTests {
 
         var open = new Constraints(List.of(7L), null, false, null, List.of(), "STANDARD", List.of(7L));
         var filled = RelaxedPace.apply(open, relaxed);
-        assertThat(filled.dailyVisits()).isEqualTo(2);
+        assertThat(filled.dailyVisits()).isEqualTo(3);
         assertThat(filled.requiredPlaceIds()).containsExactly(7L);
         assertThat(filled.stayTier()).isEqualTo("STANDARD");
         assertThat(filled.centerPlaceIds()).containsExactly(7L);

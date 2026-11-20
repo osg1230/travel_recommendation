@@ -110,7 +110,7 @@ public final class ItineraryConditionReport {
                 ? " (알차게를 골라 남는 시간에 하루 " + RelaxedPace.PACKED_DAILY_CAP + "곳까지 더 넣었어요)"
                 : " (따로 정하지 않아 이동시간에 맞춰 나눴어요)"));
         int want = c.dailyVisits();
-        // 여유 일정이라 서버가 하루 2곳(선호)으로 잡은 경우는 그 이유를 알리고, 2곳보다 적은 날도 요청에 맞는 것으로 본다.
+        // 여유 일정이라 서버가 하루 3곳(선호)으로 잡은 경우는 그 이유를 알리고, 3곳보다 적은 날도 요청에 맞는 것으로 본다.
         if (!c.dailyVisitsRequired() && want == RelaxedPace.DAILY_VISITS && RelaxedPace.wanted(input.conditions())
                 && totals.stream().allMatch(n -> n <= want))
             return new Check("하루 방문 수", Status.MET, "여유 있는 일정을 원해 하루 " + want + "곳까지만 넣고 남는 시간은 비워 두었어요 · " + String.join(" · ", counts));
