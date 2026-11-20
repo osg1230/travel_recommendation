@@ -15,6 +15,8 @@
             button.textContent = folded ? '더 보기' : '접기';
             button.setAttribute('aria-expanded', String(!folded));
         });
-        note.after(button);
+        // 일정 항목에서는 '더 보기'를 아래 링크 줄(위치 보기·출처)에 함께 두어 항목 높이를 한 줄 줄인다.
+        const actions = note.parentElement.querySelector(':scope > .item-actions > .place-links');
+        if (actions) actions.prepend(button); else note.after(button);
     });
 })();

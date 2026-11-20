@@ -104,13 +104,13 @@
       th:classappend="${applyTargets.isEmpty() ? '' : 'button-quiet'}">
 <input type="hidden" name="jobId" th:value="${job.id}"><button type="submit" th:text="${applyTargets.isEmpty() ? '이 일정 저장하기' : '새 일정으로 따로 저장'}"></button></form>
 <a class="button" th:if="${!loggedIn and job.input.conditions.startDate != null and report.complete}" th:href="@{/login(next=${'/travel/recommendations/itineraries/' + job.id})}">로그인하고 저장하기</a>
-</div>
-<!--/* 저장 말고 덜 쓰는 동작(직접 수정·다시 만들기)은 접어 두어 일정표가 화면 위쪽에 보이게 한다. */-->
-<details class="more-actions">
-<summary>일정 고치기 · 다시 만들기</summary>
-<div class="form-actions">
-<!--/* 장소 빼기·바꾸기·더하기와 숙소·이동수단을 직접 고치는 수정 화면으로 간다. */-->
+<!--/* 장소 빼기·바꾸기·더하기와 숙소·이동수단을 직접 고치는 수정 화면으로 간다. 찾기 쉽게 저장 버튼 옆에 바로 보이게 둔다. */-->
 <a class="button button-quiet" th:href="@{/travel/recommendations/itineraries/{id}/edit(id=${job.id})}">일정 직접 수정하기</a>
+</div>
+<!--/* 덜 쓰는 다시 만들기는 접어 두어 일정표가 화면 위쪽에 보이게 한다. */-->
+<details class="more-actions">
+<summary>다시 만들기</summary>
+<div class="form-actions">
 <!--/* 추천 결과에서 바로 만든 초안은 기본 시간·중심 장소를 썼으므로, 직접 정해서 다시 만드는 길을 위에 둔다. */-->
 <!--/* from: 입력 화면에 이 초안의 시간·조건을 미리 채운다. */-->
 <a class="button button-quiet" th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId},from=${job.id})}">시간·조건 자세히 정해서 다시 만들기</a>
@@ -133,7 +133,7 @@
 </div>
 
 <div data-page-panel="plan">
-<!--/* 넓은 화면에서는 일정표(왼쪽) 옆에 지도와 숙소·식사·바로 가기 요약(오른쪽)을 고정해, 일정을 읽는 동안 지도가 계속 보이게 한다.
+<!--/* 넓은 화면에서는 일정표(왼쪽) 옆에 지도와 숙소·식사 요약(오른쪽)을 고정해, 일정을 읽는 동안 지도가 계속 보이게 한다.
      좁은 화면에서는 CSS로 순서를 바꿔 지도 → 일정표 → 요약 순으로 보여 준다. */-->
 <div class="itinerary-layout">
 <div th:replace="~{fragments/map :: dayTabs(${job.result.days})}"></div>
@@ -238,19 +238,6 @@
 </ul>
 </section>
 </th:block>
-<!--/* 바로 가기: 아래쪽 긴 절로 바로 이동한다. */-->
-<section class="condition-section side-card">
-<h2>바로 가기</h2>
-<div class="side-links">
-<a href="#prices-title">숙소·음식점 참고 가격</a>
-<a href="#nearby-title" th:if="${job.result.nearby != null and (!job.result.nearby.regions.isEmpty() or job.input.conditions.includeNearby == true)}">주변 지역도 둘러보기</a>
-<a href="#bus-title" th:if="${job.result.transport.name() != 'CAR'}">대중교통으로 가는 방법</a>
-<a href="#flight-title" th:if="${#strings.startsWith(job.input.places.destination.region, '제주') or (job.input.home != null and #strings.startsWith(job.input.home.basis, '비행기'))}">비행기로 가는 방법</a>
-<a href="#revise-title">일정 수정하기</a>
-<a href="#apply-title" th:unless="${applyTargets.isEmpty()}">저장한 일정에 적용</a>
-<a href="#save-title" th:text="${applyTargets.isEmpty() ? '내 일정으로 저장' : '새 일정으로 따로 저장'}">내 일정으로 저장</a>
-</div>
-</section>
 </aside>
 </div>
 </div>
