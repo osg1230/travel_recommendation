@@ -26,7 +26,7 @@ DB 설계 이름과 중복 컬럼 정리 결과는 [DB 검토 변경 내역](dat
 - [통합 변경 내역](requirements/2026-09-16_요구분석서_3.1_통합_변경내역.md)
 - [DB 테이블 정의서 정리본](database/DB_테이블_정의서.md) — 현재 기준
 - [DB 테이블 정의서 수정본 Word](database/DB%20테이블%20정의서_수정본.docx)
-- [ERD HTML](database/erd/여행%20추천%20서비스DB%20ERD.html)
+- [ERD 그림](database/erd/DB_ERD_2026-10-08.png) · [ERD 설명](database/erd/ERD.md)
 - [최종 화면 ID](screens/최종_화면_ID_정리.txt)
 - [화면 흐름도](screens/화면_흐름도.md)
 - [화면 요구사항 추적표](screens/화면_요구사항_추적표.md)
