@@ -24,10 +24,10 @@ class TripConstraintsTests {
         assertThat(TripConstraints.estimatedDailyCapacity(NINE, SIX, 90)).isEqualTo(3);
         assertThat(ids(TripConstraints.select(pool(16), 2, NINE, SIX, 90, null))).containsExactly(1L, 2L, 3L, 4L, 5L, 6L);
         assertThat(ids(TripConstraints.select(pool(16), 2, NINE, SIX, 90, c(List.of(), null, false)))).containsExactly(1L, 2L, 3L, 4L, 5L, 6L);
-        // 체류시간이 짧거나 하루가 길면 더 많이 고르지만 하루 4곳을 넘기지 않고, 저녁까지 이어지는 날은 저녁 식사 시간도 뺀다.
-        assertThat(TripConstraints.estimatedDailyCapacity(NINE, SIX, 60)).isEqualTo(4);
-        assertThat(TripConstraints.estimatedDailyCapacity(LocalTime.of(8, 0), LocalTime.of(21, 0), 30)).isEqualTo(4);
-        assertThat(TripConstraints.estimatedDailyCapacity(NINE, LocalTime.of(21, 0), 90)).isEqualTo(4);
+        // 체류시간이 짧거나 하루가 길면 더 많이 고르지만 하루 3곳을 넘기지 않고, 저녁까지 이어지는 날은 저녁 식사 시간도 뺀다.
+        assertThat(TripConstraints.estimatedDailyCapacity(NINE, SIX, 60)).isEqualTo(3);
+        assertThat(TripConstraints.estimatedDailyCapacity(LocalTime.of(8, 0), LocalTime.of(21, 0), 30)).isEqualTo(3);
+        assertThat(TripConstraints.estimatedDailyCapacity(NINE, LocalTime.of(21, 0), 90)).isEqualTo(3);
         // 후보가 16곳뿐이면 7일이라도 16곳까지만 고른다(전체 최대는 21곳).
         assertThat(ids(TripConstraints.select(pool(16), 7, NINE, SIX, 90, null))).hasSize(16);
     }
@@ -68,12 +68,12 @@ class TripConstraintsTests {
                 assertThat(e.conflicts()).anySatisfy(conflict -> assertThat(conflict.reason()).contains("최대 21곳")));
     }
 
-    // 관광지 후보는 1~3일이면 16곳, 길어지면 하루 4곳씩(최대 21곳)에 예비 6곳을 더한다.
+    // 관광지 후보는 1~3일이면 16곳, 길어지면 하루 3곳씩(최대 21곳)에 예비 6곳을 더한다.
     @Test void candidateCountGrowsWithTripLength() {
         assertThat(TripConstraints.candidateLimit(null)).isEqualTo(16);
         assertThat(TripConstraints.candidateLimit(2)).isEqualTo(16);
-        assertThat(TripConstraints.candidateLimit(4)).isEqualTo(22);
-        assertThat(TripConstraints.candidateLimit(5)).isEqualTo(26);
+        assertThat(TripConstraints.candidateLimit(4)).isEqualTo(18);
+        assertThat(TripConstraints.candidateLimit(5)).isEqualTo(21);
         assertThat(TripConstraints.candidateLimit(7)).isEqualTo(27);
     }
 
@@ -206,10 +206,10 @@ class TripConstraintsTests {
         assertThat(TripConstraints.plannedDailyCapacity(museums, 2, NINE, SIX, 90)).isEqualTo(base);
         assertThat(TripConstraints.plannedDailyCapacity(mountains, 2, NINE, SIX, 90)).isEqualTo(base);
         assertThat(TripConstraints.plannedDailyCapacity(List.of(), 2, NINE, SIX, 90)).isEqualTo(base);
-        assertThat(TripConstraints.select(short_, 2, NINE, SIX, 90, null)).hasSize(8);
+        assertThat(TripConstraints.select(short_, 2, NINE, SIX, 90, null)).hasSize(6);
         assertThat(TripConstraints.select(museums, 2, NINE, SIX, 90, null)).hasSize(6);
     }
-    // 짧게 머무는 곳이 많아 낮 관광지를 하루 4곳씩 골라도, 저녁 몫은 기본 하루 수(3곳) 뒤에서 떼어 저녁 관광 후보가 남는다.
+    // 낮 관광지는 하루 3곳씩 2일분(1~6)을 고르고, 저녁 몫은 그 뒤에서 떼어 저녁 관광 후보(전망대 8~10)가 남는다.
     // 낮 관광지 수로 떼면 8이 낮에 쓰여 저녁 후보가 9·10 두 곳뿐이었다(2026-11-16 속초에서 저녁 관광이 빠진 문제).
     @Test void eveningShareStaysWhenMoreDaytimePlacesFit() {
         var ordered = new ArrayList<PlaceCandidate>();
@@ -217,7 +217,7 @@ class TripConstraintsTests {
             ordered.add(kind(id, "장소" + id, id >= 8 ? "여행 > 관광,명소 > 전망대" : "여행 > 관광,명소 > 문화유적"));
         var arranged = ItineraryJobService.arrange(ordered, Set.of(), true, true, 2, NINE, SIX, 90, null);
         assertThat(ids(arranged.evening())).containsExactly(8L, 9L, 10L);
-        assertThat(ids(arranged.selected())).containsExactly(1L, 2L, 3L, 4L, 5L, 6L, 7L);
+        assertThat(ids(arranged.selected())).containsExactly(1L, 2L, 3L, 4L, 5L, 6L);
     }
     // 아래 세 테스트는 하루 3곳을 전제로 저녁 몫·예비 규칙을 본다. 하루 수용량은 후보의 종류별 체류시간으로 계산하므로(2026-11-16)
     // 낮 관광지는 박물관(기본 체류 그대로)으로 만들고 기본 체류를 120분으로 둔다. 전망대가 섞여도 하루 3곳이다.

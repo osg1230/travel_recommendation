@@ -202,8 +202,8 @@ public class ItineraryGenerator {
                 // 오늘 몫을 다 넣었거나 남은 관광지가 오늘 시간에 들어가지 않으면, 하루 시간이 남는 한 예비 관광지 중 가까운 곳을 더 넣는다.
                 boolean spare=visits>=target || remaining.stream().allMatch(p->skipToday.contains(p.placeId()));
                 if(spare && (!fillSpareTime || visits==0)) break;
-                // 예비 관광지로 더 채워도 하루 관광지는 TripConstraints.MAX_AUTO_DAILY곳까지다. 4곳은 한 곳 90분(기본 체류시간) 기준이라,
-                // 짧게 들르는 곳이 많아 그날 체류시간 합이 기본 체류시간 4곳분에 못 미치면 그 안에 들어가는 곳을 한 곳 더 넣는다(2026-10-31).
+                // 예비 관광지로 더 채워도 하루 관광지는 TripConstraints.MAX_AUTO_DAILY곳까지다. 3곳은 한 곳 90분(기본 체류시간) 기준이라,
+                // 짧게 들르는 곳이 많아 그날 체류시간 합이 기본 체류시간 3곳분에 못 미치면 그 안에 들어가는 곳을 한 곳 더 넣는다(2026-10-31).
                 // 남는 시간은 쉬거나 저녁 관광에 쓴다.
                 // '알차게'를 고른 여행은 이 상한이 한 곳 많다(RelaxedPace.dailyCap, 2026-11-16).
                 final int dailyCap=RelaxedPace.dailyCap(input.conditions());
@@ -908,7 +908,7 @@ public class ItineraryGenerator {
 
     /**
      * 남는 시간을 채운 예비 관광지의 꼬리표. 가까운 곳이 없어 조금 먼 곳까지 찾았거나, 직전 초안에 있던 곳을 다시 넣었으면 그 사정을 덧붙인다.
-     * visits는 이 곳을 넣기 전 그날 관광지 수로, 하루 4곳보다 한 곳 더 넣은 경우를 구분하는 데 쓴다.
+     * visits는 이 곳을 넣기 전 그날 관광지 수로, 하루 상한보다 한 곳 더 넣은 경우를 구분하는 데 쓴다.
      */
     private static String spareNote(Map<Long,KakaoMapClient.Location> locations,PlaceCandidate place,PlaceCandidate anchor,Set<Long> lastDraft,int visits) {
         var note=new StringBuilder(visits>=TripConstraints.MAX_AUTO_DAILY?"시간이 남아 한 곳 더":"시간이 남아 추가");

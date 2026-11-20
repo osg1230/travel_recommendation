@@ -27,11 +27,11 @@ class RelaxedPaceTests {
         assertThat(RelaxedPace.wanted(null)).isFalse();
     }
 
-    // 여유 일정이면 하루 3곳을 선호 조건으로 넣는다. 사용자가 정한 하루 방문 수와 다른 조건은 그대로 둔다.
+    // 여유 일정이면 하루 2곳을 선호 조건으로 넣는다. 사용자가 정한 하루 방문 수와 다른 조건은 그대로 둔다.
     @Test void relaxedPaceSetsPreferredDailyVisitsOnlyWhenNotChosen() {
         var relaxed = conditions("느긋하게 다니고 싶어요", null);
         var made = RelaxedPace.apply(null, relaxed);
-        assertThat(made.dailyVisits()).isEqualTo(3);
+        assertThat(made.dailyVisits()).isEqualTo(2);
         assertThat(made.dailyVisitsRequired()).isFalse();
 
         var chosen = new Constraints(List.of(7L), 5, true, null, List.of(), "STANDARD", List.of(7L));
@@ -39,7 +39,7 @@ class RelaxedPaceTests {
 
         var open = new Constraints(List.of(7L), null, false, null, List.of(), "STANDARD", List.of(7L));
         var filled = RelaxedPace.apply(open, relaxed);
-        assertThat(filled.dailyVisits()).isEqualTo(3);
+        assertThat(filled.dailyVisits()).isEqualTo(2);
         assertThat(filled.requiredPlaceIds()).containsExactly(7L);
         assertThat(filled.stayTier()).isEqualTo("STANDARD");
         assertThat(filled.centerPlaceIds()).containsExactly(7L);
@@ -54,11 +54,11 @@ class RelaxedPaceTests {
         var museum = place("오죽헌시립박물관", "박물관");
         var relaxedSea = conditions("여유롭게 바다에서 놀고 싶어요", null, "바다");
         assertThat(RelaxedPace.visitMinutes(relaxedSea, beach, 90)).isEqualTo(120);
-        assertThat(RelaxedPace.visitMinutes(relaxedSea, museum, 90)).isEqualTo(120);
+        assertThat(RelaxedPace.visitMinutes(relaxedSea, museum, 90)).isEqualTo(160);
         assertThat(RelaxedPace.visitMinutes(relaxedSea, place("설악산", "산"), 180)).isEqualTo(VisitMinutes.MAX);
-        assertThat(RelaxedPace.visitMinutes(conditions("여유롭게 쉬고 싶어요", null, "휴식"), beach, 90)).isEqualTo(80);
-        assertThat(RelaxedPace.visitMinutes(conditions("바다 보러 가요", null, "바다"), beach, 90)).isEqualTo(60);
-        assertThat(RelaxedPace.visitMinutes(null, beach, 90)).isEqualTo(60);
+        assertThat(RelaxedPace.visitMinutes(conditions("여유롭게 쉬고 싶어요", null, "휴식"), beach, 90)).isEqualTo(120);
+        assertThat(RelaxedPace.visitMinutes(conditions("바다 보러 가요", null, "바다"), beach, 90)).isEqualTo(90);
+        assertThat(RelaxedPace.visitMinutes(null, beach, 90)).isEqualTo(90);
     }
 
     private static ConfirmedTravelConditions chosen(String original, String pace) {
@@ -82,9 +82,9 @@ class RelaxedPaceTests {
         assertThat(RelaxedPace.dailyCap(conditions("최대한 많이 보고 싶어요", null))).isEqualTo(TripConstraints.MAX_AUTO_DAILY);
         assertThat(RelaxedPace.dailyCap(null)).isEqualTo(TripConstraints.MAX_AUTO_DAILY);
         var beach = place("경포해수욕장", "여행 > 관광,명소 > 해수욕장,해변");
-        assertThat(RelaxedPace.visitMinutes(chosen("", "알차게"), beach, 90)).isEqualTo(50);
-        assertThat(RelaxedPace.visitMinutes(chosen("", "알차게"), place("오죽헌시립박물관", "박물관"), 90)).isEqualTo(70);
+        assertThat(RelaxedPace.visitMinutes(chosen("", "알차게"), beach, 90)).isEqualTo(70);
+        assertThat(RelaxedPace.visitMinutes(chosen("", "알차게"), place("오죽헌시립박물관", "박물관"), 90)).isEqualTo(100);
         assertThat(RelaxedPace.visitMinutes(chosen("", "알차게"), place("하조대전망대", "전망대"), 60)).isEqualTo(VisitMinutes.MIN);
-        assertThat(RelaxedPace.visitMinutes(conditions("최대한 많이 보고 싶어요", null), beach, 90)).isEqualTo(60);
+        assertThat(RelaxedPace.visitMinutes(conditions("최대한 많이 보고 싶어요", null), beach, 90)).isEqualTo(90);
     }
 }

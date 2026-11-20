@@ -229,8 +229,8 @@ public class ItineraryJobService {
             if(startDate.isBefore(LocalDate.now(ZoneId.of("Asia/Seoul")))) throw scheduleConflict("출발일은 오늘이나 그 이후 날짜로 골라 주세요.");
             c=c.withStartDate(startDate);
         }
-        // "여유롭게", "빡빡하지 않게"라고 적은 여행은 하루 방문 수를 정하지 않았어도 하루 3곳(선호)으로 본다.
-        // 하루 4곳을 채우고 남는 시간에 관광지를 더 넣던 것을 막는다(2026-11-11).
+        // "여유롭게", "빡빡하지 않게"라고 적은 여행은 하루 방문 수를 정하지 않았어도 하루 2곳(선호)으로 본다.
+        // 하루 상한을 채우고 남는 시간에 관광지를 더 넣던 것을 막는다(2026-11-11).
         constraints=RelaxedPace.apply(constraints,c);
         // 필수 방문 장소에 여행 기간의 축제 장소가 들어 있으면 일정의 방문 이유에 축제 이름·기간을 안내하도록 표시한다.
         var festival=festivalVisit(parentId,destinationId,login,hash,c.startDate(),c.durationDays());

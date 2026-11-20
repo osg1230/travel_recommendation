@@ -14,9 +14,9 @@ import java.util.regex.Pattern;
  *
  * 2026-11-16부터 사용자가 고른 여행 속도(PACE 키워드: 느긋하게·보통·알차게)를 먼저 본다.
  * 속도를 골랐으면 문장의 낱말은 보지 않고, 고르지 않았을 때만 낱말로 여유 일정을 찾는다.
- * - 느긋하게: 하루 3곳, 체류시간 1.3배, 저녁 관광 없음
+ * - 느긋하게: 하루 2곳, 체류시간 1.3배, 저녁 관광 없음
  * - 보통(또는 고르지 않음): 지금까지의 기준
- * - 알차게: 체류시간 0.8배, 남는 시간을 채울 때 하루 상한을 한 곳 늘린다(4곳 → 5곳)
+ * - 알차게: 체류시간 0.8배, 남는 시간을 채울 때 하루 상한을 한 곳 늘린다(3곳 → 4곳)
  *   상한만 늘렸을 때는 09:00~18:00 하루가 먼저 차서 보통과 같았다(2026-11-16 비교). 그래서 머무는 시간도 줄인다.
  */
 public final class RelaxedPace {
@@ -24,15 +24,15 @@ public final class RelaxedPace {
     private static final Pattern RELAXED = Pattern.compile(
         "여유롭|여유로|여유\\s?있게|느긋|빡빡하지\\s?않|안\\s?빡빡|쉬엄쉬엄|천천히|무리하지\\s?않|무리\\s?없이|널널|많이\\s?걷지\\s?않|푹\\s?쉬");
 
-    /** 여유 일정의 하루 관광지 수(저녁 관광 포함). 따로 정하지 않았을 때의 상한 4곳보다 한 곳 적다. */
-    public static final int DAILY_VISITS = 3;
+    /** 여유 일정의 하루 관광지 수(저녁 관광 포함). 따로 정하지 않았을 때의 상한 3곳보다 한 곳 적다. */
+    public static final int DAILY_VISITS = 2;
     /** 여유 일정에서 바다 취향을 골랐을 때 해변 한 곳에 머무는 시간(분). 물놀이·모래놀이와 씻는 시간까지 본 값이다. */
     public static final int BEACH_MINUTES = 120;
     /** 느긋한 일정에서 종류별 체류시간에 곱하는 값. 같은 곳에서 30% 더 머문다. */
     static final double RELAXED_STAY_RATE = 1.3;
     /** 알찬 일정에서 종류별 체류시간에 곱하는 값. 같은 곳에서 20% 짧게 머물러 하루에 더 많은 곳을 들른다. */
     static final double PACKED_STAY_RATE = 0.8;
-    /** 알찬 일정에서 남는 시간을 채울 때의 하루 관광지 상한. 따로 정하지 않았을 때(4곳)보다 한 곳 많다. */
+    /** 알찬 일정에서 남는 시간을 채울 때의 하루 관광지 상한. 따로 정하지 않았을 때(3곳)보다 한 곳 많다. */
     public static final int PACKED_DAILY_CAP = TripConstraints.MAX_AUTO_DAILY + 1;
     /** 여행 속도 키워드 이름. 관리자 키워드 관리에서 이름을 바꿀 수 없게 막아 두었다(AdminKeywordService). */
     static final String RELAXED_NAME = "느긋하게", PACKED_NAME = "알차게";
