@@ -495,7 +495,6 @@
 <div><label for="rev-end">하루 종료 시간</label><input id="rev-end" name="end" type="time" min="12:00" max="21:00" th:value="${timeValues != null ? timeValues.end : job.input.end}" required></div>
 <div><label for="rev-visit">관광지 기본 체류시간 (분)</label><input id="rev-visit" name="visitMinutes" type="number" min="30" max="180" th:value="${timeValues != null ? timeValues.visitMinutes : job.input.visitMinutes}" required></div>
 </div>
-<p class="help">바꾼 시간에 맞춘 수정안을 만들어요. 이 초안은 그대로 남아요.</p>
 <div class="form-actions"><button type="submit" class="button-quiet">이 시간으로 수정안 만들기</button></div>
 </form>
 </details>
@@ -515,7 +514,6 @@
 <section class="condition-section" th:if="${job.result != null}" aria-labelledby="save-title">
 <h2 id="save-title" th:text="${applyTargets.isEmpty() ? '내 일정으로 저장' : '새 일정으로 따로 저장'}">내 일정으로 저장</h2>
 <!--/* 저장 일정에서 이어진 수정안을 따로 저장하면 원래 저장 일정은 그대로 두고 새 일정이 하나 더 생긴다. */-->
-<p class="help" th:unless="${applyTargets.isEmpty()}">이 수정안을 내 일정에 하나 더 저장해요.</p>
 <p class="help" th:if="${loggedIn and job.expiresAtText() != null}" th:text="${job.expiresAtText() + '(한국 시간)까지 보관돼요. 저장하지 않으면 사라져요.'}"></p>
 <p th:each="savedItinerary : ${savedAs}">이 초안은 이미 <a th:href="@{/my/itineraries/{id}(id=${savedItinerary.id})}" th:text="${'''' + savedItinerary.title + ''''}"></a>(으)로 저장했어요. 바꾸려면 위 '일정 수정하기'에서 수정안을 만든 뒤 그 일정에 적용해 주세요.</p>
 <form th:if="${loggedIn and savedAs.isEmpty() and job.input.conditions.startDate != null and report.complete}" th:action="@{/my/itineraries}" method="post" data-submit-loading="저장하는 중…"

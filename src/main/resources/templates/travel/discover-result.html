@@ -41,7 +41,7 @@
         <label for="originalText">AI에게 보낼 문장</label>
         <textarea id="originalText" name="originalText" rows="4" maxlength="2000" required th:text="${tripSentence}"></textarea>
         <div class="form-actions"><button type="submit">이 문장으로 바로 추천받기</button></div>
-        <p class="help" role="status" data-analysis-status hidden>문장을 분석하고 여행지를 찾고 있어요. 10초쯤 걸릴 수 있어요.</p>
+        <p class="help" role="status" data-analysis-status hidden>여행지를 찾고 있어요. 10초쯤 걸려요.</p>
     </form>
 
     <form method="post" th:action="@{/travel/conditions/discover/apply}">

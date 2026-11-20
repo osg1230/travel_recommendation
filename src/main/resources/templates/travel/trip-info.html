@@ -31,7 +31,6 @@
 <label><input type="radio" name="transport" value="CAR" th:checked="${values.transport != null and values.transport.name() == 'CAR'}" required><span>자동차</span></label>
 <label><input type="radio" name="transport" value="PUBLIC_TRANSIT" th:checked="${values.transport != null and values.transport.name() == 'PUBLIC_TRANSIT'}"><span>대중교통</span></label>
 </fieldset>
-<p class="help" th:if="${askTransport}">자동차와 대중교통은 이동시간과 동선이 달라서 직접 골라 주세요.</p>
 </section>
 <section th:replace="~{fragments/home-trip :: fields(${values.home})}"></section>
 <div class="form-actions"><button type="submit">일정 만들기</button>
