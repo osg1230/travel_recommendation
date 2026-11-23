@@ -2,7 +2,7 @@
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>예약 | 다녀올게</title>
+    <title>내 예약 | 다녀올게</title>
     <link rel="stylesheet" th:href="@{/css/app.css}">
 </head>
 <body>
@@ -10,25 +10,45 @@
 <main class="travel my-page">
     <nav th:replace="~{fragments/layout :: myNav('reservations')}"></nav>
     <p class="eyebrow">내 여행 · 예약</p>
-    <h1>예약</h1>
+    <h1>내 예약</h1>
+    <p class="draft-meta">결제한 예약을 확인하고 취소할 수 있어요. 새 예약은 <a th:href="@{/my/itineraries}">저장한 일정</a>에서 해요.</p>
     <p role="status" class="status-ok" th:if="${savedMessage != null}" th:text="${savedMessage}"></p>
     <p role="status" th:if="${reservations.isEmpty()}">아직 예약이 없어요. 저장한 일정 상세에서 숙소·관광시설을 예약할 수 있어요.</p>
-    <p th:if="${reservations.isEmpty()}"><a th:href="@{/my/itineraries}">저장한 일정 보러 가기 →</a></p>
-    <article class="place-row" th:each="r : ${reservations}">
-        <p class="help">
-            <span class="status-badge" th:classappend="${r.status == 'CONFIRMED' ? 'status-met' : (r.status == 'PENDING' ? 'status-needs_check' : 'status-not_applicable')}"
-                  th:text="${r.statusName()}"></span>
-            <span th:text="${'예약번호 ' + r.id + ' · ' + r.paymentStatusName()}"></span>
-            <!--/* 이용 시작 시각이 지난 예약은 결제·변경할 수 없어 따로 표시한다. */-->
-            <span class="status-badge status-not_applicable" th:if="${r.started() and r.status != 'CANCELED'}">이용일 지남</span>
-        </p>
-        <h2><a th:href="@{/my/reservations/{id}(id=${r.id})}" th:text="${r.placeName}"></a></h2>
-        <p th:text="${#temporals.format(r.usageStart, 'yyyy-MM-dd HH:mm') + ' ~ ' + #temporals.format(r.usageEnd, 'yyyy-MM-dd HH:mm')
-            + ' · ' + (r.unit == 'ROOM' ? (r.roomTypeName != null ? r.roomTypeName : '객실') + ' ' + r.quantity + '실 · ' : '') + '인원 ' + r.partySize + '명'}"></p>
-        <p th:text="${'금액 ' + #numbers.formatInteger(r.amount, 1, 'COMMA') + '원'}"></p>
-        <!--/* 결제 대기 예약은 목록에서 바로 결제 칸으로 갈 수 있게 한다. */-->
-        <p th:if="${r.payable()}"><a th:href="@{/my/reservations/{id}(id=${r.id})} + '#pay-title'">결제하기 →</a></p>
-    </article>
+
+    <!--/* 숙소 예약과 관광지 예약을 나눠 보여 준다. 객실 단위(ROOM)로 잡은 예약이 숙소, 인원 단위가 관광지다. */-->
+    <div class="reserve-lists" th:unless="${reservations.isEmpty()}">
+    <section th:each="group : ${ {'ROOM','PERSON'} }"
+             th:with="stay=${group == 'ROOM'}, items=${stay ? reservations.?[unit == 'ROOM'] : reservations.?[unit != 'ROOM']}">
+        <h2 th:text="${(stay ? '숙소 예약 ' : '관광지 예약 ') + items.size() + '건'}"></h2>
+        <p class="help" th:if="${items.isEmpty()}" th:text="${stay ? '아직 숙소 예약이 없어요.' : '아직 관광지 예약이 없어요.'}"></p>
+        <article class="place-row" th:each="r : ${items}">
+            <p class="help">
+                <span class="status-badge" th:classappend="${r.status == 'CONFIRMED' ? 'status-met' : (r.status == 'PENDING' ? 'status-needs_check' : 'status-not_applicable')}"
+                      th:text="${r.statusName()}"></span>
+                <span th:text="${'예약번호 ' + r.id + ' · ' + r.paymentStatusName()}"></span>
+                <!--/* 이용 시작 시각이 지난 예약은 취소할 수 없어 따로 표시한다. */-->
+                <span class="status-badge status-not_applicable" th:if="${r.started() and r.status != 'CANCELED'}">이용일 지남</span>
+            </p>
+            <h3><a th:href="@{/my/reservations/{id}(id=${r.id})}" th:text="${r.placeName}"></a></h3>
+            <p th:text="${#temporals.format(r.usageStart, 'yyyy-MM-dd HH:mm') + ' ~ ' + #temporals.format(r.usageEnd, 'yyyy-MM-dd HH:mm')
+                + ' · ' + (r.unit == 'ROOM' ? (r.roomTypeName != null ? r.roomTypeName : '객실') + ' ' + r.quantity + '실 · ' : '') + '인원 ' + r.partySize + '명'}"></p>
+            <div class="reserve-row-end">
+                <strong th:text="${'금액 ' + #numbers.formatInteger(r.amount, 1, 'COMMA') + '원'}"></strong>
+                <div class="reserve-row-actions">
+                    <!--/* 예전에 결제하지 않고 남겨 둔 결제 대기 예약은 목록에서 바로 결제 칸으로 갈 수 있게 한다. */-->
+                    <a th:if="${r.payable()}" th:href="@{/my/reservations/{id}(id=${r.id})} + '#pay-title'">결제하기 →</a>
+                    <a th:unless="${r.payable()}" th:href="@{/my/reservations/{id}(id=${r.id})}">결제 내역 보기</a>
+                    <!--/* 결제 대기 예약은 언제든, 확정된 예약은 이용 시작 전까지만 취소할 수 있다(서버가 다시 확인한다). */-->
+                    <form th:if="${r.status == 'PENDING' or (r.status == 'CONFIRMED' and !r.started())}"
+                          th:action="@{/my/reservations/{id}/cancel(id=${r.id})}" method="post"
+                          onsubmit="return confirm('이 예약을 취소할까요? 취소한 예약은 되돌릴 수 없어요.');">
+                        <button type="submit" class="button-small button-danger">예약 취소</button>
+                    </form>
+                </div>
+            </div>
+        </article>
+    </section>
+    </div>
 </main>
 </body>
 </html>
