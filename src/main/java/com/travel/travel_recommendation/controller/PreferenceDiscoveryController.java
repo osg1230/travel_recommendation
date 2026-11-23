@@ -153,6 +153,8 @@ public class PreferenceDiscoveryController {
                 form.setRegion(draft.getRegion()); form.setStartDate(draft.getStartDate()); form.setEndDate(draft.getEndDate());
                 form.setDurationDays(draft.getDurationDays()); form.setSeason(draft.getSeason()); form.setCompanion(draft.getCompanion());
                 form.setBudget(draft.getBudget()); form.setTransportation(draft.getTransportation());
+                // 분위기와 여행 속도도 취향 탐색과 상관없는 조건이므로 그대로 이어 준다.
+                form.setMoods(List.copyOf(draft.getMoods())); form.setPace(draft.getPace());
             }
             form.setInputMode("KEYWORD");
             form.setThemes(List.copyOf(finalThemes));

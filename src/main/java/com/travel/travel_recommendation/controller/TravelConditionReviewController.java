@@ -446,7 +446,7 @@ public class TravelConditionReviewController {
         form.setTravelPurpose(joined.length() <= 200 ? joined : place);
         form.setPurposeSuggested(false);
         form.setRegion("");
-        return "'" + place + "'은(는) 아직 여행지 목록에 없어서 지역 대신 원하는 여행으로 옮겼어요. "
+        return "'" + place + "'" + ReadableText.particle(place, "은") + " 아직 여행지 목록에 없어서 지역 대신 원하는 여행으로 옮겼어요. "
             + "AI가 맞는 시·군을 찾아 관광공사에 등록된 장소로 확인한 뒤 추천해요.";
     }
 

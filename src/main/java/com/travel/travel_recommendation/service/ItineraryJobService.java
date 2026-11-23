@@ -718,7 +718,7 @@ public class ItineraryJobService {
 
     /** 콕 집은 장소가 후보에 없을 때 되묻는 서버 고정 문구. GPT 문장 대신 써서 할 수 있는 일을 정확히 알린다. */
     static String unavailableQuestion(List<String> names) {
-        return "'"+String.join("', '",names)+"'은(는) 이 지역에서 확인된 관광지로 찾지 못했어요. 장소 이름을 다시 확인해 적거나, "
+        return "'"+String.join("', '",names)+"'"+ReadableText.particle(String.join("",names),"은")+" 이 지역에서 확인된 관광지로 찾지 못했어요. 장소 이름을 다시 확인해 적거나, "
             +"같은 요청을 한 번 더 보내면 비슷한 곳으로 바꾼 수정안을 만들어 드려요.";
     }
     @Transactional(timeout=10)

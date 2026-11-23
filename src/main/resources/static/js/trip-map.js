@@ -45,6 +45,9 @@
         const maps = window.kakao.maps;
         const map = new maps.Map(canvas, { center: new maps.LatLng(36.5, 127.8), level: 8 });
         map.addControl(new maps.ZoomControl(), maps.ControlPosition.RIGHT);
+        // 지도 위에서 휠을 굴려도 페이지가 스크롤되게, 휠 신호가 지도까지 내려가지 않도록 막는다.
+        // 확대·축소는 오른쪽 버튼으로 하고, 휴대폰의 두 손가락 확대는 그대로 둔다.
+        canvas.addEventListener('wheel', event => event.stopPropagation(), true);
         const bounds = new maps.LatLngBounds();
         let count = 0;
         const place = (lat, lng, element) => {

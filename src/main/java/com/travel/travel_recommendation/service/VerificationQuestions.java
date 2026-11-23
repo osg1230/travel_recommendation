@@ -36,7 +36,7 @@ public final class VerificationQuestions {
             if (targets.isEmpty()) targets = attractions;
             for (var place : targets)
                 questions.add(new CheckQuestion(place.placeId(), place.name(), "PURPOSE",
-                    place.address() + "에 있는 '" + place.name() + "'에서 '" + purpose + "'을(를) 할 수 있나요? (관람·체험 내용 기준)"));
+                    place.address() + "에 있는 '" + place.name() + "'에서 '" + purpose + "'" + ReadableText.particle(purpose, "을") + " 할 수 있나요? (관람·체험 내용 기준)"));
         }
         // ② 반려동물 동반: 관광공사 정보가 없는 장소만 묻는다.
         if (PetTravel.wanted(conditions)) {

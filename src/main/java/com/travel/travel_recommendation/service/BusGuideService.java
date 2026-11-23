@@ -31,7 +31,7 @@ public class BusGuideService {
         if(view.result().nearby()!=null) view.result().nearby().regions().forEach(r->allowed.add(r.name()));
         if(to==null || !allowed.contains(to)) throw new RecommendationException("BUS_INPUT","도착 지역을 목록에서 다시 골라 주세요.");
         var target=NearbyRegionService.TERMINALS.get(to);
-        if(target==null) throw new RecommendationException("BUS_UNSUPPORTED",to+"은(는) 버스 터미널 정보가 없어 안내하지 못해요.");
+        if(target==null) throw new RecommendationException("BUS_UNSUPPORTED",to+ReadableText.particle(to,"은")+" 버스 터미널 정보가 없어 안내하지 못해요.");
 
         // 출발지 정하기: 현재 위치 → 입력한 도시·터미널 → (주변 지역으로 갈 때) 지금 여행지 순서다.
         String keyword;

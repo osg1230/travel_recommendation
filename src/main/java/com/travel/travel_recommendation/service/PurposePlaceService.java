@@ -126,7 +126,7 @@ public class PurposePlaceService {
         catch (RecommendationException e) { return new Found(result("FAILED", List.of(), List.of(), e.getMessage(), List.of()), List.of()); }
         var keywords = terms.keywords(); var themes = terms.themes();
         if (keywords.isEmpty())
-            return new Found(result("SKIPPED", keywords, List.of(), "'" + purpose + "'은(는) 특정 시설로 찾을 목적이 아니라 목적 시설 검색을 하지 않았어요.", themes), List.of());
+            return new Found(result("SKIPPED", keywords, List.of(), "'" + purpose + "'" + ReadableText.particle(purpose, "은") + " 특정 시설로 찾을 목적이 아니라 목적 시설 검색을 하지 않았어요.", themes), List.of());
         var regions = task.destinations().stream().map(DestinationCandidate::region).toList();
         Map<String, KakaoPlace> bySource = new LinkedHashMap<>();
         try {

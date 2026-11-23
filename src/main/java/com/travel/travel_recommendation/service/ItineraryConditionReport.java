@@ -67,8 +67,10 @@ public final class ItineraryConditionReport {
         var missing = input.places().attractions().stream()
             .filter(p -> !visited.contains(p.placeId()) && !skipped.contains(p.placeId())).map(p -> p.name()).toList();
         if (!missing.isEmpty()) return new Check("선택한 관광지 포함", Status.UNMET, "빠진 관광지: " + String.join(", ", missing));
+        // 조사는 마지막 이름의 받침에 맞춘다.
+        String skippedNames = String.join(", ", result.skipped().stream().map(PlaceRef::name).toList());
         if (!skipped.isEmpty()) return new Check("선택한 관광지 포함", Status.MET, "하루 시간에 맞춰 관광지 " + (input.places().attractions().size() - skipped.size())
-            + "곳을 배치했어요. 하루 시간이 부족하거나 가는 길이 너무 멀어(자동차 2시간·대중교통 1시간 30분 초과, 배를 타야 하는 섬 등)" + String.join(", ", result.skipped().stream().map(PlaceRef::name).toList()) + "은(는) 넣지 않았어요.");
+            + "곳을 배치했어요. 하루 시간이 부족하거나 가는 길이 너무 멀어(자동차 2시간·대중교통 1시간 30분 초과, 배를 타야 하는 섬 등) " + skippedNames + ReadableText.particle(skippedNames, "은") + " 넣지 않았어요.");
         return new Check("선택한 관광지 포함", Status.MET, "일정에 쓰기로 고른 관광지 " + input.places().attractions().size() + "곳을 모두 배치했어요.");
     }
 
@@ -223,7 +225,7 @@ public final class ItineraryConditionReport {
         for (var day : result.days()) for (var item : day.items()) {
             if (!Set.of("VISIT", "MEAL", "STAY").contains(item.type())) continue;
             var place = pool.stream().filter(p -> p.placeId().equals(item.placeId())).findFirst().orElse(null);
-            if (place == null) return new Check("운영시간·휴무", Status.UNMET, "'" + item.name() + "'은(는) 후보에 없는 장소예요.");
+            if (place == null) return new Check("운영시간·휴무", Status.UNMET, "'" + item.name() + "'" + ReadableText.particle(item.name(), "은") + " 후보에 없는 장소예요.");
             try {
                 String status = OperatingHoursValidator.check(place.name(), place.operatingInfo(), day.date(), item.start(), item.end());
                 if (status.startsWith("확인 필요")) unknown++; else checked++;
@@ -271,7 +273,7 @@ public final class ItineraryConditionReport {
         String purpose = c.travelPurpose() == null ? "" : c.travelPurpose().strip();
         if (purpose.isEmpty() || c.purposeSuggested())
             return new Check("여행 목적 활동", Status.NOT_APPLICABLE, "직접 말한 여행 목적 활동이 없어요.");
-        return new Check("여행 목적 활동", Status.NEEDS_CHECK, "'" + purpose + "'을(를) 실제로 할 수 있는지는 각 장소의 관람·체험 내용을 확인하지 않았어요. "
+        return new Check("여행 목적 활동", Status.NEEDS_CHECK, "'" + purpose + "'" + ReadableText.particle(purpose, "을") + " 실제로 할 수 있는지는 각 장소의 관람·체험 내용을 확인하지 않았어요. "
             + aiChecks(result, "PURPOSE"));
     }
 

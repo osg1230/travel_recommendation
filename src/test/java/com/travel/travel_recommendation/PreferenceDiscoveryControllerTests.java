@@ -153,7 +153,8 @@ class PreferenceDiscoveryControllerTests {
     @Test void conflictWithDirectlyChosenThemesAsksHowToApply() throws Exception {
         var session = startingWithSeason();
         answer(session, 0, "SEASON", "A");
-        mvc.perform(post("/travel/conditions").session(session).with(csrf()).param("inputMode", "KEYWORD").param("themes", "맛집"))
+        mvc.perform(post("/travel/conditions").session(session).with(csrf()).param("inputMode", "KEYWORD").param("themes", "맛집")
+                .param("moods", "한적한").param("pace", "느긋하게"))
             .andExpect(redirectedUrl("/travel/conditions/check"));
         mvc.perform(post("/travel/conditions/discover/apply").session(session).with(csrf()).param("themes", "바다"))
             .andExpect(status().isOk()).andExpect(content().string(containsString("어떻게 반영할까요")))
@@ -164,6 +165,9 @@ class PreferenceDiscoveryControllerTests {
             .andExpect(redirectedUrl("/travel/conditions"));
         var prefill = (TravelConditionForm) session.getAttribute("travelConditionPrefill");
         assertThat(prefill.getThemes()).containsExactly("맛집", "바다");
+        // 취향만 바꾸므로 앞서 고른 분위기와 여행 속도는 그대로 남아야 한다.
+        assertThat(prefill.getMoods()).containsExactly("한적한");
+        assertThat(prefill.getPace()).isEqualTo("느긋하게");
         mvc.perform(post("/travel/conditions/discover/apply").session(session).with(csrf()).param("themes", "바다").param("resolve", "bad"))
             .andExpect(status().isBadRequest());
     }

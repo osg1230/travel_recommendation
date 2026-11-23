@@ -229,7 +229,7 @@ class ItineraryRevisionIntegrationTests {
         when(ai.propose(any(),any(),any(),any(),any(),any(),eq("첫 번째 곳을 전동성당으로 바꿔 줘"),any())).thenReturn(exact);
         var asked=schedules.aiRevise(original,null,hash,"첫 번째 곳을 전동성당으로 바꿔 줘",Set.of());
         assertThat(asked.job()).isNull();
-        assertThat(asked.question()).contains("'전동성당'은(는) 이 지역에서 확인된 관광지로 찾지 못했어요").contains("한 번 더 보내면");
+        assertThat(asked.question()).contains("'전동성당'은 이 지역에서 확인된 관광지로 찾지 못했어요").contains("한 번 더 보내면");
         assertThat(asked.askedPlaces()).containsExactly("전동성당");
         assertThat(ownJobs()).isEqualTo(before);
 
@@ -239,7 +239,7 @@ class ItineraryRevisionIntegrationTests {
         assertThat(revision.added()).extracting(PlaceRef::placeId).containsExactly(herb);
         finish(again.job());
         mvc.perform(get("/travel/recommendations/itineraries/"+again.job()).session(session)).andExpect(status().isOk())
-            .andExpect(content().string(containsString("참고: 요청한 &#39;전동성당&#39;은(는) 확인된 교체 후보에 없어서 비슷한 곳으로 바꿨어요.")));
+            .andExpect(content().string(containsString("참고: 요청한 &#39;전동성당&#39;은 확인된 교체 후보에 없어서 비슷한 곳으로 바꿨어요.")));
 
         var similar=new OpenAiRevisionClient.Proposal(false,null,List.of(target),List.of(herb),null,null,null,"비슷한 곳으로 바꿨어요.",false,
             List.of("전동성당"),false);
