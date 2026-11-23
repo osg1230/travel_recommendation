@@ -157,7 +157,7 @@ h2[id] { scroll-margin-top: 84px; }
     .destination-candidate.is-top .destination-photo img { flex: 1; aspect-ratio: auto; min-height: 220px; }
     .destination-candidate.is-top .destination-photo figcaption { padding-bottom: 6px; }
 }
-/* 일정 초안: 넓은 화면에서는 일정표 옆에 지도와 숙소·식사·바로 가기 요약을 고정해 둔다.
+/* 일정 초안: 넓은 화면에서는 일정표 옆에 지도와 숙소·예상 경비 요약을 고정해 둔다.
    고정한 열이 화면보다 길면 그 열 안에서 따로 스크롤한다. */
 .itinerary-page { width: min(100% - 32px, 1120px); }
 /* 좁은 화면: 문서 순서는 일정표 → 지도·요약이지만 지도를 일정표 위로 올려 보여 준다. */
@@ -184,8 +184,23 @@ h2[id] { scroll-margin-top: 84px; }
 .more-actions { margin-top: 12px; }
 .more-actions > summary { font-size: 14px; color: var(--text-muted); cursor: pointer; }
 .more-actions .form-actions { margin-top: 10px; }
-.page-tabs { margin: 4px 0 16px; }
-.page-tabs .region-tab { padding: 8px 16px; font-size: 15px; }
+/* 탭은 알약 모양 대신 아래 줄로 고른 탭을 표시한다. 좁은 화면에서는 줄바꿈하지 않고 옆으로 민다. */
+.page-tabs { flex-wrap: nowrap; gap: 4px; margin: 4px 0 18px; border-bottom: 1px solid var(--line-strong); overflow-x: auto; }
+.page-tabs .region-tab { padding: 10px 16px; font-size: 15px; font-weight: 600; white-space: nowrap; background: transparent; border: 0; border-bottom: 3px solid transparent; border-radius: 0; }
+.page-tabs .region-tab:hover { background: var(--brand-soft); }
+.page-tabs .region-tab[aria-current] { background: transparent; color: var(--brand); border-bottom-color: var(--brand); font-weight: 800; }
+/* 일정 초안 제목 줄: 왼쪽에 제목과 기간·이동수단, 오른쪽에 저장 버튼과 안내. 폭이 모자라면 저장 버튼이 아래 줄로 내려간다. */
+.draft-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; margin-bottom: 16px; }
+.draft-title { flex: 1 1 320px; min-width: 0; }
+.draft-title h1 { margin: 2px 0 4px; }
+.draft-meta { margin: 0; font-size: 15px; color: var(--text-muted); }
+.draft-save { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; max-width: 100%; }
+.draft-save .form-actions { margin-top: 0; justify-content: flex-end; }
+.draft-save .help { margin: 0; text-align: right; }
+@media (max-width: 600px) {
+    .draft-save { align-items: stretch; width: 100%; }
+    .draft-save .help { text-align: left; }
+}
 /* 일정 초안·저장한 일정의 일정표를 짧게: 설명은 두 줄만 보여 주고(clamp-notes.js), 종류 표시는 장소 이름과 같은 줄에, 사진과 여백은 작게 둔다. */
 .clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 button.note-more { display: block; min-height: 0; margin: 2px 0 0; padding: 0; background: none; border: 0; box-shadow: none; font-size: 13px; font-weight: 500; color: var(--text-muted); text-decoration: underline; }
@@ -196,6 +211,21 @@ button.note-more:hover { background: none; color: var(--brand-strong); }
 .compact-timeline .timeline .schedule-body > p { margin-top: 4px; margin-bottom: 4px; }
 .compact-timeline .timeline .place-photo { width: 104px; }
 .compact-timeline .timeline .item-actions { margin-top: 6px; }
+/* 일정 초안 일정표: 시각(왼쪽) – 세로선과 점 – 내용 순으로 둔다. 종류는 이름 위 작은 글씨로, 이동은 장소 사이의 얇은 한 줄로 보여 준다.
+   세로선과 점의 위치는 시각 칸 너비와 칸 사이 간격으로 계산한다. */
+.draft-page .timeline { --time-width: 52px; --rail-gap: 36px; }
+.draft-page .timeline .schedule-item { grid-template-columns: var(--time-width) minmax(0, 1fr); gap: 0 var(--rail-gap); padding-left: 0; border-bottom: 0; }
+.draft-page .timeline .schedule-item::before { left: calc(var(--time-width) + var(--rail-gap) / 2 - 1px); }
+.draft-page .timeline .schedule-item::after { left: calc(var(--time-width) + var(--rail-gap) / 2 - 7px); }
+.draft-page .timeline .schedule-time { margin: 0; text-align: right; line-height: 1.35; color: var(--text); font-weight: 800; }
+.draft-page .timeline .schedule-end { display: block; font-size: 13px; font-weight: 500; color: var(--text-muted); }
+.draft-page .timeline .schedule-item:not(.item-transit) .schedule-type { float: none; display: block; margin: 0; padding: 0; background: none; font-weight: 800; }
+.draft-page .timeline h3 { font-size: 17px; }
+.draft-page .timeline .item-transit { background: none; padding-top: 4px; padding-bottom: 4px; }
+.draft-page .timeline .item-transit::after { left: calc(var(--time-width) + var(--rail-gap) / 2 - 5px); top: 9px; }
+.draft-page .timeline .item-transit .schedule-type, .draft-page .timeline .item-transit .schedule-end { display: none; }
+.draft-page .timeline .item-transit .schedule-time { font-size: 13px; font-weight: 500; color: var(--text-muted); }
+@media (max-width: 600px) { .draft-page .timeline { --time-width: 42px; --rail-gap: 28px; } }
 .condition-section.side-card { padding: 20px 22px; }
 .side-card h2 { margin: 0 0 10px; font-size: 15px; color: var(--text-muted); }
 .side-card h3 { margin: 0 0 4px; font-size: 18px; }
