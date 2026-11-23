@@ -31,7 +31,7 @@
             <dt>이동수단</dt><dd th:text="*{getKeywordNames('TRANSPORTATION').isEmpty() ? '상관없음' : getKeywordNames('TRANSPORTATION')}"></dd>
         </dl>
         <p class="help" th:if="${discoveredThemes != null and !discoveredThemes.isEmpty()}"
-           th:text="${'취향 탐색에서 고른 취향: ' + #strings.listJoin(discoveredThemes, ', ') + ''}"></p>
+           th:text="${'취향 찾기에서 고른 취향: ' + #strings.listJoin(discoveredThemes, ', ') + ''}"></p>
         <a class="button" th:href="@{/travel/conditions/review}">조건 보완·확정하기</a>
     </section>
     <div class="form-actions"><a class="button" th:href="@{/travel/conditions}">입력 내용 수정하기</a><a class="home-link" th:href="@{/}">홈으로</a></div>

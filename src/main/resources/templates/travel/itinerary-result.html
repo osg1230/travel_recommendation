@@ -96,6 +96,7 @@
 <!--/* 상태 확인 시간 420초 = 앞선 요청 대기 제한 5분 + 일정 처리 제한 2분(RecommendationJobService.WAIT_LIMIT, ItineraryJobService.complete). */-->
 <div role="status" data-poll-seconds="420" th:attr="data-job-pending=${job.pending},data-status-url=@{/travel/recommendations/itineraries/{id}/status(id=${job.id})}">
 <p data-job-message th:text="${job.message}"></p></div>
+<div class="waiting-bar" th:if="${job.pending}" aria-hidden="true"></div>
 <p th:if="${job.pending}">처리를 시작하면 최대 약 2분 걸려요. 앞선 요청이 많으면 시작까지 더 기다릴 수 있어요. 이 화면에서 처리 상태를 확인할 수 있어요.</p>
 <a th:if="${job.pending}" th:href="@{/travel/recommendations/itineraries/{id}(id=${job.id})}">상태 새로고침</a>
 <th:block th:if="${job.result != null}">
@@ -344,7 +345,9 @@
 </section>
 
 <section class="condition-section" th:if="${job.result.transport.name() != 'CAR'}" aria-labelledby="bus-title">
-<details th:open="${busGuide != null or busError != null or trainGuide != null or trainError != null}"><summary><h2 id="bus-title" class="details-title">대중교통으로 가는 방법 (버스·기차)</h2></summary>
+<!--/* 주변 지역 절이 없으면 이 탭에 이 절 하나뿐이라, 탭이 비어 보이지 않게 펼쳐 둔다. */-->
+<details th:open="${busGuide != null or busError != null or trainGuide != null or trainError != null
+    or not (job.result.nearby != null and (!job.result.nearby.regions.isEmpty() or job.input.conditions.includeNearby == true))}"><summary><h2 id="bus-title" class="details-title">대중교통으로 가는 방법 (버스·기차)</h2></summary>
 <p class="help">출처: 국토교통부 TAGO. 일정 시간은 바뀌지 않아요.</p>
 <!--/* 일정의 집 이동시간을 버스나 기차로 찾았으면 그 탭에 '일정 기준'을 붙이고 먼저 연다. 자바스크립트가 없으면 두 탭 내용을 모두 보여 준다. */-->
 <th:block th:with="scheduleMode=${job.input.home == null ? '' : #strings.startsWith(job.input.home.basis, '기차') ? 'train' : #strings.startsWith(job.input.home.basis, '직행') ? 'bus' : ''}">
@@ -394,7 +397,9 @@
 </th:block>
 </select>
 <label for="bus-from">출발 도시·터미널·역 (선택)</label>
-<input id="bus-from" name="from" maxlength="20" placeholder="예) 동서울, 대전, 강릉" th:value="${busFrom}">
+<!--/* 일정을 만들 때 적은 출발지가 있으면 다시 적지 않게 미리 넣어 둔다(20자까지). */-->
+<input id="bus-from" name="from" maxlength="20" placeholder="예) 동서울, 대전, 강릉"
+       th:value="${busFrom != null ? busFrom : (job.input.home != null ? (#strings.length(job.input.home.origin) > 20 ? #strings.substring(job.input.home.origin, 0, 20) : job.input.home.origin) : '')}">
 <input type="hidden" name="longitude" disabled><input type="hidden" name="latitude" disabled>
 <div class="form-actions">
 <button type="submit">버스·기차 찾기</button>

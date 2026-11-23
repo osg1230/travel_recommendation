@@ -1383,7 +1383,7 @@ public class ItineraryGenerator {
             var home=input.home();
             time=home.departAt();
             addHome(home.origin()+" → "+input.places().destination().name(),home.arrivalAtDestination(),
-                "편도 약 "+home.minutes()+"분 + 이동 여유 "+HomeTrip.SPARE_MINUTES+"분 ("+home.basis()+")"
+                "편도 약 "+ReadableText.duration(home.minutes())+" + 이동 여유 "+HomeTrip.SPARE_MINUTES+"분 ("+home.basis()+")"
                     +"\n도착한 뒤 첫 관광지로 바로 가요. 여행지 안 첫 장소까지의 이동은 차이가 있을 수 있어요.");
         }
         /** 마지막 날 맨 뒤: 마지막 장소 → 돌아갈 곳 이동. 편도 이동시간과 여유 10분이다. */
@@ -1392,7 +1392,7 @@ public class ItineraryGenerator {
             limit=home.arriveBy();
             addHome((previous==null?input.places().destination().name():previous.name())+" → "+home.returnPlace(),
                 time.plusMinutes(home.returnMinutes()+HomeTrip.SPARE_MINUTES),
-                "편도 약 "+home.returnMinutes()+"분 + 이동 여유 "+HomeTrip.SPARE_MINUTES+"분 ("+home.returnBasis()+")"
+                "편도 약 "+ReadableText.duration(home.returnMinutes())+" + 이동 여유 "+HomeTrip.SPARE_MINUTES+"분 ("+home.returnBasis()+")"
                     +"\n"+home.arriveBy()+"까지 "+home.returnPlace()+"에 도착하도록 관광을 마쳤어요.");
         }
         // 집은 장소 후보가 아니라 place_id 없이 이동 항목으로만 둔다. 출발지 좌표는 저장하지 않아 지도 링크도 없다.

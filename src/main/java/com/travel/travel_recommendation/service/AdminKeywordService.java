@@ -144,7 +144,7 @@ public class AdminKeywordService {
         if(FIXED_CATEGORIES.contains(category)) return FIXED_MESSAGE;
         // 기본 여행 취향 6개는 여행지 분류 점수와 취향 탐색이 이름·값으로 찾는다.
         if("THEME".equals(category) && PreferenceDiscovery.TAG_NAMES.containsKey(keyword.getCode()))
-            return "기본 여행 취향은 여행지 분류와 취향 탐색이 이름을 그대로 쓰므로 이름은 바꿀 수 없어요. 표시 순서와 사용 여부만 바꿀 수 있어요.";
+            return "기본 여행 취향은 여행지 분류와 취향 찾기가 이름을 그대로 쓰므로 이름은 바꿀 수 없어요. 표시 순서와 사용 여부만 바꿀 수 있어요.";
         return null;
     }
     /** 새 키워드를 추가할 수 없으면 이유를, 추가할 수 있으면 null을 돌려준다. */

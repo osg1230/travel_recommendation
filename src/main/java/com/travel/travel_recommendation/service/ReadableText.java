@@ -36,6 +36,12 @@ public final class ReadableText {
         return text;
     }
 
+    /** 분 단위 시간을 읽기 쉽게 바꾼다(예: 150 → "2시간 30분", 120 → "2시간", 45 → "45분"). */
+    public static String duration(int minutes) {
+        if (minutes < 60) return minutes + "분";
+        return minutes / 60 + "시간" + (minutes % 60 == 0 ? "" : " " + minutes % 60 + "분");
+    }
+
     /** 낱말의 받침에 맞는 조사를 고른다(예: "산책로" + "은" → "는"). 화면 템플릿에서도 쓴다. */
     public static String particle(String word, String particle) {
         if (particle == null) return "";

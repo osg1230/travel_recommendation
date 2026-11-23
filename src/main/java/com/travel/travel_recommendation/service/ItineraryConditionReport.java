@@ -188,8 +188,8 @@ public final class ItineraryConditionReport {
     private static Check travelTimes(Input input, Result result) {
         // 집 ↔ 여행지 이동(장소 없는 이동 항목)은 카카오 구간 조회가 아니라 집 출발·귀가 설정의 편도 시간이라 따로 적는다.
         var trip = input.home();
-        String home = trip == null ? "" : " 집 → 여행지는 편도 약 " + trip.minutes() + "분(" + trip.basis() + "), 여행지 → " + trip.returnPlace()
-            + "는 약 " + trip.returnMinutes() + "분(" + trip.returnBasis() + ")에 여유 10분을 더했어요.";
+        String home = trip == null ? "" : " 집 → 여행지는 편도 약 " + ReadableText.duration(trip.minutes()) + "(" + trip.basis() + "), 여행지 → " + trip.returnPlace()
+            + "는 약 " + ReadableText.duration(trip.returnMinutes()) + "(" + trip.returnBasis() + ")에 여유 10분을 더했어요.";
         var moves = result.days().stream().flatMap(d -> d.items().stream()).filter(i -> "TRANSIT".equals(i.type()) && i.placeId() != null).toList();
         if (moves.isEmpty()) return new Check("이동시간", Status.NOT_APPLICABLE, "장소 사이 이동이 없어요." + home);
         // 확인이 필요한 구간을 종류별로 나눠 함께 알린다. 하나라도 있으면 '확인 필요'다.

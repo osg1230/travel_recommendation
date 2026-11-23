@@ -145,7 +145,7 @@ class PreferenceDiscoveryControllerTests {
             .andExpect(redirectedUrl("/travel/conditions/check"));
         assertThat(session.getAttribute("travelConditionPrefill")).isNull();
         mvc.perform(get("/travel/conditions/check").session(session))
-            .andExpect(content().string(containsString("취향 탐색에서 고른 취향: 바다, 휴식")));
+            .andExpect(content().string(containsString("취향 찾기에서 고른 취향: 바다, 휴식")));
         mvc.perform(post("/travel/conditions/discover/apply").session(session).with(csrf()).param("themes", "없는취향"))
             .andExpect(status().isBadRequest());
     }

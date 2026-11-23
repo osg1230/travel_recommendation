@@ -5,6 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 
 class ReadableTextTests {
+    @Test void durationShowsHoursAndMinutes() {
+        assertThat(ReadableText.duration(45)).isEqualTo("45분");
+        assertThat(ReadableText.duration(120)).isEqualTo("2시간");
+        assertThat(ReadableText.duration(150)).isEqualTo("2시간 30분");
+    }
+
     @Test void particleFollowsFinalConsonantOfTheLastSpokenLetter() {
         assertThat(ReadableText.particle("소돌해안일주 산책로", "은")).isEqualTo("는");
         assertThat(ReadableText.particle("전동성당", "은")).isEqualTo("은");

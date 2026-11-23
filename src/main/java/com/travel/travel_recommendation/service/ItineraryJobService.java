@@ -650,7 +650,7 @@ public class ItineraryJobService {
         LocalTime departAt=proposal.departAt();
         if(home!=null && departAt==null && proposal.firstArrival()!=null) {
             int minutes=proposal.firstArrival().toSecondOfDay()/60-home.minutes()-HomeTrip.SPARE_MINUTES;
-            if(minutes<0) return new AiRevision(null,proposal.firstArrival()+"까지 도착하려면 편도 약 "+home.minutes()+"분이 걸려 전날 출발해야 해요. 도착 시각을 늦춰 주세요.");
+            if(minutes<0) return new AiRevision(null,proposal.firstArrival()+"까지 도착하려면 편도 약 "+ReadableText.duration(home.minutes())+"이 걸려 전날 출발해야 해요. 도착 시각을 늦춰 주세요.");
             departAt=LocalTime.ofSecondOfDay(minutes/10*10*60L);
         }
         if(home!=null && (departAt!=null || proposal.arriveBy()!=null))
