@@ -416,8 +416,8 @@ class ItineraryIntegrationTests {
         mvc.perform(get(resultUrl(id)).session(session)).andExpect(status().isOk())
             .andExpect(header().string("Cache-Control","no-store"))
             .andExpect(content().string(containsString("일정 초안"))).andExpect(content().string(containsString("2일차")))
-            .andExpect(content().string(containsString("확인이 필요해요")))
-            .andExpect(content().string(containsString("조건 확인: 충족")))
+            // 제목 아래에 여행 기간·이동수단 한 줄이 있다. 조건 확인 요약(확인 필요 항목 포함)은 미충족 항목이 있을 때만 보여 준다.
+            .andExpect(content().string(containsString("class=\"draft-meta\"")))
             // 일정에 들어간 관광지마다 그 자리에서 바꾸는 버튼과, 여러 날이면 일차 버튼이 있다.
             .andExpect(content().string(containsString("다른 곳으로 바꾸기"))).andExpect(content().string(containsString("data-day-tabs")))
             .andDo(response->{ if(Boolean.getBoolean("travel.ui.capture")) {
