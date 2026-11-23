@@ -371,14 +371,15 @@ class ItineraryRevisionIntegrationTests {
         assertThat(schedules.view(revised,null,hash).input().revision().keptDays()).isNull();
     }
 
-    // 직접 수정 화면이 열리고, 화면의 '빼기'로 수정안이 만들어지며, 다른 세션은 볼 수 없다.
+    // 초안 화면의 수정 탭에 장소별 고치기·전체 조건 바꾸기가 있고, '빼기'로 수정안이 만들어지며, 다른 세션은 볼 수 없다.
     @Test void directEditScreenOpensAndRemoveCreatesRevision() throws Exception {
         var original=completedDraft();
         long removed=attractionIds(original).getFirst();
-        mvc.perform(get("/travel/recommendations/itineraries/"+original+"/edit").session(session)).andExpect(status().isOk())
-            .andExpect(content().string(containsString("강릉 일정 수정")))
-            .andExpect(content().string(containsString("다른 장소의 날짜와 순서는 그대로")));
-        mvc.perform(get("/travel/recommendations/itineraries/"+original+"/edit").session(new MockHttpSession())).andExpect(status().isNotFound());
+        mvc.perform(get("/travel/recommendations/itineraries/"+original).session(session)).andExpect(status().isOk())
+            .andExpect(content().string(containsString("장소별로 고치기")))
+            .andExpect(content().string(containsString("전체 조건 바꾸기")))
+            .andExpect(content().string(containsString("name=\"remove\"")));
+        mvc.perform(get("/travel/recommendations/itineraries/"+original).session(new MockHttpSession())).andExpect(status().isNotFound());
         mvc.perform(post("/travel/recommendations/itineraries/"+original+"/direct-revisions").session(session).with(csrf()).param("remove",Long.toString(removed)))
             .andExpect(status().is3xxRedirection());
     }
@@ -421,39 +422,33 @@ class ItineraryRevisionIntegrationTests {
             .andExpect(status().isSeeOther())
             .andExpect(header().string("Location","/travel/recommendations/itineraries/"+original+"#revise-title"))
             .andExpect(flash().attribute("reviseError",containsString("교체 이유를 골라 주세요.")));
-        // 직접 수정 화면에서 보낸 요청이면 그 화면으로 돌아간다.
-        mvc.perform(post(url).session(session).with(csrf()).param("replace",ids.getFirst().toString()).param("fromEdit","true")
-                .param("start","09:00").param("end","18:00").param("visitMinutes","90"))
-            .andExpect(status().isSeeOther())
-            .andExpect(header().string("Location","/travel/recommendations/itineraries/"+original+"/edit"))
-            .andExpect(flash().attribute("editError",containsString("교체 이유를 골라 주세요.")));
-        // 시간만 바꾸기에서 지금과 같은 값을 보내면 수정안을 만들지 않고, 입력한 값을 다시 채울 수 있게 돌려준다.
+        // 시간만 보낸 요청이 지금과 같은 값이면 수정안을 만들지 않는다.
         long count=ownJobs();
         mvc.perform(post(url).session(session).with(csrf()).param("start","09:00").param("end","15:00").param("visitMinutes","90"))
             .andExpect(status().isSeeOther())
-            .andExpect(flash().attribute("reviseError",containsString("바꾼 내용이 없어요")))
-            .andExpect(flash().attributeExists("timeValues"));
+            .andExpect(flash().attribute("reviseError",containsString("바꾼 내용이 없어요")));
         assertThat(ownJobs()).isEqualTo(count);
         mvc.perform(get("/travel/recommendations/itineraries/"+original).session(session)).andExpect(status().isOk())
-            .andExpect(content().string(containsString("AI 없이 시간만 바꾸기")));
+            .andExpect(content().string(containsString("전체 조건 바꾸기")));
     }
 
     private String draftUrl(UUID id) { return "/travel/recommendations/itineraries/"+id; }
-    // 직접 수정을 보내고, 실패했을 때 수정 화면에 보여 줄 문장을 확인한다. 초안은 새로 생기지 않는다.
+    // 직접 수정을 보내고, 실패했을 때 초안 화면의 수정 탭에 보여 줄 문장을 확인한다. 초안은 새로 생기지 않는다.
     private void directChangeIsRefused(UUID id,String param,String value,String reason) throws Exception {
         long count=ownJobs();
         var request=post(draftUrl(id)+"/direct-revisions").session(session).with(csrf());
         if(param!=null) request.param(param,value);
-        mvc.perform(request).andExpect(redirectedUrl(draftUrl(id)+"/edit"))
+        mvc.perform(request).andExpect(redirectedUrl(draftUrl(id)+"#revise-title"))
             .andExpect(flash().attribute("editError",containsString(reason)));
         assertThat(ownJobs()).isEqualTo(count);
     }
 
     @Test void editScreenOpensOnlyForTheSameSession() throws Exception {
         var draft=completedDraft();
-        mvc.perform(get(draftUrl(draft)+"/edit").session(session)).andExpect(status().isOk()).andExpect(view().name("travel/itinerary-edit"))
-            .andExpect(content().string(containsString("일정")));
-        mvc.perform(get(draftUrl(draft)+"/edit").session(new MockHttpSession())).andExpect(status().isNotFound());
+        // 예전 직접 수정 화면 주소는 초안 화면의 수정 탭으로 보낸다. 초안 화면은 같은 세션에서만 열린다.
+        mvc.perform(get(draftUrl(draft)+"/edit").session(session)).andExpect(redirectedUrl(draftUrl(draft)+"#revise-title"));
+        mvc.perform(get(draftUrl(draft)).session(session)).andExpect(status().isOk()).andExpect(view().name("travel/itinerary-result"));
+        mvc.perform(get(draftUrl(draft)).session(new MockHttpSession())).andExpect(status().isNotFound());
         mvc.perform(post(draftUrl(draft)+"/direct-revisions").session(new MockHttpSession()).with(csrf()).param("visitMinutes","60"))
             .andExpect(status().isNotFound());
     }
