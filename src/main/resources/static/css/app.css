@@ -847,3 +847,54 @@ button.region-tab[aria-current] { background: var(--brand); color: #fff; }
 .edit-row.item-meal { --item-color: var(--meal); }
 .edit-row.item-stay { --item-color: var(--stay); }
 .edit-row.item-free { --item-color: var(--text-muted); }
+
+/* 예약·결제 화면과 예약 상세: 왼쪽에 고르는 칸(또는 예약 내용), 오른쪽에 금액과 결제를 둔다. 좁은 화면에서는 위아래로 놓는다. */
+.reserve-page { width: min(100% - 32px, 1120px); }
+.reserve-layout { display: grid; gap: 20px; align-items: start; margin-top: 18px; }
+.reserve-layout > .condition-section, .reserve-layout > div > .condition-section:first-child { margin-top: 0; }
+@media (min-width: 900px) {
+    .reserve-layout { grid-template-columns: minmax(0, 1fr) 360px; }
+    .reserve-summary { position: sticky; top: 84px; }
+}
+.reserve-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
+.reserve-title h1 { margin: 0; }
+/* 고르는 단계: 칸 안에서 가는 줄로만 나눈다. */
+.reserve-step { min-width: 0; margin: 0; padding: 18px 0; border: 0; border-top: 1px solid var(--line); }
+.reserve-step:first-child { padding-top: 0; border-top: 0; }
+.reserve-step:last-child { padding-bottom: 0; }
+.reserve-step h2, .reserve-step legend { margin: 0 0 10px; padding: 0; font-size: 17px; font-weight: 700; }
+.step-num { margin-right: 6px; color: var(--brand); }
+/* fieldset의 제목(legend)은 위쪽 줄에 걸쳐 그려지므로, 띄워서 줄 아래 칸 안에 놓는다. */
+.reserve-step legend { float: left; width: 100%; }
+.reserve-step legend + * { clear: both; }
+.reserve-date { margin: 0; font-size: 16px; font-weight: 700; }
+/* 객실 종류: 한 줄에 이름·남은 객실·가격을 두고, 고른 객실은 테두리와 바탕으로 표시한다. 매진은 흐리게 보여 준다. */
+.room-option { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 0 8px; padding: 14px 16px; border: 1px solid var(--line-strong); border-radius: var(--radius); font-weight: 400; cursor: pointer; }
+.room-option:has(input:checked) { border-color: var(--brand); background: var(--brand-soft); box-shadow: inset 0 0 0 1px var(--brand); }
+.room-option.sold-out { background: var(--surface-muted); color: var(--text-muted); cursor: default; }
+.room-option input { flex: 0 0 auto; width: 18px; height: 18px; min-height: 0; margin: 0; accent-color: var(--brand); }
+.room-name { flex: 1 1 180px; min-width: 0; }
+.room-name strong { display: block; font-size: 16px; }
+.room-name .help { margin: 0; }
+.room-price { font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; }
+/* 오른쪽 칸: 예약 내용 요약, 합계, 결제 */
+.reserve-summary h2 { margin: 0 0 12px; font-size: 17px; }
+.reserve-summary h3 { margin: 18px 0 8px; font-size: 15px; }
+.reserve-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 16px; margin: 0; font-size: 14px; }
+.reserve-facts dt { color: var(--text-muted); }
+.reserve-facts dd { margin: 0; text-align: right; font-weight: 600; }
+.reserve-total { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 14px 0 16px; padding-top: 14px; border-top: 1px solid var(--line); font-weight: 700; }
+.reserve-total strong { font-size: 24px; font-variant-numeric: tabular-nums; }
+.reserve-summary fieldset { margin: 0 0 16px; padding: 0; border: 0; }
+.reserve-summary legend { margin-bottom: 8px; padding: 0; font-size: 14px; font-weight: 700; }
+.reserve-summary button[type=submit] { width: 100%; }
+.pay-list { margin: 0; padding: 0; list-style: none; font-size: 14px; }
+.pay-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.pay-list .help { grid-column: 1 / -1; margin: 0; }
+/* 내 예약 목록: 숙소 예약과 관광지 예약을 나란히 둔다. 좁은 화면에서는 위아래로 놓는다. */
+.reserve-lists { display: grid; gap: 20px 24px; align-items: start; margin-top: 18px; }
+@media (min-width: 1000px) { .reserve-lists { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.reserve-lists h2 { margin: 0 0 10px; font-size: 18px; }
+.reserve-row-end { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-top: 8px; }
+.reserve-row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 14px; font-weight: 600; }
+.reserve-row-actions form { margin: 0; }

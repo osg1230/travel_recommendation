@@ -27,7 +27,8 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 /**
  * 예약·결제 화면(SFR-13-01~07). 회원만 이용한다. 실제 시설 예약·금전 거래는 없다.
  * 예약 요청 키와 결제 멱등키는 화면을 열 때 서버가 만들어 폼에 넣으므로, 같은 폼을 다시 보내도 한 번만 처리된다.
- * 신청·변경의 입력 오류(400)와 매진(409)은 오류 화면 대신 원래 화면으로 돌아가 이유를 보여 주고 입력값을 다시 채운다.
+ * 예약은 신청하면서 바로 결제한다. 결제가 실패하면 예약을 만들지 않고 예약·결제 화면으로 돌아간다.
+ * 신청·변경의 입력 오류(400)와 매진·결제 실패(409)는 오류 화면 대신 원래 화면으로 돌아가 이유를 보여 주고 입력값을 다시 채운다.
  */
 @Controller
 @RequiredArgsConstructor
@@ -43,8 +44,8 @@ public class VirtualReservationController {
     }
 
     /**
-     * 예약 신청 화면. 저장한 일정(itineraryId)에 있는 장소만 연다.
-     * 같은 장소의 다른 날짜를 고르면 그 날짜의 수량 구간으로 바꿔 보여 주고, 수량이 없으면 원래 화면으로 돌아가 이유를 알려 준다.
+     * 예약·결제 화면. 저장한 일정(itineraryId)에 있는 장소만 연다. 이용 날짜는 일정의 날짜로 정해져 있어 화면에서 바꾸지 않는다.
+     * (주소에 date를 붙이면 같은 장소의 그 날짜 수량 구간을 보여 주는 동작은 남아 있다.)
      */
     @GetMapping("/new")
     String form(@RequestParam long stockId, @RequestParam(required=false) Long itineraryId,
@@ -74,23 +75,24 @@ public class VirtualReservationController {
         model.addAttribute("requestKey",UUID.randomUUID());
         model.addAttribute("maxRooms",VirtualReservationService.MAX_ROOMS);
         model.addAttribute("maxPeople",VirtualReservationService.MAX_PEOPLE);
-        addDateRange(model,stock.usageStart().toLocalDate());
         return "my/reservation-new";
     }
 
+    /** 예약을 신청하면서 바로 결제한다. outcome은 테스트 결제 결과(approve·decline)다. */
     @PostMapping
     String reserve(@RequestParam long stockId, @RequestParam(required=false) Long itineraryId,
                    @RequestParam(required=false) Integer quantity, @RequestParam(required=false) Integer partySize,
-                   @RequestParam(required=false) UUID requestKey, Principal principal, RedirectAttributes redirect) {
+                   @RequestParam(required=false) UUID requestKey, @RequestParam(defaultValue="approve") String outcome,
+                   Principal principal, RedirectAttributes redirect) {
         int people=partySize==null?0:partySize;
         int units=quantity==null?people:quantity;
         try {
-            long id=service().reserve(principal.getName(),stockId,itineraryId,units,people,requestKey);
-            redirect.addFlashAttribute("savedMessage","예약을 신청했어요. 수량이 잡혀 있으니 결제하면 예약이 확정돼요.");
+            long id=service().reserveAndPay(principal.getName(),stockId,itineraryId,units,people,requestKey,"decline".equals(outcome));
+            redirect.addFlashAttribute("savedMessage","결제가 완료돼 예약이 확정됐어요.");
             return "redirect:/my/reservations/"+id;
         } catch(ResponseStatusException rejected) {
             if(!fixable(rejected)) throw rejected;
-            // 인원 초과·매진처럼 고칠 수 있는 문제는 신청 화면으로 돌아가 이유를 보여 주고, 입력한 값을 다시 채운다.
+            // 인원 초과·매진·결제 실패처럼 다시 해 볼 수 있는 문제는 예약·결제 화면으로 돌아가 이유를 보여 주고, 입력한 값을 다시 채운다.
             redirect.addFlashAttribute("reserveError",rejected.getReason());
             if(quantity!=null) redirect.addFlashAttribute("quantityInput",quantity);
             if(partySize!=null) redirect.addFlashAttribute("partySizeInput",partySize);
@@ -106,7 +108,6 @@ public class VirtualReservationController {
         model.addAttribute("paymentKey",UUID.randomUUID());
         model.addAttribute("maxRooms",VirtualReservationService.MAX_ROOMS);
         model.addAttribute("maxPeople",VirtualReservationService.MAX_PEOPLE);
-        addDateRange(model,reservation.summary().usageStart().toLocalDate());
         return "my/reservation";
     }
 
@@ -210,16 +211,6 @@ public class VirtualReservationController {
 
     private static Long number(String text) {
         try { return text==null?null:Long.valueOf(text); } catch(NumberFormatException e) { return null; }
-    }
-
-    /**
-     * 날짜 입력 범위(min=내일, max=1년 뒤). 서버가 수량을 만들어 주는 범위와 같다.
-     * 지금 고른 날짜가 범위 밖이어도(오늘 이용 등) 그대로 보낼 수 있게 범위에 넣는다.
-     */
-    private static void addDateRange(Model model, LocalDate current) {
-        LocalDate first=VirtualReservationService.firstBookableDate(), last=VirtualReservationService.lastBookableDate();
-        model.addAttribute("minDate",current.isBefore(first)?current:first);
-        model.addAttribute("maxDate",current.isAfter(last)?current:last);
     }
 
     private VirtualReservationService service() {

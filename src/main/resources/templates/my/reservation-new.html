@@ -2,98 +2,114 @@
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>예약 신청 | 다녀올게</title>
+    <title>예약·결제 | 다녀올게</title>
     <link rel="stylesheet" th:href="@{/css/app.css}">
     <script defer th:src="@{/js/reservation-form.js}"></script>
 </head>
 <body>
 <header th:replace="~{fragments/layout :: header}"></header>
-<main class="travel my-page">
-    <nav th:replace="~{fragments/layout :: myNav('reservations')}"></nav>
+<!--/* 예약은 저장한 일정에서 시작하므로 마이페이지 메뉴 대신 일정으로 돌아가는 링크만 둔다. */-->
+<main class="travel reserve-page">
     <a class="back-link" th:if="${itineraryId != null}" th:href="@{/my/itineraries/{id}(id=${itineraryId})}">← 저장한 일정으로</a>
-    <p class="eyebrow">내 여행 · 예약 신청</p>
+    <p class="eyebrow" th:text="${stock.room() ? '내 일정 · 숙소 예약' : '내 일정 · 관광지 예약'}">내 일정 · 예약</p>
     <h1 th:text="${stock.placeName}"></h1>
-    <p class="notice">체험용 예약이에요. 실제 시설에 예약이 전달되지 않고, 결제도 테스트 결제수단으로만 처리돼 실제 돈이 오가지 않아요.</p>
+    <p class="draft-meta" th:text="${stock.address}"></p>
+    <!--/* 인원 초과·매진·결제 실패 등으로 예약하지 못했으면 이유를 보여 주고, 아래 입력칸은 입력했던 값으로 다시 채운다. */-->
+    <p role="alert" th:if="${reserveError != null}" th:text="${reserveError}"></p>
+    <p role="alert" th:if="${dateError != null}" th:text="${dateError}"></p>
 
-    <section class="condition-section">
-        <h2>예약 정보</h2>
-        <p th:text="${stock.address}"></p>
-        <p th:text="${'이용 ' + #temporals.format(stock.usageStart, 'yyyy-MM-dd HH:mm') + ' ~ ' + #temporals.format(stock.usageEnd, 'yyyy-MM-dd HH:mm')
-            + (stock.room() ? ' (1박, 입실~퇴실)' : ' (하루 이용)')}"></p>
-        <!--/* 숙소는 객실 종류마다 남은 수량·가격이 달라 아래 '객실 종류'에서 보여 준다. */-->
-        <th:block th:unless="${stock.room()}">
-        <p th:text="${'남은 수량 ' + stock.remaining + '명 / 전체 ' + stock.total}"></p>
-        <p th:text="${'단위 가격 ' + #numbers.formatInteger(stock.unitPrice, 1, 'COMMA') + '원 / 1명'}"></p>
-        </th:block>
-        <p class="help" th:text="${stock.priceNote}"></p>
-        <p class="place-links" th:if="${stock.priceSourceUrl != null}">
-            <a th:href="${stock.priceSourceUrl}" target="_blank" rel="noopener noreferrer">가격 출처 확인 (새 창)</a></p>
-        <form th:action="@{/my/reservations/new}" method="get">
-            <input type="hidden" name="stockId" th:value="${stock.stockId}">
-            <input type="hidden" name="itineraryId" th:if="${itineraryId != null}" th:value="${itineraryId}">
-            <div class="field">
-                <label for="date">다른 날짜로 보기</label>
-                <p role="alert" th:if="${dateError != null}" th:text="${dateError}"></p>
-                <input id="date" name="date" type="date" th:min="${minDate}" th:max="${maxDate}"
-                       th:value="${#temporals.format(stock.usageStart, 'yyyy-MM-dd')}" aria-describedby="date-help">
-                <p id="date-help" class="help">내일부터 1년 안의 날짜</p>
-            </div>
-            <div class="form-actions"><button type="submit" class="button-quiet">이 날짜로 보기</button></div>
-        </form>
+    <!--/* 숙소는 남은 객실이 하나라도 있으면 예약할 수 있다. 고른 객실 종류의 수량은 서버가 다시 확인한다. */-->
+    <th:block th:with="soldOut=${stock.room() ? #lists.isEmpty(rooms.?[remaining > 0]) : stock.remaining == 0},
+                       free=${!stock.room() and stock.unitPrice.signum() == 0}">
+    <section class="condition-section" th:if="${soldOut}">
+        <p class="reserve-date" th:text="${'이용 ' + #temporals.format(stock.usageStart, 'yyyy-MM-dd HH:mm') + ' ~ ' + #temporals.format(stock.usageEnd, 'yyyy-MM-dd HH:mm')}"></p>
+        <p role="status">이 날짜는 매진돼 예약할 수 없어요.</p>
     </section>
+    <!--/* 왼쪽에서 고르고 오른쪽에서 금액을 확인해 결제한다. 예약과 결제는 한 번에 처리되고, 결제가 실패하면 예약도 만들어지지 않는다.
+         data-unit-price(관광시설 1명 가격)와 객실의 data-price·data-max-people은 reservation-form.js가 금액과 인원 최대값을 맞추는 데 쓴다. */-->
+    <form th:unless="${soldOut}" class="reserve-layout" th:action="@{/my/reservations}" method="post" data-reservation-form th:data-unit-price="${stock.unitPrice}">
+        <input type="hidden" name="stockId" th:unless="${stock.room()}" th:value="${stock.stockId}">
+        <input type="hidden" name="itineraryId" th:if="${itineraryId != null}" th:value="${itineraryId}">
+        <input type="hidden" name="requestKey" th:value="${requestKey}">
 
-    <section class="condition-section">
-        <h2>예약 신청</h2>
-        <!--/* 인원 초과·매진 등으로 신청하지 못했으면 이유를 보여 주고, 아래 입력칸은 입력했던 값으로 다시 채운다. */-->
-        <p role="alert" th:if="${reserveError != null}" th:text="${reserveError}"></p>
-        <!--/* 숙소는 남은 객실이 하나라도 있으면 신청할 수 있다. 고른 객실 종류의 수량은 서버가 다시 확인한다. */-->
-        <th:block th:with="soldOut=${stock.room() ? #lists.isEmpty(rooms.?[remaining > 0]) : stock.remaining == 0}">
-        <p role="status" th:if="${soldOut}">이 날짜는 매진됐어요. 다른 날짜를 골라 주세요.</p>
-        <!--/* data-unit-price(관광시설 1명 가격)와 객실의 data-price·data-max-people은 reservation-form.js의 금액 미리보기·인원 최대값에 쓴다. */-->
-        <form th:unless="${soldOut}" th:action="@{/my/reservations}" method="post" data-reservation-form th:data-unit-price="${stock.unitPrice}">
-            <input type="hidden" name="stockId" th:unless="${stock.room()}" th:value="${stock.stockId}">
-            <input type="hidden" name="itineraryId" th:if="${itineraryId != null}" th:value="${itineraryId}">
-            <input type="hidden" name="requestKey" th:value="${requestKey}">
+        <div class="condition-section">
+            <!--/* 이용 날짜는 저장한 일정의 날짜로 정해져 있어 여기서 바꾸지 않는다. */-->
+            <section class="reserve-step">
+                <h2>이용 날짜</h2>
+                <p class="reserve-date" th:text="${'이용 ' + #temporals.format(stock.usageStart, 'yyyy-MM-dd HH:mm') + ' ~ ' + #temporals.format(stock.usageEnd, 'yyyy-MM-dd HH:mm')
+                    + (stock.room() ? ' (1박, 입실~퇴실)' : ' (하루 이용)')}"></p>
+                <p class="help">저장한 일정의 날짜예요.</p>
+                <!--/* 숙소는 객실 종류마다 남은 수량·가격이 달라 아래 '객실 종류'에서 보여 준다. */-->
+                <th:block th:unless="${stock.room()}">
+                <p class="help" th:text="${'남은 수량 ' + stock.remaining + '명 / 전체 ' + stock.total}"></p>
+                <p class="help" th:text="${'단위 가격 ' + #numbers.formatInteger(stock.unitPrice, 1, 'COMMA') + '원 / 1명'}"></p>
+                </th:block>
+            </section>
+
             <!--/* 객실 종류마다 수량 행(stockId)이 따로 있어서, 고른 객실의 stockId를 그대로 보낸다. */-->
-            <fieldset class="field" th:if="${stock.room()}">
-                <legend>객실 종류 (필수)</legend>
-                <label class="check-line" th:each="room : ${rooms}">
+            <fieldset class="reserve-step" th:if="${stock.room()}">
+                <legend><span class="step-num">1</span>객실 종류 (필수)</legend>
+                <label class="room-option" th:each="room : ${rooms}" th:classappend="${room.remaining == 0 ? 'sold-out' : ''}">
                     <input type="radio" name="stockId" th:value="${room.stockId}" required
                            th:data-price="${room.unitPrice}" th:data-max-people="${room.maxPerUnit}"
+                           th:data-name="${room.roomTypeName != null ? room.roomTypeName : '기본 객실'}"
                            th:checked="${room.stockId == stock.stockId and room.remaining > 0}" th:disabled="${room.remaining == 0}">
-                    <span th:text="${(room.roomTypeName != null ? room.roomTypeName : '기본 객실') + ' · 최대 ' + room.maxPerUnit + '명 · '
-                        + #numbers.formatInteger(room.unitPrice, 1, 'COMMA') + '원 / 1박 · '
-                        + (room.remaining == 0 ? '매진' : '남은 객실 ' + room.remaining + '실')}"></span>
+                    <span class="room-name">
+                        <strong th:text="${room.roomTypeName != null ? room.roomTypeName : '기본 객실'}"></strong>
+                        <span class="help" th:text="${'최대 ' + room.maxPerUnit + '명 · ' + (room.remaining == 0 ? '매진' : '남은 객실 ' + room.remaining + '실')}"></span>
+                    </span>
+                    <span class="room-price" th:text="${#numbers.formatInteger(room.unitPrice, 1, 'COMMA') + '원 / 1박'}"></span>
                 </label>
             </fieldset>
-            <div class="field-grid">
-                <div class="field" th:if="${stock.room()}">
-                    <label for="quantity">객실 수 (필수)</label>
-                    <input id="quantity" name="quantity" type="number" min="1" th:max="${maxRooms}"
-                           th:value="${quantityInput != null ? quantityInput : 1}" required>
-                    <p class="help" th:text="${'한 번에 최대 ' + maxRooms + '실'}"></p>
+
+            <section class="reserve-step">
+                <h2 th:if="${stock.room()}"><span class="step-num">2</span>객실 수와 인원</h2>
+                <h2 th:unless="${stock.room()}">이용 인원</h2>
+                <div class="field-grid">
+                    <div class="field" th:if="${stock.room()}">
+                        <label for="quantity">객실 수 (필수)</label>
+                        <input id="quantity" name="quantity" type="number" min="1" th:max="${maxRooms}"
+                               th:value="${quantityInput != null ? quantityInput : 1}" required>
+                        <p class="help" th:text="${'한 번에 최대 ' + maxRooms + '실'}"></p>
+                    </div>
+                    <div class="field">
+                        <label for="partySize">이용 인원 (필수)</label>
+                        <input id="partySize" name="partySize" type="number" min="1" aria-describedby="party-help"
+                               th:max="${stock.room() ? maxRooms * 4 : (stock.remaining < maxPeople ? stock.remaining : maxPeople)}"
+                               th:value="${partySizeInput != null ? partySizeInput : (stock.room() ? (stock.maxPerUnit < 2 ? 1 : 2) : 1)}" required>
+                        <p id="party-help" class="help" data-party-guide
+                           th:text="${stock.room() ? '고른 객실의 1실 최대 인원 × 객실 수까지 예약할 수 있어요.' : '인원 수만큼 수량을 예약해요. 최대 ' + maxPeople + '명'}"></p>
+                    </div>
                 </div>
-                <div class="field">
-                    <label for="partySize">이용 인원 (필수)</label>
-                    <input id="partySize" name="partySize" type="number" min="1" aria-describedby="party-help"
-                           th:max="${stock.room() ? maxRooms * 4 : (stock.remaining < maxPeople ? stock.remaining : maxPeople)}"
-                           th:value="${partySizeInput != null ? partySizeInput : (stock.room() ? (stock.maxPerUnit < 2 ? 1 : 2) : 1)}" required>
-                    <p id="party-help" class="help" data-party-guide
-                       th:text="${stock.room() ? '고른 객실의 1실 최대 인원 × 객실 수까지 예약할 수 있어요.' : '인원 수만큼 수량을 예약해요. 최대 ' + maxPeople + '명'}"></p>
-                </div>
-            </div>
-            <!--/* 고른 객실 가격 × 객실 수(관광시설은 1명 가격 × 인원) 미리보기. 스크립트가 켜져 있을 때만 보인다. */-->
-            <p class="help" data-price-preview aria-live="polite" hidden></p>
-            <!--/* 같은 장소·날짜에 이미 진행 중인 예약이 있으면 알려 준다. 객실을 더 잡을 수도 있어 신청은 막지 않는다. */-->
-            <p class="notice" th:if="${existingReservationId != null}">
-                <span th:text="${'이 날짜에 이미 예약이 있어요(예약번호 ' + existingReservationId + ')'}"></span> –
-                <a th:href="@{/my/reservations/{id}(id=${existingReservationId})}">예약 보기</a>.
-                객실이나 인원을 더 잡으려면 그대로 신청해도 돼요.
-            </p>
-            <div class="form-actions"><button type="submit">예약 신청</button></div>
-        </form>
-        </th:block>
-    </section>
+                <p class="help" th:text="${stock.priceNote}"></p>
+                <!--/* 같은 장소·날짜에 이미 진행 중인 예약이 있으면 알려 준다. 객실을 더 잡을 수도 있어 예약은 막지 않는다. */-->
+                <p class="notice" th:if="${existingReservationId != null}">
+                    <span th:text="${'이 날짜에 이미 예약이 있어요(예약번호 ' + existingReservationId + ')'}"></span> –
+                    <a th:href="@{/my/reservations/{id}(id=${existingReservationId})}">예약 보기</a>.
+                    객실이나 인원을 더 잡으려면 그대로 예약해도 돼요.
+                </p>
+            </section>
+        </div>
+
+        <!--/* 예약 내용과 금액. 객실·인원·금액은 고르는 대로 스크립트가 채운다(스크립트가 없으면 그 줄은 숨겨 둔다). 금액은 서버가 다시 계산한다. */-->
+        <aside class="condition-section reserve-summary" aria-labelledby="summary-title">
+            <h2 id="summary-title">예약·결제</h2>
+            <dl class="reserve-facts">
+                <dt>이용</dt><dd th:text="${#temporals.format(stock.usageStart, 'MM.dd HH:mm') + ' ~ ' + #temporals.format(stock.usageEnd, 'MM.dd HH:mm')}"></dd>
+                <dt data-sum-row hidden>내용</dt><dd data-sum-row data-sum-choice hidden></dd>
+                <dt data-sum-row hidden>계산</dt><dd data-sum-row data-price-preview aria-live="polite" hidden></dd>
+            </dl>
+            <p class="reserve-total" data-sum-row hidden><span th:text="${free ? '금액' : '결제할 금액'}">결제할 금액</span><strong data-sum-total></strong></p>
+            <!--/* 실제 결제수단 대신 테스트 결제수단으로 결과를 골라 처리한다. 무료 시설은 결제 없이 예약만 한다. */-->
+            <fieldset th:unless="${free}">
+                <legend>테스트 결제 결과 (결제수단: 테스트 결제)</legend>
+                <label class="check-line"><input type="radio" name="outcome" value="approve" checked> 결제 성공</label>
+                <label class="check-line"><input type="radio" name="outcome" value="decline"> 결제 실패 (테스트)</label>
+            </fieldset>
+            <button type="submit" data-pay-button th:data-free="${free}" th:text="${free ? '예약하기' : '결제하고 예약하기'}">결제하고 예약하기</button>
+        </aside>
+    </form>
+    </th:block>
 </main>
 </body>
 </html>
