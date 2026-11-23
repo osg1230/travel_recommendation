@@ -25,8 +25,11 @@ public class TimeText {
         if (start == null || end == null) return "날짜 미정";
         var format = DateTimeFormatter.ofPattern("yyyy.MM.dd");
         long days = java.time.temporal.ChronoUnit.DAYS.between(start, end) + 1;
-        return start.format(format) + " ~ " + end.format(format) + " (" + (days == 1 ? "당일" : (days - 1) + "박 " + days + "일") + ")";
+        return start.format(format) + " ~ " + end.format(format) + " (" + nights((int) days) + ")";
     }
+
+    /** 여행 일수를 "당일", "2박 3일"처럼 보여 준다. 조건 입력·추천·장소 화면이 같은 표기를 쓰게 한다. */
+    public String nights(int days) { return days == 1 ? "당일" : (days - 1) + "박 " + days + "일"; }
 
     /** 여행 날짜(시간대 없는 날짜)를 "10월 15일(목)"처럼 보여 준다. 일정의 일차 제목에 쓴다. 날짜가 없으면 "날짜 미정"이다. */
     public String day(LocalDate date) {

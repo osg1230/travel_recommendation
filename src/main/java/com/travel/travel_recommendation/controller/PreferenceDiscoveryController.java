@@ -153,6 +153,8 @@ public class PreferenceDiscoveryController {
                 form.setRegion(draft.getRegion()); form.setStartDate(draft.getStartDate()); form.setEndDate(draft.getEndDate());
                 form.setDurationDays(draft.getDurationDays()); form.setSeason(draft.getSeason()); form.setCompanion(draft.getCompanion());
                 form.setBudget(draft.getBudget()); form.setTransportation(draft.getTransportation());
+                // 분위기와 여행 속도도 취향 탐색과 상관없는 조건이므로 그대로 이어 준다.
+                form.setMoods(List.copyOf(draft.getMoods())); form.setPace(draft.getPace());
             }
             form.setInputMode("KEYWORD");
             form.setThemes(List.copyOf(finalThemes));
@@ -165,7 +167,7 @@ public class PreferenceDiscoveryController {
         }
         redirect.addFlashAttribute("discoveryMessage", "keep".equals(resolve) ? "직접 고른 여행 취향을 그대로 유지했어요."
             : chosen.isEmpty() ? "고른 취향 없이 기존 조건 입력으로 이어서 진행해요."
-            : "탐색한 취향을 '여행 취향'에 반영했어요. 나머지 조건을 확인하고 다음으로 넘어가 주세요.");
+            : "찾은 취향을 '여행 취향'에 반영했어요. 나머지 조건을 확인하고 다음으로 넘어가 주세요.");
         return "redirect:/travel/conditions";
     }
 
@@ -186,7 +188,7 @@ public class PreferenceDiscoveryController {
     }
 
     private static ResponseStatusException forged() {
-        return new ResponseStatusException(HttpStatus.BAD_REQUEST, "화면에 없는 질문이나 선택지예요. 취향 탐색을 처음부터 다시 진행해 주세요.");
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, "화면에 없는 질문이나 선택지예요. 취향 찾기를 처음부터 다시 진행해 주세요.");
     }
 
     /** 묻는 순서가 중요하므로 순서를 지키는 LinkedHashMap 복사본을 돌려준다. 예전 형식이거나 잘못된 답은 버린다. */

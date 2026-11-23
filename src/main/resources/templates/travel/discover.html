@@ -2,7 +2,7 @@
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>여행 취향 탐색 | 다녀올게</title>
+    <title>여행 취향 찾기 | 다녀올게</title>
     <link rel="stylesheet" th:href="@{/css/app.css}">
     <script defer th:src="@{/js/discover-answer.js}"></script>
 </head>
@@ -11,10 +11,10 @@
 <main class="travel">
 <nav th:replace="~{fragments/layout :: flowSteps(1)}"></nav>
     <a class="back-link" th:href="@{/travel/conditions}">← 조건 입력으로</a>
-    <p class="eyebrow" th:text="${'여행 준비 · 취향 탐색 ' + (step + 1) + ' / ' + total}"></p>
+    <p class="eyebrow" th:text="${'여행 준비 · 취향 찾기 ' + (step + 1) + ' / ' + total}"></p>
     <h1>어느 쪽이 더 끌리나요?</h1>
     <p class="intro">더 끌리는 쪽을 골라 주세요. 정답은 없어요.</p>
-    <p class="help">답하기 어려우면 '건너뛰기'를 고르세요.</p>
+    <p class="help">둘 다 괜찮으면 '상관없음', 답하기 어려우면 '건너뛰기'를 고르세요.</p>
 
     <form method="post" th:action="@{/travel/conditions/discover}" data-discover-form>
         <input type="hidden" name="question" th:value="${question.id}">
@@ -38,7 +38,7 @@
             <!--/* 그림이나 상관없음·건너뛰기를 누르면 스크립트가 바로 제출하므로, 스크립트가 켜져 있으면 이 버튼은 숨긴다(discover-answer.js). */-->
             <button type="submit" data-next-button th:text="${step + 1 < total ? '다음 질문' : '내 취향 확인하기'}">다음 질문</button>
             <a class="button button-quiet" th:if="${!history.isEmpty() and step + 1 < total}" th:href="@{/travel/conditions/discover/result}">남은 질문 건너뛰고 결과 보기</a>
-            <a class="button button-quiet" th:if="${history.isEmpty()}" th:href="@{/travel/conditions}">탐색 없이 조건 입력하기</a>
+            <a class="button button-quiet" th:if="${history.isEmpty()}" th:href="@{/travel/conditions}">취향 찾기 없이 조건 입력하기</a>
         </div>
     </form>
 

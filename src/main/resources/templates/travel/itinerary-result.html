@@ -68,7 +68,7 @@
 <p th:if="${rev.request != null}" th:text="${'요청한 내용: ' + rev.request}"></p>
 <p th:if="${rev.explanation != null}" th:text="${'AI 설명: ' + rev.explanation + ' (배치와 조건 확인은 다시 했어요)'}"></p>
 <p class="notice" th:unless="${rev.missingPlaces().isEmpty()}"
-   th:text="${'참고: 요청한 ''' + #strings.listJoin(rev.missingPlaces(), ''', ''') + '''은(는) 확인된 교체 후보에 없어서 비슷한 곳으로 바꿨어요. 원하는 장소가 있다면 장소 목록에서 ''카카오에서 장소 더 찾아보기''로 후보를 늘린 뒤 다시 요청해 보세요.'}"></p>
+   th:text="${'참고: 요청한 ''' + #strings.listJoin(rev.missingPlaces(), ''', ''') + '''' + T(com.travel.travel_recommendation.service.ReadableText).particle(#strings.listJoin(rev.missingPlaces(), ''), '은') + ' 확인된 교체 후보에 없어서 비슷한 곳으로 바꿨어요. 원하는 장소가 있다면 장소 목록에서 ''카카오에서 장소 더 찾아보기''로 후보를 늘린 뒤 다시 요청해 보세요.'}"></p>
 <!--/* 원래 고른 식당·숙소를 지금 다시 확인하지 못해 다른 곳으로 고른 경우 */-->
 <p class="notice" th:each="choiceNotice : ${rev.choiceChanges()}" th:text="${choiceNotice}"></p>
 <!--/* 원래 초안과 비교해 실제로 바뀐 관광지·식당·숙소와 시각(SFR-08-04). 원래 초안이 만료됐으면 보여 주지 않는다. */-->
@@ -96,6 +96,7 @@
 <!--/* 상태 확인 시간 420초 = 앞선 요청 대기 제한 5분 + 일정 처리 제한 2분(RecommendationJobService.WAIT_LIMIT, ItineraryJobService.complete). */-->
 <div role="status" data-poll-seconds="420" th:attr="data-job-pending=${job.pending},data-status-url=@{/travel/recommendations/itineraries/{id}/status(id=${job.id})}">
 <p data-job-message th:text="${job.message}"></p></div>
+<div class="waiting-bar" th:if="${job.pending}" aria-hidden="true"></div>
 <p th:if="${job.pending}">처리를 시작하면 최대 약 2분 걸려요. 앞선 요청이 많으면 시작까지 더 기다릴 수 있어요. 이 화면에서 처리 상태를 확인할 수 있어요.</p>
 <a th:if="${job.pending}" th:href="@{/travel/recommendations/itineraries/{id}(id=${job.id})}">상태 새로고침</a>
 <th:block th:if="${job.result != null}">
@@ -193,11 +194,11 @@
 </div>
 </div>
 </article></section>
-<p class="notice" th:if="${!job.result.skipped.isEmpty()}" th:text="${'하루 시간이 부족하거나 가는 길이 너무 멀어(자동차 2시간·대중교통 1시간 30분 초과, 배를 타야 하는 섬 등)' + #strings.listJoin(job.result.skipped.![name], ', ') + '은(는) 일정에 넣지 않았어요. 넣고 싶다면 하루 시간을 늘리거나 체류시간을 줄여 새로 만들어 주세요. 배를 타야 하는 곳은 꼭 가고 싶은 곳으로 고르면 넣어요.'}"></p>
+<p class="notice" th:if="${!job.result.skipped.isEmpty()}" th:text="${'하루 시간이 부족하거나 가는 길이 너무 멀어(자동차 2시간·대중교통 1시간 30분 초과, 배를 타야 하는 섬 등) ' + #strings.listJoin(job.result.skipped.![name], ', ') + T(com.travel.travel_recommendation.service.ReadableText).particle(#strings.listJoin(job.result.skipped.![name], ''), '은') + ' 일정에 넣지 않았어요. 넣고 싶다면 하루 시간을 늘리거나 체류시간을 줄여 새로 만들어 주세요. 배를 타야 하는 곳은 꼭 가고 싶은 곳으로 고르면 넣어요.'}"></p>
 <!--/* 여행 기간 축제가 열리는 곳이 이 초안에 없으면 넣는 방법을 알려 준다(SFR-04-03). 바로 만든 초안은 축제 장소를 자동으로 넣지 않는다. */-->
 <p class="notice" th:if="${festivalSuggestion != null}">
 <span th:text="${'여행 기간에 ' + festivalSuggestion.title + '(' + festivalSuggestion.period + ') 행사가 ' + festivalSuggestion.placeName + '(또는 바로 근처)에서 열려요. 이 초안에는 넣지 않았어요. 넣으려면 '}"></span>
-<a th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId},from=${job.id})}">시간·조건 자세히 정해서 다시 만들기</a><span th:text="${'에서 ' + festivalSuggestion.placeName + '을(를) 꼭 가야 하는 관광지로 고르세요.'}"></span></p>
+<a th:href="@{/travel/recommendations/{id}/destinations/{dest}/schedule(id=${job.input.recommendationId},dest=${job.input.places.destination.placeId},from=${job.id})}">시간·조건 자세히 정해서 다시 만들기</a><span th:text="${'에서 ' + festivalSuggestion.placeName + T(com.travel.travel_recommendation.service.ReadableText).particle(festivalSuggestion.placeName, '을') + ' 꼭 가야 하는 관광지로 고르세요.'}"></span></p>
 </div>
 <div class="itinerary-side">
 <section th:replace="~{fragments/map :: tripMap('지도로 보는 방문 순서', ${route.missing > 0 ? '좌표를 확인하지 못한 장소 ' + route.missing + '곳은 지도에서 빠져 있어요. 일정 목록을 함께 봐 주세요.' : '일차별 색으로 방문 순서를 표시해요.'})}"></section>
@@ -344,7 +345,9 @@
 </section>
 
 <section class="condition-section" th:if="${job.result.transport.name() != 'CAR'}" aria-labelledby="bus-title">
-<details th:open="${busGuide != null or busError != null or trainGuide != null or trainError != null}"><summary><h2 id="bus-title" class="details-title">대중교통으로 가는 방법 (버스·기차)</h2></summary>
+<!--/* 주변 지역 절이 없으면 이 탭에 이 절 하나뿐이라, 탭이 비어 보이지 않게 펼쳐 둔다. */-->
+<details th:open="${busGuide != null or busError != null or trainGuide != null or trainError != null
+    or not (job.result.nearby != null and (!job.result.nearby.regions.isEmpty() or job.input.conditions.includeNearby == true))}"><summary><h2 id="bus-title" class="details-title">대중교통으로 가는 방법 (버스·기차)</h2></summary>
 <p class="help">출처: 국토교통부 TAGO. 일정 시간은 바뀌지 않아요.</p>
 <!--/* 일정의 집 이동시간을 버스나 기차로 찾았으면 그 탭에 '일정 기준'을 붙이고 먼저 연다. 자바스크립트가 없으면 두 탭 내용을 모두 보여 준다. */-->
 <th:block th:with="scheduleMode=${job.input.home == null ? '' : #strings.startsWith(job.input.home.basis, '기차') ? 'train' : #strings.startsWith(job.input.home.basis, '직행') ? 'bus' : ''}">
@@ -394,7 +397,9 @@
 </th:block>
 </select>
 <label for="bus-from">출발 도시·터미널·역 (선택)</label>
-<input id="bus-from" name="from" maxlength="20" placeholder="예) 동서울, 대전, 강릉" th:value="${busFrom}">
+<!--/* 일정을 만들 때 적은 출발지가 있으면 다시 적지 않게 미리 넣어 둔다(20자까지). */-->
+<input id="bus-from" name="from" maxlength="20" placeholder="예) 동서울, 대전, 강릉"
+       th:value="${busFrom != null ? busFrom : (job.input.home != null ? (#strings.length(job.input.home.origin) > 20 ? #strings.substring(job.input.home.origin, 0, 20) : job.input.home.origin) : '')}">
 <input type="hidden" name="longitude" disabled><input type="hidden" name="latitude" disabled>
 <div class="form-actions">
 <button type="submit">버스·기차 찾기</button>

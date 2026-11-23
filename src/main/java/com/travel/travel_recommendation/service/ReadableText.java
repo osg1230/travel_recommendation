@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
  * 필드 이름 뒤의 조사도 함께 잡아 바꾼 말의 받침에 맞춘다(예: "travelPurpose와" → "여행 목적과").
  * 다른 단어의 일부(예: THEMES)는 바꾸지 않는다.
  */
-final class ReadableText {
+public final class ReadableText {
     private final Map<Pattern, String> terms;
 
     /** names는 필드 이름 → 화면에 보일 말이다. */
@@ -36,10 +36,22 @@ final class ReadableText {
         return text;
     }
 
-    static String particle(String word, String particle) {
+    /** 분 단위 시간을 읽기 쉽게 바꾼다(예: 150 → "2시간 30분", 120 → "2시간", 45 → "45분"). */
+    public static String duration(int minutes) {
+        if (minutes < 60) return minutes + "분";
+        return minutes / 60 + "시간" + (minutes % 60 == 0 ? "" : " " + minutes % 60 + "분");
+    }
+
+    /** 낱말의 받침에 맞는 조사를 고른다(예: "산책로" + "은" → "는"). 화면 템플릿에서도 쓴다. */
+    public static String particle(String word, String particle) {
         if (particle == null) return "";
-        char last = word.charAt(word.length() - 1);
+        // 이름 끝의 닫는 괄호·따옴표·공백은 소리가 없으므로 그 앞 글자로 받침을 본다(예: "38코스(바우길06구간)" → '간').
+        int end = word.length() - 1;
+        while (end > 0 && ")]'\"’” ".indexOf(word.charAt(end)) >= 0) end--;
+        char last = word.isEmpty() ? ' ' : word.charAt(end);
         int coda = last >= '가' && last <= '힣' ? (last - '가') % 28 : 0;
+        // 숫자는 읽는 소리로 본다. 1(일)·7(칠)·8(팔)은 ㄹ 받침(8), 0(영)·3(삼)·6(육)은 그 밖의 받침이 있다.
+        if (last >= '0' && last <= '9') coda = "178".indexOf(last) >= 0 ? 8 : "036".indexOf(last) >= 0 ? 1 : 0;
         return switch (particle) {
             case "와", "과" -> coda != 0 ? "과" : "와";
             case "은", "는" -> coda != 0 ? "은" : "는";

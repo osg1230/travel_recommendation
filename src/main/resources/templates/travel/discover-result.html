@@ -2,7 +2,7 @@
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>탐색한 여행 취향 | 다녀올게</title>
+    <title>찾은 여행 취향 | 다녀올게</title>
     <link rel="stylesheet" th:href="@{/css/app.css}">
     <script defer th:src="@{/js/travel-analysis.js}"></script>
 </head>
@@ -11,13 +11,24 @@
 <main class="travel">
 <nav th:replace="~{fragments/layout :: flowSteps(1)}"></nav>
     <a class="back-link" th:href="@{/travel/conditions/discover(step=${lastStep})}">← 선택 다시 고르기</a>
-    <p class="eyebrow">여행 준비 · 취향 탐색 결과</p>
+    <p class="eyebrow">여행 준비 · 취향 찾기 결과</p>
     <h1>이번 여행에서 끌리는 취향이에요</h1>
     <p class="help" th:text="${'답한 질문 ' + result.answered + '개 · 건너뛴 질문 ' + result.skipped + '개'}"></p>
 
-    <div class="notice" role="alert" th:if="${existingNames != null}">
-        <p th:text="${'조건 입력에서 직접 고른 여행 취향(' + (existingNames.isEmpty() ? '없음' : #strings.listJoin(existingNames, ', ')) + ')과 탐색 결과(' + (chosenNames.isEmpty() ? '없음' : #strings.listJoin(chosenNames, ', ')) + ')가 달라요. 어떻게 반영할까요?'}"></p>
-    </div>
+    <!-- 직접 고른 취향과 탐색 결과가 다를 때: 오류가 아니라 선택이므로, 안내 바로 아래에서 반영 방법을 고르게 한다. -->
+    <form class="condition-section" method="post" th:action="@{/travel/conditions/discover/apply}" th:if="${existingNames != null}">
+        <h2>어떻게 반영할까요?</h2>
+        <p th:text="${'조건 입력에서 직접 고른 여행 취향(' + (existingNames.isEmpty() ? '없음' : #strings.listJoin(existingNames, ', ')) + ')과 취향 찾기 결과(' + (chosenNames.isEmpty() ? '없음' : #strings.listJoin(chosenNames, ', ')) + ')가 달라요.'}"></p>
+        <fieldset class="theme-choices">
+            <legend>취향 찾기 결과에서 반영할 여행 취향</legend>
+            <label th:each="t : ${themes}"><input type="checkbox" name="themes" th:value="${t.selectionValue}" th:checked="${preselected.contains(t.selectionValue)}"><span th:text="${t.name}"></span></label>
+        </fieldset>
+        <div class="form-actions">
+            <button type="submit" name="resolve" value="replace">찾은 취향으로 바꾸기</button>
+            <button type="submit" name="resolve" value="merge" class="button-quiet">둘 다 반영하기</button>
+            <button type="submit" name="resolve" value="keep" class="button-quiet">직접 고른 취향 유지하기</button>
+        </div>
+    </form>
 
     <section class="condition-section" th:if="${result.empty()}">
         <h2>도출된 취향이 없어요</h2>
@@ -44,23 +55,18 @@
         <p class="help" role="status" data-analysis-status hidden>문장을 분석하고 여행지를 찾고 있어요. 10초쯤 걸릴 수 있어요.</p>
     </form>
 
-    <form method="post" th:action="@{/travel/conditions/discover/apply}">
-        <h2 th:if="${existingNames == null}">조건을 직접 고르고 싶다면</h2>
-        <fieldset class="condition-section theme-choices">
-            <legend>이번 여행의 여행 취향으로 반영할 항목</legend>
+    <form class="condition-section" method="post" th:action="@{/travel/conditions/discover/apply}" th:if="${existingNames == null}">
+        <h2>조건을 직접 고르고 싶다면</h2>
+        <fieldset class="theme-choices">
+            <legend>조건 입력에 반영할 여행 취향</legend>
             <label th:each="t : ${themes}"><input type="checkbox" name="themes" th:value="${t.selectionValue}" th:checked="${preselected.contains(t.selectionValue)}"><span th:text="${t.name}"></span></label>
         </fieldset>
-        <div class="form-actions" th:if="${existingNames == null}">
+        <div class="form-actions">
             <button type="submit" class="button-quiet">이 취향으로 조건 직접 고르기</button>
-        </div>
-        <div class="form-actions" th:if="${existingNames != null}">
-            <button type="submit" name="resolve" value="replace">탐색 결과로 바꾸기</button>
-            <button type="submit" name="resolve" value="merge" class="button-quiet">둘 다 반영하기</button>
-            <button type="submit" name="resolve" value="keep" class="button-quiet">직접 고른 취향 유지하기</button>
         </div>
     </form>
     <form method="post" th:action="@{/travel/conditions/discover/reset}">
-        <div class="form-actions"><button type="submit" class="button-quiet">처음부터 다시 탐색하기</button></div>
+        <div class="form-actions"><button type="submit" class="button-quiet">처음부터 다시 찾기</button></div>
     </form>
 </main>
 </body>
