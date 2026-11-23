@@ -233,8 +233,7 @@ class PlaceDiscoveryIntegrationTests {
             .filter(i->"VISIT".equals(i.type())).map(ItineraryPlan.Item::placeId).collect(java.util.stream.Collectors.toSet());
         var pool=candidates.find(parent,destination,null,hash).attractions().stream().map(PlaceCandidate::placeId).toList();
         assertThat(visited).isNotEmpty();
-        mvc.perform(get("/travel/recommendations/itineraries/"+first).session(session)).andExpect(status().isOk())
-            .andExpect(content().string(containsString("다른 관광지로 다시 만들기")));
+        // '다른 관광지로 다시 만들기' 버튼은 초안 화면에서 뺐고, 서버 주소(/recreate)는 그대로 동작한다.
         var redirect=mvc.perform(post("/travel/recommendations/itineraries/"+first+"/recreate").session(session).with(csrf()))
             .andExpect(status().is3xxRedirection()).andReturn().getResponse().getRedirectedUrl();
         var second=UUID.fromString(redirect.substring(redirect.lastIndexOf('/')+1));

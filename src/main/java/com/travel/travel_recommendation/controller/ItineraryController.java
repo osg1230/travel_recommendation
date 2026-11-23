@@ -392,6 +392,8 @@ public class ItineraryController {
             model.addAttribute("placedAttractions",placed);
             // 일정 항목마다 '다른 곳으로 바꾸기'를 보여 줄지 정하는 데 쓴다.
             model.addAttribute("placedAttractionIds",placed.stream().map(p->p.placeId()).collect(java.util.stream.Collectors.toSet()));
+            // 수정 탭의 '장소별로 고치기'·'전체 조건 바꾸기'에 쓰는 선택지(더할 수 있는 관광지, 바꾸거나 뺄 수 있는 관광지).
+            model.addAttribute("editOptions",editOptionsOrNull(id,principal,session));
             // 초안을 만들 때 찾아 둔 관광지 사진(관광공사). 없으면 사진 없이 보여 준다.
             model.addAttribute("photoByPlace",photosOf(job.result().days().stream().flatMap(d->d.items().stream())
                 .filter(i->"VISIT".equals(i.type()) && i.placeId()!=null).map(ItineraryPlan.Item::placeId).toList()));
@@ -496,12 +498,12 @@ public class ItineraryController {
 
     /**
      * 유지·교체할 관광지와 시간을 받아 새 수정안 작업을 만든다. 원본 초안은 그대로 둔다.
-     * 만들지 못하면 오류 화면 대신 보던 화면(초안 또는 직접 수정 화면)에 이유를 보여 주고, 시간만 바꾸던 값은 다시 채운다.
+     * 만들지 못하면 오류 화면 대신 보던 초안 화면의 수정 탭에 이유를 보여 준다.
      */
     @PostMapping("/itineraries/{id}/revisions")
     org.springframework.web.servlet.view.RedirectView revise(@PathVariable UUID id,@RequestParam(required=false) List<Long> replace,
             @RequestParam(required=false) ItineraryJobService.ReplaceReason reason,@RequestParam LocalTime start,
-            @RequestParam LocalTime end,@RequestParam int visitMinutes,@RequestParam(defaultValue="false") boolean fromEdit,
+            @RequestParam LocalTime end,@RequestParam int visitMinutes,
             Principal principal,HttpSession session,HttpServletRequest request,org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
         String error;
         try {
@@ -515,14 +517,8 @@ public class ItineraryController {
         } catch(TripConstraints.ConflictException conflict) {
             error=conflict.conflicts().get(0).reason();
         }
-        if(fromEdit) {
-            redirect.addFlashAttribute("editError",error+" 원래 일정은 그대로예요.");
-            return seeOtherView("/travel/recommendations/itineraries/"+id+"/edit");
-        }
         redirect.addFlashAttribute("reviseError",error+" 지금 일정은 그대로예요.");
-        // 'AI 없이 시간만 바꾸기'에서 보낸 값이면 입력 칸에 다시 채운다.
-        if(replace==null || replace.isEmpty()) redirect.addFlashAttribute("timeValues",new EditValues(null,start,end,visitMinutes));
-        // 안내는 '일정 수정하기' 절에 보이므로 그 위치로 돌아간다.
+        // 안내는 수정 탭의 '일정 수정하기' 아래에 보이므로 그 위치로 돌아간다.
         return seeOtherView("/travel/recommendations/itineraries/"+id+"#revise-title");
     }
     /** POST 뒤 다른 화면으로 303으로 보낸다. RedirectAttributes에 담은 flash 안내도 함께 넘어간다. */
@@ -532,21 +528,23 @@ public class ItineraryController {
         return view;
     }
     /**
-     * 직접 수정 화면(SFR-08-04). 왼쪽에 기본 정보(이동수단·시간), 오른쪽에 일차별 장소 목록을 보여 주고
-     * 장소 빼기·바꾸기·더하기, 식당·숙소 바꾸기를 고르면 수정안을 만든다. AI 수정 요청도 같은 화면 아래에 둔다.
+     * 수정 탭에 보여 줄 선택지(SFR-08-04). 관광지 후보를 다시 확인하지 못하면 null을 돌려주고,
+     * 화면은 문장으로 요청하는 칸만 보여 준다.
      */
+    private ItineraryJobService.EditOptions editOptionsOrNull(UUID id,Principal principal,HttpSession session) {
+        try {
+            return service().editOptions(id,login(principal),hash(session));
+        } catch(ResponseStatusException | RecommendationException e) {
+            return null;
+        }
+    }
+    /** 예전 직접 수정 화면 주소. 수정은 초안 화면의 '수정' 탭으로 합쳤으므로 그 탭으로 보낸다(접근 권한은 초안 화면에서 확인한다). */
     @GetMapping("/itineraries/{id}/edit")
-    String edit(@PathVariable UUID id,Principal principal,HttpSession session,HttpServletResponse response,Model model) {
-        response.setHeader("Cache-Control","no-store");
-        var options=service().editOptions(id,login(principal),hash(session));
-        model.addAttribute("jobId",id);
-        model.addAttribute("options",options);
-        model.addAttribute("photoByPlace",photosOf(options.result().days().stream().flatMap(d->d.items().stream())
-            .filter(i->"VISIT".equals(i.type()) && i.placeId()!=null).map(ItineraryPlan.Item::placeId).toList()));
-        return "travel/itinerary-edit";
+    String edit(@PathVariable UUID id) {
+        return "redirect:/travel/recommendations/itineraries/"+id+"#revise-title";
     }
 
-    /** 직접 수정 화면에서 고른 변경으로 새 수정안 작업을 만든다. 원래 초안은 그대로 두고, 만들지 못한 이유는 수정 화면에 보여 준다. */
+    /** 수정 탭의 장소별 고치기·전체 조건 바꾸기에서 고른 변경으로 새 수정안 작업을 만든다. 원래 초안은 그대로 두고, 만들지 못한 이유는 수정 탭에 보여 준다. */
     @PostMapping("/itineraries/{id}/direct-revisions")
     String reviseDirect(@PathVariable UUID id,@RequestParam(required=false) List<Long> remove,@RequestParam(required=false) List<Long> add,
             @RequestParam(required=false) Long avoidRestaurant,@RequestParam(required=false) Long stay,
@@ -570,7 +568,7 @@ public class ItineraryController {
         // 기본 정보(이동수단·시간·체류시간)를 바꾸다 실패했으면 입력했던 값을 다시 채워 고쳐 보낼 수 있게 한다.
         if(transport!=null || start!=null || end!=null || visitMinutes!=null)
             redirect.addFlashAttribute("editValues",new EditValues(transport,start,end,visitMinutes));
-        return "redirect:/travel/recommendations/itineraries/"+id+"/edit";
+        return "redirect:/travel/recommendations/itineraries/"+id+"#revise-title";
     }
     private static final String AI_COOLDOWN_KEY="itineraryAiRevisionNext";
     /** 초안마다 "후보에 없다"고 되물은 장소 이름. 같은 장소를 다시 요청하면 되묻지 않고 비슷한 곳으로 바꾼다. */
@@ -641,11 +639,11 @@ public class ItineraryController {
      * 되묻는 질문이나 실패 사유는 원래 초안 화면에 그대로 보여 주고, 원래 초안은 바꾸지 않는다.
      */
     @PostMapping("/itineraries/{id}/ai-revisions")
-    String aiRevise(@PathVariable UUID id,@RequestParam(defaultValue="") String request,@RequestParam(defaultValue="false") boolean fromEdit,
+    String aiRevise(@PathVariable UUID id,@RequestParam(defaultValue="") String request,
                     Principal principal,HttpSession session,HttpServletRequest httpRequest,
                     org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
         // 직접 수정 화면에서 보낸 요청은 되묻는 말이나 오류를 그 화면에 보여 준다.
-        String back="redirect:/travel/recommendations/itineraries/"+id+(fromEdit?"/edit#ai-title":"#revise-title");
+        String back="redirect:/travel/recommendations/itineraries/"+id+"#revise-title";
         redirect.addFlashAttribute("aiRequest",request.length()>300?request.substring(0,300):request);
         // 유료 호출이므로 같은 세션에서 연달아 누르지 않도록 20초 간격을 둔다.
         synchronized(session) {
