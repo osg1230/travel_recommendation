@@ -51,7 +51,7 @@ public class FlightGuideService {
                     int toAirport = maps.travelTime(from, departure.location(), transport).minutes();
                     int fromAirport = maps.travelTime(arrival.location(), to, transport).minutes();
                     int total = toAirport + DEPARTURE_WAIT + flight + ARRIVAL_WAIT + fromAirport;
-                    return Optional.of(new Leg(total, "비행기 · " + departure.name() + " → " + arrival.name() + " 약 " + flight + "분(오늘 운항 기준)"
+                    return Optional.of(new Leg(total, "비행기 · " + departure.name() + " → " + arrival.name() + " 약 " + ReadableText.duration(flight) + "(오늘 운항 기준)"
                         + " + 공항 대기 " + (DEPARTURE_WAIT + ARRIVAL_WAIT) + "분 + 공항까지·공항에서 "
                         + (transport == KakaoMapClient.Transport.CAR ? "자동차" : "대중교통") + " 이동(카카오 길찾기)", Instant.now()));
                 } catch (RecommendationException error) {

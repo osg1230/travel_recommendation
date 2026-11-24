@@ -36,7 +36,7 @@ class FlightGuideServiceTests {
             .thenReturn(new KakaoMapClient.TravelTime(KakaoMapClient.Transport.CAR, 50 * 60, 45000, Instant.now()));
         var leg = service.fastest(songpa, seongsan, KakaoMapClient.Transport.CAR).orElseThrow();
         assertThat(leg.minutes()).isEqualTo(40 + 60 + 65 + 20 + 50);
-        assertThat(leg.basis()).contains("김포국제공항 → 제주국제공항").contains("65분").contains("오늘 운항 기준");
+        assertThat(leg.basis()).contains("김포국제공항 → 제주국제공항").contains("1시간 5분").contains("오늘 운항 기준");
 
         // 운항편이 하나도 없으면 비어 있고, 활용신청이 안 된 키면 다른 조합을 더 묻지 않는다.
         when(flights.flights(anyString(), anyString(), any())).thenReturn(List.of());

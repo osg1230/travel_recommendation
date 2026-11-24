@@ -50,7 +50,7 @@ public class TrainGuideService {
                     int toStation = maps.travelTime(from, departure.location(), KakaoMapClient.Transport.PUBLIC_TRANSIT).minutes();
                     int fromStation = maps.travelTime(arrival.location(), to, KakaoMapClient.Transport.PUBLIC_TRANSIT).minutes();
                     int total = toStation + BOARDING_WAIT + train + fromStation;
-                    return Optional.of(new Leg(total, "기차 · " + departure.name() + "역 → " + arrival.name() + "역 약 " + train + "분("
+                    return Optional.of(new Leg(total, "기차 · " + departure.name() + "역 → " + arrival.name() + "역 약 " + ReadableText.duration(train) + "("
                         + (timetable.today() ? "오늘 운행 기준" : "여행 날짜 운행 기준") + ") + 승차 대기 " + BOARDING_WAIT
                         + "분 + 역까지·역에서 대중교통 이동(카카오 길찾기)", Instant.now()));
                 } catch (RecommendationException error) {

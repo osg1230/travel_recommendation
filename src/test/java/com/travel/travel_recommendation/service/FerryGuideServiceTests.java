@@ -39,7 +39,7 @@ class FerryGuideServiceTests {
         when(maps.travelTime(any(), eq(nari), eq(KakaoMapClient.Transport.CAR))).thenReturn(minutes(20));
         var leg = service.fastest(songpa, nari, KakaoMapClient.Transport.CAR).orElseThrow();
         assertThat(leg.minutes()).isEqualTo(270 + 30 + 140 + 10 + 20);
-        assertThat(leg.basis()).contains("포항여객선터미널 → 울릉(도동)여객선터미널").contains("140분").contains("오늘 운항 기준").contains("결항").contains("자동차");
+        assertThat(leg.basis()).contains("포항여객선터미널 → 울릉(도동)여객선터미널").contains("2시간 20분").contains("오늘 운항 기준").contains("결항").contains("자동차");
         // 운항편이 없는 항구까지는 길을 찾지 않는다.
         verify(maps, times(2)).travelTime(eq(songpa), any(), any());
     }

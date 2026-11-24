@@ -44,7 +44,7 @@ class TrainGuideServiceTests {
         when(maps.travelTime(any(), eq(gyeongpo), eq(Transport.PUBLIC_TRANSIT))).thenReturn(minutes(25));
         var leg = service.fastest(jung, gyeongpo, trip).orElseThrow();
         assertThat(leg.minutes()).isEqualTo(12 + 15 + 114 + 25);
-        assertThat(leg.basis()).contains("서울역 → 강릉역").contains("114분").contains("여행 날짜 운행 기준");
+        assertThat(leg.basis()).contains("서울역 → 강릉역").contains("1시간 54분").contains("여행 날짜 운행 기준");
         verify(trains, never()).trains(anyString(), anyString(), eq(today));
     }
 

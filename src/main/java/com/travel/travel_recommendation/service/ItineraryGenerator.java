@@ -1085,7 +1085,7 @@ public class ItineraryGenerator {
         }
         String where=nights==0?"방문할 관광지들과 평균 직선 약 "+chosen.averageKilometers()+"km 떨어져 있어요."
             :nights==1?first
-            :"날마다 마지막 장소에서 숙소까지 최대 약 "+maxIn+"분, 숙소에서 다음 날 첫 장소까지 최대 약 "+maxOut+"분 걸려요.";
+            :"날마다 마지막 장소에서 숙소까지 최대 약 "+ReadableText.duration(maxIn)+", 숙소에서 다음 날 첫 장소까지 최대 약 "+ReadableText.duration(maxOut)+" 걸려요.";
         // 저녁 식당은 밤마다 달라 하룻밤일 때만 적는다.
         return String.join(" ",java.util.stream.Stream.of(where,nights==1?dinner:null,basis).filter(t->t!=null && !t.isBlank()).toList());
     }
@@ -1135,7 +1135,7 @@ public class ItineraryGenerator {
         if(!input.dayStart(1).isBefore(input.dayEnd(1)) || !input.dayStart(days).isBefore(input.dayEnd(days)))
             first=last=0;
         if(days==1 && first<240)
-            throw failure("HOME_HOURS","집에서 오가는 시간(가는 길 약 "+home.minutes()+"분, 오는 길 약 "+home.returnMinutes()+"분)을 빼면 여행지에서 보낼 시간이 4시간보다 짧아요("
+            throw failure("HOME_HOURS","집에서 오가는 시간(가는 길 약 "+ReadableText.duration(home.minutes())+", 오는 길 약 "+ReadableText.duration(home.returnMinutes())+")을 빼면 여행지에서 보낼 시간이 4시간보다 짧아요("
                 +input.dayStart(1)+"~"+input.dayEnd(1)+"). 집 출발을 앞당기거나 귀가 시각을 늦춰 주세요.");
         if(days>1 && first<120)
             throw failure("HOME_HOURS","첫날 여행지 도착("+input.dayStart(1)+") 뒤 관광을 마칠 시간("+input.dayEnd(1)+")까지 2시간이 안 돼요. 집 출발을 앞당기거나 하루 종료 시간을 늦춰 주세요.");
