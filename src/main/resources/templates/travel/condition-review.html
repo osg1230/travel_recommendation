@@ -28,7 +28,6 @@
                조건 칸에 없는 정보(extra)는 여기서 답을 받아 확정할 때 여행 목적 뒤에 붙인다. 모두 답하지 않아도 된다. */-->
         <section class="condition-section follow-ups" th:if="${followUps != null and !followUps.isEmpty()}" aria-labelledby="follow-ups-title">
             <h2 id="follow-ups-title">추천 전에 조금만 더 알려 주세요</h2>
-            <p class="help">답하지 않아도 추천받을 수 있어요.</p>
             <ul>
                 <li th:each="q : ${followUps}" th:unless="${q.extra()}">
                     <a th:href="${'#' + (#lists.contains({'region','durationDays','startDate','partySize','budget'}, q.field) ? q.field : q.field + '1')}"

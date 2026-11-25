@@ -660,14 +660,14 @@ class ItineraryGeneratorTests {
         var input=dayTrip(List.of(place(1),place(2)),List.of(place(3)),30,List.of(place(5),place(6),place(7),place(8)));
         var result=generator.generate(input);
         var visits=result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).toList();
-        assertThat(visits).extracting(Item::placeId).startsWith(1L,2L).hasSize(4);
-        assertThat(visits.subList(2,4)).allSatisfy(i->assertThat(i.note()).contains("고른 이유: 시간이 남아 추가"));
+        assertThat(visits).extracting(Item::placeId).startsWith(1L,2L).hasSize(3);
+        assertThat(visits.subList(2,3)).allSatisfy(i->assertThat(i.note()).contains("고른 이유: 시간이 남아 추가"));
         generator.validate(input,result);
-        // 체류 90분이면 14:03~15:33, 15:54~17:24 두 곳이 더 들어가고 하루 종료(18시)는 넘지 않는다.
+        // 체류 90분이어도 하루 상한(3곳)까지 한 곳(14:03~15:33)만 더 들어간다.
         var longer=dayTrip(List.of(place(1),place(2)),List.of(place(3)),90,List.of(place(5),place(6),place(7),place(8)));
         var longVisits=generator.generate(longer).days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).toList();
-        assertThat(longVisits).hasSize(4);
-        assertThat(longVisits.getLast().end()).isEqualTo(LocalTime.of(17,24));
+        assertThat(longVisits).hasSize(3);
+        assertThat(longVisits.getLast().end()).isEqualTo(LocalTime.of(15,33));
         // 하루 방문 수를 정했으면 채우지 않는다.
         var fixed=new Input(input.recommendationId(),input.places(),input.conditions(),input.start(),input.end(),input.transport(),90,null,
             new Constraints(List.of(),2,false,null,List.of()),input.reserve());
@@ -676,10 +676,10 @@ class ItineraryGeneratorTests {
     private PlaceCandidate viewpoint(long id) {
         return new PlaceCandidate(id,"전망대"+id,"강원 강릉시 경포로 "+id,"여행 > 관광,명소 > 전망대","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
     }
-    // 짧게 들르는 곳(전망대 40분)만으로 4곳을 채우면 체류시간 합이 160분이라 기본 체류시간 4곳분(360분)에 못 미친다.
-    // 그래서 예비 관광지를 한 곳 더(5곳) 넣고 이유를 적는다. 6곳째는 넣지 않는다.
-    @Test void shortVisitsLetTheDayTakeAFifthPlace() {
-        var input=dayTrip(List.of(viewpoint(1),viewpoint(2),viewpoint(3),viewpoint(4)),List.of(place(30)),90,
+    // 짧게 들르는 곳(전망대 40분)만으로 3곳을 채우면 체류시간 합이 120분이라 기본 체류시간 3곳분(270분)에 못 미친다.
+    // 그래서 예비 관광지를 한 곳 더(4곳) 넣고 이유를 적는다. 5곳째는 넣지 않는다.
+    @Test void shortVisitsLetTheDayTakeOneMorePlace() {
+        var input=dayTrip(List.of(viewpoint(1),viewpoint(2),viewpoint(3)),List.of(place(30)),90,
             List.of(viewpoint(5),viewpoint(6),viewpoint(7),viewpoint(8),viewpoint(9)));
         var result=generator.generate(input);
         var visits=result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).toList();
@@ -709,7 +709,7 @@ class ItineraryGeneratorTests {
         var again=new Picking(List.of(),false,List.of(5L));
         var fresh=dayTrip(List.of(place(1),place(2)),List.of(place(3)),30,List.of(place(5),place(6),place(7),place(8))).withPicking(again);
         var visits=generator.generate(fresh).days().getFirst().items().stream().filter(i->i.type().equals("VISIT")).map(Item::placeId).toList();
-        assertThat(visits).containsExactlyInAnyOrder(1L,2L,6L,7L);
+        assertThat(visits).containsExactlyInAnyOrder(1L,2L,6L);
         // 다른 예비 관광지가 모두 40km 넘게 떨어져 있으면 직전 초안의 장소5를 다시 넣는다.
         var onlyAgain=dayTrip(List.of(place(1),place(2)),List.of(place(3)),30,List.of(place(5),place(500),place(501))).withPicking(again);
         var result=generator.generate(onlyAgain);
@@ -1014,7 +1014,7 @@ class ItineraryGeneratorTests {
         assertThat(visits).filteredOn(i->i.placeId()==2L).singleElement().satisfies(i->assertThat(i.note()).contains("고른 이유: 여행 목적(케이블카 타기) 관련"));
         assertThat(visits).filteredOn(i->i.placeId()==1L).singleElement().satisfies(i->assertThat(i.note()).contains("고른 이유: 필수 방문"));
     }
-    // 체류시간은 기본 체류시간(90분)을 장소 종류에 맞춰 바꾼다: 전망대 40분, 아쿠아리움 120분, 분류가 넓은 곳은 90분 그대로.
+    // 체류시간은 기본 체류시간(90분)을 장소 종류에 맞춰 바꾼다: 전망대 40분, 아쿠아리움 150분, 분류가 넓은 곳은 90분 그대로.
     @Test void visitMinutesFollowPlaceKind() {
         var view=new PlaceCandidate(1L,"전망대1","강원 강릉시 경포로 1","여행 > 관광,명소 > 전망대","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
         var aquarium=new PlaceCandidate(2L,"아쿠아리움2","강원 강릉시 경포로 2","문화,예술 > 문화시설 > 아쿠아리움","","https://www.gn.go.kr/","",LocalDateTime.of(2026,9,1,0,0));
@@ -1023,9 +1023,9 @@ class ItineraryGeneratorTests {
         Map<Long,Long> minutes=new HashMap<>();
         result.days().getFirst().items().stream().filter(i->i.type().equals("VISIT"))
             .forEach(i->minutes.put(i.placeId(),Duration.between(i.start(),i.end()).toMinutes()));
-        assertThat(minutes).containsEntry(1L,40L).containsEntry(2L,120L).containsEntry(5L,90L);
+        assertThat(minutes).containsEntry(1L,40L).containsEntry(2L,150L).containsEntry(5L,90L);
         generator.validate(input,result);
-        // 다른 기본 체류시간(60분: 전망대 30분·아쿠아리움 80분)으로 계산해야 하는 입력에는 이 결과를 받지 않는다.
+        // 다른 기본 체류시간(60분: 전망대 30분·아쿠아리움 100분)으로 계산해야 하는 입력에는 이 결과를 받지 않는다.
         var other=dayTrip(List.of(view,aquarium,place(5)),List.of(place(3)),60,List.of());
         assertThatThrownBy(()->generator.validate(other,result)).isInstanceOf(RecommendationException.class);
     }
