@@ -61,7 +61,7 @@
 <details class="required-places" th:open="${!values.required.isEmpty() or festivalVisit != null}">
 <summary>꼭 가야 하는 관광지 고르기 (반드시 지킴, 선택)</summary>
 <p class="notice" th:if="${purposePlaceIds != null and !purposePlaceIds.isEmpty()}">여행 목적으로 찾은 시설 한 곳을 미리 골라 두었어요. 다른 곳도 꼭 가고 싶으면 더 고르고, 빼고 싶으면 체크를 풀어 주세요.</p>
-<p class="notice" th:if="${festivalVisit != null}" th:text="${'여행 기간에 ' + festivalVisit.title + '(' + festivalVisit.period + ') 행사가 ' + festivalPlaceName + '(또는 바로 근처)에서 열려요. 일정에 넣고 싶으면 아래에서 ' + festivalPlaceName + '을(를) 골라 주세요. 고르지 않으면 넣지 않아요.'}"></p>
+<p class="notice" th:if="${festivalVisit != null}" th:text="${'여행 기간에 ' + festivalVisit.title + '(' + festivalVisit.period + ') 행사가 ' + festivalPlaceName + '(또는 바로 근처)에서 열려요. 일정에 넣고 싶으면 아래에서 ' + festivalPlaceName + T(com.travel.travel_recommendation.service.ReadableText).particle(festivalPlaceName, '을') + ' 골라 주세요. 고르지 않으면 넣지 않아요.'}"></p>
 <fieldset class="theme-choices"><legend class="visually-hidden">꼭 가야 하는 관광지</legend>
 <label th:each="place : ${pool}"><input type="checkbox" name="required" th:value="${place.placeId}" th:checked="${values.required.contains(place.placeId)}"><span th:text="${place.name}"></span></label>
 </fieldset>

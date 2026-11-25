@@ -119,7 +119,7 @@ public record TripCostEstimate(List<Line> lines, List<String> excluded, int part
     /** 집↔여행지 왕복 교통비. 자동차는 편도 시간을 거리로 바꿔 연료·통행료를, 대중교통은 1분당 요금(비행기는 편도 고정 범위)을 쓴다. */
     private static Line intercity(HomeTrip home, Transport transport, int party) {
         int out = home.minutes(), back = home.returnMinutes();
-        String legs = "편도 약 " + out + "분" + (back == out ? "" : "·" + back + "분");
+        String legs = "편도 약 " + ReadableText.duration(out) + (back == out ? "" : "·" + ReadableText.duration(back));
         if (transport == Transport.CAR) {
             int km = (out + back) * CAR_KM_PER_HOUR / 60;
             return new Line("왕복 교통(자동차)", round(km * CAR_WON_PER_KM_MIN), round(km * CAR_WON_PER_KM_MAX),
@@ -157,7 +157,10 @@ public record TripCostEstimate(List<Line> lines, List<String> excluded, int part
         long total = budget.longValue();
         String entered = "입력한 예산 " + won(total) + "원";
         String note = total < totalMin() ? entered + "은 추정 최소보다 적어요. 숙소 유형이나 식사 횟수를 조정해 보세요."
-            : total > totalMax() ? entered + "은 추정 최대보다 많아요." : entered + "은 추정 범위 안이에요.";
+            : total > totalMax() ? entered + "은 추정 최대보다 많아요."
+            // 범위 안이어도 권장 계획 예산보다 적으면 빠듯할 수 있다는 점을 함께 알린다.
+            : total < planningWon() ? entered + "은 추정 범위 안이지만 권장 계획 예산(" + won(planningWon()) + "원)보다 적어 빠듯할 수 있어요."
+            : entered + "은 추정 범위 안이에요.";
         return new TripCostEstimate(lines, excluded, partySize, partyBasis, days, nights, note);
     }
 

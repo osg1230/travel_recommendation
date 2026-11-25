@@ -157,7 +157,7 @@ h2[id] { scroll-margin-top: 84px; }
     .destination-candidate.is-top .destination-photo img { flex: 1; aspect-ratio: auto; min-height: 220px; }
     .destination-candidate.is-top .destination-photo figcaption { padding-bottom: 6px; }
 }
-/* 일정 초안: 넓은 화면에서는 일정표 옆에 지도와 숙소·식사 요약을 고정해 둔다.
+/* 일정 초안: 넓은 화면에서는 일정표 옆에 지도와 숙소·예상 경비 요약을 고정해 둔다.
    고정한 열이 화면보다 길면 그 열 안에서 따로 스크롤한다. */
 .itinerary-page { width: min(100% - 32px, 1120px); }
 /* 좁은 화면: 문서 순서는 일정표 → 지도·요약이지만 지도를 일정표 위로 올려 보여 준다. */
@@ -188,8 +188,23 @@ h2[id] { scroll-margin-top: 84px; }
 .more-actions { margin-top: 12px; }
 .more-actions > summary { font-size: 14px; color: var(--text-muted); cursor: pointer; }
 .more-actions .form-actions { margin-top: 10px; }
-.page-tabs { margin: 4px 0 16px; }
-.page-tabs .region-tab { padding: 8px 16px; font-size: 15px; }
+/* 탭은 알약 모양 대신 아래 줄로 고른 탭을 표시한다. 좁은 화면에서는 줄바꿈하지 않고 옆으로 민다. */
+.page-tabs { flex-wrap: nowrap; gap: 4px; margin: 4px 0 18px; border-bottom: 1px solid var(--line-strong); overflow-x: auto; }
+.page-tabs .region-tab { padding: 10px 16px; font-size: 15px; font-weight: 600; white-space: nowrap; background: transparent; border: 0; border-bottom: 3px solid transparent; border-radius: 0; }
+.page-tabs .region-tab:hover { background: var(--brand-soft); }
+.page-tabs .region-tab[aria-current] { background: transparent; color: var(--brand); border-bottom-color: var(--brand); font-weight: 800; }
+/* 일정 초안 제목 줄: 왼쪽에 제목과 기간·이동수단, 오른쪽에 저장 버튼과 안내. 폭이 모자라면 저장 버튼이 아래 줄로 내려간다. */
+.draft-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; margin-bottom: 16px; }
+.draft-title { flex: 1 1 320px; min-width: 0; }
+.draft-title h1 { margin: 2px 0 4px; }
+.draft-meta { margin: 0; font-size: 15px; color: var(--text-muted); }
+.draft-save { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; max-width: 100%; }
+.draft-save .form-actions { margin-top: 0; justify-content: flex-end; }
+.draft-save .help { margin: 0; text-align: right; }
+@media (max-width: 600px) {
+    .draft-save { align-items: stretch; width: 100%; }
+    .draft-save .help { text-align: left; }
+}
 /* 일정 초안·저장한 일정의 일정표를 짧게: 설명은 두 줄만 보여 주고(clamp-notes.js), 종류 표시는 장소 이름과 같은 줄에, 사진과 여백은 작게 둔다. */
 .clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 button.note-more { display: block; min-height: 0; margin: 2px 0 0; padding: 0; background: none; border: 0; box-shadow: none; font-size: 13px; font-weight: 500; color: var(--text-muted); text-decoration: underline; }
@@ -204,7 +219,21 @@ button.note-more:hover { background: none; color: var(--brand-strong); }
 .compact-timeline .timeline .place-photo { width: 104px; }
 /* 링크 줄은 사진 아래에서 시작해 한 줄을 다 쓴다(사진 옆에 두면 줄이 넘어가 항목이 길어진다). */
 .compact-timeline .timeline .item-actions { margin-top: 6px; clear: both; }
-.condition-section.side-card { padding: 20px 22px; }
+/* 일정 초안 일정표: 시각(왼쪽) – 세로선과 점 – 내용 순으로 둔다. 종류는 이름 위 작은 글씨로, 이동은 장소 사이의 얇은 한 줄로 보여 준다.
+   세로선과 점의 위치는 시각 칸 너비와 칸 사이 간격으로 계산한다. */
+.draft-page .timeline { --time-width: 52px; --rail-gap: 36px; }
+.draft-page .timeline .schedule-item { grid-template-columns: var(--time-width) minmax(0, 1fr); gap: 0 var(--rail-gap); padding-left: 0; border-bottom: 0; }
+.draft-page .timeline .schedule-item::before { left: calc(var(--time-width) + var(--rail-gap) / 2 - 1px); }
+.draft-page .timeline .schedule-item::after { left: calc(var(--time-width) + var(--rail-gap) / 2 - 7px); }
+.draft-page .timeline .schedule-time { margin: 0; text-align: right; line-height: 1.35; color: var(--text); font-weight: 800; }
+.draft-page .timeline .schedule-end { display: block; font-size: 13px; font-weight: 500; color: var(--text-muted); }
+.draft-page .timeline .schedule-item:not(.item-transit) .schedule-type { float: none; display: block; margin: 0; padding: 0; background: none; font-weight: 800; }
+.draft-page .timeline h3 { font-size: 17px; }
+.draft-page .timeline .item-transit { background: none; padding-top: 4px; padding-bottom: 4px; }
+.draft-page .timeline .item-transit::after { left: calc(var(--time-width) + var(--rail-gap) / 2 - 5px); top: 9px; }
+.draft-page .timeline .item-transit .schedule-type, .draft-page .timeline .item-transit .schedule-end { display: none; }
+.draft-page .timeline .item-transit .schedule-time { font-size: 13px; font-weight: 500; color: var(--text-muted); }
+@media (max-width: 600px) { .draft-page .timeline { --time-width: 42px; --rail-gap: 28px; } }.condition-section.side-card { padding: 20px 22px; }
 .side-card h2 { margin: 0 0 10px; font-size: 15px; color: var(--text-muted); }
 .side-card h3 { margin: 0 0 4px; font-size: 18px; }
 .side-list { margin: 0; padding: 0; list-style: none; }
@@ -270,7 +299,13 @@ button:not(:disabled):active, .button:active { transform: translateY(1px); }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition: none !important; }
     button:not(:disabled):active, .button:active, .shortcut:hover, .shortcut:active { transform: none; }
+    .waiting-bar::after { animation: none; width: 100%; opacity: .5; }
 }
+
+/* 기다리는 화면의 진행 표시: 끝나는 때를 알 수 없으므로 막대가 좌우로 계속 흐른다. 처리가 끝나면 화면이 새로 열리며 사라진다. */
+.waiting-bar { height: 4px; width: 100%; max-width: 360px; margin: 0 0 20px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.waiting-bar::after { content: ''; display: block; width: 40%; height: 100%; border-radius: 2px; background: var(--brand); animation: waiting-slide 1.4s ease-in-out infinite; }
+@keyframes waiting-slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
 
 /* 상태 안내: 안내·성공·오류를 색으로 구분한다.
    안내는 옅은 회색 상자에 왼쪽 청록 선, 성공은 초록 상자(status-ok), 오류는 붉은 상자다. */
@@ -774,32 +809,35 @@ button.region-tab[aria-current] { background: var(--brand); color: #fff; }
 .festival-badge { display: inline-block; margin-right: 6px; padding: 1px 7px; font-size: 12px; color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok-line); border-radius: 999px; }
 .festival-pages { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 0 0 12px; }
 
-/* 일정 직접 수정 화면: 넓은 화면에서는 왼쪽 기본 정보, 오른쪽 일차별 장소 목록. 좁은 화면에서는 위아래로 놓는다. */
-.edit-layout { display: grid; gap: 0 20px; align-items: start; }
-@media (min-width: 1000px) {
-    .edit-layout { grid-template-columns: 300px minmax(0, 1fr); }
-    .edit-side { position: sticky; top: 84px; }
-}
-.edit-facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0 0 8px; font-size: 14px; }
-.edit-facts dt { color: var(--text-muted); }
-.edit-facts dd { margin: 0; font-weight: 600; }
-.edit-side form { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
-.edit-side .choice-chips { margin-top: 0; margin-bottom: 18px; }
-.edit-side .form-actions { margin-top: 4px; }
-.edit-side .form-actions button { width: 100%; }
-.edit-day h2 { margin: 0 0 14px; font-size: 18px; }
-/* 장소 한 줄: 시각 · 사진 · 이름 · 이동시간 · 버튼 */
+/* 일정 초안의 수정 탭: 고치는 방법을 고르는 줄. 고른 칸은 흰 바탕으로 표시한다. */
+.edit-ways > h2 { margin: 0 0 4px; }
+.edit-ways > .help { margin-top: 0; }
+.way-tabs { display: flex; gap: 6px; max-width: 640px; margin: 14px 0 16px; padding: 5px; background: var(--line); border-radius: var(--radius); }
+.way-tabs button { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 0 8px; background: transparent; color: var(--info-text); border: 0; border-radius: 9px; box-shadow: none; font-size: 15px; font-weight: 600; }
+.way-tabs button:hover { background: var(--surface-muted); color: var(--brand-strong); }
+.way-tabs button[aria-selected="true"] { background: var(--surface); color: var(--brand-strong); font-weight: 800; box-shadow: 0 1px 2px rgba(17, 45, 41, .12); }
+/* 좁은 화면에서는 글자를 조금 줄이고, 줄이 바뀌더라도 낱말 중간에서 끊기지 않게 한다. */
+.way-tabs button { word-break: keep-all; line-height: 1.3; }
+@media (max-width: 600px) { .way-tabs button { padding: 6px 4px; font-size: 14px; } }
+.edit-ways h3 { margin: 0 0 6px; font-size: 18px; }
+.edit-ways .choice-chips { margin-top: 16px; }
+.edit-day-title { margin: 18px 0 10px; font-size: 16px; font-weight: 700; }
+/* 장소 한 줄: 사진 · 이름과 시각 · 버튼. 상자 없이 가는 줄로만 나누고, 앞 장소에서 오는 이동시간은 줄 맨 위에 작게 적는다.
+   이동시간(.edit-travel)을 첫 행 전체에 두면 나머지 칸은 자동으로 다음 행에 놓인다. 이동시간이 없으면 한 행만 쓴다. */
 .edit-row {
-    display: grid; grid-template-columns: 64px 84px minmax(0, 1fr) auto auto; gap: 14px; align-items: center;
-    padding: 10px 12px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: var(--radius);
+    display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 6px 14px; align-items: center;
+    padding: 10px 0 12px; border-top: 1px solid var(--line);
 }
-.edit-time { margin: 0; padding: 6px 0; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); text-align: center; font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; }
-.edit-thumb { display: block; width: 84px; aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--radius-sm); background: var(--surface-muted); }
-.edit-thumb-empty { display: grid; place-items: center; font-size: 12px; font-weight: 700; color: var(--text-muted); }
-.edit-place h3 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
-.edit-place .help { margin: 0 0 4px; }
-.edit-place .schedule-type { margin: 0; }
-.edit-travel { margin: 0; white-space: nowrap; }
+.edit-thumb { display: block; width: 56px; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius-sm); background: var(--surface-muted); }
+/* 사진이 없는 장소는 종류 이름을 종류 색으로 보여 준다. */
+.edit-thumb-empty { display: grid; place-items: center; font-size: 12px; font-weight: 800; color: var(--item-color, var(--brand)); background: color-mix(in srgb, var(--item-color, var(--brand)) 10%, var(--surface)); }
+.edit-place h4 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+/* 이름 아래 한 줄: 시각 · 종류 */
+.edit-place .help { display: inline; margin: 0; font-variant-numeric: tabular-nums; }
+.edit-place .schedule-type { margin: 0; padding: 0; background: none; font-size: 13px; font-weight: 600; }
+.edit-place .schedule-type::before { content: " · "; color: var(--text-muted); font-weight: 400; }
+.edit-travel { grid-column: 1 / -1; grid-row: 1; margin: 0; padding-left: 70px; font-size: 12px; white-space: nowrap; }
+.edit-travel:empty { display: none; }
 .edit-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: flex-start; gap: 6px; max-width: 320px; }
 .edit-actions form { margin: 0; }
 .edit-actions .item-replace { margin: 0; }
@@ -812,13 +850,64 @@ button.region-tab[aria-current] { background: var(--brand); color: #fff; }
 .edit-add-list { list-style: none; margin: 12px 0 0; padding: 0; }
 .edit-add-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
 .edit-add-list .help { display: block; margin: 0; }
+/* 좁은 화면에서는 버튼을 장소 이름 아래 줄로 내린다. */
 @media (max-width: 720px) {
-    .edit-row { grid-template-columns: 56px 64px minmax(0, 1fr); }
-    .edit-thumb { width: 64px; }
-    .edit-travel { grid-column: 1 / 3; }
-    .edit-actions { grid-column: 3; max-width: none; }
-    .edit-travel:empty { display: none; }
+    .edit-row { grid-template-columns: 56px minmax(0, 1fr); }
+    .edit-actions { grid-column: 1 / -1; justify-content: flex-start; max-width: none; }
+    .edit-actions .item-replace[open] { text-align: left; }
+    .edit-actions .item-replace-reasons { justify-content: flex-start; }
 }
 .edit-row.item-meal { --item-color: var(--meal); }
 .edit-row.item-stay { --item-color: var(--stay); }
 .edit-row.item-free { --item-color: var(--text-muted); }
+
+/* 예약·결제 화면과 예약 상세: 왼쪽에 고르는 칸(또는 예약 내용), 오른쪽에 금액과 결제를 둔다. 좁은 화면에서는 위아래로 놓는다. */
+.reserve-page { width: min(100% - 32px, 1120px); }
+.reserve-layout { display: grid; gap: 20px; align-items: start; margin-top: 18px; }
+.reserve-layout > .condition-section, .reserve-layout > div > .condition-section:first-child { margin-top: 0; }
+@media (min-width: 900px) {
+    .reserve-layout { grid-template-columns: minmax(0, 1fr) 360px; }
+    .reserve-summary { position: sticky; top: 84px; }
+}
+.reserve-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
+.reserve-title h1 { margin: 0; }
+/* 고르는 단계: 칸 안에서 가는 줄로만 나눈다. */
+.reserve-step { min-width: 0; margin: 0; padding: 18px 0; border: 0; border-top: 1px solid var(--line); }
+.reserve-step:first-child { padding-top: 0; border-top: 0; }
+.reserve-step:last-child { padding-bottom: 0; }
+.reserve-step h2, .reserve-step legend { margin: 0 0 10px; padding: 0; font-size: 17px; font-weight: 700; }
+.step-num { margin-right: 6px; color: var(--brand); }
+/* fieldset의 제목(legend)은 위쪽 줄에 걸쳐 그려지므로, 띄워서 줄 아래 칸 안에 놓는다. */
+.reserve-step legend { float: left; width: 100%; }
+.reserve-step legend + * { clear: both; }
+.reserve-date { margin: 0; font-size: 16px; font-weight: 700; }
+/* 객실 종류: 한 줄에 이름·남은 객실·가격을 두고, 고른 객실은 테두리와 바탕으로 표시한다. 매진은 흐리게 보여 준다. */
+.room-option { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 0 8px; padding: 14px 16px; border: 1px solid var(--line-strong); border-radius: var(--radius); font-weight: 400; cursor: pointer; }
+.room-option:has(input:checked) { border-color: var(--brand); background: var(--brand-soft); box-shadow: inset 0 0 0 1px var(--brand); }
+.room-option.sold-out { background: var(--surface-muted); color: var(--text-muted); cursor: default; }
+.room-option input { flex: 0 0 auto; width: 18px; height: 18px; min-height: 0; margin: 0; accent-color: var(--brand); }
+.room-name { flex: 1 1 180px; min-width: 0; }
+.room-name strong { display: block; font-size: 16px; }
+.room-name .help { margin: 0; }
+.room-price { font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; }
+/* 오른쪽 칸: 예약 내용 요약, 합계, 결제 */
+.reserve-summary h2 { margin: 0 0 12px; font-size: 17px; }
+.reserve-summary h3 { margin: 18px 0 8px; font-size: 15px; }
+.reserve-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 16px; margin: 0; font-size: 14px; }
+.reserve-facts dt { color: var(--text-muted); }
+.reserve-facts dd { margin: 0; text-align: right; font-weight: 600; }
+.reserve-total { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 14px 0 16px; padding-top: 14px; border-top: 1px solid var(--line); font-weight: 700; }
+.reserve-total strong { font-size: 24px; font-variant-numeric: tabular-nums; }
+.reserve-summary fieldset { margin: 0 0 16px; padding: 0; border: 0; }
+.reserve-summary legend { margin-bottom: 8px; padding: 0; font-size: 14px; font-weight: 700; }
+.reserve-summary button[type=submit] { width: 100%; }
+.pay-list { margin: 0; padding: 0; list-style: none; font-size: 14px; }
+.pay-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.pay-list .help { grid-column: 1 / -1; margin: 0; }
+/* 내 예약 목록: 숙소 예약과 관광지 예약을 나란히 둔다. 좁은 화면에서는 위아래로 놓는다. */
+.reserve-lists { display: grid; gap: 20px 24px; align-items: start; margin-top: 18px; }
+@media (min-width: 1000px) { .reserve-lists { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.reserve-lists h2 { margin: 0 0 10px; font-size: 18px; }
+.reserve-row-end { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-top: 8px; }
+.reserve-row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 14px; font-weight: 600; }
+.reserve-row-actions form { margin: 0; }

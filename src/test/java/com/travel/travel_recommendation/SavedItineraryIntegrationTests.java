@@ -105,11 +105,11 @@ class SavedItineraryIntegrationTests {
             .andExpect(status().isOk()).andExpect(content().string(containsString("이 일정 저장하기")));
         var first=saved.save(itineraryJob,owner.getLoginId());
         em.flush();
-        // 이미 저장한 초안은 저장 버튼 대신 저장한 일정으로 가는 링크와 안내를 보여 준다.
+        // 이미 저장한 초안은 저장 버튼 대신 저장한 일정으로 가는 링크 버튼('저장한 ○○ 보기')을 보여 준다.
         mvc.perform(get(url).with(user(owner.getLoginId())))
             .andExpect(status().isOk())
             .andExpect(content().string(containsString("/my/itineraries/"+first.id())))
-            .andExpect(content().string(containsString("이 초안은 이미")))
+            .andExpect(content().string(containsString(" 보기</a>")))
             .andExpect(content().string(org.hamcrest.Matchers.not(containsString("이 일정 저장하기"))));
     }
 

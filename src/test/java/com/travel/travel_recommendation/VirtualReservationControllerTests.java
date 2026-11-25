@@ -75,7 +75,7 @@ class VirtualReservationControllerTests {
 
     @Test void bookingErrorsReturnToTheFormOrGiveAWayBack() throws Exception {
         // 매진처럼 다시 고를 수 있는 거절은 신청 화면으로 돌아가 이유를 보여 주고 입력값을 다시 채운다.
-        when(service.reserve(eq("member"),eq(12L),eq(7L),anyInt(),anyInt(),any()))
+        when(service.reserveAndPay(eq("member"),eq(12L),eq(7L),anyInt(),anyInt(),any(),anyBoolean()))
             .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT,"이 날짜는 매진됐어요. 다른 날짜를 골라 주세요."));
         mvc.perform(post("/my/reservations").with(user("member")).with(csrf()).param("stockId","12").param("itineraryId","7")
                 .param("quantity","1").param("partySize","2").param("requestKey",UUID.randomUUID().toString()))
@@ -85,7 +85,7 @@ class VirtualReservationControllerTests {
             .andExpect(flash().attribute("quantityInput",1))
             .andExpect(flash().attribute("partySizeInput",2));
         // 그 밖의 오류는 오류 화면에 '이전 화면으로'(신청 화면) 링크를 둔다.
-        when(service.reserve(eq("member"),eq(11L),eq(7L),anyInt(),anyInt(),any()))
+        when(service.reserveAndPay(eq("member"),eq(11L),eq(7L),anyInt(),anyInt(),any(),anyBoolean()))
             .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND,"연결할 내 일정을 찾지 못했어요."));
         mvc.perform(post("/my/reservations").with(user("member")).with(csrf()).param("stockId","11").param("itineraryId","7")
                 .param("quantity","1").param("partySize","2").param("requestKey",UUID.randomUUID().toString()))
@@ -113,10 +113,11 @@ class VirtualReservationControllerTests {
             .andExpect(content().string(containsString("value=\"5\"")))
             .andExpect(content().string(containsString("이 날짜에 이미 예약이 있어요(예약번호 9)")))
             .andExpect(content().string(containsString("href=\"/my/reservations/9\"")))
-            // 객실 가격·최대 인원은 미리보기 스크립트가 쓰고, 날짜 입력은 내일부터 1년 안으로 제한한다.
+            // 객실 가격·최대 인원은 금액 스크립트가 쓴다. 이용 날짜는 일정의 날짜로 정해져 있어 날짜 입력은 없다.
             .andExpect(content().string(containsString("data-max-people=\"2\"")))
-            .andExpect(content().string(containsString("min=\""+LocalDate.now(KST).plusDays(1)+"\"")))
-            .andExpect(content().string(containsString("max=\""+LocalDate.now(KST).plusDays(365)+"\"")));
+            .andExpect(content().string(not(containsString("type=\"date\""))))
+            .andExpect(content().string(containsString("결제하고 예약하기")))
+            .andDo(capture("reservation-new"));
     }
 
     @Test void changeTellsWhatChangedOrWhyNot() throws Exception {
@@ -163,7 +164,8 @@ class VirtualReservationControllerTests {
         mvc.perform(get("/my/reservations/6").with(user("member")))
             .andExpect(content().string(containsString("결제한 예약은 바꿀 수 없어요. 취소(환불) 후 다시 예약해 주세요.")))
             .andExpect(content().string(containsString("취소하고 환불받기")))
-            .andExpect(content().string(not(containsString("id=\"change-title\""))));
+            .andExpect(content().string(not(containsString("id=\"change-title\""))))
+            .andDo(capture("reservation"));
     }
 
     @Test void listOffersPaymentAndMarksPastDates() throws Exception {
@@ -174,7 +176,8 @@ class VirtualReservationControllerTests {
             .andExpect(content().string(containsString("href=\"/my/reservations/1#pay-title\"")))
             .andExpect(content().string(not(containsString("/my/reservations/2#pay-title"))))
             .andExpect(content().string(containsString("이용일 지남")))
-            .andExpect(content().string(containsString("예약번호 3 · 결제 없음")));
+            .andExpect(content().string(containsString("예약번호 3 · 결제 없음")))
+            .andDo(capture("reservations"));
     }
 
     @Test void itineraryShowsPastDatesAndReservationsLeftOut() throws Exception {
@@ -191,5 +194,16 @@ class VirtualReservationControllerTests {
             .andExpect(content().string(containsString("일정에서 빠진 장소의 예약")))
             .andExpect(content().string(containsString("href=\"/my/reservations/9\"")))
             .andExpect(content().string(containsString("연결된 예약은 취소되지 않고")));
+    }
+
+    /** -Dtravel.ui.capture=true로 실행하면 그린 화면을 target/ui-check에 저장한다. 브라우저로 열어 배치를 확인할 때 쓴다. */
+    private static org.springframework.test.web.servlet.ResultHandler capture(String name) {
+        return result->{
+            if(!Boolean.getBoolean("travel.ui.capture")) return;
+            var folder=java.nio.file.Path.of("target","ui-check");
+            java.nio.file.Files.createDirectories(folder);
+            java.nio.file.Files.writeString(folder.resolve(name+".html"),
+                result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8));
+        };
     }
 }

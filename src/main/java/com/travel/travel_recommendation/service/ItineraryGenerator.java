@@ -358,7 +358,7 @@ public class ItineraryGenerator {
         // 끝까지 넣지 못한 관광지는 일정에서 빼고 결과에 적는다. 필수·유지 장소가 남았으면 일정을 만들지 않는다.
         var missed=remaining.stream().filter(p->mustVisit.contains(p.placeId())).map(PlaceCandidate::name).toList();
         if(!missed.isEmpty())
-            throw failure("TIME_OVERLAP","하루 시간 안에 '"+String.join("', '",missed)+"'을(를) 넣지 못했어요. 하루 시간을 늘리거나 관광지 체류시간을 줄여 주세요.");
+            throw failure("TIME_OVERLAP","하루 시간 안에 '"+String.join("', '",missed)+"'"+ReadableText.particle(String.join("",missed),"을")+" 넣지 못했어요. 하루 시간을 늘리거나 관광지 체류시간을 줄여 주세요.");
         var skipped=new ArrayList<>(unreachable); skipped.addAll(remaining);
         // 숙소를 고른 이유는 일정이 정해진 뒤, 날마다 숙소를 오가는 시간으로 적는다(2026-10-31).
         if(lodging!=null) {
@@ -487,7 +487,7 @@ public class ItineraryGenerator {
         // 그날 첫 관광지와 꼭 가겠다고 고른 곳은 멀어도 넣는다. 그 밖의 곳은 하루 이동이 상한을 넘으면 오늘은 넣지 않는다.
         boolean firstVisit=builder.items.stream().filter(i->"VISIT".equals(i.type())).count()<=1;
         if(moved>DAILY_MOVE_LIMIT && !firstVisit && !builder.chosenPlaces.contains(next.placeId()))
-            throw failure("DAY_MOVE_FULL","'"+next.name()+"'을(를) 넣으면 하루 이동시간이 "+DAILY_MOVE_LIMIT/60+"시간을 넘어요.");
+            throw failure("DAY_MOVE_FULL","'"+next.name()+"'"+ReadableText.particle(next.name(),"을")+" 넣으면 하루 이동시간이 "+DAILY_MOVE_LIMIT/60+"시간을 넘어요.");
     }
 
     /** 관광지 하나와 그 앞뒤 점심을 넣는다. lunchBefore면 점심을 먼저 먹고, 아니면 관광을 마쳤을 때 12시가 지났으면 점심을 넣는다. */
@@ -1383,7 +1383,7 @@ public class ItineraryGenerator {
             var home=input.home();
             time=home.departAt();
             addHome(home.origin()+" → "+input.places().destination().name(),home.arrivalAtDestination(),
-                "편도 약 "+home.minutes()+"분 + 이동 여유 "+HomeTrip.SPARE_MINUTES+"분 ("+home.basis()+")"
+                "편도 약 "+ReadableText.duration(home.minutes())+" + 이동 여유 "+HomeTrip.SPARE_MINUTES+"분 ("+home.basis()+")"
                     +"\n도착한 뒤 첫 관광지로 바로 가요. 여행지 안 첫 장소까지의 이동은 차이가 있을 수 있어요.");
         }
         /** 마지막 날 맨 뒤: 마지막 장소 → 돌아갈 곳 이동. 편도 이동시간과 여유 10분이다. */
@@ -1392,7 +1392,7 @@ public class ItineraryGenerator {
             limit=home.arriveBy();
             addHome((previous==null?input.places().destination().name():previous.name())+" → "+home.returnPlace(),
                 time.plusMinutes(home.returnMinutes()+HomeTrip.SPARE_MINUTES),
-                "편도 약 "+home.returnMinutes()+"분 + 이동 여유 "+HomeTrip.SPARE_MINUTES+"분 ("+home.returnBasis()+")"
+                "편도 약 "+ReadableText.duration(home.returnMinutes())+" + 이동 여유 "+HomeTrip.SPARE_MINUTES+"분 ("+home.returnBasis()+")"
                     +"\n"+home.arriveBy()+"까지 "+home.returnPlace()+"에 도착하도록 관광을 마쳤어요.");
         }
         // 집은 장소 후보가 아니라 place_id 없이 이동 항목으로만 둔다. 출발지 좌표는 저장하지 않아 지도 링크도 없다.

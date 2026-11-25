@@ -89,8 +89,8 @@ class PlaceDiscoveryIntegrationTests {
         assertThat(pool.attractions().stream().filter(p->"KAKAO".equals(p.sourceProvider()))).hasSize(8);
         assertThat(schedules.options(parent,destination,null,hash).places().attractions()).hasSize(10);
         var id=schedules.create(parent,destination,null,hash,LocalTime.of(9,0),LocalTime.of(20,0),KakaoMapClient.Transport.CAR,60);
-        // 09:00~20:00, 체류 60분이면 하루 약 5곳으로 추정해 3일 동안 후보 10곳을 모두 고른다.
-        assertThat(schedules.view(id,null,hash).input().places().attractions()).hasSize(10);
+        // 하루 관광지 상한이 3곳이라(2026-11-20) 3일 동안 후보 10곳 중 9곳을 고른다.
+        assertThat(schedules.view(id,null,hash).input().places().attractions()).hasSize(9);
         var work=schedules.claim(id); var result=schedules.generate(work); schedules.complete(work,result);
         assertThat(schedules.view(id,null,hash).status()).isEqualTo("COMPLETED");
         assertThat(result.days()).hasSize(3);
@@ -233,8 +233,7 @@ class PlaceDiscoveryIntegrationTests {
             .filter(i->"VISIT".equals(i.type())).map(ItineraryPlan.Item::placeId).collect(java.util.stream.Collectors.toSet());
         var pool=candidates.find(parent,destination,null,hash).attractions().stream().map(PlaceCandidate::placeId).toList();
         assertThat(visited).isNotEmpty();
-        mvc.perform(get("/travel/recommendations/itineraries/"+first).session(session)).andExpect(status().isOk())
-            .andExpect(content().string(containsString("다른 관광지로 다시 만들기")));
+        // '다른 관광지로 다시 만들기' 버튼은 초안 화면에서 뺐고, 서버 주소(/recreate)는 그대로 동작한다.
         var redirect=mvc.perform(post("/travel/recommendations/itineraries/"+first+"/recreate").session(session).with(csrf()))
             .andExpect(status().is3xxRedirection()).andReturn().getResponse().getRedirectedUrl();
         var second=UUID.fromString(redirect.substring(redirect.lastIndexOf('/')+1));

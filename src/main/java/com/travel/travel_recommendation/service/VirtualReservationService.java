@@ -396,6 +396,33 @@ public class VirtualReservationService {
         }
     }
 
+    /**
+     * 예약 신청과 결제를 한 번에 처리한다(예약·결제 화면). 둘을 같은 트랜잭션으로 묶어,
+     * 결제가 거절되면 예약·수량 차감·결제 기록을 모두 되돌린다. 그래서 결제에 실패한 예약은 남지 않는다.
+     * 결제 멱등키는 예약 요청 키를 그대로 쓴다. 같은 요청 키를 다시 보내면(새로고침·연속 클릭) 처음 예약을 돌려준다.
+     * 금액이 0원이라 결제가 필요 없는 예약은 신청만으로 확정된다.
+     */
+    public long reserveAndPay(String loginId, Long stockId, Long itineraryId, int quantity, int partySize, UUID requestKey, boolean simulateDecline) {
+        Long userId=member(loginId);
+        if(requestKey==null) throw bad("예약 요청 정보가 없어요. 예약 화면을 다시 열어 주세요.");
+        try {
+            return guarded("RESERVATION",null,"RESERVATION_CREATE",()->tx.execute(s->{
+                long id=createInTx(userId,stockId,itineraryId,quantity,partySize,requestKey);
+                String status=jdbc.queryForObject("SELECT status FROM dbo.virtual_reservations WHERE reservation_id=?",String.class,id);
+                if("PENDING".equals(status)) {
+                    var paid=payInTx(userId,id,requestKey,null,simulateDecline);
+                    // 예외를 던지면 이 트랜잭션에서 만든 예약·수량 차감·결제 기록이 함께 취소된다.
+                    if(!"SUCCESS".equals(paid.status())) throw conflict("결제가 실패했어요(테스트). 예약은 만들어지지 않았어요. 다시 시도해 주세요.");
+                }
+                return id;
+            }));
+        } catch(DuplicateKeyException sameKey) {
+            // 동시에 온 같은 요청이다. 이쪽 처리는 롤백됐고, 먼저 커밋된 예약을 돌려준다.
+            return tx.execute(s->existingByRequestKey(userId,requestKey)
+                .orElseThrow(()->new ResponseStatusException(HttpStatus.CONFLICT,"예약 요청이 겹쳤어요. 내 예약 목록에서 확인해 주세요.")));
+        }
+    }
+
     /** 회원 한 명이 동시에 둘 수 있는 결제 대기 예약 수. 요청 키만 바꿔 신청해 그날 수량을 혼자 다 잡지 못하게 한다. */
     public static final int MAX_PENDING_PER_MEMBER = 5;
     /** 결제 대기 예약은 마지막으로 바꾼 지 이만큼 지나면 취소하고 수량을 되돌린다(expirePending). */

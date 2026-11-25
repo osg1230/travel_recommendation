@@ -8,6 +8,7 @@
     <p class="eyebrow">여행 준비 · 여행지 후보</p>
     <h1 th:text="${job.pending ? '여행지 추천을 준비하고 있어요' : (job.status == 'FAILED' ? '요청을 마치지 못했어요' : (job.status == 'COMPLETED' ? '추천 여행지를 확인해 보세요' : '여행지 후보를 확인해 보세요'))}"></h1>
     <p class="intro" role="status" th:text="${job.message}" data-job-message></p>
+    <div class="waiting-bar" th:if="${job.pending}" aria-hidden="true"></div>
     <p class="notice" role="status" th:if="${jobNotice != null}" th:text="${jobNotice}"></p>
     <!--/* 문장 분석에서 해석하지 못해 비운 칸. 비운 채로 추천했으니 필요하면 조건 수정하기에서 채운다. */-->
     <div class="notice" role="status" th:if="${analysisNotices != null and !analysisNotices.isEmpty()}">
@@ -26,8 +27,8 @@
         <!-- 확정한 조건을 한 줄로 보여 준다. 정하지 않은 조건은 빼서 입력한 것만 확인할 수 있게 한다. -->
         <p th:with="season=${conditions.keywordNames('SEASON')},companion=${conditions.keywordNames('COMPANION')},theme=${conditions.keywordNames('THEME')},mood=${conditions.keywordNames('MOOD')},pace=${conditions.keywordNames('PACE')},transport=${conditions.keywordNames('TRANSPORTATION')}"
            th:text="${(conditions.region.isEmpty() ? '지역 제한 없음' : conditions.region)
-              + ' · ' + (conditions.startDate != null ? conditions.startDate + ' ~ ' + conditions.endDate + ' (' + conditions.durationDays + '일)'
-                        : (conditions.durationDays == null ? '기간은 일정 만들 때 선택' : conditions.durationDays + '일'))
+              + ' · ' + (conditions.startDate != null ? conditions.startDate + ' ~ ' + conditions.endDate + ' (' + @timeText.nights(conditions.durationDays) + ')'
+                        : (conditions.durationDays == null ? '기간은 일정 만들 때 선택' : @timeText.nights(conditions.durationDays)))
               + (season.isEmpty() ? '' : ' · ' + season)
               + (companion.isEmpty() ? '' : ' · 동행 ' + companion)
               + (theme.isEmpty() ? '' : ' · 취향 ' + theme)

@@ -496,7 +496,7 @@ class VirtualReservationIntegrationTests {
             .andExpect(content().string(containsString("이전 화면으로")));
         mvc.perform(get("/my/reservations/new").param("stockId",String.valueOf(stock)).param("itineraryId",String.valueOf(trip))
                 .with(user(owner.getLoginId())))
-            .andExpect(status().isOk()).andExpect(content().string(containsString("실제 돈이 오가지 않아요")))
+            .andExpect(status().isOk()).andExpect(content().string(containsString("결제하고 예약하기")))
             .andExpect(content().string(not(containsString("이 날짜에 이미 예약이 있어요"))));
         var result=mvc.perform(post("/my/reservations").with(user(owner.getLoginId())).with(csrf())
                 .param("stockId",String.valueOf(stock)).param("itineraryId",String.valueOf(trip))
@@ -509,14 +509,40 @@ class VirtualReservationIntegrationTests {
         mvc.perform(get("/my/reservations/new").param("stockId",String.valueOf(stock)).param("itineraryId",String.valueOf(trip))
                 .with(user(owner.getLoginId())))
             .andExpect(status().isOk()).andExpect(content().string(containsString("이 날짜에 이미 예약이 있어요(예약번호 "+id+")")));
+        // 예약하면서 바로 결제했으므로 상세는 확정 상태이고 결제 칸은 없다. 목록은 숙소 예약으로 나눠 보여 준다.
+        assertThat(jdbc.queryForObject("SELECT status FROM dbo.virtual_reservations WHERE reservation_id=?",String.class,id)).isEqualTo("CONFIRMED");
+        assertThat(jdbc.queryForObject("SELECT status FROM dbo.virtual_payments WHERE reservation_id=?",String.class,id)).isEqualTo("SUCCESS");
         mvc.perform(get(location).with(user(owner.getLoginId())))
-            .andExpect(status().isOk()).andExpect(content().string(containsString("결제 대기")))
+            .andExpect(status().isOk()).andExpect(content().string(containsString("예약 확정")))
             .andExpect(content().string(containsString("100,000원 × 1실 = 100,000원")))
-            .andExpect(content().string(containsString("수량이 잡혀 있어요. 결제하면 확정돼요.")))
-            .andExpect(content().string(containsString("name=\"expectedAmount\"")));
+            .andExpect(content().string(containsString("취소하고 환불받기")))
+            .andExpect(content().string(not(containsString("name=\"expectedAmount\""))));
         mvc.perform(get("/my/reservations").with(user(owner.getLoginId())))
             .andExpect(status().isOk()).andExpect(content().string(containsString("예약번호")))
-            .andExpect(content().string(containsString("결제하기 →")));
+            .andExpect(content().string(containsString("숙소 예약 1건")))
+            .andExpect(content().string(containsString("결제 내역 보기")));
+    }
+
+    // 결제가 실패하면 예약을 만들지 않는다: 수량도 그대로이고 결제 기록도 남지 않으며, 예약·결제 화면으로 돌아가 이유를 보여 준다.
+    @Test void aDeclinedPaymentLeavesNoReservation() throws Exception {
+        var owner=member(); long stock=stock(2); long trip=trip(owner);
+        long before=count("SELECT COUNT(*) FROM dbo.virtual_reservations WHERE user_id=?",owner.getId());
+        var key=UUID.randomUUID();
+        mvc.perform(post("/my/reservations").with(user(owner.getLoginId())).with(csrf())
+                .param("stockId",String.valueOf(stock)).param("itineraryId",String.valueOf(trip))
+                .param("quantity","1").param("partySize","2").param("requestKey",key.toString()).param("outcome","decline"))
+            .andExpect(status().is3xxRedirection())
+            .andExpect(redirectedUrl("/my/reservations/new?stockId="+stock+"&itineraryId="+trip))
+            .andExpect(flash().attribute("reserveError",containsString("결제가 실패했어요")))
+            .andExpect(flash().attribute("partySizeInput",2));
+        assertThat(remaining(stock)).isEqualTo(2);
+        assertThat(count("SELECT COUNT(*) FROM dbo.virtual_reservations WHERE user_id=?",owner.getId())).isEqualTo(before);
+        assertThat(count("SELECT COUNT(*) FROM dbo.virtual_payments WHERE idempotency_key=?",key.toString())).isZero();
+        // 같은 화면에서 다시 결제하면(같은 요청 키) 예약이 만들어지고 확정된다. 한 번 더 보내도 같은 예약을 돌려준다.
+        long id=service.reserveAndPay(owner.getLoginId(),stock,trip,1,2,key,false);
+        assertThat(service.reserveAndPay(owner.getLoginId(),stock,trip,1,2,key,false)).isEqualTo(id);
+        assertThat(remaining(stock)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT status FROM dbo.virtual_reservations WHERE reservation_id=?",String.class,id)).isEqualTo("CONFIRMED");
     }
 
     @Test void aRejectedBookingReturnsToTheFormWithTheInputKept() throws Exception {
@@ -665,7 +691,7 @@ class VirtualReservationIntegrationTests {
             mvc.perform(get("/my/reservations/new").param("stockId",String.valueOf(room)).param("itineraryId",String.valueOf(itinerary))
                     .param("date",date.plusDays(1).toString()).with(user(owner.getLoginId())))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("min=\""+LocalDate.now(kst).plusDays(1)+"\"")));
+                .andExpect(content().string(containsString("이용 "+date.plusDays(1))));
             assertThat(count("SELECT COUNT(*) FROM dbo.reservation_stock WHERE place_id=?",lodging)).isEqualTo(12);
             // 퇴실하는 날·일정에 없는 날은 수량을 만들지 않고 신청 화면으로 돌아가 이유를 알려 준다.
             for(var other:List.of(date.plusDays(2),date.plusDays(5)))

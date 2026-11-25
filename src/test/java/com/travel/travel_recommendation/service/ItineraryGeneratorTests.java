@@ -369,7 +369,7 @@ class ItineraryGeneratorTests {
         assertThat(report.complete()).isTrue();
         // 집 이동은 같은 주소 안 이동으로 세지 않고, 편도 시간과 근거를 따로 적는다.
         assertThat(report.checks()).anySatisfy(c->{ assertThat(c.name()).isEqualTo("이동시간");
-            assertThat(c.detail()).contains("모두 카카오 예상 이동시간").contains("집 → 여행지는 편도 약 120분"); });
+            assertThat(c.detail()).contains("모두 카카오 예상 이동시간").contains("집 → 여행지는 편도 약 2시간"); });
     }
     // 집에서 출발해 12:40에 도착하면 첫 관광지(13:30 넘어 끝남) 전에 그 근처에서 점심부터 먹는다.
     @Test void lateArrivalEatsLunchBeforeTheFirstVisit() {
@@ -413,7 +413,7 @@ class ItineraryGeneratorTests {
         assertThat(Duration.between(last.start(),last.end()).toMinutes()).isEqualTo(210);
         assertThat(last.note()).contains("20:00까지 대전 서구에 도착");
         generator.validate(input,result);
-        assertThat(ItineraryConditionReport.evaluate(input,result).checks()).anySatisfy(c->assertThat(c.detail()).contains("여행지 → 대전 서구는 약 200분"));
+        assertThat(ItineraryConditionReport.evaluate(input,result).checks()).anySatisfy(c->assertThat(c.detail()).contains("여행지 → 대전 서구는 약 3시간 20분"));
     }
     // 당일치기에서 집 오가는 시간을 빼면 4시간이 안 되면 만들지 않고 이유를 알린다.
     @Test void dayTripTooShortAfterHomeTravelIsRejected() {

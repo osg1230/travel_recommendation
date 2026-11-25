@@ -174,7 +174,7 @@ class DirectRecommendationFlowTests {
             "앞선 요청을 처리하고 있어요. 차례가 되면 바로 시작해요.",null,List.of(),true,List.of(),false,0,false,false));
         when(jobs.conditions(eq(id),nullable(String.class),any())).thenReturn(c);
         mvc.perform(get("/travel/recommendations/"+id).session(session)).andExpect(status().isOk())
-            .andExpect(content().string(containsString("속리산&#39;은(는) 아직 여행지 목록에 없어서 지역 대신 원하는 여행으로 옮겼어요.")));
+            .andExpect(content().string(containsString("속리산&#39;은 아직 여행지 목록에 없어서 지역 대신 원하는 여행으로 옮겼어요.")));
     }
     // 조건 수정 화면에서 지역 칸에 여행지 목록에 없는 시·군('보은')을 적어도 원하는 여행 앞에 붙이고 지역을 비워 추천한다.
     @Test void unknownRegionTypedOnTheReviewPageAlsoBecomesThePurpose() throws Exception {

@@ -171,7 +171,7 @@
         <div th:replace="~{fragments/revision-scope :: scope}"></div>
         <th:block th:if="${itinerary.editableJobId != null}">
             <p class="help">수정안을 확인하고 적용해야 일정이 바뀌어요.</p>
-            <div class="form-actions"><a class="button" th:href="@{/travel/recommendations/itineraries/{id}/edit(id=${itinerary.editableJobId})}">수정안 만들러 가기</a></div>
+            <div class="form-actions"><a class="button" th:href="@{/travel/recommendations/itineraries/{id}(id=${itinerary.editableJobId})} + '#revise-title'">수정안 만들러 가기</a></div>
         </th:block>
         <!--/* 카카오에서 관광지 후보를 다시 확인하느라 수십 초가 걸릴 수 있어 누르면 버튼을 잠그고 진행 중임을 보여 준다. */-->
         <form th:if="${itinerary.editableJobId == null}" method="post" th:action="@{/my/itineraries/{id}/edit(id=${itinerary.summary.id})}"

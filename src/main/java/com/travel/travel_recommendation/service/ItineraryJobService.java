@@ -650,7 +650,7 @@ public class ItineraryJobService {
         LocalTime departAt=proposal.departAt();
         if(home!=null && departAt==null && proposal.firstArrival()!=null) {
             int minutes=proposal.firstArrival().toSecondOfDay()/60-home.minutes()-HomeTrip.SPARE_MINUTES;
-            if(minutes<0) return new AiRevision(null,proposal.firstArrival()+"까지 도착하려면 편도 약 "+home.minutes()+"분이 걸려 전날 출발해야 해요. 도착 시각을 늦춰 주세요.");
+            if(minutes<0) return new AiRevision(null,proposal.firstArrival()+"까지 도착하려면 편도 약 "+ReadableText.duration(home.minutes())+"이 걸려 전날 출발해야 해요. 도착 시각을 늦춰 주세요.");
             departAt=LocalTime.ofSecondOfDay(minutes/10*10*60L);
         }
         if(home!=null && (departAt!=null || proposal.arriveBy()!=null))
@@ -718,7 +718,7 @@ public class ItineraryJobService {
 
     /** 콕 집은 장소가 후보에 없을 때 되묻는 서버 고정 문구. GPT 문장 대신 써서 할 수 있는 일을 정확히 알린다. */
     static String unavailableQuestion(List<String> names) {
-        return "'"+String.join("', '",names)+"'은(는) 이 지역에서 확인된 관광지로 찾지 못했어요. 장소 이름을 다시 확인해 적거나, "
+        return "'"+String.join("', '",names)+"'"+ReadableText.particle(String.join("",names),"은")+" 이 지역에서 확인된 관광지로 찾지 못했어요. 장소 이름을 다시 확인해 적거나, "
             +"같은 요청을 한 번 더 보내면 비슷한 곳으로 바꾼 수정안을 만들어 드려요.";
     }
     @Transactional(timeout=10)
