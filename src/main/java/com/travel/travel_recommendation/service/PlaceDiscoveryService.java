@@ -21,6 +21,7 @@ public class PlaceDiscoveryService {
     private final KakaoMapClient maps;
     private final TourApiClient tour;
     private final DestinationLandmarkService landmarkNames;
+    private final PlaceLicenseService licenses;
     private final tools.jackson.databind.ObjectMapper mapper;
     private final PlatformTransactionManager transactions;
 
@@ -67,7 +68,7 @@ public class PlaceDiscoveryService {
             catch(RecommendationException error) { log.warn("취향 장소 찾기 실패 word={} ({})",word,error.getCode()); }
         }
         var transaction=new TransactionTemplate(transactions); transaction.setTimeout(10);
-        return transaction.execute(status->{
+        int saved=transaction.execute(status->{
             // 같은 지역의 동시 수집을 직렬화하고, 조회 중 만료·권한 변경도 다시 검사한다.
             places.lockDestination(destinationId).orElseThrow(()->new RecommendationException("PLACES_CHANGED","지역 정보가 변경됐어요. 다시 추천해 주세요."));
             var current=candidates.find(jobId,destinationId,login,hash);
@@ -89,6 +90,10 @@ public class PlaceDiscoveryService {
             }
             places.flush(); return count;
         });
+        // 새로 확인한 후보 음식점·숙소가 폐업했는지 인허가 자료로 본다. 실패해도 찾아온 장소는 그대로 쓴다.
+        try { licenses.excludeClosed(jobId,destinationId,login,hash); }
+        catch(RuntimeException error) { log.warn("영업 상태 확인 실패 ({})",error.getClass().getSimpleName()); }
+        return saved;
     }
 
     /**
