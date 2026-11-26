@@ -83,6 +83,9 @@ public class DestinationFestivalService {
         var province = FestivalService.PROVINCES.stream()
             .filter(p -> provinceName.equals(Provinces.canonical(p.regionName()))).findFirst().orElse(null);
         if (province == null) return List.of();
+        // 광주는 시·도 이름(전남광주통합특별시)에 '광주'가 들어 있어 이름으로 고르면 전남 축제가 모두 맞는다. 주소가 광주 5개 구인지로 고른다.
+        if (Provinces.isGwangju(candidate.region()))
+            return lookup.apply(province).stream().filter(f -> Provinces.inGwangju(f.address())).toList();
         String local = parts.length > 1 ? parts[1] : candidate.name();
         return lookup.apply(province).stream().filter(f -> f.address().contains(local)).toList();
     }

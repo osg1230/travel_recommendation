@@ -25,7 +25,7 @@ public final class Provinces {
         NAMES.put("충북", List.of("충북", "충청북도"));
         NAMES.put("충남", List.of("충남", "충청남도"));
         NAMES.put("전북", List.of("전북", "전라북도", "전북특별자치도"));
-        // "광주시"는 경기도 광주시와 헷갈리므로 넣지 않는다.
+        // "광주시"는 경기도 광주시와 헷갈리므로 넣지 않는다. 지역 칸의 "광주"는 광주 여행지만 찾는다(DestinationCandidateService.matches).
         NAMES.put("전남광주", List.of("전남광주", "전남광주통합특별시", "전남광주특별시", "전남", "전라남도", "광주", "광주광역시"));
         NAMES.put("경북", List.of("경북", "경상북도"));
         NAMES.put("경남", List.of("경남", "경상남도"));
@@ -61,6 +61,31 @@ public final class Provinces {
         String first = space < 0 ? text : text.substring(0, space);
         String province = canonical(first);
         if (province == null) return text;
-        return space < 0 ? province : province + text.substring(space);
+        if (space < 0) return province;
+        String rest = text.substring(space + 1);
+        // 광주 5개 구의 주소는 "전남광주 광주 동구 …"로 맞춰, 광주 여행지 지역("전남광주통합특별시 광주")으로 시작하는지 비교할 수 있게 한다.
+        if (GWANGJU_PROVINCE.equals(province) && GWANGJU_DISTRICTS.contains(rest.split(" ")[0])) rest = GWANGJU + " " + rest;
+        return province + " " + rest;
+    }
+
+    /**
+     * 옛 광주광역시(2026-11-26 여행지로 추가). 통합 뒤 주소는 "전남광주통합특별시 동구 …"처럼 시 이름 없이 구로 시작해
+     * 한 시·군 이름으로 묶을 수 없으므로, 여행지 지역은 "전남광주통합특별시 광주"로 적고 5개 구를 여기서 묶는다.
+     * 전남의 다른 시·군에는 구가 없어 이 다섯 이름은 광주에만 있다.
+     */
+    public static final String GWANGJU = "광주";
+    public static final List<String> GWANGJU_DISTRICTS = List.of("동구", "서구", "남구", "북구", "광산구");
+    /** 지역 칸에 적으면 시·도 전체가 아니라 광주 여행지만 뜻하는 이름. */
+    public static final List<String> GWANGJU_NAMES = List.of("광주", "광주광역시");
+    private static final String GWANGJU_PROVINCE = "전남광주";
+
+    /** 여행지 지역이 광주인지. 예) "전남광주통합특별시 광주" → true, "전남광주통합특별시 여수시" → false. */
+    public static boolean isGwangju(String region) {
+        return region != null && !region.isBlank() && normalizeAddress(region).equals(GWANGJU_PROVINCE + " " + GWANGJU);
+    }
+
+    /** 주소가 광주 5개 구 안인지. 예) "전남광주통합특별시 북구 …", "광주 동구 …" → true. */
+    public static boolean inGwangju(String address) {
+        return address != null && !address.isBlank() && normalizeAddress(address).startsWith(GWANGJU_PROVINCE + " " + GWANGJU + " ");
     }
 }

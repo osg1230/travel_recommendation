@@ -35,6 +35,24 @@ class ProvincesTests {
         assertThat(Provinces.normalizeAddress("어딘가 123")).isEqualTo("어딘가 123");
     }
 
+    // 광주 5개 구의 주소(옛 표기·통합 뒤 표기)는 광주 여행지 지역으로 시작하는 형태로 맞춘다. 전남의 시·군 주소는 그대로다.
+    @Test void gwangjuDistrictAddressesBelongToTheGwangjuDestination() {
+        assertThat(Provinces.normalizeAddress("전남광주통합특별시 동구 문화전당로 38")).isEqualTo("전남광주 광주 동구 문화전당로 38");
+        assertThat(Provinces.normalizeAddress("광주광역시 광산구 송정로 14")).isEqualTo("전남광주 광주 광산구 송정로 14");
+        assertThat(Provinces.inGwangju("전남광주통합특별시 북구 금곡동")).isTrue();
+        assertThat(Provinces.inGwangju("전남광주통합특별시 여수시 오동도로 61-11")).isFalse();
+        assertThat(Provinces.inGwangju("부산 동구 중앙대로 206")).isFalse();
+        assertThat(Provinces.isGwangju("전남광주통합특별시 광주")).isTrue();
+        assertThat(Provinces.isGwangju("전남광주통합특별시 담양군")).isFalse();
+        assertThat(Provinces.isGwangju("경기도 광주시")).isFalse();
+        assertThat(KakaoMapClient.regionOf("전남광주통합특별시 동구 문화전당로 38", java.util.List.of("전남광주통합특별시 광주"))).isEqualTo("전남광주통합특별시 광주");
+        assertThat(KakaoMapClient.regionOf("전남광주통합특별시 담양군 죽녹원로 119", java.util.List.of("전남광주통합특별시 광주"))).isNull();
+        // 광주만 시청 근처 반경으로 좁혀 찾는다. "광주 ○○" 검색에 전남 전체의 장소가 섞이기 때문이다.
+        assertThat(KakaoMapClient.searchWord("전남광주통합특별시 광주")).isEqualTo("광주");
+        assertThat(KakaoMapClient.searchArea("전남광주통합특별시 광주")).contains("radius=20000");
+        assertThat(KakaoMapClient.searchArea("전남광주통합특별시 여수시")).isEqualTo("rect=124,33,132,39");
+    }
+
     @Test void kakaoSearchWordComesFromTheRegionName() {
         assertThat(KakaoMapClient.searchWord("강원특별자치도 강릉시")).isEqualTo("강릉");
         assertThat(KakaoMapClient.searchWord("경기도 가평군")).isEqualTo("가평");

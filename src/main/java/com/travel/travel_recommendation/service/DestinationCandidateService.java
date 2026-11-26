@@ -215,6 +215,8 @@ public class DestinationCandidateService {
         String province=Provinces.canonical(parts[0]);
         if(province==null) return false;
         String city=parts.length>1?parts[1]:null;
+        // "광주"는 시·도(전남광주)의 다른 이름이기도 하지만, 지역으로 적었다면 광주 여행지만 뜻한다. 전남 전체는 "전남"으로 적는다.
+        if(Provinces.GWANGJU_NAMES.contains(query)) return Provinces.isGwangju(place.getRegion());
         if(province.equals(Provinces.canonical(query))) return true;
         var local=new ArrayList<String>(List.of(place.getName())); if(city!=null) local.add(city);
         if(local.contains(query)) return true;

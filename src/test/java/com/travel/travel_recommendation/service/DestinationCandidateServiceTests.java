@@ -37,9 +37,13 @@ class DestinationCandidateServiceTests {
             assertThat(DestinationCandidateService.matches(gangneung, query)).as(query).isFalse();
     }
 
-    // 2026-07-01 통합으로 광주·전남 선택값은 모두 전남광주통합특별시 여행지로 찾는다.
-    @Test void gwangjuAndJeonnamOptionsFindTheMergedSpecialCity() {
-        assertThat(DestinationCandidateService.matches(yeosu, "광주")).isTrue();
+    // 2026-07-01 통합으로 전남은 전남광주통합특별시 여행지 전체를 찾는다. "광주"는 광주 여행지만 찾는다(2026-11-26, 이전에는 전남 전체).
+    @Test void gwangjuFindsOnlyTheCityAndJeonnamFindsTheMergedSpecialCity() {
+        Place gwangju = place("광주", "전남광주통합특별시 광주", "문화·역사");
+        for (String query : List.of("광주", "광주광역시", "전남", "전남광주통합특별시광주"))
+            assertThat(DestinationCandidateService.matches(gwangju, query)).as(query).isTrue();
+        assertThat(DestinationCandidateService.matches(yeosu, "광주")).isFalse();
+        assertThat(DestinationCandidateService.matches(yeosu, "광주광역시")).isFalse();
         assertThat(DestinationCandidateService.matches(yeosu, "전남")).isTrue();
         assertThat(DestinationCandidateService.matches(yeosu, "전라남도여수시")).isTrue();
         assertThat(DestinationCandidateService.matches(jeonju, "전남")).isFalse();

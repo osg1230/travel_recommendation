@@ -223,7 +223,9 @@ public class TourApiClient {
             String code = item.path("code").asText(""), name = item.path("name").asText("");
             if (!code.matches("[0-9]{3}")) continue;
             if (name.equals(cityName)) own = code;
-            else if (name.startsWith(cityName + " ")) wards.add(code);
+            // 광주는 관광공사 목록에 시 이름 없이 "동구"·"광산구"처럼 구 이름만 있어 다섯 구를 직접 고른다.
+            else if (name.startsWith(cityName + " ") || (Provinces.GWANGJU.equals(cityName) && Provinces.GWANGJU_DISTRICTS.contains(name)))
+                wards.add(code);
         }
         if (!wards.isEmpty()) return List.copyOf(wards);
         return own == null ? List.of() : List.of(own);

@@ -95,7 +95,7 @@ public class KakaoMapClient {
         }
         var root=get(localEndpoint.resolve("/v2/local/search/keyword.json?query="
             +URLEncoder.encode(city+" "+keyword,StandardCharsets.UTF_8)
-            +"&category_group_code="+code+"&rect=124,33,132,39&size=15&page=1&sort=accuracy"));
+            +"&category_group_code="+code+"&"+searchArea(region)+"&size=15&page=1&sort=accuracy"));
         // 음식점은 일정의 끼니로 쓰므로 간식·술집·카페 분류는 받지 않는다(예: 아이스크림 가게가 저녁으로 들어가지 않게).
         return places(root,item->code.equals(item.path("category_group_code").asText())
             && !("RESTAURANT".equals(type) && PlaceCandidate.notForMeals(item.path("category_name").asText(""))),List.of(region),type,limit);
@@ -110,7 +110,7 @@ public class KakaoMapClient {
         if(city==null) throw failure("MAP_REGION","여행지 지역 이름을 확인하지 못해 장소를 찾을 수 없어요.");
         if(food==null || !food.matches("[가-힣]{1,10}") || limit<1 || limit>15) throw invalid();
         var root=get(localEndpoint.resolve("/v2/local/search/keyword.json?query="+URLEncoder.encode(city+" "+food,StandardCharsets.UTF_8)
-            +"&category_group_code=FD6&rect=124,33,132,39&size=15&page=1&sort=accuracy"));
+            +"&category_group_code=FD6&"+searchArea(region)+"&size=15&page=1&sort=accuracy"));
         return places(root,item->"FD6".equals(item.path("category_group_code").asText())
             && !PlaceCandidate.notForMeals(item.path("category_name").asText(""))
             && (item.path("place_name").asText("").contains(food) || item.path("category_name").asText("").contains(food)),
@@ -153,7 +153,7 @@ public class KakaoMapClient {
         List<KakaoPlace> found=new ArrayList<>(); Set<String> ids=new HashSet<>();
         for(int page=1;page<=3;page++) {
             var root=get(localEndpoint.resolve("/v2/local/search/keyword.json?query="
-                +URLEncoder.encode(city+" 명소",StandardCharsets.UTF_8)+"&rect=124,33,132,39&size=15&page="+page+"&sort=accuracy"));
+                +URLEncoder.encode(city+" 명소",StandardCharsets.UTF_8)+"&"+searchArea(region)+"&size=15&page="+page+"&sort=accuracy"));
             for(var place:places(root,item->item.path("category_name").asText("").startsWith("여행 > 관광,명소"),List.of(region),"ATTRACTION",15))
                 if(ids.add(place.sourceId())) found.add(place);
             if(root.path("meta").path("is_end").asBoolean(true)) break;
@@ -171,7 +171,7 @@ public class KakaoMapClient {
         String city=searchWord(region);
         if(city==null) throw failure("MAP_REGION","여행지 지역 이름을 확인하지 못해 장소를 찾을 수 없어요.");
         var root=get(localEndpoint.resolve("/v2/local/search/keyword.json?query="
-            +URLEncoder.encode(city+" "+word,StandardCharsets.UTF_8)+"&rect=124,33,132,39&size=15&page=1&sort=accuracy"));
+            +URLEncoder.encode(city+" "+word,StandardCharsets.UTF_8)+"&"+searchArea(region)+"&size=15&page=1&sort=accuracy"));
         return withoutSubPlaces(places(root,item->item.path("category_name").asText("").startsWith("여행 > 관광,명소"),List.of(region),"ATTRACTION",15))
             .stream().limit(THEME_SEARCH_LIMIT).toList();
     }
@@ -197,7 +197,7 @@ public class KakaoMapClient {
         String city=searchWord(region);
         if(city==null) throw failure("MAP_REGION","여행지 지역 이름을 확인하지 못해 장소를 찾을 수 없어요.");
         var root=get(localEndpoint.resolve("/v2/local/search/keyword.json?query="
-            +URLEncoder.encode(city+" "+keyword,StandardCharsets.UTF_8)+"&rect=124,33,132,39&size=15&page=1&sort=accuracy"));
+            +URLEncoder.encode(city+" "+keyword,StandardCharsets.UTF_8)+"&"+searchArea(region)+"&size=15&page=1&sort=accuracy"));
         // "전동성당 사제관"처럼 같은 분류로 나오는 부속 시설은 뺀다.
         return withoutSubPlaces(places(root,item->item.path("category_name").asText("").startsWith(category),List.of(region),"ATTRACTION",15))
             .stream().limit(limit).toList();
@@ -699,6 +699,14 @@ public class KakaoMapClient {
      * 여행지 지역(region)으로 카카오 검색어에 쓸 지역 이름을 만든다. 조회 결과는 주소가 이 지역으로 시작하는 곳만 남긴다.
      * 예) "강원특별자치도 강릉시" → "강릉", "경기도 가평군" → "가평", "부산광역시" → "부산", "제주특별자치도" → "제주".
      */
+    /**
+     * 지역 검색의 범위. 보통은 국내 전체에서 찾고 주소로 거른다. 광주는 "광주 음식점"으로 찾으면 통합된 전남 전체의 장소가 섞여
+     * 광주 안의 곳이 15건 중 몇 건뿐이라(2026-11-26 실제 검색), 광주 시청 근처에서 반경 20km(카카오 최대)로 좁혀 찾는다.
+     */
+    static String searchArea(String region) {
+        return Provinces.isGwangju(region) ? "x=126.8526&y=35.1595&radius=20000" : "rect=124,33,132,39";
+    }
+
     static String searchWord(String region) {
         if(region==null || region.isBlank()) return null;
         String[] parts=region.strip().split("\\s+");

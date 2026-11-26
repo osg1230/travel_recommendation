@@ -62,6 +62,8 @@ public class LicenseClient {
         String[] parts = Provinces.normalizeAddress(address).split(" ");
         if ("세종".equals(parts[0])) return Optional.ofNullable(REGION_CODES.get("세종"));
         if (parts.length < 2) return Optional.empty();
+        // 광주 5개 구의 주소는 "전남광주 광주 동구 …"로 맞춰져 있어(Provinces) 구 이름은 세 번째 단어다.
+        if (Provinces.inGwangju(address)) return Optional.ofNullable(REGION_CODES.get("광주" + parts[2]));
         // 전남·광주는 시·도 이름을 하나로 다루지만(Provinces) 코드표는 따로 적혀 있어 둘 다 찾아본다.
         for (String province : "전남광주".equals(parts[0]) ? List.of("전남", "광주") : List.of(parts[0])) {
             String code = REGION_CODES.get(province + parts[1]);
