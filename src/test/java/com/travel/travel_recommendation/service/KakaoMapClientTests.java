@@ -333,6 +333,21 @@ class KakaoMapClientTests {
         assertThat(found).extracting(com.travel.travel_recommendation.dto.KakaoPlace::sourceId).containsExactly("301","302","303");
         assertThat(found).allSatisfy(p->assertThat(p.region()).isEqualTo("인천광역시"));
     }
+    // 지역 칸의 이름은 주소로 찾히거나(보은), 그 이름이 들어간 관광지가 있어야(속리산) 국내 지명으로 본다. 이름만 같은 가게는 근거가 아니다.
+    @Test void domesticPlaceNameNeedsAnAddressOrANamedAttraction() {
+        String addressPath="/v2/local/search/address.json", keywordPath="/v2/local/search/keyword.json";
+        bodies.put(addressPath,"{\"documents\":[{\"address_name\":\"충북 보은군\"}]}");
+        assertThat(client("key").domesticPlaceName("보은")).isTrue();
+        bodies.put(addressPath,"{\"documents\":[]}");
+        var park=searchItem("401","충북 보은군 속리산면 법주사로 84"); park.put("place_name","속리산국립공원");
+        bodies.put(keywordPath,new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(park))));
+        assertThat(client("key").domesticPlaceName("속리산")).isTrue();
+        var shop=searchItem("402","부산 해운대구 구남로 1"); shop.put("place_name","아틀란티스시 노래방");
+        shop.put("category_group_code","FD6"); shop.put("category_name","음식점 > 술집");
+        bodies.put(keywordPath,new JsonMapper().writeValueAsString(java.util.Map.of("documents",java.util.List.of(shop,park))));
+        assertThat(client("key").domesticPlaceName("아틀란티스시")).isFalse();
+        assertThat(client("key").domesticPlaceName("가")).isFalse();
+    }
     // 대표 관광지는 이름이 같은 곳을 먼저 고른다. 사찰(종교)·시장·공원도 받아, 본체 대신 "불국사 다보탑" 같은 부속 시설로 연결되지 않게 한다.
     @Test void findLandmarkPrefersExactNameAndAcceptsTempleMarketPark() {
         var tower=searchItem("501","경북 경주시 진현동 15"); tower.put("place_name","불국사 다보탑"); tower.put("category_group_code","");

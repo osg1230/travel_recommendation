@@ -221,6 +221,24 @@ public class KakaoMapClient {
     }
 
     /**
+     * 사용자가 지역 칸에 적은 이름이 국내에 실제로 있는 곳인지 확인한다. 행정구역 이름(예: "보은")은 주소 검색으로,
+     * 산·섬 같은 명소 이름(예: "속리산")은 그 이름이 들어간 관광지 분류({@link #landmarkCategory}) 장소로 확인한다.
+     * 이름만 비슷한 가게는 분류에서 빠지므로, 지어낸 지명(예: "아틀란티스시")은 false가 된다.
+     */
+    public boolean domesticPlaceName(String name) {
+        String wanted=compactName(name==null?"":name);
+        if(wanted.length()<2 || name.length()>40) return false;
+        String encoded=URLEncoder.encode(name.strip(),StandardCharsets.UTF_8);
+        var addresses=get(localEndpoint.resolve("/v2/local/search/address.json?size=1&query="+encoded)).path("documents");
+        if(addresses.isArray() && !addresses.isEmpty()) return true;
+        var places=get(localEndpoint.resolve("/v2/local/search/keyword.json?query="+encoded
+            +"&rect=124,33,132,39&size=15&page=1&sort=accuracy")).path("documents");
+        for(var item:places)
+            if(landmarkCategory(item) && compactName(item.path("place_name").asText("")).contains(wanted)) return true;
+        return false;
+    }
+
+    /**
      * GPT가 제안한 대표 관광지 이름을 그 여행지(region) 안의 카카오 장소로 맞춘다. 공백·기호를 뺀 이름이 같은 곳을 먼저 고르고,
      * 없으면 이름이 서로 포함되는 곳 중 가장 짧은 이름을 고른다(예: "불국사 다보탑"보다 "불국사"). 맞는 곳이 없으면 비어 있다.
      * 분류는 {@link #landmarkCategory}를 쓴다. 사찰·성당은 동네 절·본당일 수 있어 관광지로 볼지는 호출하는 쪽에서 다시 확인한다.

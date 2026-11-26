@@ -433,6 +433,7 @@ public class TravelConditionReviewController {
      * 그 이름을 원하는 여행(목적) 앞에 붙이고 지역을 비운다(2026-10-31). 지역을 비우고 원하는 여행을 말한 추천은
      * AI가 맞는 시·군을 제안하고 관광공사 등록 장소로 확인해 여행지로 더하기 때문이다(RegionSuggestionService).
      * AI가 제안한 목적이었다면 사용자가 말한 이름으로 바꾼다. 옮겼으면 안내 문장을, 아니면 null을 돌려준다.
+     * 지도에서도 찾을 수 없는 이름은 옮기지 않는다(2026-11-26).
      */
     private String regionToPurpose(ConditionReviewForm form, ConfirmedTravelConditions conditions) {
         var jobService = jobs.getIfAvailable();
@@ -440,6 +441,8 @@ public class TravelConditionReviewController {
         try { if (!jobService.regionUnknown(conditions)) return null; }
         catch (DataAccessException ex) { return null; }
         String place = form.getRegion().strip();
+        // 지도에서도 찾을 수 없는 이름(지어낸 지명·해외 도시)은 옮기지 않는다. 지역 칸에 남겨 두면 regionProblem이 고쳐 달라고 안내한다.
+        if (jobService.placeNameMissing(place)) return null;
         String purpose = form.getTravelPurpose() == null ? "" : form.getTravelPurpose().strip();
         String joined = form.isPurposeSuggested() || purpose.isEmpty() ? place : place + " " + purpose;
         // 목적 칸은 200자까지라, 넘으면 이름만 둔다.
