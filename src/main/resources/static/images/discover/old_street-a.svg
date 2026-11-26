@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice">
-<rect width="400" height="300" fill="#f3ede4"/><rect y="230" width="400" height="70" fill="#d6c7ae"/>
-<path d="M80 110 L200 50 L320 110z" fill="#7a3b2e"/><path d="M60 112 q140 -22 280 0 l-6 12 q-134 -18 -268 0z" fill="#4a2a22"/>
-<rect x="100" y="124" width="200" height="16" fill="#2f6b5a"/><g fill="#b23a2c"><rect x="110" y="140" width="14" height="90"/><rect x="160" y="140" width="14" height="90"/><rect x="226" y="140" width="14" height="90"/><rect x="276" y="140" width="14" height="90"/></g>
-<rect x="124" y="150" width="36" height="70" fill="#e8d9bf"/><rect x="240" y="150" width="36" height="70" fill="#e8d9bf"/><rect x="174" y="160" width="52" height="70" fill="#5a3a22"/>
-<rect x="70" y="228" width="260" height="8" fill="#9c8a6c"/>
-<circle cx="345" cy="212" r="10" fill="#3b2f2a"/><path d="M335 224 h20 l4 34 h-28z" fill="#64748b"/><rect x="336" y="258" width="7" height="24" fill="#334155"/><rect x="347" y="258" width="7" height="24" fill="#334155"/>
-</svg>

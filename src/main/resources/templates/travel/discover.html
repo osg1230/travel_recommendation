@@ -25,7 +25,7 @@
             <div class="discover-options">
                 <label class="discover-option" th:each="o : ${question.options}">
                     <input class="visually-hidden" type="radio" name="answer" th:value="${o.id}" th:checked="${selected == o.id}" required>
-                    <img class="discover-image" th:src="@{/images/discover/{file}.svg(file=${#strings.toLowerCase(question.id + '-' + o.id)})}" alt="">
+                    <img class="discover-image" th:src="@{/images/discover/{file}.jpg(file=${#strings.toLowerCase(question.id + '-' + o.id)})}" alt="">
                     <span class="discover-scene" th:text="${o.scene}"></span>
                 </label>
             </div>

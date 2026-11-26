@@ -1,4 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice">
-<rect width="400" height="300" fill="#bfdbfe"/>
-<path d="M40 300 L200 60 L360 300z" fill="#64748b"/><path d="M200 60 l-40 60 l20 -6 l20 16 l20 -16 l20 6z" fill="#f1f5f9"/><g fill="#fff" opacity=".95"><ellipse cx="80" cy="200" rx="90" ry="26"/><ellipse cx="320" cy="210" rx="100" ry="28"/><ellipse cx="200" cy="240" rx="120" ry="24"/></g><rect x="206" y="24" width="3" height="40" fill="#3b2f2a"/><path d="M209 24 h24 l-6 8 l6 8 h-24z" fill="#ef4444"/><circle cx="196" cy="40" r="7" fill="#3b2f2a"/><path d="M189 48 h14 l3 18 h-20z" fill="#f59e0b"/>
-</svg>
