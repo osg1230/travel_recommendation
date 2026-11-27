@@ -1,6 +1,25 @@
 # 프로젝트 진행 요약
 
-기준일: 2026-11-26 | 프로젝트: travel_recommendation | 서비스 이름: 다녀올게
+기준일: 2026-11-28 | 프로젝트: travel_recommendation | 서비스 이름: 다녀올게
+
+## 2026-11-28 GPT·Claude 비교 측정 (사용자 요청)
+
+- 방법: 같은 여행 문장 6개를 GPT(`gpt-6-luna`, 추론 none)와 Claude(`claude-opus-5-5`, effort low)에 각각 넣어 조건 분석 → 여행지 추천 → 1순위 여행지 일정 초안까지 만들었다(`AiProviderComparisonTests`, `RUN_AI_COMPARISON=true`, 테스트 트랜잭션 롤백). 두 AI는 같은 지시문·출력 형식·DB 장소 후보를 쓴다. 비교용으로 `travel.claude.primary`(기본 false, true면 처음부터 Claude에 묻는다)를 추가했다. 원본은 [비교 원본](quality/2026-11-28_GPT_Claude_비교_원본.md).
+- 조건 이해: Claude가 나았다. 출발일을 Claude는 6/6, GPT는 4/6 읽었다(GPT는 "연도가 없다"며 비움, 같은 문장도 실행마다 다름). 인원은 GPT가 "여자친구랑"·"아들이랑"을 비웠고 "친구 셋이서"를 4명으로 읽었다(Claude 2·2·3명). GPT는 "서울에서 KTX나 버스로 갈 수 있는 곳"을 지역 칸에 넣어 추천 작업이 실패했다(Claude는 지역 없음으로 두고 강릉 일정 완성).
+- 일정: 차이가 작다(장소·시간은 서버 규칙이 정한다). 경주는 두 일정이 같았고, 부산은 GPT가 조금 나았다(Claude는 대학 동기 여행에 어린이대공원, 밀면 두 번). 대게 여행은 GPT가 대게 식당 3곳, Claude는 1곳. 둘 다 부산의 '밤에 놀 곳'을 넣지 못했다. GPT의 AI 안내에 일본어가 섞여 나온 것이 1건 있었다.
+- 속도: AI 단계 합계가 GPT 약 14~29초, Claude 약 27~48초(약 2배). Claude 호출 36회 중 실패 0, 단계별 최장 28초로 40초 제한 안이었다.
+- 실제 호출에서 고친 것: Claude가 `enum` 안의 null을 거부해 조건 분석이 실패했다. Claude로 보낼 때 `anyOf(목록 | null)`로 바꾼다(`ClaudeFallbackClient.supported`).
+- 한계: 문장 6개를 한 번씩만 돌렸고 비용(토큰)은 재지 않았다. 사람이 결과를 읽고 판단한 것이라 현장 확인은 아니다.
+- GPT 문제 수정(같은 날, 사용자 요청): 조건 분석 지시문(`condition-instructions.txt`)에 ① 연도 없이 월·일만 말하면 오늘 이후 가장 가까운 날짜로 정하고 기간이 있으면 종료일을 계산, ② 지역 칸에는 지명만 넣고 '서울에서 KTX로 갈 수 있는 곳' 같은 조건이나 출발지는 넣지 않음, ③ 인원 세는 법을 세 경우(~이서는 전체, 동행 수만 말하면 +1, 수를 모르면 비움)로 다시 적고 '여자친구랑'·'아들이랑'은 2명으로 봄. 일정 안내(요약·일차 안내)에 한자·일본 문자가 섞이면 받지 않고 다시 요청하게 했다(`OpenAiItineraryClient.text`, 테스트 1개 추가).
+- 수정 확인: 실제 GPT로 같은 6문장을 다시 돌려 출발일 6/6, 인원 3·1·6·2·2·3명, 지역 칸 오해 없음, 6개 모두 일정 완성, 한자·일본 문자 0건을 확인했다. 첫 수정 문구에서는 "동기 5명이랑"을 5명으로, "부모님 모시고"를 비워 인원 규칙을 다시 썼다. 한 번씩만 확인했고, 다른 문장(달만 말한 경우, 지난 날짜 등)에 미치는 영향은 실제 호출로 보지 않았다. 전체 테스트 853개 실패 0(건너뜀 236).
+
+## 2026-11-28 OpenAI 크레딧 소진 시 Claude로 대신 응답 (사용자 요청)
+
+- 순서(사용자 결정): 첫 OpenAI 키 → 나머지 OpenAI 키 → 모두 소진되면 마지막에 Claude. 첫 키가 크레딧 소진(429 `insufficient_quota`)이면 `travel.openai.extra-api-keys`(`OPEN_AI_API`, `Portfolio_java_API`)의 키로 인증 헤더만 바꿔 같은 요청을 다시 보낸다(빈 값·같은 키는 건너뜀, `OpenAiProperties.apiKeys`). 키 차례 시도는 가격 검색·장소 확인을 포함한 11곳 모두에 적용된다. 소진된 키를 기억하지 않아 요청마다 첫 키부터 다시 시도한다.
+- 변경: 모든 OpenAI 키가 소진되면 같은 지시문·입력·출력 형식으로 Claude에 대신 묻는다(`ClaudeFallbackClient`, 공식 Java SDK `anthropic-java` 3.3.0). 답은 OpenAI 응답 모양으로 바꿔 돌려주므로 각 클라이언트의 기존 검증을 그대로 거친다. 전송은 `AiReply.send` 한 곳으로 모았다. 대상은 조건 분석·여행지 추천·여행지 고르기·지역 제안·대표 명소·목적 검색어·장소 고르기·일정 초안·일정 수정 9곳이다.
+- 제외: 웹 검색을 쓰는 가격 검색(`OpenAiPriceClient`)·장소 확인(`OpenAiVerificationClient`)은 출처 확인 방식이 OpenAI 응답에 묶여 있어 그대로 두었다(소진 시 기존 한도 안내). 요청 제한(잠시 뒤 풀리는 429)·키 미설정·다른 오류에서는 다음 키나 Claude를 쓰지 않는다.
+- 설정: Claude 키는 `CLAUDE_API_KEY`(없으면 `ANTHROPIC_API_KEY`, 둘 다 없으면 대체 호출 없이 이전과 같음), `ANTHROPIC_MODEL`(기본 `claude-opus-5-5`), `travel.claude.timeout-seconds=40`. Claude 구조화 출력이 받지 않는 길이·개수 제한(`maxLength`·`maxItems` 등)은 빼고 보내고, 자동 재시도는 하지 않는다. Claude도 실패하면 기존 한도 안내가 나온다. 문장 입력 안내 문구를 "외부 AI(OpenAI, 한도를 다 쓰면 Claude)"로 바꿨다. DB 변경 없음.
+- 확인: `ClaudeFallbackClientTests` 7개(로컬 가짜 서버: 둘째 키가 답하면 Claude 미호출, 모든 키 소진 뒤에만 Claude 호출, 대신 응답, 키 없음·Claude 실패 시 한도 안내 유지, 요청 제한에서는 호출 안 함, 끊긴 답 미사용, 스키마 제한 제거). DB 없이 도는 전체 테스트 850개 실패 0(건너뜀 235). **실제 OpenAI·Claude 호출은 하지 않았다**(이 PC에 `CLAUDE_API_KEY`는 설정돼 있다). 실제 스키마를 Claude가 받는지(널 허용 형식 등), 응답 시간이 40초 안에 드는지, SQL Server 전체 테스트, 웹 서버 화면은 확인하지 않았다.
 
 ## 2026-11-26 오류 유발 문장 점검과 없는 지역 이름 수정
 

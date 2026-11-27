@@ -62,7 +62,7 @@ public class OpenAiVerificationClient {
                 .header("Authorization", "Bearer " + properties.apiKey()).header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8)).build();
             // 유료 호출이라 자동 재시도는 하지 않는다.
-            var response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            AiReply response = AiReply.send(http, request, body, properties, null);
             if (response.statusCode() == 429) throw OpenAiQuota.exhausted(response.body())
                 ? failure("AI_QUOTA", "AI 이용 한도를 모두 써서 지금은 확인 검색을 할 수 없어요.")
                 : failure("AI_RATE_LIMIT", "AI 확인 검색 사용량이 제한됐어요. 잠시 후 다시 시도해 주세요.");

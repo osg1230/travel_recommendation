@@ -21,6 +21,9 @@ public class OpenAiItineraryClient {
     private final URI endpoint;
     private final Duration timeout;
 
+    // OpenAI 크레딧이 소진되면 대신 부른다. 테스트처럼 주입하지 않으면 대체 호출 없이 동작한다.
+    @Autowired(required = false) ClaudeFallbackClient claudeFallback;
+
     @Autowired
     public OpenAiItineraryClient(OpenAiProperties properties,ObjectMapper mapper) {
         this(properties,mapper,URI.create("https://api.openai.com/v1/responses"),Duration.ofSeconds(25));
@@ -55,6 +58,7 @@ public class OpenAiItineraryClient {
                 취향은 일정에 있는 장소 이름으로 분명히 드러날 때만 그 장소와 함께 언급한다.
                 previousFailure가 있으면 그 형식 문제를 고쳐서 다시 작성한다.
                 summary와 advice는 각각 일반 텍스트 1~3문장으로 쓰고 HTML·URL·연락처·이메일은 넣지 않는다.
+                모든 문장은 한글로 쓰고 한자·일본어 문자를 섞지 않는다.
                 places에는 type이 VISIT(관광)인 항목마다 빠짐없이 그 장소에서 해 볼 만한 활동을 activity에 한 문장(90자 이내)으로 쓴다.
                 placeId는 입력에 있는 값만 쓰고 같은 장소는 한 번만 쓴다.
                 항목의 overview는 서버가 한국관광공사에서 조회한 그 장소의 소개문이다. overview가 있으면 그 안에 나온 건물·볼거리·길·체험만 근거로
@@ -80,7 +84,7 @@ public class OpenAiItineraryClient {
                 .header("Authorization","Bearer "+properties.apiKey()).header("Content-Type","application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body),StandardCharsets.UTF_8)).build();
             // 실패 시 자동 유료 재시도는 하지 않는다. 재요청 횟수는 호출한 쪽에서 제한한다.
-            var response=http.send(request,HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            AiReply response = AiReply.send(http, request, body, properties, claudeFallback);
             if(response.statusCode()==429) throw OpenAiQuota.exhausted(response.body())
                 ? failure("AI_QUOTA","AI 이용 한도를 모두 써서 일정 보조 안내를 만들 수 없어요.")
                 : failure("AI_RATE_LIMIT","일정 보조 사용량이 제한됐어요.");
@@ -130,6 +134,8 @@ public class OpenAiItineraryClient {
         if(value.isEmpty() || value.length()>600) throw invalid("안내 문구는 1~600자의 일반 텍스트여야 해요.");
         if(value.contains("<") || value.contains(">") || value.contains("@") || value.toLowerCase().contains("http"))
             throw invalid("안내 문구에 HTML·링크·연락처를 넣지 않아야 해요.");
+        // 한자·일본 문자가 섞인 안내는 받지 않는다. 요약에 "冬の海の景色"가 섞여 나온 적이 있다(2026-11-28 영덕 초안).
+        if(FOREIGN_SCRIPT.matcher(value).find()) throw invalid("안내 문구는 한자·일본어 문자 없이 한글로 써야 해요.");
         return value;
     }
     private static final java.util.regex.Pattern FOREIGN_SCRIPT=java.util.regex.Pattern.compile("[\\p{IsHan}\\p{IsHiragana}\\p{IsKatakana}]");

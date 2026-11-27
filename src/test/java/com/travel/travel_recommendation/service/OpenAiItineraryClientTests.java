@@ -80,6 +80,13 @@ class OpenAiItineraryClientTests {
         output("{\"summary\":\"안내\",\"days\":[]}");
         assertCode("AI_INVALID_RESPONSE",()->client("key",Duration.ofSeconds(2)).assist(conditions(),plan(),null));
     }
+    // 요약·일차 안내에 한자·일본 문자가 섞이면 받지 않고, 호출한 쪽이 이유를 붙여 다시 요청하게 한다(2026-11-28 "冬の海の景色").
+    @Test void rejectsSummaryOrAdviceWithForeignScript() {
+        output("{\"summary\":\"冬の海の景色と 대게 식사를 즐기는 일정입니다.\",\"days\":[{\"number\":1,\"advice\":\"안내\"}]}");
+        assertCode("AI_INVALID_RESPONSE",()->client("key",Duration.ofSeconds(2)).assist(conditions(),plan(),null));
+        output("{\"summary\":\"안내\",\"days\":[{\"number\":1,\"advice\":\"木立 사이를 걸어요.\"}]}");
+        assertCode("AI_INVALID_RESPONSE",()->client("key",Duration.ofSeconds(2)).assist(conditions(),plan(),null));
+    }
     // 추천 활동은 '~요'로 끝나는 문장만 받는다. 지시문이 새어 나온 것 같은 문장은 그 장소만 버린다(일정 안내는 그대로).
     @Test void dropsPlaceActivitiesThatDoNotEndAsSentences() {
         output("{\"summary\":\"안내\",\"days\":[{\"number\":1,\"advice\":\"안내\"}],\"places\":[{\"placeId\":10,\"activity\":\"부드러운 대화 tone\"}]}");

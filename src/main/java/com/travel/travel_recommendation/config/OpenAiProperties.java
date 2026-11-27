@@ -1,13 +1,34 @@
 package com.travel.travel_recommendation.config;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
-/** OpenAI 연결 설정. reasoningEffort는 gpt-6 계열 추론 모델의 생각 깊이(none·low·medium…)이며 비우면 요청에 넣지 않는다. */
+/**
+ * OpenAI 연결 설정. reasoningEffort는 gpt-6 계열 추론 모델의 생각 깊이(none·low·medium…)이며 비우면 요청에 넣지 않는다.
+ * apiKey는 처음 쓰는 키, extraApiKeys는 그 키의 크레딧이 소진됐을 때 차례로 써 볼 나머지 키다.
+ */
 @ConfigurationProperties("travel.openai")
-public record OpenAiProperties(String apiKey, String model, String reasoningEffort) {
+public record OpenAiProperties(String apiKey, String model, String reasoningEffort, List<String> extraApiKeys) {
+    @ConstructorBinding
+    public OpenAiProperties { extraApiKeys = extraApiKeys == null ? List.of() : List.copyOf(extraApiKeys); }
+
+    /** 키를 하나만 쓰는 경우(테스트 등). */
+    public OpenAiProperties(String apiKey, String model, String reasoningEffort) { this(apiKey, model, reasoningEffort, List.of()); }
+
     public boolean isConfigured() { return apiKey != null && !apiKey.isBlank(); }
+
+    /** 써 볼 순서대로 정리한 키 목록. 비어 있는 값과 같은 키가 두 번 들어온 것은 뺀다. */
+    public List<String> apiKeys() {
+        List<String> keys = new ArrayList<>();
+        if (isConfigured()) keys.add(apiKey);
+        for (String key : extraApiKeys)
+            if (key != null && !key.isBlank() && !keys.contains(key.strip())) keys.add(key.strip());
+        return keys;
+    }
 
     /**
      * 모든 OpenAI 요청에 공통으로 들어가는 항목(model·store·reasoning). 각 클라이언트는 여기에 지시문·입력·출력 형식을 더한다.
