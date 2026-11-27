@@ -113,7 +113,7 @@ public class KakaoMapClient {
             +"&category_group_code=FD6&"+searchArea(region)+"&size=15&page=1&sort=accuracy"));
         return places(root,item->"FD6".equals(item.path("category_group_code").asText())
             && !PlaceCandidate.notForMeals(item.path("category_name").asText(""))
-            && (item.path("place_name").asText("").contains(food) || item.path("category_name").asText("").contains(food)),
+            && PlaceCandidateService.servesFood(item.path("place_name").asText(""),item.path("category_name").asText(""),food),
             List.of(region),"RESTAURANT",limit);
     }
 

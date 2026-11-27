@@ -33,6 +33,15 @@ public record PlaceCandidate(Long placeId, String name, String address, String s
         return subtype != null && (subtype.contains("간식") || subtype.contains("술집") || subtype.contains("카페"));
     }
 
+    /**
+     * 여행지의 끼니로는 덜 어울리는 곳(푸드코트·구내식당·숙소 셀프 조리). 다른 음식점이 있으면 그곳을 먼저 고른다.
+     * 2026-11-28 반복 생성에서 온천 여행 끼니에 온천 푸드코트와 연수원 구내식당이 들어갔다.
+     */
+    public static boolean plainMeal(String name, String subtype) {
+        String text = (name == null ? "" : name) + " " + (subtype == null ? "" : subtype);
+        return text.contains("푸드코트") || text.contains("구내식당") || text.contains("셀프다이닝");
+    }
+
     /** 분류로 본 종교 시설(성당·사찰·성지). 미사·예불 중에는 관람이 제한될 수 있어 화면과 일정에 안내한다. */
     public boolean religiousSite() {
         return subtype != null && (subtype.contains("종교") || subtype.contains("사찰") || subtype.contains("성당"));

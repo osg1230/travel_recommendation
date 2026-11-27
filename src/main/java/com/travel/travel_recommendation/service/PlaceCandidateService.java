@@ -166,8 +166,17 @@ public class PlaceCandidateService {
     /** 상호나 분류에 음식 이름이 들어 있는지(예: "오다리김밥", "음식점 > 분식 > 김밥"). 메뉴를 확인한 것은 아니다. */
     public static boolean servesFood(String name, String subtype, String food) {
         if (food == null || food.isEmpty()) return false;
-        return (name != null && name.contains(food)) || (subtype != null && subtype.contains(food));
+        return foodWords(food).stream().anyMatch(word -> (name != null && name.contains(word)) || (subtype != null && subtype.contains(word)));
     }
+
+    /**
+     * 음식 이름으로 음식점을 찾을 때 볼 낱말. 보통은 그 이름 하나다.
+     * '해산물'은 상호·분류에 그대로 쓰는 곳이 드물어(카카오 분류는 "해물,생선"·"회"·"게,대게"처럼 나뉜다) 해산물 음식 분류를 함께 본다(2026-11-28).
+     */
+    public static List<String> foodWords(String food) {
+        return "해산물".equals(food) ? SEAFOOD_WORDS : List.of(food);
+    }
+    private static final List<String> SEAFOOD_WORDS = List.of("해산물", "해물", "생선", "회", "게", "조개", "장어", "굴", "전복", "매운탕", "아구", "낙지", "복어");
 
     /** 관광지 후보 앞쪽에 둘 같은 종류의 수. 고른 여행 취향에 맞는 종류(예: 바다 취향의 해변)는 더 둔다. */
     static final int KIND_LIMIT=3, THEME_KIND_LIMIT=5;

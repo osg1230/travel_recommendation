@@ -80,8 +80,8 @@ public class ClaudeFallbackClient {
                 .maxTokens(MAX_TOKENS)
                 .system(String.valueOf(openAiBody.get("instructions")))
                 .addUserMessage(String.valueOf(openAiBody.get("input")))
-                // 구조화 출력만 받으므로 생각 깊이를 낮춰 응답 시간을 줄인다.
-                .outputConfig(OutputConfig.builder().effort(OutputConfig.Effort.LOW)
+                // 구조화 출력만 받으므로 기본은 생각 깊이를 낮춰(low) 응답 시간을 줄인다. travel.claude.effort로 바꿀 수 있다.
+                .outputConfig(OutputConfig.builder().effort(OutputConfig.Effort.of(properties.effort()))
                     .format(JsonOutputFormat.builder().schema(format.build()).build()).build())
                 .build();
             Message message = client.messages().create(params);

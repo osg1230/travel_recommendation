@@ -59,7 +59,7 @@ class ClaudeFallbackClientTests {
     private OpenAiPurposeClient client(String claudeApiKey, List<String> extraOpenAiKeys) {
         var client = new OpenAiPurposeClient(new OpenAiProperties("openai-key", "gpt-6-luna", "none", extraOpenAiKeys), mapper,
             URI.create(base() + "/responses"), Duration.ofSeconds(5));
-        client.claudeFallback = new ClaudeFallbackClient(new ClaudeProperties(claudeApiKey, "claude-opus-5-5", 5, false), mapper, base());
+        client.claudeFallback = new ClaudeFallbackClient(new ClaudeProperties(claudeApiKey, "claude-opus-5-5", 5, false, "low"), mapper, base());
         return client;
     }
     private void claudeAnswers(String stopReason, String text) {

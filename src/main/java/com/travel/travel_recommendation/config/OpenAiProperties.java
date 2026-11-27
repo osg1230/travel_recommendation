@@ -9,15 +9,20 @@ import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 /**
  * OpenAI 연결 설정. reasoningEffort는 gpt-6 계열 추론 모델의 생각 깊이(none·low·medium…)이며 비우면 요청에 넣지 않는다.
+ * timeoutSeconds가 0보다 크면 각 호출의 기본 응답 제한 시간 대신 그 값을 쓴다(느린 모델을 비교 측정할 때 쓴다).
+ * minOutputTokens가 0보다 크면 각 호출의 출력 토큰 상한을 그 값 이상으로 올린다. 추론 깊이를 높이면 생각에 쓰는 토큰도
+ * 상한에 포함돼, 기존 상한(250~3000)으로는 답이 중간에 끊기기 때문이다(2026-11-28 비교 측정에서 확인).
  * apiKey는 처음 쓰는 키, extraApiKeys는 그 키의 크레딧이 소진됐을 때 차례로 써 볼 나머지 키다.
  */
 @ConfigurationProperties("travel.openai")
-public record OpenAiProperties(String apiKey, String model, String reasoningEffort, List<String> extraApiKeys) {
+public record OpenAiProperties(String apiKey, String model, String reasoningEffort, List<String> extraApiKeys, int timeoutSeconds,
+                               int minOutputTokens) {
     @ConstructorBinding
     public OpenAiProperties { extraApiKeys = extraApiKeys == null ? List.of() : List.copyOf(extraApiKeys); }
 
     /** 키를 하나만 쓰는 경우(테스트 등). */
-    public OpenAiProperties(String apiKey, String model, String reasoningEffort) { this(apiKey, model, reasoningEffort, List.of()); }
+    public OpenAiProperties(String apiKey, String model, String reasoningEffort) { this(apiKey, model, reasoningEffort, List.of(), 0, 0); }
+    public OpenAiProperties(String apiKey, String model, String reasoningEffort, List<String> extraApiKeys) { this(apiKey, model, reasoningEffort, extraApiKeys, 0, 0); }
 
     public boolean isConfigured() { return apiKey != null && !apiKey.isBlank(); }
 

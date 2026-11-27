@@ -20,6 +20,9 @@ public interface AiJobRepository extends JpaRepository<AiJob,UUID> {
     List<AiJob> findTop5ByJobTypeAndStatusOrderByCreatedAtAsc(String jobType,String status);
     long countByUserIdAndJobTypeAndStatusIn(Long userId,String jobType,Collection<String> statuses);
     long countByGuestTokenHashAndJobTypeAndStatusIn(byte[] guestTokenHash,String jobType,Collection<String> statuses);
+    /** 회원 또는 비회원(브라우저)이 최근에 만든 작업 10개. 같은 여행지로 예전에 만든 일정 초안을 찾는 데 쓴다. */
+    List<AiJob> findTop10ByUserIdAndJobTypeAndStatusOrderByCreatedAtDesc(Long userId,String jobType,String status);
+    List<AiJob> findTop10ByGuestTokenHashAndJobTypeAndStatusOrderByCreatedAtDesc(byte[] guestTokenHash,String jobType,String status);
     @Modifying(clearAutomatically=true,flushAutomatically=true)
     @Query("delete from AiJob j where j.userId is null and j.expiresAt<=:now")
     int deleteExpiredGuests(LocalDateTime now);

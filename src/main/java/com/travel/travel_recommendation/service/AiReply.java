@@ -11,6 +11,7 @@ import java.util.Map;
 
 /** AI 호출 결과의 상태 코드와 본문. OpenAI가 답했든 Claude가 대신 답했든 같은 모양으로 다룬다. requestId는 OpenAI 오류 로그용이다. */
 record AiReply(int statusCode, String body, String requestId) {
+    private static final tools.jackson.databind.json.JsonMapper MAPPER = new tools.jackson.databind.json.JsonMapper();
 
     /**
      * OpenAI에 요청을 보낸다. 크레딧 소진(429 insufficient_quota)이면 설정된 다음 OpenAI 키로 같은 요청을 다시 보내고,
@@ -25,6 +26,17 @@ record AiReply(int statusCode, String body, String requestId) {
             return answer != null ? new AiReply(200, answer, "") : new AiReply(503, "", "");
         }
         List<String> keys = properties.apiKeys();
+        // 응답 제한 시간을 따로 설정했으면(travel.openai.timeout-seconds) 각 클라이언트의 기본값 대신 쓴다.
+        if (properties.timeoutSeconds() > 0)
+            request = HttpRequest.newBuilder(request, (name, value) -> true).timeout(java.time.Duration.ofSeconds(properties.timeoutSeconds())).build();
+        // 출력 토큰 하한을 설정했으면(travel.openai.min-output-tokens) 상한이 그보다 작은 요청만 본문을 고쳐 다시 만든다.
+        if (properties.minOutputTokens() > 0 && body.get("max_output_tokens") instanceof Number limit
+            && limit.intValue() < properties.minOutputTokens()) {
+            Map<String, Object> raised = new java.util.LinkedHashMap<>(body);
+            raised.put("max_output_tokens", properties.minOutputTokens());
+            request = HttpRequest.newBuilder(request, (name, value) -> true)
+                .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(raised), StandardCharsets.UTF_8)).build();
+        }
         // request는 첫 번째 키로 만들어져 있다. 두 번째 키부터는 인증 헤더만 바꿔 다시 보낸다.
         HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         for (int i = 1; i < keys.size() && exhausted(response); i++)
