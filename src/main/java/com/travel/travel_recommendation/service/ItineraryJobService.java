@@ -96,8 +96,33 @@ public class ItineraryJobService {
         return null;
     }
 
-    /** 초안에 넣지 않은 여행 기간 축제 안내. placeName은 축제가 열리는 관광지 이름이다. */
-    public record FestivalSuggestion(String title,String period,String placeName) {}
+    /**
+     * 축제가 열리는 곳을 알리는 말(예: "뱃들공원 일원에서 열려요"). 화면의 "…행사가 " 뒤에 붙인다.
+     * 일정에 넣는 관광지(placeName)는 행사 좌표 근처에서 찾은 곳이라 행사장이 아닐 수 있다. 예전에는 "주라지 신세계센텀시티점(또는 바로 근처)에서
+     * 열려요"처럼 그 관광지에서 열리는 것처럼 보였다(2026-11-28). 그래서 관광공사가 적은 행사 장소(없으면 주소)를 먼저 말하고,
+     * 관광지 이름이 행사 장소에 들어 있지 않으면 가장 가까운 관광지로 찾은 곳임을 밝힌다.
+     */
+    static String festivalWhere(RegionalFestival festival,String placeName) {
+        String venue=festival==null?"":festival.place()!=null && !festival.place().isBlank()?festival.place().strip()
+            :festival.address()==null?"":festival.address().strip();
+        if(venue.isEmpty()) return placeName+" 근처에서 열려요";
+        // 띄어쓰기 차이는 무시하고, 행사 장소 설명에서 뽑은 이름(예: 뱃들공원)이 관광지 이름에 들어 있어도 같은 곳으로 본다.
+        String plain=placeName.replace(" ","");
+        boolean samePlace=venue.replace(" ","").contains(plain)
+            || FestivalPlaceService.venueNames(venue).stream().anyMatch(plain::contains);
+        return venue+"에서 열려요"+(samePlace?"":". 행사장에서 가장 가까운 관광지로 "+placeName+ReadableText.particle(placeName,"을")+" 찾았어요");
+    }
+
+    /** 일정 입력 화면에 보여 줄 축제 장소 안내. visit은 festivalVisit이 돌려준 축제다. */
+    @Transactional(readOnly=true,timeout=10)
+    public String festivalWhere(UUID parentId,long destinationId,String login,byte[] hash,FestivalVisit visit,String placeName) {
+        var festival=access.view(parentId,login,hash).recommendations().stream().filter(r->r.destination().placeId()==destinationId)
+            .flatMap(r->r.festivals().stream()).filter(f->f.title().equals(visit.title()) && f.period().equals(visit.period())).findFirst().orElse(null);
+        return festivalWhere(festival,placeName);
+    }
+
+    /** 초안에 넣지 않은 여행 기간 축제 안내. placeName은 일정에 넣을 관광지 이름, where는 축제가 열리는 곳 안내(festivalWhere)다. */
+    public record FestivalSuggestion(String title,String period,String placeName,String where) {}
 
     /**
      * 여행 기간에 열리는 축제 장소가 이 초안에 없으면 넣는 방법을 안내한다(SFR-04-03). 바로 만든 초안·다시 만든 초안은 축제 장소를
@@ -112,7 +137,8 @@ public class ItineraryJobService {
         boolean placed=result.days().stream().flatMap(d->d.items().stream()).anyMatch(i->festival.placeId().equals(i.placeId()));
         if(placed) return null;
         var place=findPlace(attractionPool(input.recommendationId(),destinationId,login,hash),festival.placeId());
-        return place==null?null:new FestivalSuggestion(festival.title(),festival.period(),place.name());
+        return place==null?null:new FestivalSuggestion(festival.title(),festival.period(),place.name(),
+            festivalWhere(input.recommendationId(),destinationId,login,hash,festival,place.name()));
     }
 
     /** 출발일을 정하지 않았을 때 제안할 축제. 이 여행지의 축제 중 가장 먼저 열리는 것이며 없으면 null이다. */
