@@ -71,6 +71,15 @@ class MoodPlacesTests {
         assertThat(MoodPlaces.moodFirst(ordered, List.of(), 2, java.util.Set.of(), java.util.Set.of())).isSameAs(ordered);
     }
 
+    // 맨 앞의 중심 장소가 분위기 장소이기도 하면 한 번만 들어간다. 두 번 들어가면 같은 곳을 하루에 두 번 방문하는 일정이 되어 실패한다.
+    @Test void moodFirstKeepsACenterThatIsAlsoAMoodPlaceOnlyOnce() {
+        var walkCenter = place(3, "소돌해안일주 산책로", "여행 > 관광,명소 > 도보여행");
+        var museum = place(2, "오죽헌시립박물관", "문화시설 > 박물관");
+        var arboretum = place(4, "강릉솔향수목원", "여행 > 관광,명소 > 수목원,식물원");
+        assertThat(MoodPlaces.moodFirst(List.of(walkCenter, museum, arboretum), List.of("한적한"), 2, java.util.Set.of(), java.util.Set.of(3L)))
+            .containsExactly(walkCenter, arboretum, museum);
+    }
+
     // 하루 마무리: 풍경 장소를 마지막으로 옮긴 순서. 이미 마지막이 풍경이거나 거리가 5km보다 늘면 옮기지 않는다.
     @Test void sceneryLastMovesTheViewToTheEndUnlessTheRouteGrowsTooMuch() {
         var beach = place(1, "경포해수욕장", "여행 > 관광,명소 > 해수욕장,해변");
