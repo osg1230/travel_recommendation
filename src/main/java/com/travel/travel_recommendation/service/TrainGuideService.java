@@ -77,8 +77,9 @@ public class TrainGuideService {
     }
 
     /**
-     * 일정 초안 화면의 기차 안내. 버스 안내와 같은 입력(도착 지역, 출발 도시·현재 위치)을 받아, 출발지와 도착 지역에서 가까운 역 사이
-     * 열차를 종류별로 요약한다. 출발지를 비우면 주변 지역으로 갈 때만 지금 여행지에서 출발한다.
+     * 일정 초안 화면의 기차 안내. 버스 안내와 같은 입력(도착 지역, 출발 도시·현재 위치)을 받아, 출발지와 도착 지역 근처의 역 사이
+     * 열차를 종류별로 요약한다. 열차가 다니는 역 조합이 여럿이면 가장 빨리 갈 수 있는 조합을 고른다.
+     * 출발지를 비우면 주변 지역으로 갈 때만 지금 여행지에서 출발한다.
      */
     public TrainGuide guide(UUID jobId, String login, byte[] guestHash, String to, String from, Double longitude, Double latitude) {
         // 본인(또는 같은 비회원 세션)의 완성된 일정에서만 조회한다.
@@ -109,22 +110,54 @@ public class TrainGuideService {
 
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
         LocalDate tripDate = view.input().conditions().startDate();
-        var arrivals = TrainStations.nearest(target, TARGET_STATIONS);
+        // 가장 가까운 역만 보면 부산 광안리 여행에 센텀역(무궁화호 2시간 19분)이 나오고 부산역 KTX가 빠진다(2026-11-28).
+        // 그래서 도착 지역 근처의 역을 더 보고, '열차 시간 + 역까지 가는 시간(직선거리 어림)'이 가장 짧은 역 조합을 고른다.
+        var arrivals = guideArrivals(target);
+        TrainGuide best = null; int bestMinutes = Integer.MAX_VALUE;
         for (var departure : TrainStations.nearest(origin, ORIGIN_STATIONS)) {
             for (var arrival : arrivals) {
                 if (departure.id().equals(arrival.id())) continue;
                 var timetable = timetable(departure.id(), arrival.id(), tripDate);
                 if (timetable == null) continue;
-                return new TrainGuide(label, to, departure.name() + "역", arrival.name() + "역", timetable.date(), tripDate,
-                    routes(timetable.trains()), null);
+                int train = timetable.trains().stream().mapToInt(TrainClient.Train::minutes).min().orElseThrow();
+                int total = train + accessMinutes(origin, departure) + accessMinutes(target, arrival);
+                if (total < bestMinutes) {
+                    bestMinutes = total;
+                    best = new TrainGuide(label, to, departure.name() + "역", arrival.name() + "역", timetable.date(), tripDate,
+                        routes(timetable.trains()), null);
+                }
             }
         }
+        if (best != null) return best;
         var nearestFrom = TrainStations.nearest(origin, 1).getFirst();
         if (nearestFrom.id().equals(arrivals.getFirst().id()))
             return new TrainGuide(label, to, nearestFrom.name() + "역", arrivals.getFirst().name() + "역", today, tripDate, List.of(),
                 "출발지와 도착 지역이 같은 역에서 가까워 기차로 갈 필요가 없어요.");
         return new TrainGuide(label, to, nearestFrom.name() + "역", arrivals.getFirst().name() + "역", today, tripDate, List.of(),
             "오늘과 여행 날짜 모두 가까운 역 사이에 바로 가는 열차를 찾지 못했어요. 갈아타는 열차는 안내하지 않으니 코레일 예매처에서 확인해 주세요.");
+    }
+
+    /** 기차 안내에서 도착 지역 근처로 보는 역의 수와 거리(km). 가까운 2곳은 거리와 상관없이 본다. */
+    static final int GUIDE_ARRIVAL_STATIONS = 4;
+    static final double GUIDE_ARRIVAL_KM = 20;
+    /** 역까지 가는 시간을 직선거리로 어림할 때 1km에 잡는 분(시내 대중교통 시속 약 20km). 역을 고르는 데만 쓰고 화면에는 보여 주지 않는다. */
+    static final int ACCESS_MINUTES_PER_KM = 3;
+
+    /** 도착 지역에서 가까운 역 2곳과, 그다음으로 가까운 역 가운데 20km 안에 있는 곳(모두 4곳까지). */
+    static List<TrainStations.Station> guideArrivals(KakaoMapClient.Location target) {
+        var near = TrainStations.nearest(target, GUIDE_ARRIVAL_STATIONS);
+        List<TrainStations.Station> stations = new ArrayList<>();
+        for (var station : near)
+            if (stations.size() < TARGET_STATIONS || kilometers(target, station) <= GUIDE_ARRIVAL_KM) stations.add(station);
+        return stations;
+    }
+
+    private static double kilometers(KakaoMapClient.Location place, TrainStations.Station station) {
+        return Airports.kilometers(place.longitude(), place.latitude(), station.longitude(), station.latitude());
+    }
+
+    private static int accessMinutes(KakaoMapClient.Location place, TrainStations.Station station) {
+        return (int) Math.round(kilometers(place, station) * ACCESS_MINUTES_PER_KM);
     }
 
     /** 열차를 종류별로 묶어 횟수·첫차·막차·가장 짧은 소요·최저 어른 요금을 낸다. 가장 빠른 종류부터 보여 준다. */

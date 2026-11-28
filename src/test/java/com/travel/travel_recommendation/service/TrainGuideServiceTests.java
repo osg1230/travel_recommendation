@@ -86,15 +86,42 @@ class TrainGuideServiceTests {
         assertThat(routes.get(1).minCharge()).isEqualTo(28600);
     }
 
-    private View view(LocalDate start, List<String> nearby) {
-        var conditions = new ConfirmedTravelConditions("KEYWORD", "", "강릉", start, start, 1, null, 1, false, true, List.of(), "");
-        var pool = new PlaceCandidateView(UUID.randomUUID(), new DestinationCandidate(1L, "강릉", "강원특별자치도 강릉시", "소개", "https://visitgangneung.net/", LocalDateTime.of(2026, 9, 1, 0, 0)),
-            1, false, List.of(), List.of(), List.of());
+    private View view(LocalDate start, List<String> nearby) { return view(start, nearby, "강릉", List.of()); }
+
+    private View view(LocalDate start, List<String> nearby, String destination, List<PlaceCandidate> attractions) {
+        var conditions = new ConfirmedTravelConditions("KEYWORD", "", destination, start, start, 1, null, 1, false, true, List.of(), "");
+        var pool = new PlaceCandidateView(UUID.randomUUID(), new DestinationCandidate(1L, destination, "지역", "소개", "https://tour.example.kr/", LocalDateTime.of(2026, 9, 1, 0, 0)),
+            1, false, attractions, List.of(), List.of());
         var input = new Input(pool.jobId(), pool, conditions, LocalTime.of(9, 0), LocalTime.of(18, 0), Transport.PUBLIC_TRANSIT, 90);
         var regions = nearby.stream().map(n -> new NearbyRegion(2L, n, "지역", "소개", "https://tour.example.kr/", 40, "경로", null, List.of())).toList();
-        var result = new Result("강릉", List.of(), Transport.PUBLIC_TRANSIT, Instant.now())
+        var result = new Result(destination, List.of(), Transport.PUBLIC_TRANSIT, Instant.now())
             .withNearby(new Nearby("RECOMMENDED", "이유", "INTERCITY_BUS", regions, null, Instant.now()));
         return new View(UUID.randomUUID(), "COMPLETED", "", false, input, result);
+    }
+
+    // 광안리 여행에서 가장 가까운 역은 센텀역이지만, 부산역으로 가는 KTX가 훨씬 빠르면 부산역으로 안내한다.
+    // 가까운 역의 열차가 더 빠르면(또는 비슷하면) 가까운 역을 그대로 안내한다.
+    @Test void guidePicksTheStationPairThatGetsThereFastest() {
+        UUID job = UUID.randomUUID();
+        LocalDate trip = today.plusDays(3);
+        var gwangalli = new PlaceCandidate(1L, "광안리해수욕장", "부산 수영구 광안해변로 219", "여행 > 관광,명소 > 해수욕장,해변", "", "https://www.visitbusan.net/",
+            "", LocalDateTime.of(2026, 9, 1, 0, 0), 129.1186, 35.1532, "KAKAO");
+        var dongdaegu = new KakaoMapClient.Location("대구광역시 동구", 128.6284, 35.8793, Instant.now());
+        when(itineraries.view(eq(job), any(), any())).thenReturn(view(trip, List.of(), "부산", List.of(gwangalli)));
+        when(maps.findOrigin("동대구역")).thenReturn(new KakaoMapClient.Origin("대구광역시 동구", "대구", dongdaegu));
+        // 도착 지역 근처로 보는 역: 가까운 순서로 센텀·부전·신해운대·부산.
+        assertThat(TrainGuideService.guideArrivals(new KakaoMapClient.Location("광안리", 129.1186, 35.1532, Instant.now())))
+            .extracting(TrainStations.Station::name).containsExactly("센텀", "부전", "신해운대", "부산");
+        when(trains.trains(anyString(), anyString(), any())).thenReturn(List.of());
+        when(trains.trains("NAT013271", "NAT750161", trip)).thenReturn(List.of(train(trip, "무궁화호", 9, 0, 139, 15400)));
+        when(trains.trains("NAT013271", "NAT014445", trip)).thenReturn(List.of(train(trip, "KTX", 8, 0, 50, 17100)));
+        var guide = service.guide(job, "user", null, "부산", "동대구역", null, null);
+        assertThat(guide.toStation()).isEqualTo("부산역");
+        assertThat(guide.routes()).singleElement().satisfies(r -> assertThat(r.grade()).isEqualTo("KTX"));
+
+        // 센텀역까지 가는 열차가 더 빠르면 여행지에서 가까운 센텀역으로 안내한다.
+        when(trains.trains("NAT013271", "NAT750161", trip)).thenReturn(List.of(train(trip, "KTX-이음", 9, 0, 55, 15400)));
+        assertThat(service.guide(job, "user", null, "부산", "동대구역", null, null).toStation()).isEqualTo("센텀역");
     }
 
     // 적은 출발지에서 가까운 역과 주변 지역(울산) 터미널에서 가까운 역 사이 열차를 요약한다. 목록에 없는 도착지는 받지 않는다.
