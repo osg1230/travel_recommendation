@@ -106,6 +106,9 @@ public class ItineraryController {
         var defaults=defaultPlaces(id,destinationId,principal,session,pool);
         model.addAttribute("festivalVisit",festivalPlace==null?null:festival);
         model.addAttribute("festivalPlaceName",festivalPlace==null?null:festivalPlace.name());
+        // 축제가 열리는 곳은 관광공사가 적은 행사 장소로 알리고, 고를 관광지가 행사장이 아니면 가까운 관광지라고 밝힌다.
+        model.addAttribute("festivalWhere",festivalPlace==null?null
+            :service().festivalWhere(id,destinationId,login(principal),hash(session),festival,festivalPlace.name()));
         var purposeIds=defaults.purposeIds();
         var centerIds=defaults.centerIds();
         model.addAttribute("purposePlaceIds",purposeIds);
