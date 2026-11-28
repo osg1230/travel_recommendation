@@ -128,6 +128,13 @@ public class BusGuideService {
         String keyword=from.strip().replaceAll("\\s+"," ");
         if(keyword.length()>20 || !keyword.matches("[가-힣A-Za-z0-9() ]+"))
             throw new RecommendationException("BUS_INPUT","출발지는 20자 이내의 도시나 터미널 이름으로 적어 주세요.");
+        // 화면이 미리 채워 주는 출발지는 "대구광역시 동구", "경기도 수원시 영통구" 같은 시·구 이름이라 터미널 이름과 맞지 않는다.
+        // 일정을 만들 때와 같은 규칙으로 도시 이름("대구", "수원")만 남긴다.
+        String[] parts=keyword.split(" ",2);
+        if(parts[0].matches(".+(특별시|광역시|특별자치시|특별자치도|도)") && (parts.length==2 || !parts[0].endsWith("도"))) {
+            String city=KakaoMapClient.cityKeyword(parts[0],parts.length==2?parts[1]:"");
+            if(city!=null) return city;
+        }
         // "동서울터미널", "강릉시"처럼 적어도 TAGO 터미널 이름과 맞도록 흔한 꼬리말을 뗀다.
         String trimmed=keyword.replaceAll("(종합)?(시외|고속)?버스터미널$|터미널$","").replaceAll("(시|군)$","").strip();
         return trimmed.isEmpty()?keyword:trimmed;
