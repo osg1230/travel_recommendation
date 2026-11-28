@@ -16,6 +16,19 @@ public final class OperatingHoursValidator {
             && info.hours() != null && info.closedDays() != null && info.checkIn() != null && info.checkOut() != null;
     }
 
+    /** 폐업 안내를 믿는 기간. 지나면 후보로 돌아와 운영정보를 다시 조회할 수 있다. */
+    static final Duration CLOSED_DOWN_VALID = Duration.ofDays(30);
+
+    /**
+     * 관광공사 운영시간·휴무 안내문에 '폐업'이 적혀 있는지. 이런 장소는 일정 후보에서 뺀다(PlaceCandidateService.usable).
+     * '영업종료 30분 전 주문 마감', '폐관 1시간 전 입장'처럼 평소 안내에도 쓰는 말은 폐업으로 보지 않는다.
+     * 운영정보를 조회한 장소만 알 수 있고, 안내문에 적혀 있지 않은 폐업은 알 수 없다.
+     */
+    public static boolean closedDown(PlaceOperatingInfo info, Instant now) {
+        if (info == null || info.fetchedAt() == null || info.fetchedAt().isBefore(now.minus(CLOSED_DOWN_VALID))) return false;
+        return (info.hours() != null && info.hours().contains("폐업")) || (info.closedDays() != null && info.closedDays().contains("폐업"));
+    }
+
     /** 안내된 정기휴무 요일과 방문 날짜가 겹치는지만 본다. 시간대·임시 휴무는 여기서 판단하지 않는다. */
     public static boolean closedOn(PlaceOperatingInfo info, LocalDate date) {
         if (date == null || !fresh(info, Instant.now()) || "32".equals(info.contentTypeId())) return false;

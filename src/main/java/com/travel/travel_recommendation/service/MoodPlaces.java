@@ -101,7 +101,9 @@ public final class MoodPlaces {
         var result = new java.util.ArrayList<PlaceCandidate>();
         int i = 0;
         while (i < ordered.size() && front.contains(ordered.get(i).placeId())) result.add(ordered.get(i++));
-        result.addAll(pulled);
+        // 맨 앞의 필수·중심 장소가 분위기 장소이기도 하면 이미 넣었으므로 다시 넣지 않는다.
+        // 두 번 들어가면 같은 관광지를 하루에 두 번 방문하는 일정이 되어 일정 검증에서 실패한다(2026-11-28).
+        for (var place : pulled) if (!result.contains(place)) result.add(place);
         for (; i < ordered.size(); i++) if (!pulled.contains(ordered.get(i))) result.add(ordered.get(i));
         return result;
     }

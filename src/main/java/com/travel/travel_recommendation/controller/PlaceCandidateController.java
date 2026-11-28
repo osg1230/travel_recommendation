@@ -50,10 +50,19 @@ public class PlaceCandidateController {
             flash.addFlashAttribute("lookupMessage","새 운영정보 조회는 1분 후 가능해요.");
         } else {
             boolean found=service.refresh(id,destinationId,placeId,principal==null?null:principal.getName(),guest);
-            flash.addFlashAttribute("lookupMessage",found?"관광공사의 운영정보를 표시해요. 방문 가능 여부는 일정의 날짜·시간과 별도로 대조해요.":"같은 장소의 운영정보를 확실하게 연결하지 못했어요. 출처에서 직접 확인해 주세요.");
+            // 조회한 안내문에 '폐업'이 있으면 그 장소는 후보에서 빠지므로(PlaceCandidateService.usable) 목록에서 사라진 이유를 알린다.
+            var candidates=services.getIfAvailable();
+            if(found && candidates!=null && !listed(candidates.find(id,destinationId,principal==null?null:principal.getName(),guest),placeId))
+                flash.addFlashAttribute("lookupMessage","관광공사에 폐업으로 안내된 곳이라 후보에서 뺐어요.");
+            else flash.addFlashAttribute("lookupMessage",found?"관광공사의 운영정보를 표시해요. 방문 가능 여부는 일정의 날짜·시간과 별도로 대조해요.":"같은 장소의 운영정보를 확실하게 연결하지 못했어요. 출처에서 직접 확인해 주세요.");
         }
         response.setStatus(303);
         return "redirect:/travel/recommendations/"+id+"/destinations/"+destinationId+"/places";
+    }
+
+    private static boolean listed(PlaceCandidateView view,long placeId) {
+        return java.util.stream.Stream.of(view.attractions(),view.restaurants(),view.accommodations())
+            .flatMap(java.util.List::stream).anyMatch(p->p.placeId()==placeId);
     }
 
     @PostMapping("/{id}/destinations/{destinationId}/places/refresh")

@@ -544,7 +544,7 @@ class ItineraryRevisionIntegrationTests {
             List.of(new com.travel.travel_recommendation.dto.TrainGuide.Route("KTX-이음",18,"05:06","22:10",114,27600)),null);
         mvc.perform(get(draftUrl(transit)).session(session).flashAttr("trainGuide",guide))
             .andExpect(content().string(containsString("서울역 → 강릉역")))
-            .andExpect(content().string(containsString("하루 18회 · 첫차 05:06 · 막차 22:10 · 가장 빠른 소요 약 114분 · 어른 27,600원부터")))
+            .andExpect(content().string(containsString("하루 18회 · 첫차 05:06 · 막차 22:10 · 가장 빠른 소요 약 1시간 54분 · 어른 27,600원부터")))
             .andExpect(content().string(containsString("오늘 기준으로 보여 드려요")));
     }
 }

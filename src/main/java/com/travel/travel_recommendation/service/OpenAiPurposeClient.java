@@ -40,6 +40,9 @@ public class OpenAiPurposeClient {
     private final URI endpoint;
     private final Duration timeout;
 
+    // OpenAI 크레딧이 소진되면 대신 부른다. 테스트처럼 주입하지 않으면 대체 호출 없이 동작한다.
+    @Autowired(required = false) ClaudeFallbackClient claudeFallback;
+
     @Autowired
     public OpenAiPurposeClient(OpenAiProperties properties, ObjectMapper mapper) {
         this(properties, mapper, URI.create("https://api.openai.com/v1/responses"), Duration.ofSeconds(15));
@@ -65,7 +68,7 @@ public class OpenAiPurposeClient {
                 지역명·상호·지점명을 지어내지 않는다. 쉼표·기호·URL 없이 2~20자로 쓴다.
                 휴식·맛집 탐방처럼 특정 시설로 찾을 수 없는 목적이면 keywords는 빈 배열로 둔다.
                 '조용한'·'사람 적은' 같은 분위기 조건은 검색어로 바꾸지 않는다.
-                food에는 목적에 나온 음식 이름만 짧게 적는다. 예) 김밥 축제 → 김밥 / 돼지국밥 먹으러 → 돼지국밥 / 대게 맛집 탐방 → 대게. 음식이 없으면 빈 문자열이다.
+                food에는 목적에 나온 음식 이름만 짧게 적는다. 예) 김밥 축제 → 김밥 / 돼지국밥 먹으러 → 돼지국밥 / 대게 맛집 탐방 → 대게 / 해산물 먹기·해물 요리 → 해산물. 음식이 없으면 빈 문자열이다.
                 음식 이름을 빼고 '축제'·'맛집'처럼 넓은 말만 남기지 않는다. 음식이나 음식 축제가 목적이면 keywords는 빈 배열로 둔다(음식점은 따로 찾는다).
                 festival은 축제·행사·페스티벌을 보러 가고 싶다고 했으면 true, 아니면 false다.
                 themes에는 그 목적을 하기 좋은 여행지 분류를 주어진 값 중에서 0~3개 고른다. 여행 방향이 여러 개면 방향마다 하나씩 서로 다른 분류를 고른다. 예) 갯벌 체험 → 바다 / 상어 관람 → 바다, 체험·액티비티 /
@@ -81,7 +84,7 @@ public class OpenAiPurposeClient {
             HttpRequest request = HttpRequest.newBuilder(endpoint).timeout(timeout)
                 .header("Authorization", "Bearer " + properties.apiKey()).header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8)).build();
-            var response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            AiReply response = AiReply.send(http, request, body, properties, claudeFallback);
             if (response.statusCode() == 429) throw OpenAiQuota.exhausted(response.body())
                 ? failure("AI_QUOTA", "AI 이용 한도를 모두 써서 목적 시설을 검색할 수 없어요.")
                 : failure("AI_RATE_LIMIT", "목적 시설 검색 사용량이 제한됐어요.");

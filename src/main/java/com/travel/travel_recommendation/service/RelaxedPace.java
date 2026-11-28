@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
 public final class RelaxedPace {
     private RelaxedPace() {}
     private static final Pattern RELAXED = Pattern.compile(
-        "여유롭|여유로|여유\\s?있게|느긋|빡빡하지\\s?않|안\\s?빡빡|쉬엄쉬엄|천천히|무리하지\\s?않|무리\\s?없이|널널|많이\\s?걷지\\s?않|푹\\s?쉬");
+        "여유롭|여유로|여유\\s?있게|느긋|빡빡하지\\s?않|안\\s?빡빡|쉬엄쉬엄|천천히|무리하지\\s?않|무리\\s?없이|널널|많이\\s?걷지\\s?않|푹\\s?쉬|많이\\s?돌아다니지\\s?않");
 
     /** 여유 일정의 하루 관광지 수(저녁 관광 포함). 따로 정하지 않았을 때의 상한 4곳보다 한 곳 적다. */
     public static final int DAILY_VISITS = 3;

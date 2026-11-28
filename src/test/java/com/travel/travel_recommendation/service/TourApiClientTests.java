@@ -260,6 +260,13 @@ class TourApiClientTests {
         assertThat(client("key").districtCodes("2")).isEmpty();
         assertThat(calls.get()).isEqualTo(before);
     }
+    // 광주는 관광공사 목록에 시 이름 없이 구 이름만 있어 다섯 구의 코드를 돌려준다. 같은 시·도의 시·군은 넣지 않는다.
+    @Test void gwangjuUsesItsFiveDistrictCodes() {
+        body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":4,\"items\":{\"item\":["
+            + "{\"code\":\"130\",\"name\":\"여수시\"},{\"code\":\"210\",\"name\":\"동구\"},{\"code\":\"330\",\"name\":\"광산구\"},"
+            + "{\"code\":\"710\",\"name\":\"담양군\"}]}}}}");
+        assertThat(client("key").cityDistrictCodes("12", "광주")).containsExactly("210", "330");
+    }
     // 일반구가 있는 시는 구 코드들을, 구가 없는 시·군은 그 코드 하나를 돌려준다. 관광지는 구 코드로 등록돼 있기 때문이다.
     @Test void cityDistrictCodesUseWardsWhenTheCityHasThem() {
         body.set("{\"response\":{\"header\":{\"resultCode\":\"0000\"},\"body\":{\"totalCount\":4,\"items\":{\"item\":["

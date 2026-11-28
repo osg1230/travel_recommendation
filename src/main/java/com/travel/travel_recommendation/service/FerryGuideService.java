@@ -55,7 +55,7 @@ public class FerryGuideService {
                     int ship = sailing.get().minutes();
                     int total = toPort + BOARDING_WAIT + ship + LANDING_WAIT + fromPort;
                     if (best == null || total < best.minutes())
-                        best = new Leg(total, "배 · " + departure.label() + " → " + arrival.label() + " 약 " + ship + "분(오늘 운항 기준, 기상에 따라 결항될 수 있음)"
+                        best = new Leg(total, "배 · " + departure.label() + " → " + arrival.label() + " 약 " + ReadableText.duration(ship) + "(오늘 운항 기준, 기상에 따라 결항될 수 있음)"
                             + " + 승선 대기 " + (BOARDING_WAIT + LANDING_WAIT) + "분 + 항구까지·항구에서 "
                             + (transport == KakaoMapClient.Transport.CAR ? "자동차" : "대중교통") + " 이동(카카오 길찾기)", Instant.now());
                 } catch (RecommendationException error) {

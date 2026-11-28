@@ -166,8 +166,17 @@ public class PlaceCandidateService {
     /** 상호나 분류에 음식 이름이 들어 있는지(예: "오다리김밥", "음식점 > 분식 > 김밥"). 메뉴를 확인한 것은 아니다. */
     public static boolean servesFood(String name, String subtype, String food) {
         if (food == null || food.isEmpty()) return false;
-        return (name != null && name.contains(food)) || (subtype != null && subtype.contains(food));
+        return foodWords(food).stream().anyMatch(word -> (name != null && name.contains(word)) || (subtype != null && subtype.contains(word)));
     }
+
+    /**
+     * 음식 이름으로 음식점을 찾을 때 볼 낱말. 보통은 그 이름 하나다.
+     * '해산물'은 상호·분류에 그대로 쓰는 곳이 드물어(카카오 분류는 "해물,생선"·"회"·"게,대게"처럼 나뉜다) 해산물 음식 분류를 함께 본다(2026-11-28).
+     */
+    public static List<String> foodWords(String food) {
+        return "해산물".equals(food) ? SEAFOOD_WORDS : List.of(food);
+    }
+    private static final List<String> SEAFOOD_WORDS = List.of("해산물", "해물", "생선", "회", "게", "조개", "장어", "굴", "전복", "매운탕", "아구", "낙지", "복어");
 
     /** 관광지 후보 앞쪽에 둘 같은 종류의 수. 고른 여행 취향에 맞는 종류(예: 바다 취향의 해변)는 더 둔다. */
     static final int KIND_LIMIT=3, THEME_KIND_LIMIT=5;
@@ -221,10 +230,15 @@ public class PlaceCandidateService {
     /**
      * 지금 일정 후보로 쓸 수 있는 장소인지: 이 지역의 사용 중인 장소이고, 카카오 장소는 24시간 안에 확인했으며
      * 그 밖의 장소는 허용한 출처 주소다. 일정 작업을 마칠 때 장소가 그대로인지 볼 때도 같은 기준을 쓴다(ItineraryJobService).
+     * 폐업으로 안내된 장소는 뺀다(2026-11-26): 이름에 '폐업'이 붙었거나 조회해 둔 관광공사 운영정보에 '폐업'이 적힌 곳이다.
+     * 음식점·숙소는 인허가 자료에서 폐업으로 확인한 곳도 뺀다(PlaceLicenseService).
+     * 카카오 검색에서 사라진 곳은 24시간 뒤 확인 시각이 지나 자연히 빠진다. 어디에도 폐업이 반영되지 않은 곳까지는 알 수 없다.
      */
     boolean usable(Place place, String region) {
         return place.isActive() && region.equals(place.getRegion())
-            && place.getName() != null && !place.getName().isBlank()
+            && place.getName() != null && !place.getName().isBlank() && !place.getName().contains("폐업")
+            && !OperatingHoursValidator.closedDown(PlaceOperatingDetails.read(place, mapper), java.time.Instant.now())
+            && !PlaceLicenseDetails.closed(place, mapper, java.time.Instant.now())
             && place.getAddress() != null && !place.getAddress().isBlank()
             && place.getVerifiedAt() != null && !place.getVerifiedAt().isAfter(KoreaTime.now())
             && ("KAKAO".equals(place.getSourceProvider()) ? usableKakao(place) : safeSource(place.getSourceUrl()));

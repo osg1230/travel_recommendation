@@ -21,6 +21,9 @@ public class OpenAiRecommendationClient {
     private final URI endpoint;
     private final Duration timeout;
 
+    // OpenAI 크레딧이 소진되면 대신 부른다. 테스트처럼 주입하지 않으면 대체 호출 없이 동작한다.
+    @Autowired(required = false) ClaudeFallbackClient claudeFallback;
+
     @Autowired
     public OpenAiRecommendationClient(OpenAiProperties properties, ObjectMapper mapper) {
         this(properties,mapper,URI.create("https://api.openai.com/v1/responses"),Duration.ofSeconds(25));
@@ -142,6 +145,9 @@ public class OpenAiRecommendationClient {
                 places는 그 지역의 대표 코스다. 그 지역을 여행하는 사람들이 널리 찾는, 실제로 있는 관광 장소 이름을
                 하루에 돌아보기 좋은 순서로 2~3개 쓴다(예: 전주는 한옥마을, 경기전, 오목대 순 / 안동은 하회마을, 도산서원 순).
                 사용자의 여행 취향·목적과 어울리는 곳을 고르고, 목적 시설 검색 결과의 시설 이름을 그대로 옮기지 않는다.
+                reason과 places는 화면에서 나란히 보이므로 같은 여행을 말해야 한다. reason에서 든 장소가 관광 장소면 places에도 넣고,
+                places는 reason이 말한 곳과 같은 생활권 안에서 고른다. reason은 지역의 한쪽을 말하는데 places는 멀리 떨어진
+                다른 쪽만 적는 일이 없게 하고, 맞출 수 없으면 reason을 places에 적은 곳 기준으로 쓴다.
                 음식점·숙소·지역 이름 자체는 넣지 않고, 이름을 확실히 모르면 수를 줄이거나 비워 둔다.
                 이 이름은 화면에 '대표 코스'로 그대로 보이고, 서버가 나중에 실제 장소 후보와 맞춰 본다.
                 reason은 사용자에게 그대로 보인다. purposePlaces·travelPurpose·THEME 같은 입력 필드 이름을 쓰지 말고
@@ -163,10 +169,10 @@ public class OpenAiRecommendationClient {
                 .header("Authorization","Bearer "+properties.apiKey()).header("Content-Type","application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body),StandardCharsets.UTF_8)).build();
             // 실패 시 자동 유료 재시도는 하지 않는다.
-            var response=http.send(request,HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            AiReply response = AiReply.send(http, request, body, properties, claudeFallback);
             if(response.statusCode()==429) {
                 // 분당·일일 한도 중 무엇에 걸렸는지 알 수 있게 응답 앞부분만 남긴다. 오류 본문에는 인증키가 없다.
-                log.warn("추천 API 요청 제한(429) request-id={} body={}",response.headers().firstValue("x-request-id").orElse(""),snippet(response.body()));
+                log.warn("추천 API 요청 제한(429) request-id={} body={}",response.requestId(),snippet(response.body()));
                 if(OpenAiQuota.exhausted(response.body()))
                     throw failure("AI_QUOTA","AI 이용 한도를 모두 써서 지금은 여행지 추천을 만들 수 없어요. 한도가 채워진 뒤 다시 이용해 주세요.");
                 throw failure("AI_RATE_LIMIT","추천 API 사용량이 제한됐어요. 잠시 후 다시 시도해 주세요.");

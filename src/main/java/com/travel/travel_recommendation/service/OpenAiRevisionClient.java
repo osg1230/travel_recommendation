@@ -91,6 +91,9 @@ public class OpenAiRevisionClient {
     private final URI endpoint;
     private final Duration timeout;
 
+    // OpenAI 크레딧이 소진되면 대신 부른다. 테스트처럼 주입하지 않으면 대체 호출 없이 동작한다.
+    @Autowired(required = false) ClaudeFallbackClient claudeFallback;
+
     @Autowired
     public OpenAiRevisionClient(OpenAiProperties properties,ObjectMapper mapper) {
         this(properties,mapper,URI.create("https://api.openai.com/v1/responses"),Duration.ofSeconds(20));
@@ -171,7 +174,7 @@ public class OpenAiRevisionClient {
                 .header("Authorization","Bearer "+properties.apiKey()).header("Content-Type","application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body),StandardCharsets.UTF_8)).build();
             // 실패 시 자동 유료 재시도는 하지 않는다. 형식 오류 재요청 횟수는 호출한 쪽에서 제한한다.
-            var response=http.send(httpRequest,HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            AiReply response = AiReply.send(http, httpRequest, body, properties, claudeFallback);
             if(response.statusCode()==429) throw OpenAiQuota.exhausted(response.body())
                 ? failure("AI_QUOTA","AI 이용 한도를 모두 써서 지금은 AI 수정안을 만들 수 없어요. 일정의 '다른 곳으로 바꾸기'와 'AI 없이 시간만 바꾸기'는 그대로 쓸 수 있어요.")
                 : failure("AI_RATE_LIMIT","AI 수정 요청 사용량이 제한됐어요. 잠시 후 다시 시도해 주세요.");

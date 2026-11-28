@@ -148,8 +148,10 @@ class RecommendationJobIntegrationTests {
         // 추천 중에 확인해 추가한 여행지(RegionSuggestionService)가 PC마다 다를 수 있어 순서는 보지 않는다. 다른 시·도는 섞이지 않는다.
         assertThat(destinations.find("경북")).extracting(DestinationCandidate::name).contains("경주","안동","포항");
         assertThat(destinations.find("경북")).allSatisfy(d -> assertThat(Provinces.canonical(d.region().split(" ")[0])).isEqualTo("경북"));
-        assertThat(destinations.find("광주")).extracting(DestinationCandidate::name).contains("여수","순천","담양");
-        assertThat(destinations.find("광주")).allSatisfy(d -> assertThat(Provinces.canonical(d.region().split(" ")[0])).isEqualTo("전남광주"));
+        // 전남 전체는 "전남"으로 찾고, "광주"는 광주 여행지만 찾는다(020 적용 필요, 2026-11-26).
+        assertThat(destinations.find("전남")).extracting(DestinationCandidate::name).contains("여수","순천","담양");
+        assertThat(destinations.find("전남")).allSatisfy(d -> assertThat(Provinces.canonical(d.region().split(" ")[0])).isEqualTo("전남광주"));
+        assertThat(destinations.find("광주")).extracting(DestinationCandidate::name).containsExactly("광주");
         assertThat(destinations.find("부산 아닌 서울")).isEmpty();
         assertThat(destinations.find("강릉 부산")).isEmpty();
     }

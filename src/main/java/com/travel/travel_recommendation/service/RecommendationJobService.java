@@ -25,6 +25,7 @@ public class RecommendationJobService {
     private final UserRepository users;
     private final DestinationCandidateService candidates;
     private final ObjectMapper mapper;
+    private final KakaoMapClient maps;
     @Value("${travel.jobs.retention-hours:24}") private int retentionHours;
 
     /**
@@ -141,6 +142,16 @@ public class RecommendationJobService {
     public boolean regionUnknown(ConfirmedTravelConditions c) {
         String region=c.region()==null?"":c.region().strip();
         return !region.isEmpty() && candidates.matching(c).isEmpty() && byFirstWord(c).isEmpty();
+    }
+
+    /**
+     * 여행지 목록에 없는 이름이 지도에서도 찾을 수 없는 이름인지(예: 지어낸 지명 '아틀란티스시', 해외 도시).
+     * 이런 이름을 원하는 여행으로 옮기면 AI가 이름에서 연상한 시설을 근거로 추천하므로(2026-11-26 확인) 옮기지 않는다.
+     * 지도를 확인하지 못했으면(설정 없음·시간 초과 등) false를 돌려줘 이전처럼 원하는 여행으로 옮긴다.
+     */
+    public boolean placeNameMissing(String name) {
+        try { return !maps.domesticPlaceName(name); }
+        catch(RecommendationException e) { return false; }
     }
 
     /** 세부 지역(예: "제주 우도")의 첫 단어로 찾은 여행지. 한 단어 지역이면 빈 목록이다. */

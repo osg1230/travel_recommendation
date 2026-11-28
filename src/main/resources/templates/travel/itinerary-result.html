@@ -326,7 +326,7 @@
 <p th:text="${job.result.nearby.reason}"></p>
 <p class="notice" th:if="${job.result.nearby.notice != null}" th:text="${job.result.nearby.notice}"></p>
 <article class="place-row" th:each="region : ${job.result.nearby.regions}">
-<h3 th:text="${region.name + ' · ' + (job.result.nearby.basis == 'CAR' ? '자동차' : '직행 시외버스') + ' 약 ' + region.minutes + '분'}"></h3>
+<h3 th:text="${region.name + ' · ' + (job.result.nearby.basis == 'CAR' ? '자동차' : '직행 시외버스') + ' 약 ' + T(com.travel.travel_recommendation.service.ReadableText).duration(region.minutes)}"></h3>
 <p class="help" th:text="${region.region + ' · ' + region.route}"></p>
 <p th:text="${region.description}"></p>
 <p class="help" th:if="${region.bus != null}" th:text="${#temporals.format(region.bus.serviceDate, 'yyyy-MM-dd') + ' 운행 기준 · 2시간 안에 도착하는 직행 ' + region.bus.trips + '회 · 첫차 ' + #temporals.format(region.bus.firstDeparture, 'HH:mm') + ' · 막차 ' + #temporals.format(region.bus.lastDeparture, 'HH:mm') + (region.bus.minCharge == null ? '' : ' · 요금 ' + #numbers.formatInteger(region.bus.minCharge, 1, 'COMMA') + '원부터')}"></p>
@@ -366,7 +366,7 @@
 <p th:if="${busGuide.message != null}" th:text="${busGuide.message}"></p>
 <article class="place-row" th:each="bus : ${busGuide.routes}">
 <h4 th:text="${bus.kind + ' · ' + bus.fromTerminal + ' → ' + bus.toTerminal}"></h4>
-<p th:text="${'직행 ' + bus.trips + '회 · 첫차 ' + bus.firstDeparture + ' · 막차 ' + bus.lastDeparture + ' · 가장 빠른 소요 약 ' + bus.fastestMinutes + '분'
+<p th:text="${'직행 ' + bus.trips + '회 · 첫차 ' + bus.firstDeparture + ' · 막차 ' + bus.lastDeparture + ' · 가장 빠른 소요 약 ' + T(com.travel.travel_recommendation.service.ReadableText).duration(bus.fastestMinutes)
     + (bus.minCharge == null ? '' : ' · 요금 ' + #numbers.formatInteger(bus.minCharge, 1, 'COMMA') + '원부터')}"></p>
 </article>
 </div>
@@ -381,7 +381,7 @@
 <p th:if="${trainGuide.message != null}" th:text="${trainGuide.message}"></p>
 <article class="place-row" th:each="train : ${trainGuide.routes}">
 <h4 th:text="${train.grade}"></h4>
-<p th:text="${'하루 ' + train.trains + '회 · 첫차 ' + train.firstDeparture + ' · 막차 ' + train.lastDeparture + ' · 가장 빠른 소요 약 ' + train.fastestMinutes + '분'
+<p th:text="${'하루 ' + train.trains + '회 · 첫차 ' + train.firstDeparture + ' · 막차 ' + train.lastDeparture + ' · 가장 빠른 소요 약 ' + T(com.travel.travel_recommendation.service.ReadableText).duration(train.fastestMinutes)
     + (train.minCharge == null ? '' : ' · 어른 ' + #numbers.formatInteger(train.minCharge, 1, 'COMMA') + '원부터')}"></p>
 </article>
 </div>
@@ -421,7 +421,7 @@
 <p th:if="${flightGuide.message != null}" th:text="${flightGuide.message}"></p>
 <article class="place-row" th:each="route : ${flightGuide.routes}">
 <h4 th:text="${route.airline}"></h4>
-<p th:text="${'하루 ' + route.flights + '편 · 첫 편 ' + route.firstDeparture + ' · 막 편 ' + route.lastDeparture + ' · 비행 약 ' + route.fastestMinutes + '분'
+<p th:text="${'하루 ' + route.flights + '편 · 첫 편 ' + route.firstDeparture + ' · 막 편 ' + route.lastDeparture + ' · 비행 약 ' + T(com.travel.travel_recommendation.service.ReadableText).duration(route.fastestMinutes)
     + (route.minCharge == null ? '' : ' · 일반석 ' + #numbers.formatInteger(route.minCharge, 1, 'COMMA') + '원부터')}"></p>
 </article>
 </div>

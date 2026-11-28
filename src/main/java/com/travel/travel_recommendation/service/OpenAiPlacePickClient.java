@@ -59,6 +59,9 @@ public class OpenAiPlacePickClient {
         }
     }
 
+    // OpenAI 크레딧이 소진되면 대신 부른다. 테스트처럼 주입하지 않으면 대체 호출 없이 동작한다.
+    @Autowired(required = false) ClaudeFallbackClient claudeFallback;
+
     @Autowired
     public OpenAiPlacePickClient(OpenAiProperties properties,ObjectMapper mapper) {
         // 일정 작업은 만든 지 2분 안에 시작해야 하므로 오래 기다리지 않는다.
@@ -111,7 +114,7 @@ public class OpenAiPlacePickClient {
                 .header("Authorization","Bearer "+properties.apiKey()).header("Content-Type","application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body),StandardCharsets.UTF_8)).build();
             // 실패 시 자동 유료 재시도는 하지 않는다. 실패하면 호출한 쪽이 서버 규칙으로 고른 관광지를 그대로 쓴다.
-            var response=http.send(request,HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            AiReply response = AiReply.send(http, request, body, properties, claudeFallback);
             if(response.statusCode()==429) throw OpenAiQuota.exhausted(response.body())
                 ? failure("AI_QUOTA","AI 이용 한도를 모두 써서 관광지 순서를 정하지 못했어요.")
                 : failure("AI_RATE_LIMIT","관광지 순서 정하기 사용량이 제한됐어요.");

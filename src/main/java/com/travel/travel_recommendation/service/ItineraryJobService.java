@@ -162,7 +162,46 @@ public class ItineraryJobService {
     public UUID create(UUID parentId,long destinationId,String login,byte[] hash,LocalTime start,LocalTime end,
                        KakaoMapClient.Transport transport,int visitMinutes,Constraints constraints,Integer durationDays,Boolean accommodationNeeded,
                        LocalDate startDate,HomeTrip home) {
-        return create(parentId,destinationId,login,hash,start,end,transport,visitMinutes,constraints,durationDays,accommodationNeeded,startDate,home,Set.of(),null);
+        // 같은 사람이 예전에 같은 여행지로 일정을 만든 적이 있으면 그때의 관광지는 뒤로 보내, 다시 추천받았을 때 다른 일정이 나오게 한다.
+        return create(parentId,destinationId,login,hash,start,end,transport,visitMinutes,constraints,durationDays,accommodationNeeded,startDate,home,
+            earlierVisits(parentId,destinationId,login,hash),null);
+    }
+
+    /** 예전 일정을 몇 개까지 볼지. 너무 많이 보면 대표 관광지가 계속 밀려나므로 최근 2개만 본다. */
+    static final int EARLIER_DRAFTS=2;
+
+    /**
+     * 같은 회원(비회원은 같은 브라우저)이 다른 추천 요청에서 같은 여행지로 만든 최근 일정 초안의 관광지 ID.
+     * 같은 조건으로 추천을 다시 받으면 장소 후보와 고르는 규칙이 같아 거의 같은 일정이 나왔기 때문이다(2026-11-28 반복 생성: 3번 중 3번 같은 일정도 있었다).
+     * '다른 관광지로 다시 만들기'와 같은 방식으로 뒤로만 보내므로, 후보가 모자라면 예전 관광지도 다시 쓴다.
+     * 같은 추천 안에서 다시 만드는 것은 결과 화면의 '다른 관광지로 다시 만들기'가 하므로 여기서는 보지 않는다.
+     */
+    private Set<Long> earlierVisits(UUID parentId,long destinationId,String login,byte[] hash) {
+        var parent=access.owned(parentId,login,hash,"RECOMMENDATION");
+        List<AiJob> recent=parent.getUserId()!=null
+            ?jobs.findTop10ByUserIdAndJobTypeAndStatusOrderByCreatedAtDesc(parent.getUserId(),"ITINERARY","COMPLETED")
+            :parent.getGuestTokenHash()!=null
+                ?jobs.findTop10ByGuestTokenHashAndJobTypeAndStatusOrderByCreatedAtDesc(parent.getGuestTokenHash(),"ITINERARY","COMPLETED")
+                :List.of();
+        Set<Long> visits=new HashSet<>(); int drafts=0;
+        for(AiJob job:recent) {
+            if(drafts==EARLIER_DRAFTS) break;
+            try {
+                var input=mapper.readValue(job.getRequestJson(),Input.class);
+                if(input.revision()!=null || parentId.equals(input.recommendationId())
+                    || input.places().destination().placeId()!=destinationId || job.getResultJson()==null) continue;
+                // 그때 여행 목적으로 찾은 시설(예: '케이블카 타기'의 케이블카)은 다시 추천받아도 가고 싶은 곳이므로 뒤로 보내지 않는다.
+                // 같은 시설이 장소 두 개로 저장돼 있으면 이번 요청의 목적 시설 ID와 달라 밀려날 수 있어, 그때의 ID로도 지킨다.
+                var purpose=input.conditions().purposeSearch();
+                Set<Long> purposePlaces=purpose==null?Set.of()
+                    :purpose.places().stream().map(p->p.placeId()).collect(java.util.stream.Collectors.toSet());
+                mapper.readValue(job.getResultJson(),Result.class).days().stream().flatMap(d->d.items().stream())
+                    .filter(i->"VISIT".equals(i.type()) && i.placeId()!=null && !purposePlaces.contains(i.placeId()))
+                    .forEach(i->visits.add(i.placeId()));
+                drafts++;
+            } catch(RuntimeException unreadable) { /* 예전 형식이라 읽지 못한 초안은 건너뛴다. */ }
+        }
+        return visits;
     }
 
     /**

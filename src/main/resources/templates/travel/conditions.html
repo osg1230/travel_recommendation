@@ -41,7 +41,7 @@
             <textarea th:field="*{originalText}" rows="6" maxlength="2000" aria-describedby="text-help text-error" th:attr="aria-invalid=${#fields.hasErrors('originalText')}" placeholder="친구와 여름에 강릉으로 2박 3일 여행을 가고 싶어요. 바다를 보고 맛집에도 들르고 싶어요."></textarea>
             <p class="help" id="text-help">최대 2,000자</p>
             <p class="field-error" id="text-error" th:errors="*{originalText}"></p>
-            <p class="help">입력한 문장은 OpenAI로 분석해요. 개인정보는 적지 마세요.</p>
+            <p class="help">입력한 문장은 외부 AI(OpenAI, 한도를 다 쓰면 Claude)로 분석해요. 개인정보는 적지 마세요.</p>
         </section>
         <section id="keyword-input" data-mode="KEYWORD">
             <h2>원하는 조건을 골라주세요</h2>

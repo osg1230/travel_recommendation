@@ -30,6 +30,9 @@ public class OpenAiDestinationPickClient {
     public record Option(long id, String name, String region, String description, List<DestinationProfile.Evidence> evidence,
                          List<String> facilities) {}
 
+    // OpenAI 크레딧이 소진되면 대신 부른다. 테스트처럼 주입하지 않으면 대체 호출 없이 동작한다.
+    @Autowired(required = false) ClaudeFallbackClient claudeFallback;
+
     @Autowired
     public OpenAiDestinationPickClient(OpenAiProperties properties, ObjectMapper mapper) {
         this(properties, mapper, URI.create("https://api.openai.com/v1/responses"), Duration.ofSeconds(25));
@@ -73,7 +76,7 @@ public class OpenAiDestinationPickClient {
             HttpRequest request = HttpRequest.newBuilder(endpoint).timeout(timeout)
                 .header("Authorization", "Bearer " + properties.apiKey()).header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8)).build();
-            var response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            AiReply response = AiReply.send(http, request, body, properties, claudeFallback);
             if (response.statusCode() == 429) throw OpenAiQuota.exhausted(response.body())
                 ? failure("AI_QUOTA", "AI 이용 한도를 모두 써서 후보를 고르지 못했어요.")
                 : failure("AI_RATE_LIMIT", "후보 고르기 사용량이 제한됐어요.");

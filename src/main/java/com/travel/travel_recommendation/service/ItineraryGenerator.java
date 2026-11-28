@@ -584,6 +584,7 @@ public class ItineraryGenerator {
      * ① 이번 여행에서 아직 먹지 않은 음식 분류 ② 인기 음식점(관광공사 연관 관광지에서 여행자들이 함께 많이 간 곳)
      * ③ 지역 대표 음식이 상호·분류에 들어간 곳 ④ 덜 가는 곳 순서로 고른다.
      * 이미 간 곳은 후보가 모자랄 때만 다시 고른다. 간식·술집·카페는 끼니로 어울리지 않아, 다른 음식점이 하나도 없을 때만 고른다.
+     * 푸드코트·구내식당도 다른 음식점이 하나도 없을 때만 고른다.
      */
     private PlaceCandidate pickRestaurant(DayBuilder builder,PlaceCandidate after,PlaceCandidate toward) {
         var choices=builder.input.choices();
@@ -591,7 +592,9 @@ public class ItineraryGenerator {
         var allowed=builder.input.places().restaurants().stream().filter(p->!choices.avoidRestaurants().contains(p.placeId())).toList();
         var all=allowed.isEmpty()?builder.input.places().restaurants():allowed;
         var meals=all.stream().filter(p->!PlaceCandidate.notForMeals(p.subtype())).toList();
-        var restaurants=meals.isEmpty()?all:meals;
+        // 푸드코트·구내식당은 다른 음식점이 있으면 쓰지 않는다.
+        var proper=meals.stream().filter(p->!PlaceCandidate.plainMeal(p.name(),p.subtype())).toList();
+        var restaurants=!proper.isEmpty()?proper:meals.isEmpty()?all:meals;
         // 빼기 수정안은 그날 먹기로 했던 식당을 같은 순서로 쓴다. 이미 쓴 곳을 건너뛰면 다음 끼니의 식당이 된다.
         var kept=keptDay(builder.input,builder.day);
         if(kept!=null) for(Long id:kept.meals()) {
@@ -1085,7 +1088,7 @@ public class ItineraryGenerator {
         }
         String where=nights==0?"방문할 관광지들과 평균 직선 약 "+chosen.averageKilometers()+"km 떨어져 있어요."
             :nights==1?first
-            :"날마다 마지막 장소에서 숙소까지 최대 약 "+maxIn+"분, 숙소에서 다음 날 첫 장소까지 최대 약 "+maxOut+"분 걸려요.";
+            :"날마다 마지막 장소에서 숙소까지 최대 약 "+ReadableText.duration(maxIn)+", 숙소에서 다음 날 첫 장소까지 최대 약 "+ReadableText.duration(maxOut)+" 걸려요.";
         // 저녁 식당은 밤마다 달라 하룻밤일 때만 적는다.
         return String.join(" ",java.util.stream.Stream.of(where,nights==1?dinner:null,basis).filter(t->t!=null && !t.isBlank()).toList());
     }
@@ -1135,7 +1138,7 @@ public class ItineraryGenerator {
         if(!input.dayStart(1).isBefore(input.dayEnd(1)) || !input.dayStart(days).isBefore(input.dayEnd(days)))
             first=last=0;
         if(days==1 && first<240)
-            throw failure("HOME_HOURS","집에서 오가는 시간(가는 길 약 "+home.minutes()+"분, 오는 길 약 "+home.returnMinutes()+"분)을 빼면 여행지에서 보낼 시간이 4시간보다 짧아요("
+            throw failure("HOME_HOURS","집에서 오가는 시간(가는 길 약 "+ReadableText.duration(home.minutes())+", 오는 길 약 "+ReadableText.duration(home.returnMinutes())+")을 빼면 여행지에서 보낼 시간이 4시간보다 짧아요("
                 +input.dayStart(1)+"~"+input.dayEnd(1)+"). 집 출발을 앞당기거나 귀가 시각을 늦춰 주세요.");
         if(days>1 && first<120)
             throw failure("HOME_HOURS","첫날 여행지 도착("+input.dayStart(1)+") 뒤 관광을 마칠 시간("+input.dayEnd(1)+")까지 2시간이 안 돼요. 집 출발을 앞당기거나 하루 종료 시간을 늦춰 주세요.");

@@ -30,6 +30,17 @@ class OperatingHoursValidatorTests {
         assertThat(OperatingHoursValidator.closedOn(info("09:00~18:00", "연중무휴"), monday)).isFalse();
         assertThat(OperatingHoursValidator.closedOn(null, monday)).isFalse();
     }
+    // 안내문에 '폐업'이 적힌 장소만 폐업으로 본다. 평소 안내에 쓰는 '영업종료'·'폐관'이나 30일이 지난 조회 결과는 폐업으로 보지 않는다.
+    @Test void closedDownOnlyWhenTheNoticeSaysSo() {
+        var now = Instant.now();
+        assertThat(OperatingHoursValidator.closedDown(info("폐업", ""), now)).isTrue();
+        assertThat(OperatingHoursValidator.closedDown(info("11:00~21:00", "2026년 3월 폐업"), now)).isTrue();
+        assertThat(OperatingHoursValidator.closedDown(info("11:00~21:00 (영업종료 30분 전 주문 마감)", "매주 월요일"), now)).isFalse();
+        assertThat(OperatingHoursValidator.closedDown(info("09:00~18:00 (폐관 1시간 전 입장 마감)", "연중무휴"), now)).isFalse();
+        assertThat(OperatingHoursValidator.closedDown(null, now)).isFalse();
+        var old = new PlaceOperatingInfo("1", "39", "폐업", "", "", "", now.minus(Duration.ofDays(31)));
+        assertThat(OperatingHoursValidator.closedDown(old, now)).isFalse();
+    }
     @Test void validatesBoundariesAndRejectsClosedDayOrOutsideHours() {
         assertThat(check(info("09:00~18:00", "연중무휴"), monday, 9, 18)).contains("일치");
         assertThatThrownBy(() -> check(info("09:00~18:00", "연중무휴"), monday, 8, 10)).isInstanceOf(RecommendationException.class);

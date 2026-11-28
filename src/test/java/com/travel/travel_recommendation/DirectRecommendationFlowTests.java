@@ -176,6 +176,21 @@ class DirectRecommendationFlowTests {
         mvc.perform(get("/travel/recommendations/"+id).session(session)).andExpect(status().isOk())
             .andExpect(content().string(containsString("속리산&#39;은 아직 여행지 목록에 없어서 지역 대신 원하는 여행으로 옮겼어요.")));
     }
+    // 지도에서도 찾을 수 없는 이름('아틀란티스시')은 원하는 여행으로 옮기지 않고, 추천을 만들지 않은 채 지역 칸을 고치게 한다.
+    @Test void placeNameMissingFromTheMapIsNotMovedToThePurpose() throws Exception {
+        analysis.put("region","아틀란티스시");
+        when(jobs.regionUnknown(any())).thenReturn(true);
+        when(jobs.placeNameMissing("아틀란티스시")).thenReturn(true);
+        when(jobs.regionProblem(any())).thenReturn("'아틀란티스시'에 맞는 여행지를 찾지 못했어요.");
+        var session=new MockHttpSession(); var token=token(session);
+        mvc.perform(post("/travel/conditions/recommend").session(session).with(csrf()).param("inputToken",token)
+            .param("inputMode","TEXT").param("originalText","아틀란티스시로 1박 2일 여행 가고 싶어"))
+            .andExpect(redirectedUrl("/travel/conditions/review"));
+        verify(jobs,never()).create(any(),nullable(String.class),any());
+        var form=(ConditionReviewForm)mvc.perform(get("/travel/conditions/review").session(session)).andExpect(status().isOk())
+            .andReturn().getModelAndView().getModel().get("reviewForm");
+        assertThat(form.getRegion()).isEqualTo("아틀란티스시");
+    }
     // 조건 수정 화면에서 지역 칸에 여행지 목록에 없는 시·군('보은')을 적어도 원하는 여행 앞에 붙이고 지역을 비워 추천한다.
     @Test void unknownRegionTypedOnTheReviewPageAlsoBecomesThePurpose() throws Exception {
         var session=new MockHttpSession(); submit(session,token(session));

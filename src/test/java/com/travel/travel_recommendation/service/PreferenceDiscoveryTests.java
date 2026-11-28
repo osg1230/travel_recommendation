@@ -141,7 +141,7 @@ class PreferenceDiscoveryTests {
                 assertThat(PreferenceDiscovery.TAG_NAMES).containsKeys(o.tags().toArray(String[]::new));
                 assertThat(ids).containsAll(o.next());
                 // 화면은 질문·선택지 ID로 그림을 찾으므로 선택지마다 그림 파일이 있어야 한다.
-                String image = "/static/images/discover/" + (q.id() + "-" + o.id()).toLowerCase() + ".svg";
+                String image = "/static/images/discover/" + (q.id() + "-" + o.id()).toLowerCase() + ".jpg";
                 assertThat(getClass().getResource(image)).as(image).isNotNull();
             });
         });

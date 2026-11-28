@@ -28,6 +28,9 @@ public class OpenAiLandmarkClient {
     private final URI endpoint;
     private final Duration timeout;
 
+    // OpenAI 크레딧이 소진되면 대신 부른다. 테스트처럼 주입하지 않으면 대체 호출 없이 동작한다.
+    @Autowired(required = false) ClaudeFallbackClient claudeFallback;
+
     @Autowired
     public OpenAiLandmarkClient(OpenAiProperties properties, ObjectMapper mapper) {
         this(properties, mapper, URI.create("https://api.openai.com/v1/responses"), Duration.ofSeconds(20));
@@ -60,7 +63,7 @@ public class OpenAiLandmarkClient {
             HttpRequest request = HttpRequest.newBuilder(endpoint).timeout(timeout)
                 .header("Authorization", "Bearer " + properties.apiKey()).header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8)).build();
-            var response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            AiReply response = AiReply.send(http, request, body, properties, claudeFallback);
             if (response.statusCode() == 429) throw OpenAiQuota.exhausted(response.body())
                 ? failure("AI_QUOTA", "AI 이용 한도를 모두 써서 대표 관광지를 제안받을 수 없어요.")
                 : failure("AI_RATE_LIMIT", "대표 관광지 제안 사용량이 제한됐어요.");

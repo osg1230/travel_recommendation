@@ -88,6 +88,17 @@ class BusGuideServiceTests {
         verify(buses,times(BusGuideService.MAX_ORIGINS)).trips(eq(Service.INTERCITY),anyString(),eq("GN"),eq(today));
     }
 
+    // 화면이 미리 채워 주는 출발지("대구광역시 동구" 같은 시·구 이름)도 도시 이름으로 줄여 터미널을 찾는다.
+    @Test void regionLabelOriginIsShortenedToItsCityName() {
+        when(itineraries.view(eq(job),any(),any())).thenReturn(view(today,List.of()));
+        assertThat(service.guide(job,"user",null,"강릉","대구광역시 동구",null,null).from()).isEqualTo("대구");
+        assertThat(service.guide(job,"user",null,"강릉","경기도 수원시 영통구",null,null).from()).isEqualTo("수원");
+        assertThat(service.guide(job,"user",null,"강릉","제주특별자치도 제주시",null,null).from()).isEqualTo("제주");
+        // 도시·터미널 이름으로 적은 것은 그대로 쓴다.
+        assertThat(service.guide(job,"user",null,"강릉","완도",null,null).from()).isEqualTo("완도");
+        assertThat(service.guide(job,"user",null,"강릉","동서울",null,null).from()).isEqualTo("동서울");
+    }
+
     @Test void nearbyRegionDefaultsToCurrentDestinationAsOrigin() {
         when(itineraries.view(eq(job),any(),any())).thenReturn(view(today,List.of("속초")));
         when(buses.trips(Service.INTERCITY,"GN","SC",today)).thenReturn(List.of(trip(8,70,9900)));

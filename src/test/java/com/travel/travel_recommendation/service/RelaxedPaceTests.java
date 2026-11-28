@@ -22,9 +22,24 @@ class RelaxedPaceTests {
         assertThat(RelaxedPace.wanted(conditions("", "여유롭게 바다 보기"))).isTrue();
         assertThat(RelaxedPace.wanted(conditions("부모님과 천천히 둘러보고 싶어요", ""))).isTrue();
         assertThat(RelaxedPace.wanted(conditions("부모님이 계셔서 많이 걷지 않게 해 주세요", ""))).isTrue();
+        assertThat(RelaxedPace.wanted(conditions("엄마랑 온천 가요. 많이 돌아다니지 않고 맛있는 거 먹고 싶어요", ""))).isTrue();
         assertThat(RelaxedPace.wanted(conditions("많이 보고 싶어요. 빡빡하게 짜 주세요.", "맛집"))).isFalse();
         assertThat(RelaxedPace.wanted(conditions("친구와 강릉 2박 3일", null))).isFalse();
         assertThat(RelaxedPace.wanted(null)).isFalse();
+    }
+
+    // 푸드코트·구내식당은 끼니 후보에서 뒤로 미루고, '해산물'은 해물·회·게 같은 분류의 음식점까지 본다(2026-11-28).
+    @Test void plainMealsAndSeafoodWords() {
+        assertThat(PlaceCandidate.plainMeal("덕구온천스파월드 푸드코트", "음식점 > 푸드코트")).isTrue();
+        assertThat(PlaceCandidate.plainMeal("푸디스트 건설공제조합건설경영연수원점", "음식점 > 구내식당")).isTrue();
+        assertThat(PlaceCandidate.plainMeal("덕구온천호텔&콘도 셀프다이닝", "음식점 > 한식")).isTrue();
+        assertThat(PlaceCandidate.plainMeal("망양정식당", "음식점 > 한식 > 해물,생선")).isFalse();
+        assertThat(PlaceCandidateService.servesFood("연화정", "음식점 > 한식 > 해물,생선", "해산물")).isTrue();
+        assertThat(PlaceCandidateService.servesFood("정다운식당", "음식점 > 한식 > 해물,생선 > 게,대게", "해산물")).isTrue();
+        assertThat(PlaceCandidateService.servesFood("바다김밥 중앙본점", "음식점 > 분식", "해산물")).isFalse();
+        // 다른 음식 이름은 지금처럼 그 이름만 본다.
+        assertThat(PlaceCandidateService.servesFood("바다김밥 중앙본점", "음식점 > 분식", "김밥")).isTrue();
+        assertThat(PlaceCandidateService.servesFood("연화정", "음식점 > 한식 > 해물,생선", "김밥")).isFalse();
     }
 
     // 여유 일정이면 하루 3곳을 선호 조건으로 넣는다. 사용자가 정한 하루 방문 수와 다른 조건은 그대로 둔다.

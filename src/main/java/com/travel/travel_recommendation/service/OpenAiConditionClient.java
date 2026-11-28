@@ -32,6 +32,9 @@ public class OpenAiConditionClient {
     private final JsonNode schema;
     private final String instructions;
 
+    // OpenAI 크레딧이 소진되면 대신 부른다. 테스트처럼 주입하지 않으면 대체 호출 없이 동작한다.
+    @Autowired(required = false) ClaudeFallbackClient claudeFallback;
+
     @Autowired
     public OpenAiConditionClient(OpenAiProperties properties, ObjectMapper mapper) throws IOException {
         this(properties, mapper, URI.create("https://api.openai.com/v1/responses"), Duration.ofSeconds(25));
@@ -67,7 +70,7 @@ public class OpenAiConditionClient {
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8)).build();
             // 유료 호출은 한 번만 수행한다. 자동 재시도 대신 사용자가 오류 안내 후 다시 요청한다.
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            AiReply response = AiReply.send(client, request, body, properties, claudeFallback);
             // 429는 요청 제한과 크레딧 소진 두 경우다. 크레딧 소진은 기다려도 풀리지 않아 조건 고르기를 안내한다.
             if (response.statusCode() == 429) throw new ConditionAnalysisException(OpenAiQuota.exhausted(response.body())
                     ? "AI 이용 한도를 모두 써서 지금은 문장을 분석할 수 없어요. '조건 고르기'로 입력해 주세요."
